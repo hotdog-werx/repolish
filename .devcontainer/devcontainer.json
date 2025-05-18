@@ -1,0 +1,74 @@
+{
+  "name": "pylib-template",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "runArgs": [
+    "--rm",
+    "--network=host",
+    "--env-file=project.env",
+    "--name=pylib-template_devcontainer"
+  ],
+  "postStartCommand": "bash .devcontainer/scripts/env_setup.sh",
+  "containerEnv": {
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "CONTAINER_WORKSPACE": "${containerWorkspaceFolder}"
+  },
+  "mounts": [
+    "source=opt_uv,target=/opt/uv,type=volume",
+    "source=m-vscode-server-extensions,target=/root/.vscode-server/extensions,type=volume"
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.renderWhitespace": "all",
+        "files.associations": {
+          "Makefile*": "makefile"
+        },
+        "emeraldwalk.runonsave": {
+          "commands": [
+            {
+              "match": "\\.md$",
+              "cmd": "mdformat --wrap 120 ${file}"
+            },
+            {
+              "match": "\\.(json|yaml)$",
+              "cmd": "yq -M -i ${file}"
+            }
+          ]
+        },
+        "editor.minimap.enabled": false,
+        "editor.rulers": [
+          80,
+          120
+        ],
+        "python.defaultInterpreterPath": "/opt/uv/pylib-template/bin/python",
+        "python.languageServer": "None",
+        "python.linting.enabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.linting.flake8Args": [
+          "--config=.flake8"
+        ],
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash"
+          }
+        }
+      },
+      "extensions": [
+        "GitHub.copilot",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.flake8",
+        "EditorConfig.EditorConfig",
+        "unifiedjs.vscode-mdx",
+        "emeraldwalk.RunOnSave",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
+  },
+  "shutdownAction": "stopContainer"
+}
