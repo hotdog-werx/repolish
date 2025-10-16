@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-repolish = "repolish.cli.main:main"
+repolish = "repolish.cli:main"
 
 [dependency-groups]
 dev = [
