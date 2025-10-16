@@ -5,9 +5,6 @@ from textwrap import dedent
 import pytest
 
 from repolish.processors import (
-    apply_regex_replacements,
-    extract_patterns,
-    replace_tags_in_content,
     replace_text,
     safe_file_read,
 )
@@ -17,30 +14,11 @@ from repolish.processors import (
 class ReplaceTextTestCase:
     id: str
     template: str
-    local_content: str
-    expected: str
-    """Test extracting tag blocks and regex patterns from content."""
-    content = dedent("""
-        Some text here.
-        ## repolish-start[header]
-        This is a header block.
-        ## repolish-end[header]
-        More text.
-        ## repolish-regex[version]: __version__ = "(.+?)"
-        ## repolish-regex[author]: __author__ = "(.+?)"
-        End of content.
-    """).strip()
-
-    patterns = extract_patterns(content)
-
-    expected_tag_blocks = {'header': '\nThis is a header block.\n'}
-    expected_regexes = {
-        'version': '__version__ = "(.+?)"',
-        'author': '__author__ = "(.+?)"',
-    }
-
-    assert patterns.tag_blocks == expected_tag_blocks
-    assert patterns.regexes == expected_regexes
+    local_content: str = ''
+    anchors: dict | None = None
+    expected_equal: str | None = None
+    expected_contains: list[str] | None = None
+    expected_not_contains: list[str] | None = None
 
 
 def test_safe_file_read_existing_file(tmp_path: Path):
@@ -67,176 +45,246 @@ def test_safe_file_read_directory(tmp_path: Path):
     assert result == ''
 
 
-def test_replace_tags_in_content():
-    """Test replacing tag blocks in content."""
-    content = dedent("""
-        Start of file.
-          ## repolish-start[header]
-          Old header content.
-          ## repolish-end[header]
-        Middle content.
-          ## repolish-start[footer]
-          Old footer.
-          ## repolish-end[footer]
-        End of file.
-    """).strip()
-
-    tags = {'header': 'New Header Content', 'footer': 'New Footer Content'}
-
-    result = replace_tags_in_content(content, tags)
-
-    expected = 'Start of file.New Header ContentMiddle content.New Footer ContentEnd of file.'
-
-    assert result == expected
-
-
-def test_replace_tags_in_content_empty_replacement():
-    """Test replacing tag blocks with empty strings."""
-    content = dedent("""
-        Start.
-          ## repolish-start[empty]
-          This should be removed.
-          ## repolish-end[empty]
-        End.
-    """).strip()
-
-    tags = {'empty': ''}
-
-    result = replace_tags_in_content(content, tags)
-
-    expected = dedent("""
-        Start.
-          ## repolish-start[empty]
-          This should be removed.
-          ## repolish-end[empty]
-        End.
-    """).strip()
-
-    assert result == expected
-
-
-def test_apply_regex_replacements():
-    """Test applying regex replacements."""
-    content = dedent("""
-        ## repolish-regex[version]: __version__ = "(.+?)"
-        ## repolish-regex[author]: __author__ = "(.+?)"
-        Some code here.
-        print("Version: {{version}}")
-        print("Author: {{author}}")
-    """).strip()
-
-    regexes = {
-        'version': '__version__ = "(.+?)"',
-        'author': '__author__ = "(.+?)"',
-    }
-
-    local_content = dedent("""
-        __version__ = "1.0.0"
-        __author__ = "Test Author"
-        Some other code.
-    """).strip()
-
-    result = apply_regex_replacements(content, regexes, local_content)
-
-    expected = dedent("""
-        Some code here.
-        print("Version: {{version}}")
-        print("Author: {{author}}")
-    """).strip()
-
-    assert result == expected
-
-
 @pytest.mark.parametrize(
     'test_case',
     [
         ReplaceTextTestCase(
             id='basic_tag_and_regex_replacement',
-            template=dedent("""
+            template=dedent("""\
                 # My Project
-                  ## repolish-start[description]
-                  Default description.
-                  ## repolish-end[description]
+                ## repolish-start[description]
+                Default description.
+                ## repolish-end[description]
 
-                Version: ## repolish-regex[version]: __version__ = "(.+?)"
-                Author: ## repolish-regex[author]: __author__ = "(.+?)"
-            """).strip(),
-            local_content=dedent("""
+                ## repolish-regex[version]: __version__ = "(.+?)"
+                __version__ = "0.0.0"
+                ## repolish-regex[author]: __author__ = "(.+?)"
+                __author__ = "John Doe"
+            """),
+            local_content=dedent("""\
                 __version__ = "2.0.0"
                 __author__ = "Jane Doe"
                 description = "A test project"
-            """).strip(),
-            expected='# My Project\n  Default description.\n  \n',
+            """),
+            expected_equal=dedent("""\
+                # My Project
+                Default description.
+
+                __version__ = "2.0.0"
+                __author__ = "Jane Doe"
+            """),
         ),
         ReplaceTextTestCase(
             id='only_tags',
-            template=dedent("""
+            template=dedent("""\
                 Header:
-                  ## repolish-start[header]
+                <!-- repolish-start[header] -->
                   Old header
-                  ## repolish-end[header]
+                <!-- repolish-end[header] -->
                 Footer:
                   ## repolish-start[footer]
                   Old footer
                   ## repolish-end[footer]
-            """).strip(),
+            """),
             local_content='',
-            expected='Header:\n  Old header\n  Footer:\n  ## repolish-start[footer]\n  Old footer\n  ## repolish-end[footer]',
+            # When no anchors are provided the template defaults (inner block
+            # content) are preserved but the marker lines are removed.
+            expected_equal=dedent("""\
+                Header:
+                  Old header
+                Footer:
+                  Old footer
+            """),
         ),
         ReplaceTextTestCase(
-            id='only_regexes',
-            template=dedent("""
+            id='explicit_empty_anchor_deletes_block',
+            template=dedent("""\
+                Start.
+                    /* repolish-start[empty] */
+                    This should be removed.
+                    /* repolish-end[empty] */
+                End.
+            """),
+            anchors={'empty': ''},
+            expected_equal=dedent("""\
+                Start.
+                End.
+            """),
+        ),
+        ReplaceTextTestCase(
+            id='only_regexes_in_single_line',
+            template=dedent("""\
                 Code version: ## repolish-regex[ver]: version = "(.+?)"
-                Code author: ## repolish-regex[auth]: author = "(.+?)"
-            """).strip(),
-            local_content=dedent("""
+                ## repolish-regex[auth]: author = "(.+?)"
+                author = "default_author"
+            """),
+            local_content=dedent("""\
                 version = "1.5.0"
                 author = "John Smith"
-            """).strip(),
-            expected='',
+            """),
+            expected_equal=dedent("""\
+                author = "John Smith"
+            """),
+        ),
+        ReplaceTextTestCase(
+            id='dockerfile_anchor',
+            template=dedent("""\
+                FROM ubuntu:20.04
+                RUN apt-get update
+                ## repolish-start[custom-install]
+                ## repolish-end[custom-install]
+
+                USER ${CTR_USER_UID}
+            """),
+            anchors={
+                'custom-install': 'RUN apt-get update\nRUN apt-get install -y vim',
+            },
+            expected_contains=['RUN apt-get install -y vim'],
+            expected_not_contains=['## repolish-start'],
+        ),
+        ReplaceTextTestCase(
+            id='pyproject_keep_version',
+            template=dedent("""\
+                name: {{cookiecutter.repo_owner}}
+                ## repolish-regex[keep-version]: ^version:\\s*(.+)$
+                version: 0.0.0
+            """),
+            local_content=dedent("""\
+                version: 1.2.3
+                some: other
+            """),
+            expected_contains=['version: 1.2.3'],
+            expected_not_contains=['repolish-regex'],
+        ),
+        ReplaceTextTestCase(
+            id='verbatim_multiline',
+            template=dedent("""\
+                BEGIN
+                    ## repolish-start[block]
+                    default
+                    ## repolish-end[block]
+                END
+            """),
+            anchors={'block': '\nLINE1\nLINE2\n'},
+            expected_contains=['\nLINE1\nLINE2\n'],
+            expected_not_contains=['## repolish-start'],
+        ),
+        ReplaceTextTestCase(
+            id='single_line_promoted',
+            template=dedent("""\
+                Header
+                    ## repolish-start[indented]
+                        some indented default
+                    ## repolish-end[indented]
+                Footer
+            """),
+            anchors={'indented': 'REPLACED'},
+            expected_contains=['\nREPLACED\n'],
+        ),
+        ReplaceTextTestCase(
+            id='wrap_multiline',
+            template=dedent("""\
+                Top
+                    ## repolish-start[block]
+                    default
+                    ## repolish-end[block]
+                Bottom
+            """),
+            anchors={'block': 'LINE1\nLINE2'},
+            expected_contains=['\nLINE1\nLINE2\n'],
+            expected_not_contains=['## repolish-start'],
+        ),
+        ReplaceTextTestCase(
+            id='start_newline',
+            template=dedent("""\
+                Top
+                    ## repolish-start[b]
+                    default
+                    ## repolish-end[b]
+                Bottom
+            """),
+            anchors={'b': '\nSTART\nMID'},
+            expected_contains=['\nSTART\nMID'],
+            expected_not_contains=['## repolish-start'],
+        ),
+        ReplaceTextTestCase(
+            id='end_newline',
+            template=dedent("""\
+                Top
+                    ## repolish-start[c]
+                    default
+                    ## repolish-end[c]
+                Bottom
+            """),
+            anchors={'c': 'ONE\nTWO\n'},
+            expected_contains=['ONE\nTWO\n'],
+            expected_not_contains=['## repolish-start'],
+        ),
+        ReplaceTextTestCase(
+            id='inline_between',
+            template=dedent("""\
+                Hello
+                ## repolish-start[tag]
+                inner
+                ## repolish-end[tag]
+                World
+            """),
+            anchors={'tag': 'X'},
+            expected_equal=dedent("""\
+                Hello
+                X
+                World
+            """),
+        ),
+        ReplaceTextTestCase(
+            id='inline_adjacent',
+            template=dedent("""\
+                A
+                ## repolish-start[t]
+                one
+                ## repolish-end[t]
+                B
+            """),
+            anchors={'t': 'Z'},
+            expected_equal=dedent("""\
+                A
+                Z
+                B
+            """),
+        ),
+        ReplaceTextTestCase(
+            id='inline_end_same_line',
+            template='A\n## repolish-start[tag]\ninner## repolish-end[tag]\nB',
+            anchors={'tag': 'Y'},
+            expected_equal='AYB',
+        ),
+        ReplaceTextTestCase(
+            id='no_anchor_default',
+            template=dedent("""\
+                Header:
+                    ## repolish-start[header]
+                    Default header content.
+                    ## repolish-end[header]
+                Footer.
+            """),
+            anchors={},
+            expected_contains=['Default header content.'],
         ),
     ],
     ids=lambda x: x.id,
 )
 def test_replace_text(test_case: ReplaceTextTestCase):
     """Test the main replace_text function with various cases."""
-    result = replace_text(test_case.template, test_case.local_content)
-    assert result == test_case.expected
-
-
-def test_replace_text_with_anchor_dictionary():
-    """Ensure anchors_dictionary replaces tag blocks in the template."""
-    template = dedent("""
-        FROM ubuntu:20.04
-        RUN apt-get update
-          ## repolish-start[custom-install]
-          ## repolish-end[custom-install]
-
-        USER ${CTR_USER_UID}
-    """).strip()
-
-    anchors = {
-        'custom-install': 'RUN apt-get update\nRUN apt-get install -y vim',
-    }
-
-    result = replace_text(template, '', anchors_dictionary=anchors)
-
-    # Anchors should be injected and the repolish markers removed
-    assert '## repolish-start' not in result
-    assert 'RUN apt-get install -y vim' in result
-
-
-def test_replace_text_with_no_anchor_uses_default():
-    """When no anchor is provided the template's default block content remains."""
-    template = dedent("""
-        Header:
-          ## repolish-start[header]
-          Default header content.
-          ## repolish-end[header]
-        Footer.
-    """).strip()
-
-    result = replace_text(template, '', anchors_dictionary={})
-
-    # Default content in the template should still be present
-    assert 'Default header content.' in result
+    result = replace_text(
+        test_case.template,
+        test_case.local_content,
+        anchors_dictionary=test_case.anchors or {},
+    )
+    if test_case.expected_equal is not None:
+        assert result == test_case.expected_equal
+    if test_case.expected_contains:
+        for s in test_case.expected_contains:
+            assert s in result
+    if test_case.expected_not_contains:
+        for s in test_case.expected_not_contains:
+            assert s not in result
