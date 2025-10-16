@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -28,6 +28,20 @@ class RepolishConfig(BaseModel):
         default_factory=list,
         description='List of shell commands to run after generating files (formatters)',
     )
+    delete_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            'List of POSIX-style paths to delete after generation. Use a leading'
+            " '!' to negate (keep) a previously-added path."
+        ),
+    )
+    # Path to the YAML configuration file. Set when loading from disk; excluded
+    # from model serialization so it doesn't appear in dumped config data.
+    config_file: Path | None = Field(
+        default=None,
+        description='Path to the YAML configuration file (set by loader)',
+        exclude=True,
+    )
 
     def _handle_directory_errors(
         self,
@@ -56,14 +70,18 @@ class RepolishConfig(BaseModel):
         invalid_dirs: list[str] = []
         invalid_template: list[str] = []
 
-        for directory in self.directories:
-            path = Path(directory)
+        for directory in self.get_directories():
+            # Keep the user-facing identifier as the original string for
+            # clearer error messages; find the matching input string by index.
+            idx = self.get_directories().index(directory)
+            original = self.directories[idx]
+            path = directory
             if not path.exists():
-                missing_dirs.append(directory)
+                missing_dirs.append(original)
             elif not path.is_dir():
-                invalid_dirs.append(directory)
+                invalid_dirs.append(original)
             elif not (path / 'repolish.py').exists():
-                invalid_template.append(directory)
+                invalid_template.append(original)
 
         if missing_dirs or invalid_dirs or invalid_template:
             self._handle_directory_errors(
@@ -71,6 +89,32 @@ class RepolishConfig(BaseModel):
                 invalid_dirs,
                 invalid_template,
             )
+
+    def get_directories(self) -> list[Path]:
+        """Return the configured directories as resolved Path objects.
+
+        The YAML configuration file is expected to use POSIX-style paths (with
+        forward slashes). This method interprets each configured string as a
+        POSIX path and resolves it relative to the directory containing the
+        configuration file (if `config_file` is set). If `config_file` is not
+        set, paths are returned as-is (interpreted by the current platform).
+        """
+        resolved: list[Path] = []
+        base_dir = None
+        if self.config_file:
+            base_dir = Path(self.config_file).resolve().parent
+
+        for entry in self.directories:
+            # Interpret the entry as a POSIX-style path so YAML authors can use
+            # forward slashes on all platforms. Use PurePosixPath to break the
+            # components, then construct a native Path.
+            posix = PurePosixPath(entry)
+            p = Path(*posix.parts)
+            if base_dir and not p.is_absolute():
+                p = (base_dir / p).resolve()
+            resolved.append(p)
+
+        return resolved
 
 
 def load_config(yaml_file: Path) -> RepolishConfig:
@@ -85,5 +129,8 @@ def load_config(yaml_file: Path) -> RepolishConfig:
     with yaml_file.open(encoding='utf-8') as f:
         data = yaml.safe_load(f)
     config = RepolishConfig.model_validate(data)
+    # store the location of the config file on the model so relative paths can
+    # be resolved later
+    config.config_file = yaml_file
     config.validate_directories()
     return config

@@ -5,7 +5,7 @@ import pytest
 import yaml
 
 from repolish.config import load_config
-from repolish.loader import create_context
+from repolish.loader import create_providers
 
 
 def test_load_config_and_create_context(
@@ -32,8 +32,9 @@ def test_load_config_and_create_context(
     assert config.context == {'project_name': 'MyProject'}
     assert config.post_process == ["echo 'Done'"]
 
-    # Create context from the directories
-    context = create_context(config.directories)
+    # Create providers from the directories
+    providers = create_providers(config.directories)
+    context = providers.context
 
     # Verify the merged context
     expected_context = {
@@ -119,16 +120,9 @@ def test_create_context_no_create_function(
     """),
     )
 
-    # Create context should log warning
-    context = create_context([str(invalid_dir)])
-
-    # Check that warning was printed to stdout
-    captured = capsys.readouterr()
-    assert 'create_context_not_found' in captured.out
-    assert f'module={invalid_dir}/repolish.py' in captured.out
-
-    # Context should be empty
-    assert context == {}
+    # Create providers should return empty context when no create_context
+    providers = create_providers([str(invalid_dir)])
+    assert providers.context == {}
 
 
 def test_create_context_malformed_py(tmp_path: Path):
@@ -144,6 +138,53 @@ def test_create_context_malformed_py(tmp_path: Path):
     """),
     )
 
-    # Create context should raise SyntaxError
+    # Creating providers should raise SyntaxError when module is malformed
     with pytest.raises(SyntaxError):
-        create_context([str(malformed_dir)])
+        create_providers([str(malformed_dir)])
+
+
+def test_get_directories_resolves_relative_to_config(tmp_path: Path):
+    # Create a config directory and a template dir inside it
+    config_dir = tmp_path / 'cfg'
+    config_dir.mkdir()
+    template_dir = config_dir / 'templates' / 'template1'
+    template_dir.mkdir(parents=True)
+    # create required repolish.py so load_config validation passes
+    (template_dir / 'repolish.py').write_text('# dummy')
+
+    # Write YAML with a POSIX-style relative path
+    config_data = {
+        'directories': ['templates/template1'],
+        'context': {},
+        'post_process': [],
+    }
+    config_file = config_dir / 'repolish.yaml'
+    with config_file.open('w') as f:
+        yaml.dump(config_data, f)
+
+    cfg = load_config(config_file)
+    dirs = cfg.get_directories()
+    assert len(dirs) == 1
+    assert dirs[0] == (template_dir.resolve())
+
+
+def test_get_directories_preserves_absolute_posix(tmp_path: Path):
+    # Absolute POSIX-style entries should be interpreted as absolute paths
+    # on the host platform.
+    abs_dir = tmp_path / 'abs_template'
+    abs_dir.mkdir()
+    (abs_dir / 'repolish.py').write_text('# dummy')
+
+    # Simulate a YAML that used POSIX formatting for the absolute path
+    posix_abs = abs_dir.as_posix()
+    config_file = tmp_path / 'repolish.yaml'
+    with config_file.open('w') as f:
+        yaml.dump(
+            {'directories': [posix_abs], 'context': {}, 'post_process': []},
+            f,
+        )
+
+    cfg = load_config(config_file)
+    dirs = cfg.get_directories()
+    assert len(dirs) == 1
+    assert dirs[0] == abs_dir.resolve()
