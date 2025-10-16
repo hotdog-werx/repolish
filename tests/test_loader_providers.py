@@ -101,6 +101,18 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
     got_delete = {Path(p) for p in providers.delete_files}
     want_delete = set(case.expected_delete)
     assert got_delete == want_delete
+    # Verify provenance: for every path mentioned in delete_history, the
+    # last recorded Decision should reflect the final presence in providers.delete_files
+    for key, decisions in providers.delete_history.items():
+        assert decisions, 'history entry should contain at least one Decision'
+        last = decisions[-1]
+        assert last.action.value in {'delete', 'keep'}
+        path_obj = Path(key)
+        # If final action is delete, path must be present in providers.delete_files
+        if last.action.value == 'delete':
+            assert path_obj in got_delete
+        else:
+            assert path_obj not in got_delete
 
 
 # Additional edge cases expressed with the same ProviderCase dataclass

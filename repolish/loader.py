@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from enum import Enum
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path, PurePosixPath
 
@@ -6,6 +7,24 @@ from hotlog import get_logger
 from pydantic import BaseModel, Field
 
 logger = get_logger(__name__)
+
+
+class Action(str, Enum):
+    """Enumeration of possible actions for a path."""
+
+    delete = 'delete'
+    keep = 'keep'
+
+
+class Decision(BaseModel):
+    """Typed provenance decision recorded for each path.
+
+    - source: provider identifier (POSIX string)
+    - action: Action enum
+    """
+
+    source: str
+    action: Action
 
 
 class Providers(BaseModel):
@@ -19,6 +38,8 @@ class Providers(BaseModel):
     context: dict[str, object] = Field(default_factory=dict)
     anchors: dict[str, str] = Field(default_factory=dict)
     delete_files: list[Path] = Field(default_factory=list)
+    # provenance mapping: posix path -> list of Decision instances
+    delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
 
 
 def get_module(module_path: str) -> dict[str, object]:
@@ -211,6 +232,8 @@ def _apply_raw_delete_items(
     delete_set: set[Path],
     raw_items: Iterable[object],
     fallback: list[Path],
+    provider_id: str,
+    history: dict[str, list[Decision]],
 ) -> None:
     """Apply provider-supplied raw delete items to the delete_set.
 
@@ -234,15 +257,25 @@ def _apply_raw_delete_items(
         neg = raw.startswith('!')
         entry = raw[1:] if neg else raw
         p = Path(*PurePosixPath(entry).parts)
+        key = p.as_posix()
+        # record provenance for this provider decision
+        history.setdefault(key, []).append(
+            Decision(
+                source=provider_id,
+                action=(Action.keep if neg else Action.delete),
+            ),
+        )
         # single call selected by neg flag (discard is a no-op if missing)
         (delete_set.discard if neg else delete_set.add)(p)
 
 
-def _process_provider_dict(
+def _process_provider_dict(  # noqa: PLR0913 - helper function with many args
     module_dict: dict[str, object],
     merged_context: dict[str, object],
     merged_anchors: dict[str, str],
     delete_set: set[Path],
+    provider_id: str,
+    history: dict[str, list[Decision]],
 ) -> None:
     """Merge a loaded provider module's contributions into the accumulators.
 
@@ -262,7 +295,13 @@ def _process_provider_dict(
     raw_items = module_dict.get('delete_files') or []
     # Ensure raw_items is a concrete iterable (list/tuple) for type checking
     raw_items_seq = raw_items if isinstance(raw_items, (list, tuple)) else [raw_items]
-    _apply_raw_delete_items(delete_set, raw_items_seq, delete_files)
+    _apply_raw_delete_items(
+        delete_set,
+        raw_items_seq,
+        delete_files,
+        provider_id,
+        history,
+    )
 
 
 def create_providers(directories: list[str]) -> Providers:
@@ -280,17 +319,23 @@ def create_providers(directories: list[str]) -> Providers:
     merged_anchors: dict[str, str] = {}
     delete_set: set[Path] = set()
 
+    # provenance history: posix path -> list of Decision instances
+    history: dict[str, list[Decision]] = {}
     for directory in directories:
         module_path = Path(directory) / 'repolish.py'
         module_dict = get_module(str(module_path))
+        provider_id = Path(directory).as_posix()
         _process_provider_dict(
             module_dict,
             merged_context,
             merged_anchors,
             delete_set,
+            provider_id,
+            history,
         )
     return Providers(
         context=merged_context,
         anchors=merged_anchors,
         delete_files=list(delete_set),
+        delete_history=history,
     )
