@@ -33,9 +33,7 @@ class ReplaceTextTestCase:
 
     patterns = extract_patterns(content)
 
-    expected_tag_blocks = {
-        "header": "\nThis is a header block.\n"
-    }
+    expected_tag_blocks = {'header': '\nThis is a header block.\n'}
     expected_regexes = {
         'version': '__version__ = "(.+?)"',
         'author': '__author__ = "(.+?)"',
@@ -87,7 +85,7 @@ def test_replace_tags_in_content():
 
     result = replace_tags_in_content(content, tags)
 
-    expected = "Start of file.New Header ContentMiddle content.New Footer ContentEnd of file."
+    expected = 'Start of file.New Header ContentMiddle content.New Footer ContentEnd of file.'
 
     assert result == expected
 
@@ -168,7 +166,7 @@ def test_apply_regex_replacements():
                 __author__ = "Jane Doe"
                 description = "A test project"
             """).strip(),
-            expected="# My Project\n  Default description.\n  \n",
+            expected='# My Project\n  Default description.\n  \n',
         ),
         ReplaceTextTestCase(
             id='only_tags',
@@ -183,7 +181,7 @@ def test_apply_regex_replacements():
                   ## repolish-end[footer]
             """).strip(),
             local_content='',
-            expected="Header:\n  Old header\n  Footer:\n  ## repolish-start[footer]\n  Old footer\n  ## repolish-end[footer]",
+            expected='Header:\n  Old header\n  Footer:\n  ## repolish-start[footer]\n  Old footer\n  ## repolish-end[footer]',
         ),
         ReplaceTextTestCase(
             id='only_regexes',
@@ -195,7 +193,7 @@ def test_apply_regex_replacements():
                 version = "1.5.0"
                 author = "John Smith"
             """).strip(),
-            expected="",
+            expected='',
         ),
     ],
     ids=lambda x: x.id,
@@ -204,3 +202,41 @@ def test_replace_text(test_case: ReplaceTextTestCase):
     """Test the main replace_text function with various cases."""
     result = replace_text(test_case.template, test_case.local_content)
     assert result == test_case.expected
+
+
+def test_replace_text_with_anchor_dictionary():
+    """Ensure anchors_dictionary replaces tag blocks in the template."""
+    template = dedent("""
+        FROM ubuntu:20.04
+        RUN apt-get update
+          ## repolish-start[custom-install]
+          ## repolish-end[custom-install]
+
+        USER ${CTR_USER_UID}
+    """).strip()
+
+    anchors = {
+        'custom-install': 'RUN apt-get update\nRUN apt-get install -y vim',
+    }
+
+    result = replace_text(template, '', anchors_dictionary=anchors)
+
+    # Anchors should be injected and the repolish markers removed
+    assert '## repolish-start' not in result
+    assert 'RUN apt-get install -y vim' in result
+
+
+def test_replace_text_with_no_anchor_uses_default():
+    """When no anchor is provided the template's default block content remains."""
+    template = dedent("""
+        Header:
+          ## repolish-start[header]
+          Default header content.
+          ## repolish-end[header]
+        Footer.
+    """).strip()
+
+    result = replace_text(template, '', anchors_dictionary={})
+
+    # Default content in the template should still be present
+    assert 'Default header content.' in result

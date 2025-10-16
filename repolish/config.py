@@ -20,6 +20,10 @@ class RepolishConfig(BaseModel):
         default_factory=dict,
         description='Context variables for template rendering',
     )
+    anchors: dict[str, str] = Field(
+        default_factory=dict,
+        description='Anchor content for block replacements',
+    )
     post_process: list[str] = Field(
         default_factory=list,
         description='List of shell commands to run after generating files (formatters)',

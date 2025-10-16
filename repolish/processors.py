@@ -100,17 +100,37 @@ def apply_regex_replacements(
     return content
 
 
-def replace_text(template_content: str, local_content: str) -> str:
-    """Replaces text blocks and regex patterns in the template content.
+def replace_text(
+    template_content: str,
+    local_content: str,
+    anchors_dictionary: dict[str, str] | None = None,
+) -> str:
+    """Replaces tag blocks and regex patterns in the template content.
 
     Args:
         template_content: The content of the template file.
         local_content: The content of the local file to extract patterns from.
+        anchors_dictionary: Optional dictionary of anchor replacements provided by
+            configuration (maps tag name -> replacement text). If provided, values
+            in this dict will be used to replace corresponding `## repolish-start[...]` blocks
+            in the template. If not provided, the template's own block contents are
+            preserved.
 
     Returns:
-        The modified template content with replaced text blocks and regex patterns.
+        The modified template content with replaced tag blocks and regex patterns.
     """
     patterns = extract_patterns(template_content)
-    content = replace_tags_in_content(template_content, patterns.tag_blocks)
+
+    # Build the replacement mapping for tag blocks. If an anchors dictionary is
+    # provided, use its values to replace the corresponding tag blocks. Otherwise
+    # fall back to the template's own block content (i.e. leave defaults).
+    tags_to_replace: dict[str, str] = {}
+    for tag, default_value in patterns.tag_blocks.items():
+        if anchors_dictionary and tag in anchors_dictionary:
+            tags_to_replace[tag] = anchors_dictionary[tag]
+        else:
+            tags_to_replace[tag] = default_value
+
+    content = replace_tags_in_content(template_content, tags_to_replace)
     content = apply_regex_replacements(content, patterns.regexes, local_content)
     return content
