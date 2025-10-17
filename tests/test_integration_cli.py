@@ -1,10 +1,8 @@
 import json
 import textwrap
 from pathlib import Path
+from pathlib import Path as _Path
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pytest
 
 from repolish.cli import run
 from repolish.config import load_config
@@ -119,7 +117,10 @@ def test_integration_cli(
     diffs = check_generated_output(setup_output, providers, tmp_path)
 
     # assert deletion reported for test_repo/file_c
-    assert any(rel == 'test_repo/file_c' and msg == 'PRESENT_BUT_SHOULD_BE_DELETED' for rel, msg in diffs)
+
+    assert any(
+        _Path(rel).as_posix() == 'test_repo/file_c' and msg == 'PRESENT_BUT_SHOULD_BE_DELETED' for rel, msg in diffs
+    )
 
     # check provenance: providers.delete_history should have entries for 'test_repo/file_c'
     hist = providers.delete_history.get('test_repo/file_c')
