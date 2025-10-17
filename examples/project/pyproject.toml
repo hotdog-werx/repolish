@@ -1,0 +1,9 @@
+[tool.poetry]
+name = "myproj"
+version = "0.2.0"
+
+description = "Local project description"
+
+## repolish-start[extra-deps]
+requests = "^2.30"
+## repolish-end[extra-deps]

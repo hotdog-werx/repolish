@@ -56,6 +56,9 @@ def run(argv: list[str]) -> int:
     verbosity = resolve_verbosity(args)
     configure_logging(verbosity=verbosity)
 
+    # Log the running version early so CI logs always show which repolish wrote the output
+    logger.info('running_repolish', version=__version__)
+
     config = load_config(config_path)
 
     providers = build_final_providers(config)

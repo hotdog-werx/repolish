@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "{{ cookiecutter.package_name }}"
+version = "0.1.0"
+## repolish-regex[keep]: ^version\s*=\s*\".*\"
+
+description = "A short description"
+
+## repolish-start[extra-deps]
+# optional extra deps (preserved when present)
+## repolish-end[extra-deps]
