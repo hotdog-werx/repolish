@@ -11,6 +11,7 @@ def temp_repolish_dirs(tmp_path: Path) -> list[str]:
     dir1 = tmp_path / 'template1'
     dir1.mkdir()
     repolish_py1 = dir1 / 'repolish.py'
+    (dir1 / 'repolish').mkdir(parents=True, exist_ok=True)
     repolish_py1.write_text(
         dedent("""
         def create_context():
@@ -27,6 +28,7 @@ def temp_repolish_dirs(tmp_path: Path) -> list[str]:
     dir2 = tmp_path / 'template2'
     dir2.mkdir()
     repolish_py2 = dir2 / 'repolish.py'
+    (dir2 / 'repolish').mkdir(parents=True, exist_ok=True)
     repolish_py2.write_text(
         dedent("""
         def create_context():
@@ -42,6 +44,7 @@ def temp_repolish_dirs(tmp_path: Path) -> list[str]:
     dir3 = tmp_path / 'template3'
     dir3.mkdir()
     repolish_py3 = dir3 / 'repolish.py'
+    (dir3 / 'repolish').mkdir(parents=True, exist_ok=True)
     repolish_py3.write_text(
         dedent("""
         def create_context():

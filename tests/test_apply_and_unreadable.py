@@ -75,12 +75,13 @@ def test_apply_flow_with_binary_and_deletion(
     project.mkdir(parents=True, exist_ok=True)
     (project / 'file_c').write_text('to be deleted')
 
-    # create a temp directory next to the config with a trash file that should be deleted
-    temp_dir = tmp_path / 'temp'
+    # create a temp directory inside the project (next to the config) with a
+    # trash file that should be deleted by the provider's delete_files entry
+    temp_dir = project / 'temp'
     temp_dir.mkdir(parents=True, exist_ok=True)
     (temp_dir / 'trash.txt').write_text('garbage')
 
-    cfg = tmp_path / 'repolish.yaml'
+    cfg = project / 'repolish.yaml'
     cfg.write_text(
         json.dumps(
             {
@@ -93,19 +94,19 @@ def test_apply_flow_with_binary_and_deletion(
         encoding='utf-8',
     )
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.chdir(project)
     rv = run(['--config', str(cfg)])
     assert rv == 0
 
     # logo should be copied into the project
-    logo = tmp_path / 'test_repo' / 'logo.png'
+    logo = project / 'logo.png'
     assert logo.exists()
     assert logo.read_bytes().startswith(b'\x89PNG')
 
-    # deletion should have removed file_c
-    assert not (tmp_path / 'test_repo' / 'file_c').exists()
-    # and the temp directory should have been removed
-    assert not (tmp_path / 'temp').exists()
+    # deletion should have removed file_c at the workspace root
+    assert not (tmp_path / 'file_c').exists()
+    # and the temp directory under the project should have been removed
+    assert not (project / 'temp').exists()
 
 
 def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
@@ -120,7 +121,7 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     create_cookiecutter_template(setup_input, [t1])
 
     # Find the staged secret file and make it unreadable
-    staged_secret = setup_input / 'repolish' / 'secret.txt'
+    staged_secret = setup_input / '{{cookiecutter._repolish_project}}' / 'secret.txt'
     assert staged_secret.exists()
     staged_secret.chmod(0)
 

@@ -23,7 +23,7 @@ def write_file(p: Path, content: str) -> None:
 def make_template(
     base: Path,
     name: str,
-    repo_name_var: str = '{{cookiecutter.repo_name}}',
+    repo_name_var: str = 'repolish',
 ) -> None:
     tpl_dir = base / name
     # cookiecutter root contains a directory with the repo name
@@ -116,7 +116,7 @@ def test_integration_cli(
     base_dir = cfg.resolve().parent
     setup_output = base_dir / '.repolish' / 'setup-output'
 
-    diffs = check_generated_output(setup_output, providers)
+    diffs = check_generated_output(setup_output, providers, tmp_path)
 
     # assert deletion reported for test_repo/file_c
     assert any(rel == 'test_repo/file_c' and msg == 'PRESENT_BUT_SHOULD_BE_DELETED' for rel, msg in diffs)

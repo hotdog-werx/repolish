@@ -151,6 +151,7 @@ def test_get_directories_resolves_relative_to_config(tmp_path: Path):
     template_dir.mkdir(parents=True)
     # create required repolish.py so load_config validation passes
     (template_dir / 'repolish.py').write_text('# dummy')
+    (template_dir / 'repolish').mkdir(parents=True, exist_ok=True)
 
     # Write YAML with a POSIX-style relative path
     config_data = {
@@ -174,6 +175,7 @@ def test_get_directories_preserves_absolute_posix(tmp_path: Path):
     abs_dir = tmp_path / 'abs_template'
     abs_dir.mkdir()
     (abs_dir / 'repolish.py').write_text('# dummy')
+    (abs_dir / 'repolish').mkdir(parents=True, exist_ok=True)
 
     # Simulate a YAML that used POSIX formatting for the absolute path
     posix_abs = abs_dir.as_posix()
