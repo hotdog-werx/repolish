@@ -203,7 +203,11 @@ def check_generated_output(
     return diffs
 
 
-def apply_generated_output(setup_output: Path, providers: Providers, base_dir: Path) -> None:
+def apply_generated_output(
+    setup_output: Path,
+    providers: Providers,
+    base_dir: Path,
+) -> None:
     """Copy generated files into the project root and apply deletions.
 
     Args:

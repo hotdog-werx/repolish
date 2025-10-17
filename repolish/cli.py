@@ -90,10 +90,12 @@ def run(argv: list[str]) -> int:
     if check_only:
         diffs = check_generated_output(setup_output, providers, base_dir)
         if diffs:
-            logger.error('check_results', suggestion='run `repolish` to apply changes')
+            logger.error(
+                'check_results',
+                suggestion='run `repolish` to apply changes',
+            )
             rich_print_diffs(diffs)
-            return 2
-        return 0
+        return 2 if diffs else 0
 
     # apply into project
     apply_generated_output(setup_output, providers, base_dir)
