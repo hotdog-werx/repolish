@@ -1,5 +1,5 @@
 directories:
-  - ./template_a
+  - ../template_a
 context: {}
 anchors: {}
 delete_files: []
