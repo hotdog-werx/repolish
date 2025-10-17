@@ -1,0 +1,9 @@
+Demo: keep this file committed so examples and tests can show deletions
+
+This file is intentionally present to demonstrate how `repolish` can remove
+files when a template requests their deletion. Keep it committed in the
+example project so `--check` runs can illustrate the behavior.
+
+Running `repolish --check` will report that this file would be removed.
+Running `repolish` will delete it from the working tree (but not
+from the git history).
