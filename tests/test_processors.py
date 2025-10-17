@@ -100,14 +100,15 @@ def test_safe_file_read_directory(tmp_path: Path):
             id='explicit_empty_anchor_deletes_block',
             template=dedent("""\
                 Start.
-                    /* repolish-start[empty] */
-                    This should be removed.
-                    /* repolish-end[empty] */
+                /* repolish-start[empty] */
+                This should be removed.
+                /* repolish-end[empty] */
                 End.
             """),
             anchors={'empty': ''},
             expected_equal=dedent("""\
                 Start.
+
                 End.
             """),
         ),
@@ -253,10 +254,51 @@ def test_safe_file_read_directory(tmp_path: Path):
             """),
         ),
         ReplaceTextTestCase(
+            id='pyproject_test',
+            template=dedent("""\
+                [tool.poetry]
+                name = "{{ cookiecutter.package_name }}"
+                version = "0.1.0"
+
+                ## repolish-regex[keep-description]: ^description =\\s(.+)$
+                description = "A short description"
+
+                ## repolish-start[extra-deps]
+                # optional extra deps (preserved when present)
+                ## repolish-end[extra-deps]
+            """),
+            local_content=dedent("""\
+                [tool.poetry]
+                name = "myproj"
+                version = "0.2.0"
+
+                description = "Local project description"
+            """),
+            anchors={'extra-deps': 'requests = "^5.30"'},
+            expected_equal=dedent("""\
+                [tool.poetry]
+                name = "{{ cookiecutter.package_name }}"
+                version = "0.1.0"
+
+                description = "Local project description"
+
+                requests = "^5.30"
+            """),
+        ),
+        ReplaceTextTestCase(
             id='inline_end_same_line',
-            template='A\n## repolish-start[tag]\ninner## repolish-end[tag]\nB',
+            template=dedent("""\
+                A
+                ## repolish-start[tag]
+                inner## repolish-end[tag]
+                B
+            """),
             anchors={'tag': 'Y'},
-            expected_equal='AYB',
+            expected_equal=dedent("""\
+                A
+                Y
+                B
+            """),
         ),
         ReplaceTextTestCase(
             id='no_anchor_default',

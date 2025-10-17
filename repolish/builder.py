@@ -20,21 +20,26 @@ def create_cookiecutter_template(
     if staging_dir.exists():
         shutil.rmtree(staging_dir)
     staging_dir.mkdir(parents=True, exist_ok=True)
-
     for template_dir in template_directories:
         _copy_template_dir(template_dir, staging_dir)
     return staging_dir
 
 
 def _copy_template_dir(template_dir: Path, staging_dir: Path) -> None:
-    ignored_files = {'repolish.py'}
-    for item in template_dir.rglob('*'):
-        if item.name in ignored_files:
-            continue
-        relative_path = item.relative_to(template_dir)
-        destination = staging_dir / relative_path
-        if item.is_dir():
-            destination.mkdir(parents=True, exist_ok=True)
-        else:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(item, destination)
+    """Copy the contents of a template directory into the staging directory.
+
+    Each provider is expected to have a `repolish/` subdirectory containing
+    the project layout files. These will be copied over to the staging dir under
+    the special folder `{{cookiecutter._repolish_project}}`.
+    """
+    repolish_dir = template_dir / 'repolish'
+    if repolish_dir.exists() and repolish_dir.is_dir():
+        dest_root = staging_dir / '{{cookiecutter._repolish_project}}'
+        for item in repolish_dir.rglob('*'):
+            rel = item.relative_to(repolish_dir)
+            dest = dest_root / rel
+            if item.is_dir():
+                dest.mkdir(parents=True, exist_ok=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest)

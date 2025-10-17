@@ -21,7 +21,7 @@ def write_file(p: Path, content: str) -> None:
 
 def make_template_with_binary(base: Path, name: str) -> None:
     tpl_dir = base / name
-    repo_dir = tpl_dir / '{{cookiecutter.repo_name}}'
+    repo_dir = tpl_dir / 'repolish'
     repo_dir.mkdir(parents=True, exist_ok=True)
     write_file(
         repo_dir / 'file_a.md',
@@ -42,14 +42,14 @@ def make_template_with_binary(base: Path, name: str) -> None:
         return {'repo_name': 'test_repo'}
 
     def create_delete_files():
-        return ['test_repo/file_c', 'temp']
+        return ['file_c', 'temp']
     """),
     )
 
 
 def make_template_with_unreadable(base: Path, name: str) -> None:
     tpl_dir = base / name
-    repo_dir = tpl_dir / '{{cookiecutter.repo_name}}'
+    repo_dir = tpl_dir / 'repolish'
     repo_dir.mkdir(parents=True, exist_ok=True)
     p = repo_dir / 'secret.txt'
     write_file(p, 'top secret')
@@ -120,7 +120,7 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     create_cookiecutter_template(setup_input, [t1])
 
     # Find the staged secret file and make it unreadable
-    staged_secret = setup_input / '{{cookiecutter.repo_name}}' / 'secret.txt'
+    staged_secret = setup_input / 'repolish' / 'secret.txt'
     assert staged_secret.exists()
     staged_secret.chmod(0)
 

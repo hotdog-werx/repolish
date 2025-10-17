@@ -1,5 +1,10 @@
 directories:
   - ../template_a
-context: {}
-anchors: {}
+context:
+  package_name: some-package
 delete_files: []
+anchors:
+  extra-deps: |
+    requests = "^5.30"
+  install: |
+    RUN apt-get update && apt-get install -y yq

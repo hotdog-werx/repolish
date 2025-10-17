@@ -18,6 +18,7 @@ from .cookiecutter import (
     prepare_template,
     preprocess_templates,
     render_template,
+    rich_print_diffs,
 )
 from .version import __version__
 
@@ -87,12 +88,15 @@ def run(argv: list[str]) -> int:
 
     # Decide whether to check or apply generated output
     if check_only:
-        diffs = check_generated_output(setup_output, providers)
-        logger.info('check_result', differences=diffs)
-        return 2 if diffs else 0
+        diffs = check_generated_output(setup_output, providers, base_dir)
+        if diffs:
+            logger.error('check_results', suggestion='run `repolish` to apply changes')
+            rich_print_diffs(diffs)
+            return 2
+        return 0
 
     # apply into project
-    apply_generated_output(setup_output, providers)
+    apply_generated_output(setup_output, providers, base_dir)
     return 0
 
 

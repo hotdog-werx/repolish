@@ -6,6 +6,8 @@ from pathlib import Path, PurePosixPath
 
 from cookiecutter.main import cookiecutter
 from hotlog import get_logger
+from rich.console import Console
+from rich.syntax import Syntax
 
 from .builder import create_cookiecutter_template
 from .config import RepolishConfig
@@ -114,7 +116,9 @@ def preprocess_templates(
                 error=str(exc),
             )
             continue
-        rel = tpl.relative_to(setup_input)
+        rel = tpl.relative_to(
+            setup_input / '{{cookiecutter._repolish_project}}',
+        )
         local_path = base_dir / rel
         local_text = safe_file_read(local_path)
         # Let replace_text raise if something unexpected happens; caller will log
@@ -135,9 +139,16 @@ def render_template(
     """Run cookiecutter once on the merged template (setup_input) into setup_output."""
     # Dump the merged context into the merged template so cookiecutter can
     # read it from disk (avoids requiring each provider to ship cookiecutter.json).
+    # Inject a special variable `_repolish_project` used by the staging step
+    # so providers can place the project layout under a `repolish/` folder and
+    # we copy it to `{{cookiecutter._repolish_project}}` in the staging dir.
+    merged_ctx = dict(providers.context)
+    # default project folder name used during generation
+    merged_ctx.setdefault('_repolish_project', 'repolish')
+
     ctx_file = setup_input / 'cookiecutter.json'
     ctx_file.write_text(
-        json.dumps(providers.context, ensure_ascii=False),
+        json.dumps(merged_ctx, ensure_ascii=False),
         encoding='utf-8',
     )
 
@@ -152,6 +163,7 @@ def collect_output_files(setup_output: Path) -> list[Path]:
 def check_generated_output(
     setup_output: Path,
     providers: Providers,
+    base_dir: Path,
 ) -> list[tuple[str, str]]:
     """Compare generated output to project files and report diffs and deletions.
 
@@ -160,8 +172,8 @@ def check_generated_output(
     output_files = collect_output_files(setup_output)
     diffs: list[tuple[str, str]] = []
     for out in output_files:
-        rel = out.relative_to(setup_output)
-        dest = Path.cwd() / rel
+        rel = out.relative_to(setup_output / 'repolish')
+        dest = base_dir / rel
         if not dest.exists():
             diffs.append((str(rel), 'MISSING'))
             continue
@@ -184,15 +196,20 @@ def check_generated_output(
     # provider-declared deletions: if a path is expected deleted but exists in
     # the project, surface that so devs know to run repolish
     for rel in providers.delete_files:
-        proj_target = Path.cwd() / rel
+        proj_target = base_dir / rel
         if proj_target.exists():
             diffs.append((str(rel), 'PRESENT_BUT_SHOULD_BE_DELETED'))
 
     return diffs
 
 
-def apply_generated_output(setup_output: Path, providers: Providers) -> None:
+def apply_generated_output(setup_output: Path, providers: Providers, base_dir: Path) -> None:
     """Copy generated files into the project root and apply deletions.
+
+    Args:
+        setup_output: Path to the cookiecutter output directory.
+        providers: Providers object with delete_files list.
+        base_dir: Base directory where the project root is located.
 
     Returns None. Exceptions during per-file operations are raised to caller.
     """
@@ -200,16 +217,33 @@ def apply_generated_output(setup_output: Path, providers: Providers) -> None:
 
     # copy files into project root (overwrite)
     for out in output_files:
-        rel = out.relative_to(setup_output)
-        dest = Path.cwd() / rel
+        rel = out.relative_to(setup_output / 'repolish')
+        dest = base_dir / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(out, dest)
 
     # Now apply deletions at the project root as the final step
     for rel in providers.delete_files:
-        target = Path.cwd() / rel
+        target = base_dir / rel
         if target.exists():
             if target.is_dir():
                 shutil.rmtree(target)
             else:
                 target.unlink()
+
+
+def rich_print_diffs(diffs: list[tuple[str, str]]) -> None:
+    """Print diffs using rich formatting.
+
+    Args:
+        diffs: List of tuples (relative_path, message_or_unified_diff)
+    """
+    console = Console()
+    for rel, msg in diffs:
+        console.rule(f'[bold]{rel}')
+        if msg in ('MISSING', 'PRESENT_BUT_SHOULD_BE_DELETED'):
+            console.print(msg)
+        else:
+            # highlight as a diff
+            syntax = Syntax(msg, 'diff', theme='ansi_dark', word_wrap=False)
+            console.print(syntax)

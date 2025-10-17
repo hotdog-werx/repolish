@@ -1,6 +1,5 @@
 import re
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 
 
@@ -87,47 +86,8 @@ def replace_tags_in_content(content: str, tags: dict[str, str]) -> str:
             r'(.*?)[^\n]*repolish-end\[' + re.escape(tag) + r'\][^\n]*\n?',
             re.DOTALL | re.MULTILINE,
         )
-
-        # Semantics:
-        # - If value is exactly '', delete the whole block (remove markers and
-        #   inner content).
-        # - If value is a non-empty string, replace the block with that value
-        #   (markers removed).
-        # - If value is None (not expected here) or default inner content is
-        #   provided, that default will be used by the caller — we simply insert
-        #   the provided value.
-        # deletion when explicit empty string; otherwise insert provided
-        # replacement verbatim (may contain newlines if the anchor expects them).
-        content = pattern.sub(partial(_repl, value=value), content)
+        content = pattern.sub(lambda _m, v=value: f'\n{v}\n', content)
     return content
-
-
-def _repl(m: re.Match, value: str) -> str:
-    """Replacement function for a single match.
-
-    Args:
-        m: regex match object where group(1) is the inner block text.
-        value: the anchor replacement value (may be '', single-line, or multi-line).
-
-    Returns:
-        The replacement string to substitute for the whole matched block.
-    """
-    inner = m.group(1)
-    if value == '':
-        return '\n'
-
-    if '\n' in value:
-        if value.startswith('\n') or value.endswith('\n'):
-            return value
-        return '\n' + value.strip('\n') + '\n'
-
-    # If the original inner block is indented or contains newlines, preserve
-    # block semantics (wrap single-line replacements with newlines). Checking
-    # `inner.endswith('\n')` is redundant because `\n in inner` already
-    # covers that case.
-    if inner.startswith(' ') or '\n' in inner:
-        return '\n' + value + '\n'
-    return value
 
 
 def apply_regex_replacements(

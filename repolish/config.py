@@ -59,7 +59,7 @@ class RepolishConfig(BaseModel):
             )
         if invalid_template:
             error_messages.append(
-                f'Directories missing repolish.py: {invalid_template}',
+                f'Directories missing repolish.py or repolish/ folder: {invalid_template}',
             )
         if error_messages:
             raise ValueError(' ; '.join(error_messages))
@@ -80,7 +80,7 @@ class RepolishConfig(BaseModel):
                 missing_dirs.append(original)
             elif not path.is_dir():
                 invalid_dirs.append(original)
-            elif not (path / 'repolish.py').exists():
+            elif not (path / 'repolish.py').exists() or not (path / 'repolish').exists():
                 invalid_template.append(original)
 
         if missing_dirs or invalid_dirs or invalid_template:
