@@ -1,4 +1,4 @@
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -100,19 +100,18 @@ class RepolishConfig(BaseModel):
         set, paths are returned as-is (interpreted by the current platform).
         """
         resolved: list[Path] = []
-        base_dir = None
-        if self.config_file:
-            base_dir = Path(self.config_file).resolve().parent
+        base_dir = Path(self.config_file).resolve().parent if self.config_file else None
 
         for entry in self.directories:
-            # Interpret the entry as a POSIX-style path so YAML authors can use
-            # forward slashes on all platforms. Use PurePosixPath to break the
-            # components, then construct a native Path.
-            posix = PurePosixPath(entry)
-            p = Path(*posix.parts)
+            # Accept POSIX-style entries (forward slashes) but let the
+            # platform-native Path handle parsing so absolute Windows-style
+            # entries like 'C:/path' are recognized correctly. If the entry
+            # is relative, resolve it against the directory containing the
+            # config file (when available).
+            p = Path(entry)
             if base_dir and not p.is_absolute():
-                p = (base_dir / p).resolve()
-            resolved.append(p)
+                p = base_dir / p
+            resolved.append(p.resolve())
 
         return resolved
 
