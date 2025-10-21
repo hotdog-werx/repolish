@@ -81,6 +81,58 @@ Run a dry-run check (useful for CI):
 repolish --check --config repolish.yaml
 ```
 
+### Post-processing / formatters
+
+Repolish supports an optional `post_process` list in `repolish.yaml` that runs
+commands after the template is rendered but before the `--check` diff or apply
+step. This is useful for running project formatters or other transformations so
+the checks operate on formatted output.
+
+How it runs
+
+- The commands are executed exactly once after rendering and before checking or
+  applying.
+- Commands are executed with the working directory set to the rendered project
+  folder inside `.repolish/setup-output/<project>` (where `_repolish_project` is
+  the generated project folder name; default `repolish`).
+
+Command forms
+
+You can provide `post_process` entries in two forms:
+
+-- string (e.g. "ruff --fix .") — the string is tokenized with shlex.split and
+executed without a shell. This covers common tools and small python one-liners
+like `python -c "open('file','w').write('x')"`.
+
+- list/array of argv parts (e.g. `['prettier', '--write', '.']`) — recommended
+  when you want to avoid any ambiguity about argument parsing and quoting.
+
+Security note
+
+We intentionally avoid running commands with `shell=True` to reduce shell
+injection risks. If you need to run complex shell pipelines or use shell
+metacharacters, create a small script (bash or python) in the repository and
+invoke that script from `post_process` using the argv-list form. That keeps the
+command execution explicit and avoids embedding complex shells in the
+configuration.
+
+Example `repolish.yaml` with formatters
+
+```yaml
+directories:
+  - ./templates/template_a
+context: {}
+anchors: {}
+post_process:
+  - ['python', '-m', 'pip', 'install', '-r', 'requirements-dev.txt']
+  - 'ruff --fix .'
+  - ['prettier', '--write', 'src/']
+delete_files: []
+```
+
+If a `post_process` command exits with a non-zero status, Repolish will fail and
+return a non-zero exit code so CI can detect the problem.
+
 This will produce structured logs that include:
 
 - The merged provider `context` and `delete_paths` (so you can see what was

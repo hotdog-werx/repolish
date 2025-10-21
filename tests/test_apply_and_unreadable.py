@@ -42,7 +42,9 @@ def make_template_with_binary(base: Path, name: str) -> None:
         return {'repo_name': 'test_repo'}
 
     def create_delete_files():
-        return ['file_c', 'temp']
+        # Use a POSIX-style nested path to ensure path normalization works
+        # across platforms (e.g. path/to/file.txt -> path\to\file.txt on Windows)
+        return ['path/to/file.txt', 'temp']
     """),
     )
 
@@ -70,10 +72,12 @@ def test_apply_flow_with_binary_and_deletion(
     t1 = templates / 'template_a'
     make_template_with_binary(templates, 'template_a')
 
-    # create project with file_c that should be deleted
+    # create project with nested file that should be deleted
     project = tmp_path / 'test_repo'
     project.mkdir(parents=True, exist_ok=True)
-    (project / 'file_c').write_text('to be deleted')
+    nested = project / 'path' / 'to'
+    nested.mkdir(parents=True, exist_ok=True)
+    (nested / 'file.txt').write_text('to be deleted')
 
     # create a temp directory inside the project (next to the config) with a
     # trash file that should be deleted by the provider's delete_files entry
@@ -103,8 +107,8 @@ def test_apply_flow_with_binary_and_deletion(
     assert logo.exists()
     assert logo.read_bytes().startswith(b'\x89PNG')
 
-    # deletion should have removed file_c at the workspace root
-    assert not (tmp_path / 'file_c').exists()
+    # deletion should have removed the nested file under the project
+    assert not (project / 'path' / 'to' / 'file.txt').exists()
     # and the temp directory under the project should have been removed
     assert not (project / 'temp').exists()
 
