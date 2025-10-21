@@ -1,5 +1,4 @@
 import json
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +21,13 @@ def test_post_process_applies_and_fixes_file(
     templated = provider / 'repolish' / 'file.txt'
     templated.write_text('NEEDS_FORMATTING')
 
+    # Add a small script that the post_process step can run to fix the file.
+    (provider / 'repolish' / 'fix.py').write_text(
+        """
+open('file.txt','w').write('FIXED')
+""",
+    )
+
     # Provide a minimal repolish.py so the loader considers this a valid provider
     (provider / 'repolish.py').write_text(
         """
@@ -35,14 +41,10 @@ def provide(context):
     config = {
         'directories': [str(provider)],
         'context': {},
-        # post_process will run a small python command to overwrite the
-        # generated file with 'FIXED' content. Use the current Python executable
-        # as an argv-list to avoid cross-platform tokenization issues.
-        # keep as a single string so it validates as a YAML string in the
-        # configuration; runtime tokenization is platform-aware in utils.
-        'post_process': [
-            f"{sys.executable} -c \"open('file.txt','w').write('FIXED')\"",
-        ],
+        # post_process will run the small script included in the template to
+        # overwrite the generated file with 'FIXED' content. Using a script
+        # avoids complex quoting differences between platforms.
+        'post_process': ['python fix.py'],
         'anchors': {},
         'delete_files': [],
     }
