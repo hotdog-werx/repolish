@@ -1,3 +1,4 @@
+import os
 import shlex
 import subprocess
 from collections.abc import Iterable, Sequence
@@ -19,7 +20,11 @@ def _normalize_command(raw: object) -> Sequence[str]:
     if isinstance(raw, str):
         if not raw.strip():
             return ()
-        return shlex.split(raw)
+        # On Windows, paths contain backslashes which POSIX-style shlex.split
+        # can treat as escape sequences; use posix=False there to preserve
+        # backslashes. For cross-platform behavior, detect the platform.
+        posix = os.name != 'nt'
+        return shlex.split(raw, posix=posix)
     msg = 'post_process entries must be str or list/tuple of str'
     raise TypeError(msg)
 
