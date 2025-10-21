@@ -44,7 +44,7 @@ def test_run_post_process_combination(tmp_path: Path):
         None,
         '   ',
         [sys.executable, '-c', f"open('{target.as_posix()}','w').write('x')"],
-        f"{sys.executable} -c \"open('{target.as_posix()}','w').write('y')\"",
+        [sys.executable, '-c', f"open('{target.as_posix()}','w').write('y')"],
     ]
     utils.run_post_process(cmds, tmp_path)
     # file should exist and contain 'y' (last writer)

@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,8 +36,13 @@ def provide(context):
         'directories': [str(provider)],
         'context': {},
         # post_process will run a small python command to overwrite the
-        # generated file with 'FIXED' content. Use a portable python -c.
-        'post_process': ["python -c \"open('file.txt','w').write('FIXED')\""],
+        # generated file with 'FIXED' content. Use the current Python executable
+        # as an argv-list to avoid cross-platform tokenization issues.
+        # keep as a single string so it validates as a YAML string in the
+        # configuration; runtime tokenization is platform-aware in utils.
+        'post_process': [
+            f"{sys.executable} -c \"open('file.txt','w').write('FIXED')\"",
+        ],
         'anchors': {},
         'delete_files': [],
     }
