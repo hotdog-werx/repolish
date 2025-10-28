@@ -107,6 +107,15 @@ like `python -c "open('file','w').write('x')"`.
 - list/array of argv parts (e.g. `['prettier', '--write', '.']`) — recommended
   when you want to avoid any ambiguity about argument parsing and quoting.
 
+Platform note
+
+- On Windows the tokenization rules differ; Repolish uses Python's `shlex` to
+  split string commands into argv lists before executing them without a shell.
+  Because quoting/escaping differs between POSIX shells and Windows, prefer the
+  argv/list form in `post_process` on Windows to avoid surprises. If you must
+  provide a single string entry, keep arguments simple (no shell metacharacters)
+  or call a committed script from the argv form.
+
 Security note
 
 We intentionally avoid running commands with `shell=True` to reduce shell
@@ -251,6 +260,89 @@ Notes and tips
   read pattern to avoid surprises.
 - Anchors are processed before cookiecutter rendering, so template substitutions
   still work around preserved sections.
+
+## Regex anchors and capture groups
+
+Regex anchors let you specify exactly what to preserve from a local file. Two
+important behaviors to know:
+
+- Capture group preference: If your regex includes a capturing group
+  (parentheses), Repolish will prefer the first capture group (group 1) as the
+  block to insert into the template. If there are no capture groups, Repolish
+  falls back to the entire match (group 0).
+- Safeguard trimming: As a conservative safeguard Repolish trims captured blocks
+  to a contiguous region based on indentation so that incidental following
+  sections are not accidentally pulled into the template. However, the canonical
+  way to express intent is an explicit capture group — authors should prefer to
+  capture exactly what they mean.
+
+Implementation note
+
+- Repolish computes the absolute span of the selected capture (group 1 when
+  present, otherwise the full match) inside the template and trims that slice
+  using an indentation-aware heuristic before replacing it with the trimmed
+  content extracted from the local file. Also note that the
+  `## repolish-regex[...]` declaration line is removed from the template prior
+  to matching and replacement. This avoids accidentally removing unrelated
+  template sections when patterns include surrounding context.
+
+Example
+
+Template (excerpt):
+
+```toml
+cat1:
+  - line1
+  - line2
+  ## repolish-regex[cat1-filter]: (^\s*# cat1-filter-additional-paths.*\n(?:\s+.*\n)*)
+  # cat1-filter-additional-paths
+
+cat2:
+  - from-template
+  ## repolish-regex[cat2-filter]: (^\s*# cat2-filter-additional-paths.*\n(?:\s+.*\n)*)
+  # cat2-filter-additional-paths
+
+cat3:
+  - cat3-line
+  ## repolish-regex[cat3-filter]: (^\s*# cat3-filter-additional-paths.*\n(?:\s+.*\n)*)
+  # cat3-filter-additional-paths
+```
+
+Local file (excerpt):
+
+```toml
+cat1:
+  - line1
+  - line2
+  # cat1-filter-additional-paths
+  - extra
+
+cat3:
+  - cat3-line
+  # cat3-filter-additional-paths
+```
+
+Result after preprocessing:
+
+```toml
+cat1:
+  - line1
+  - line2
+  # cat1-filter-additional-paths
+  - extra
+
+cat2:
+  - from-template
+  # cat2-filter-additional-paths
+
+cat3:
+  - cat3-line
+  # cat3-filter-additional-paths
+```
+
+When your regex is too greedy, tighten it or add explicit parentheses around the
+intended capture so Repolish can reliably hydrate the template without importing
+unrelated content.
 
 ### Where anchors are declared and uniqueness
 
