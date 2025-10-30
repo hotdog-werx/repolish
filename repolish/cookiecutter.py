@@ -1,6 +1,7 @@
 import difflib
 import filecmp
 import json
+import os
 import shutil
 from pathlib import Path, PurePosixPath
 
@@ -160,6 +161,57 @@ def collect_output_files(setup_output: Path) -> list[Path]:
     return [p for p in setup_output.rglob('*') if p.is_file()]
 
 
+def _preserve_line_endings() -> bool:
+    """Return True when REPOLISH_PRESERVE_LINE_ENDINGS is truthy in env.
+
+    Centralized to make behavior testable and reduce complexity in the main
+    comparison function.
+    """
+    val = os.getenv('REPOLISH_PRESERVE_LINE_ENDINGS', '')
+    return str(val).lower() in ('1', 'true', 'yes')
+
+
+def _compare_and_prepare_diff(
+    out: Path,
+    dest: Path,
+    *,
+    preserve: bool,
+) -> tuple[bool, list[str], list[str]]:
+    """Compare two files and return (same, a_lines, b_lines).
+
+    - same: True when files are equal according to the chosen policy.
+    - a_lines, b_lines: lists of lines (with line endings) to be used in a
+      unified diff when same is False. When same is True these values are
+      empty lists.
+    """
+    if preserve:
+        # fast-path equality check using filecmp (may be optimized by OS)
+        if filecmp.cmp(out, dest, shallow=False):
+            return True, [], []
+        a_raw = out.read_bytes()
+        b_raw = dest.read_bytes()
+        a_text = a_raw.decode('utf-8', errors='replace')
+        b_text = b_raw.decode('utf-8', errors='replace')
+        return (
+            False,
+            a_text.splitlines(keepends=True),
+            b_text.splitlines(keepends=True),
+        )
+
+    # Normalized comparison (ignore CRLF vs LF)
+    a_raw = out.read_bytes()
+    b_raw = dest.read_bytes()
+    a_text = a_raw.decode('utf-8', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
+    b_text = b_raw.decode('utf-8', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
+    if a_text == b_text:
+        return True, [], []
+    return (
+        False,
+        a_text.splitlines(keepends=True),
+        b_text.splitlines(keepends=True),
+    )
+
+
 def check_generated_output(
     setup_output: Path,
     providers: Providers,
@@ -171,27 +223,34 @@ def check_generated_output(
     """
     output_files = collect_output_files(setup_output)
     diffs: list[tuple[str, str]] = []
+
+    preserve = _preserve_line_endings()
+
     for out in output_files:
         rel = out.relative_to(setup_output / 'repolish')
         dest = base_dir / rel
         if not dest.exists():
             diffs.append((str(rel), 'MISSING'))
             continue
-        # compare contents
-        if not filecmp.cmp(out, dest, shallow=False):
-            # produce a small unified diff for logging
-            a = out.read_text(encoding='utf-8', errors='replace').splitlines()
-            b = dest.read_text(encoding='utf-8', errors='replace').splitlines()
-            ud = '\n'.join(
-                difflib.unified_diff(
-                    b,
-                    a,
-                    fromfile=str(dest),
-                    tofile=str(out),
-                    lineterm='',
-                ),
-            )
-            diffs.append((str(rel), ud))
+
+        same, a_lines, b_lines = _compare_and_prepare_diff(
+            out,
+            dest,
+            preserve=preserve,
+        )
+        if same:
+            continue
+
+        ud = ''.join(
+            difflib.unified_diff(
+                b_lines,
+                a_lines,
+                fromfile=str(dest),
+                tofile=str(out),
+                lineterm='',
+            ),
+        )
+        diffs.append((str(rel), ud))
 
     # provider-declared deletions: if a path is expected deleted but exists in
     # the project, surface that so devs know to run repolish
