@@ -164,6 +164,114 @@ Anchors are processed in staging before cookiecutter runs, so the generated
 output already reflects local overrides while still taking canonical values from
 templates when needed.
 
+## Conditional files (file mappings)
+
+Template authors can provide multiple alternative files and conditionally choose
+which one to copy based on the context. This is useful when you want to offer
+different configurations (e.g., Poetry vs setuptools, GitHub Actions vs GitLab
+CI) without cluttering filenames with cookiecutter's `{% if %}` syntax.
+
+### How it works
+
+Files in your template directory that start with `_repolish.` are treated as
+**conditional/alternative files**. They will only be copied to the project if
+explicitly referenced in the `create_file_mappings()` function (or
+`file_mappings` variable) in your `repolish.py`.
+
+The `file_mappings` return value is a dictionary where:
+
+- **Keys** are destination paths in the final project (must be unique)
+- **Values** are source paths in the template, or `None` to skip
+
+Since this is Python code, you have full control over the logic used to select
+source files (if/else, ternary expressions, function calls, etc.).
+
+### Example
+
+Template directory structure:
+
+```
+templates/my-template/
+├── repolish.py
+└── repolish/
+    ├── README.md                          # Always copied
+    ├── _repolish.github-workflow.yml      # Conditional
+    ├── _repolish.gitlab-ci.yml            # Conditional
+    ├── _repolish.poetry-pyproject.toml    # Conditional
+    └── _repolish.setup-pyproject.toml     # Conditional
+```
+
+In `repolish.py`:
+
+```python
+def create_context():
+    return {
+        "use_github_actions": True,
+        "use_poetry": False,
+        "enable_precommit": True,
+    }
+
+def create_file_mappings():
+    """Map destination paths to source files in the template.
+    
+    Returns dict[str, str | None]:
+        - Key: destination path in final project
+        - Value: source path in template, or None to skip
+    
+    Files starting with '_repolish.' are only copied when referenced here.
+    """
+    ctx = create_context()
+    
+    return {
+        # Simple rename: always copy this conditional file
+        ".github/workflows/ci.yml": "_repolish.github-workflow.yml",
+        
+        # Conditional: pick between alternatives based on context
+        "pyproject.toml": (
+            "_repolish.poetry-pyproject.toml" if ctx["use_poetry"]
+            else "_repolish.setup-pyproject.toml"
+        ),
+        
+        # Conditional: only include if enabled (None means skip)
+        ".pre-commit-config.yaml": (
+            "_repolish.precommit-config.yaml" if ctx.get("enable_precommit")
+            else None
+        ),
+        
+        # Could also use GitLab instead of GitHub
+        ".gitlab-ci.yml": (
+            "_repolish.gitlab-ci.yml" if ctx.get("use_gitlab")
+            else None
+        ),
+    }
+```
+
+### Key behaviors
+
+- **Conditional files** (prefixed with `_repolish.`) are **only** copied when
+  explicitly listed in `file_mappings`
+- **Regular files** (no `_repolish.` prefix) are always copied normally
+- **Destinations are unique**: you cannot map multiple sources to the same
+  destination within a single provider
+- **None values are skipped**: returning `None` as the source means "don't copy
+  this destination"
+- **Multiple providers**: file_mappings from multiple providers are merged;
+  later providers override earlier ones for the same destination
+
+### Use cases
+
+This feature is ideal for:
+
+- Offering multiple CI configurations (GitHub Actions, GitLab CI, Jenkins)
+- Supporting different build systems (Poetry, setuptools, Hatch)
+- Providing optional configuration files that depend on context
+- Keeping template filenames clean (no
+  `{% if use_poetry %}pyproject.toml{% endif %}`)
+
+The key advantage over cookiecutter's conditional filename syntax is that you
+keep filenames clean and organize conditional logic in Python where you have
+full programmatic control.
+
 ## How do I add anchors?
 
 Anchors are intentionally simple so template authors and maintainers can reason

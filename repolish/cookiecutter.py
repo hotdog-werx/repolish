@@ -212,22 +212,32 @@ def _compare_and_prepare_diff(
     )
 
 
-def check_generated_output(
+def _check_regular_files(
+    output_files: list[Path],
     setup_output: Path,
-    providers: Providers,
+    mapped_sources: set[str],
     base_dir: Path,
+    *,
+    preserve: bool,
 ) -> list[tuple[str, str]]:
-    """Compare generated output to project files and report diffs and deletions.
+    """Check regular files (non-conditional, non-mapped) for diffs.
 
-    Returns a list of (relative_path, message_or_unified_diff). Empty when no diffs found.
+    Returns list of (relative_path, message_or_diff).
     """
-    output_files = collect_output_files(setup_output)
     diffs: list[tuple[str, str]] = []
-
-    preserve = _preserve_line_endings()
 
     for out in output_files:
         rel = out.relative_to(setup_output / 'repolish')
+        rel_str = rel.as_posix()
+
+        # Skip files starting with _repolish. prefix
+        if rel_str.startswith('_repolish.'):
+            continue
+
+        # Skip files that are source files in file_mappings
+        if rel_str in mapped_sources:
+            continue
+
         dest = base_dir / rel
         if not dest.exists():
             diffs.append((str(rel), 'MISSING'))
@@ -252,6 +262,91 @@ def check_generated_output(
         )
         diffs.append((str(rel), ud))
 
+    return diffs
+
+
+def _check_file_mappings(
+    file_mappings: dict[str, str],
+    setup_output: Path,
+    base_dir: Path,
+    *,
+    preserve: bool,
+) -> list[tuple[str, str]]:
+    """Check file_mappings for diffs between sources and destinations.
+
+    Returns list of (relative_path, message_or_diff).
+    """
+    diffs: list[tuple[str, str]] = []
+
+    for dest_path, source_path in file_mappings.items():
+        source_file = setup_output / 'repolish' / source_path
+        if not source_file.exists():
+            diffs.append((dest_path, f'MAPPING_SOURCE_MISSING: {source_path}'))
+            continue
+
+        dest_file = base_dir / dest_path
+        if not dest_file.exists():
+            diffs.append((dest_path, 'MISSING'))
+            continue
+
+        same, a_lines, b_lines = _compare_and_prepare_diff(
+            source_file,
+            dest_file,
+            preserve=preserve,
+        )
+        if same:
+            continue
+
+        ud = ''.join(
+            difflib.unified_diff(
+                b_lines,
+                a_lines,
+                fromfile=str(dest_file),
+                tofile=f'{source_path} -> {dest_path}',
+                lineterm='',
+            ),
+        )
+        diffs.append((dest_path, ud))
+
+    return diffs
+
+
+def check_generated_output(
+    setup_output: Path,
+    providers: Providers,
+    base_dir: Path,
+) -> list[tuple[str, str]]:
+    """Compare generated output to project files and report diffs and deletions.
+
+    Returns a list of (relative_path, message_or_unified_diff). Empty when no diffs found.
+    """
+    output_files = collect_output_files(setup_output)
+    diffs: list[tuple[str, str]] = []
+
+    preserve = _preserve_line_endings()
+    mapped_sources = set(providers.file_mappings.values())
+
+    # Check regular files (skip _repolish.* prefix and files in mappings)
+    diffs.extend(
+        _check_regular_files(
+            output_files,
+            setup_output,
+            mapped_sources,
+            base_dir,
+            preserve=preserve,
+        ),
+    )
+
+    # Check file_mappings: compare mapped source files to their destinations
+    diffs.extend(
+        _check_file_mappings(
+            providers.file_mappings,
+            setup_output,
+            base_dir,
+            preserve=preserve,
+        ),
+    )
+
     # provider-declared deletions: if a path is expected deleted but exists in
     # the project, surface that so devs know to run repolish
     for rel in providers.delete_files:
@@ -260,6 +355,51 @@ def check_generated_output(
             diffs.append((str(rel), 'PRESENT_BUT_SHOULD_BE_DELETED'))
 
     return diffs
+
+
+def _apply_regular_files(
+    output_files: list[Path],
+    setup_output: Path,
+    mapped_sources: set[str],
+    base_dir: Path,
+) -> None:
+    """Copy regular files (non-conditional, non-mapped) to base_dir."""
+    for out in output_files:
+        rel = out.relative_to(setup_output / 'repolish')
+        rel_str = rel.as_posix()
+
+        # Skip files starting with _repolish. prefix
+        if rel_str.startswith('_repolish.'):
+            continue
+
+        # Skip files that are source files in file_mappings (they'll be copied via mappings)
+        if rel_str in mapped_sources:
+            continue
+
+        dest = base_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(out, dest)
+
+
+def _apply_file_mappings(
+    file_mappings: dict[str, str],
+    setup_output: Path,
+    base_dir: Path,
+) -> None:
+    """Process file_mappings: copy source -> destination with rename."""
+    for dest_path, source_path in file_mappings.items():
+        source_file = setup_output / 'repolish' / source_path
+        if not source_file.exists():
+            logger.warning(
+                'file_mapping_source_not_found',
+                source=source_path,
+                dest=dest_path,
+            )
+            continue
+
+        dest_file = base_dir / dest_path
+        dest_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_file, dest_file)
 
 
 def apply_generated_output(
@@ -271,19 +411,19 @@ def apply_generated_output(
 
     Args:
         setup_output: Path to the cookiecutter output directory.
-        providers: Providers object with delete_files list.
+        providers: Providers object with delete_files list and file_mappings.
         base_dir: Base directory where the project root is located.
 
     Returns None. Exceptions during per-file operations are raised to caller.
     """
     output_files = collect_output_files(setup_output)
+    mapped_sources = set(providers.file_mappings.values())
 
-    # copy files into project root (overwrite)
-    for out in output_files:
-        rel = out.relative_to(setup_output / 'repolish')
-        dest = base_dir / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(out, dest)
+    # Copy regular files (skip _repolish.* prefix and files in mappings)
+    _apply_regular_files(output_files, setup_output, mapped_sources, base_dir)
+
+    # Process file_mappings: copy source -> destination with rename
+    _apply_file_mappings(providers.file_mappings, setup_output, base_dir)
 
     # Now apply deletions at the project root as the final step
     for rel in providers.delete_files:
