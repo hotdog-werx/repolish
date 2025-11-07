@@ -215,12 +215,19 @@ def _compare_and_prepare_diff(
 def _check_regular_files(
     output_files: list[Path],
     setup_output: Path,
-    mapped_sources: set[str],
+    skip_files: set[str],
     base_dir: Path,
     *,
     preserve: bool,
 ) -> list[tuple[str, str]]:
     """Check regular files (non-conditional, non-mapped) for diffs.
+
+    Args:
+        output_files: List of files in the template output.
+        setup_output: Path to the cookiecutter output directory.
+        skip_files: Set of file paths to skip (mapped sources + delete files).
+        base_dir: Base directory where the project root is located.
+        preserve: Whether to preserve line endings during comparison.
 
     Returns list of (relative_path, message_or_diff).
     """
@@ -234,8 +241,8 @@ def _check_regular_files(
         if rel_str.startswith('_repolish.'):
             continue
 
-        # Skip files that are source files in file_mappings
-        if rel_str in mapped_sources:
+        # Skip files that are mapped sources or marked for deletion
+        if rel_str in skip_files:
             continue
 
         dest = base_dir / rel
@@ -265,8 +272,49 @@ def _check_regular_files(
     return diffs
 
 
+def _check_single_file_mapping(
+    dest_path: str,
+    source_path: str,
+    setup_output: Path,
+    base_dir: Path,
+    *,
+    preserve: bool,
+) -> tuple[str, str] | None:
+    """Check a single file mapping for diffs.
+
+    Returns (dest_path, message_or_diff) tuple if there's a diff, None if same.
+    """
+    source_file = setup_output / 'repolish' / source_path
+    if not source_file.exists():
+        return (dest_path, f'MAPPING_SOURCE_MISSING: {source_path}')
+
+    dest_file = base_dir / dest_path
+    if not dest_file.exists():
+        return (dest_path, 'MISSING')
+
+    same, a_lines, b_lines = _compare_and_prepare_diff(
+        source_file,
+        dest_file,
+        preserve=preserve,
+    )
+    if same:
+        return None
+
+    ud = ''.join(
+        difflib.unified_diff(
+            b_lines,
+            a_lines,
+            fromfile=str(dest_file),
+            tofile=f'{source_path} -> {dest_path}',
+            lineterm='',
+        ),
+    )
+    return (dest_path, ud)
+
+
 def _check_file_mappings(
     file_mappings: dict[str, str],
+    delete_files: set[str],
     setup_output: Path,
     base_dir: Path,
     *,
@@ -279,34 +327,19 @@ def _check_file_mappings(
     diffs: list[tuple[str, str]] = []
 
     for dest_path, source_path in file_mappings.items():
-        source_file = setup_output / 'repolish' / source_path
-        if not source_file.exists():
-            diffs.append((dest_path, f'MAPPING_SOURCE_MISSING: {source_path}'))
+        # Skip files marked for deletion (they'll be checked separately)
+        if dest_path in delete_files:
             continue
 
-        dest_file = base_dir / dest_path
-        if not dest_file.exists():
-            diffs.append((dest_path, 'MISSING'))
-            continue
-
-        same, a_lines, b_lines = _compare_and_prepare_diff(
-            source_file,
-            dest_file,
+        result = _check_single_file_mapping(
+            dest_path,
+            source_path,
+            setup_output,
+            base_dir,
             preserve=preserve,
         )
-        if same:
-            continue
-
-        ud = ''.join(
-            difflib.unified_diff(
-                b_lines,
-                a_lines,
-                fromfile=str(dest_file),
-                tofile=f'{source_path} -> {dest_path}',
-                lineterm='',
-            ),
-        )
-        diffs.append((dest_path, ud))
+        if result:
+            diffs.append(result)
 
     return diffs
 
@@ -325,13 +358,16 @@ def check_generated_output(
 
     preserve = _preserve_line_endings()
     mapped_sources = set(providers.file_mappings.values())
+    delete_files_set = {str(p) for p in providers.delete_files}
+    # Combine mapped sources and delete files into a single skip set for regular file checking
+    skip_files = mapped_sources | delete_files_set
 
-    # Check regular files (skip _repolish.* prefix and files in mappings)
+    # Check regular files (skip _repolish.* prefix, mapped sources, and delete files)
     diffs.extend(
         _check_regular_files(
             output_files,
             setup_output,
-            mapped_sources,
+            skip_files,
             base_dir,
             preserve=preserve,
         ),
@@ -341,6 +377,7 @@ def check_generated_output(
     diffs.extend(
         _check_file_mappings(
             providers.file_mappings,
+            delete_files_set,
             setup_output,
             base_dir,
             preserve=preserve,
