@@ -363,7 +363,7 @@ def check_generated_output(
     preserve = _preserve_line_endings()
     mapped_sources = set(providers.file_mappings.values())
     delete_files_set = {str(p) for p in providers.delete_files}
-    create_only_files_set = {str(p) for p in providers.create_only_files}
+    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     # Build skip set: include create-only files that already exist in the project
     skip_files = mapped_sources | delete_files_set
@@ -472,7 +472,7 @@ def apply_generated_output(
     """
     output_files = collect_output_files(setup_output)
     mapped_sources = set(providers.file_mappings.values())
-    create_only_files_set = {str(p) for p in providers.create_only_files}
+    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     # Build skip set: include create-only files that already exist in the project
     skip_sources = mapped_sources.copy()
