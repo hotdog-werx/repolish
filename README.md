@@ -272,6 +272,168 @@ The key advantage over cookiecutter's conditional filename syntax is that you
 keep filenames clean and organize conditional logic in Python where you have
 full programmatic control.
 
+## Create-only files (initial scaffolding)
+
+Template authors can specify files that should only be created when they don't
+exist in the project. This is useful for initial repository scaffolding — like
+setting up a package structure for a new project — where you want to create the
+basic layout once but allow repolish to continue updating other files like
+`pyproject.toml`, CI configs, etc.
+
+### How it works
+
+Files listed in `create_only_files` will be:
+
+- **Created** if they don't exist in the project (normal template behavior)
+- **Skipped** if they already exist (preserving user modifications)
+
+This is different from anchors, which merge template and user content.
+Create-only files are an all-or-nothing decision: create when missing, preserve
+when present.
+
+### Example: Scaffolding a new package
+
+Imagine your template creates a Python package scaffold. When someone starts a
+new project called `awesome-tool`, the template should create the package
+structure once (directories, `__init__.py` files, example modules) but
+subsequent repolish runs should only update the tooling files (like
+`pyproject.toml`, `.github/workflows/ci.yml`, etc.) while leaving the package
+code alone.
+
+Template directory structure:
+
+```
+templates/python-project/
+├── repolish.py
+└── repolish/
+    ├── src/
+    │   └── {{cookiecutter.package_name}}/
+    │       ├── __init__.py      # Create-only: initial package structure
+    │       ├── py.typed          # Create-only: type marker
+    │       └── main.py           # Create-only: example starter module
+    ├── tests/
+    │   ├── __init__.py           # Create-only: test package marker
+    │   └── test_main.py          # Create-only: example test
+    ├── pyproject.toml            # Regular: always updated by repolish
+    └── .github/
+        └── workflows/
+            └── ci.yml            # Regular: always updated by repolish
+```
+
+In `repolish.py`:
+
+```python
+def create_context():
+    return {
+        "package_name": "awesome_tool",  # User's actual package name
+        "project_name": "awesome-tool",
+        "version": "0.1.0",
+    }
+
+def create_create_only_files():
+    """Files that are created only if they don't exist.
+    
+    Returns list[str]:
+        POSIX-style paths relative to project root
+    
+    Use this for initial scaffolding that creates the package structure
+    but shouldn't be overwritten on subsequent repolish runs.
+    """
+    ctx = create_context()
+    pkg = ctx["package_name"]
+    
+    return [
+        # Package source structure (created once, then hands-off)
+        f"src/{pkg}/__init__.py",
+        f"src/{pkg}/py.typed",
+        f"src/{pkg}/main.py",
+        
+        # Test structure (created once, then hands-off)
+        "tests/__init__.py",
+        "tests/test_main.py",
+        
+        # Project files users often customize
+        ".gitignore",
+        "README.md",  # If you want an initial README but let users own it
+    ]
+```
+
+Alternatively, you can use a module-level variable:
+
+```python
+create_only_files = [
+    "src/awesome_tool/__init__.py",
+    "src/awesome_tool/py.typed",
+    "src/awesome_tool/main.py",
+    "tests/__init__.py",
+    "tests/test_main.py",
+]
+```
+
+### What happens
+
+**First run** (new project):
+
+```bash
+$ repolish apply
+```
+
+- Creates entire package structure: `src/awesome_tool/`, `tests/`, etc.
+- Creates `pyproject.toml`, `.github/workflows/ci.yml`
+- User now has a complete, working package scaffold
+
+**Later runs** (after user develops the package):
+
+```bash
+$ repolish apply
+```
+
+- **Skips** `src/awesome_tool/__init__.py` (user has added exports)
+- **Skips** `src/awesome_tool/main.py` (user has implemented features)
+- **Skips** `tests/test_main.py` (user has written tests)
+- **Updates** `pyproject.toml` (latest dependencies, build config)
+- **Updates** `.github/workflows/ci.yml` (latest CI improvements)
+
+This gives you the best of both worlds: automated tooling/config updates via
+repolish while keeping your actual code untouched
+
+### Key behaviors
+
+- **First run**: Files are created normally from the template
+- **Subsequent runs**: Files are skipped if they exist, preserving user changes
+- **Check mode**: Reports `MISSING` for create-only files that don't exist yet,
+  but won't report diffs for files that exist (even if content differs)
+- **Multiple providers**: create_only_files from multiple providers are merged
+  (additive); later providers can add more create-only files
+- **Works with file_mappings**: A file can be both in `file_mappings` (for
+  conditional copying/renaming) and `create_only_files` (for preservation)
+- **Conflicts with delete_files**: If a file is in both `create_only_files` and
+  `delete_files`, the delete wins (file will be deleted)
+
+### Use cases
+
+This feature is ideal for:
+
+- **Initial package scaffolding**: Create the package directory structure,
+  `__init__.py` files, and starter modules for a new project, but leave them
+  alone once the user starts developing
+- **Example/template modules**: Provide example code (`main.py`,
+  `test_example.py`) that users can modify or replace without repolish
+  overwriting their work
+- **Project-specific configs**: Files like `.gitignore`, `README.md`, or
+  `.editorconfig` that should be created initially but are meant to be
+  customized per-project
+- **Type markers and metadata**: Files like `py.typed` that are needed for the
+  package structure but never need updating
+- **Separation of concerns**: Keep repolish managing your tooling/CI/build
+  configs (always updated) while preserving your actual source code (created
+  once, then hands-off)
+
+The key insight: use create-only files for anything that serves as a **starting
+point** rather than a **continuously synced template**. This lets you scaffold
+new projects quickly while still getting the benefits of repolish for keeping
+your tooling configuration up to date.
+
 ## How do I add anchors?
 
 Anchors are intentionally simple so template authors and maintainers can reason

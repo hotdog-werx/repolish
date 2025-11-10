@@ -59,6 +59,8 @@ def build_final_providers(config: RepolishConfig) -> Providers:
         anchors=providers.anchors,
         delete_files=list(delete_set),
         delete_history=providers.delete_history,
+        file_mappings=providers.file_mappings,
+        create_only_files=providers.create_only_files,
     )
 
 
@@ -225,7 +227,7 @@ def _check_regular_files(
     Args:
         output_files: List of files in the template output.
         setup_output: Path to the cookiecutter output directory.
-        skip_files: Set of file paths to skip (mapped sources + delete files).
+        skip_files: Set of file paths to skip (mapped sources + delete files + create-only existing files).
         base_dir: Base directory where the project root is located.
         preserve: Whether to preserve line endings during comparison.
 
@@ -241,11 +243,12 @@ def _check_regular_files(
         if rel_str.startswith('_repolish.'):
             continue
 
-        # Skip files that are mapped sources or marked for deletion
+        # Skip files that are mapped sources, marked for deletion, or create-only files that exist
         if rel_str in skip_files:
             continue
 
         dest = base_dir / rel
+
         if not dest.exists():
             diffs.append((str(rel), 'MISSING'))
             continue
@@ -289,6 +292,7 @@ def _check_single_file_mapping(
         return (dest_path, f'MAPPING_SOURCE_MISSING: {source_path}')
 
     dest_file = base_dir / dest_path
+
     if not dest_file.exists():
         return (dest_path, 'MISSING')
 
@@ -359,10 +363,15 @@ def check_generated_output(
     preserve = _preserve_line_endings()
     mapped_sources = set(providers.file_mappings.values())
     delete_files_set = {str(p) for p in providers.delete_files}
-    # Combine mapped sources and delete files into a single skip set for regular file checking
-    skip_files = mapped_sources | delete_files_set
+    create_only_files_set = {str(p) for p in providers.create_only_files}
 
-    # Check regular files (skip _repolish.* prefix, mapped sources, and delete files)
+    # Build skip set: include create-only files that already exist in the project
+    skip_files = mapped_sources | delete_files_set
+    for rel_str in create_only_files_set:
+        if (base_dir / rel_str).exists():
+            skip_files.add(rel_str)
+
+    # Check regular files (skip _repolish.* prefix, mapped sources, delete files, and existing create-only files)
     diffs.extend(
         _check_regular_files(
             output_files,
@@ -397,10 +406,17 @@ def check_generated_output(
 def _apply_regular_files(
     output_files: list[Path],
     setup_output: Path,
-    mapped_sources: set[str],
+    skip_sources: set[str],
     base_dir: Path,
 ) -> None:
-    """Copy regular files (non-conditional, non-mapped) to base_dir."""
+    """Copy regular files (non-conditional, non-mapped) to base_dir.
+
+    Args:
+        output_files: List of files in the template output.
+        setup_output: Path to the cookiecutter output directory.
+        skip_sources: Set of file paths to skip (file_mappings sources + existing create-only files).
+        base_dir: Base directory where the project root is located.
+    """
     for out in output_files:
         rel = out.relative_to(setup_output / 'repolish')
         rel_str = rel.as_posix()
@@ -409,11 +425,12 @@ def _apply_regular_files(
         if rel_str.startswith('_repolish.'):
             continue
 
-        # Skip files that are source files in file_mappings (they'll be copied via mappings)
-        if rel_str in mapped_sources:
+        # Skip files that are source files in file_mappings or existing create-only files
+        if rel_str in skip_sources:
             continue
 
         dest = base_dir / rel
+
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(out, dest)
 
@@ -455,12 +472,28 @@ def apply_generated_output(
     """
     output_files = collect_output_files(setup_output)
     mapped_sources = set(providers.file_mappings.values())
+    create_only_files_set = {str(p) for p in providers.create_only_files}
 
-    # Copy regular files (skip _repolish.* prefix and files in mappings)
-    _apply_regular_files(output_files, setup_output, mapped_sources, base_dir)
+    # Build skip set: include create-only files that already exist in the project
+    skip_sources = mapped_sources.copy()
+    for rel_str in create_only_files_set:
+        if (base_dir / rel_str).exists():
+            skip_sources.add(rel_str)
+
+    # Copy regular files (skip _repolish.* prefix, mapped sources, and existing create-only files)
+    _apply_regular_files(
+        output_files,
+        setup_output,
+        skip_sources,
+        base_dir,
+    )
 
     # Process file_mappings: copy source -> destination with rename
-    _apply_file_mappings(providers.file_mappings, setup_output, base_dir)
+    _apply_file_mappings(
+        providers.file_mappings,
+        setup_output,
+        base_dir,
+    )
 
     # Now apply deletions at the project root as the final step
     for rel in providers.delete_files:
