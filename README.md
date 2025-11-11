@@ -164,6 +164,276 @@ Anchors are processed in staging before cookiecutter runs, so the generated
 output already reflects local overrides while still taking canonical values from
 templates when needed.
 
+## Conditional files (file mappings)
+
+Template authors can provide multiple alternative files and conditionally choose
+which one to copy based on the context. This is useful when you want to offer
+different configurations (e.g., Poetry vs setuptools, GitHub Actions vs GitLab
+CI) without cluttering filenames with cookiecutter's `{% if %}` syntax.
+
+### How it works
+
+Files in your template directory that start with `_repolish.` are treated as
+**conditional/alternative files**. They will only be copied to the project if
+explicitly referenced in the `create_file_mappings()` function (or
+`file_mappings` variable) in your `repolish.py`.
+
+The `file_mappings` return value is a dictionary where:
+
+- **Keys** are destination paths in the final project (must be unique)
+- **Values** are source paths in the template, or `None` to skip
+
+Since this is Python code, you have full control over the logic used to select
+source files (if/else, ternary expressions, function calls, etc.).
+
+### Example
+
+Template directory structure:
+
+```
+templates/my-template/
+├── repolish.py
+└── repolish/
+    ├── README.md                          # Always copied
+    ├── _repolish.github-workflow.yml      # Conditional
+    ├── _repolish.gitlab-ci.yml            # Conditional
+    ├── _repolish.poetry-pyproject.toml    # Conditional
+    └── _repolish.setup-pyproject.toml     # Conditional
+```
+
+In `repolish.py`:
+
+```python
+def create_context():
+    return {
+        "use_github_actions": True,
+        "use_poetry": False,
+        "enable_precommit": True,
+    }
+
+def create_file_mappings():
+    """Map destination paths to source files in the template.
+    
+    Returns dict[str, str | None]:
+        - Key: destination path in final project
+        - Value: source path in template, or None to skip
+    
+    Files starting with '_repolish.' are only copied when referenced here.
+    """
+    ctx = create_context()
+    
+    return {
+        # Simple rename: always copy this conditional file
+        ".github/workflows/ci.yml": "_repolish.github-workflow.yml",
+        
+        # Conditional: pick between alternatives based on context
+        "pyproject.toml": (
+            "_repolish.poetry-pyproject.toml" if ctx["use_poetry"]
+            else "_repolish.setup-pyproject.toml"
+        ),
+        
+        # Conditional: only include if enabled (None means skip)
+        ".pre-commit-config.yaml": (
+            "_repolish.precommit-config.yaml" if ctx.get("enable_precommit")
+            else None
+        ),
+        
+        # Could also use GitLab instead of GitHub
+        ".gitlab-ci.yml": (
+            "_repolish.gitlab-ci.yml" if ctx.get("use_gitlab")
+            else None
+        ),
+    }
+```
+
+### Key behaviors
+
+- **Conditional files** (prefixed with `_repolish.`) are **only** copied when
+  explicitly listed in `file_mappings`
+- **Regular files** (no `_repolish.` prefix) are always copied normally
+- **Destinations are unique**: you cannot map multiple sources to the same
+  destination within a single provider
+- **None values are skipped**: returning `None` as the source means "don't copy
+  this destination"
+- **Multiple providers**: file_mappings from multiple providers are merged;
+  later providers override earlier ones for the same destination
+
+### Use cases
+
+This feature is ideal for:
+
+- Offering multiple CI configurations (GitHub Actions, GitLab CI, Jenkins)
+- Supporting different build systems (Poetry, setuptools, Hatch)
+- Providing optional configuration files that depend on context
+- Keeping template filenames clean (no
+  `{% if use_poetry %}pyproject.toml{% endif %}`)
+
+The key advantage over cookiecutter's conditional filename syntax is that you
+keep filenames clean and organize conditional logic in Python where you have
+full programmatic control.
+
+## Create-only files (initial scaffolding)
+
+Template authors can specify files that should only be created when they don't
+exist in the project. This is useful for initial repository scaffolding — like
+setting up a package structure for a new project — where you want to create the
+basic layout once but allow repolish to continue updating other files like
+`pyproject.toml`, CI configs, etc.
+
+### How it works
+
+Files listed in `create_only_files` will be:
+
+- **Created** if they don't exist in the project (normal template behavior)
+- **Skipped** if they already exist (preserving user modifications)
+
+This is different from anchors, which merge template and user content.
+Create-only files are an all-or-nothing decision: create when missing, preserve
+when present.
+
+### Example: Scaffolding a new package
+
+Imagine your template creates a Python package scaffold. When someone starts a
+new project called `awesome-tool`, the template should create the package
+structure once (directories, `__init__.py` files, example modules) but
+subsequent repolish runs should only update the tooling files (like
+`pyproject.toml`, `.github/workflows/ci.yml`, etc.) while leaving the package
+code alone.
+
+Template directory structure:
+
+```
+templates/python-project/
+├── repolish.py
+└── repolish/
+    ├── src/
+    │   └── {{cookiecutter.package_name}}/
+    │       ├── __init__.py      # Create-only: initial package structure
+    │       ├── py.typed          # Create-only: type marker
+    │       └── main.py           # Create-only: example starter module
+    ├── tests/
+    │   ├── __init__.py           # Create-only: test package marker
+    │   └── test_main.py          # Create-only: example test
+    ├── pyproject.toml            # Regular: always updated by repolish
+    └── .github/
+        └── workflows/
+            └── ci.yml            # Regular: always updated by repolish
+```
+
+In `repolish.py`:
+
+```python
+def create_context():
+    return {
+        "package_name": "awesome_tool",  # User's actual package name
+        "project_name": "awesome-tool",
+        "version": "0.1.0",
+    }
+
+def create_create_only_files():
+    """Files that are created only if they don't exist.
+    
+    Returns list[str]:
+        POSIX-style paths relative to project root
+    
+    Use this for initial scaffolding that creates the package structure
+    but shouldn't be overwritten on subsequent repolish runs.
+    """
+    ctx = create_context()
+    pkg = ctx["package_name"]
+    
+    return [
+        # Package source structure (created once, then hands-off)
+        f"src/{pkg}/__init__.py",
+        f"src/{pkg}/py.typed",
+        f"src/{pkg}/main.py",
+        
+        # Test structure (created once, then hands-off)
+        "tests/__init__.py",
+        "tests/test_main.py",
+        
+        # Project files users often customize
+        ".gitignore",
+        "README.md",  # If you want an initial README but let users own it
+    ]
+```
+
+Alternatively, you can use a module-level variable:
+
+```python
+create_only_files = [
+    "src/awesome_tool/__init__.py",
+    "src/awesome_tool/py.typed",
+    "src/awesome_tool/main.py",
+    "tests/__init__.py",
+    "tests/test_main.py",
+]
+```
+
+### What happens
+
+**First run** (new project):
+
+```bash
+$ repolish apply
+```
+
+- Creates entire package structure: `src/awesome_tool/`, `tests/`, etc.
+- Creates `pyproject.toml`, `.github/workflows/ci.yml`
+- User now has a complete, working package scaffold
+
+**Later runs** (after user develops the package):
+
+```bash
+$ repolish apply
+```
+
+- **Skips** `src/awesome_tool/__init__.py` (user has added exports)
+- **Skips** `src/awesome_tool/main.py` (user has implemented features)
+- **Skips** `tests/test_main.py` (user has written tests)
+- **Updates** `pyproject.toml` (latest dependencies, build config)
+- **Updates** `.github/workflows/ci.yml` (latest CI improvements)
+
+This gives you the best of both worlds: automated tooling/config updates via
+repolish while keeping your actual code untouched
+
+### Key behaviors
+
+- **First run**: Files are created normally from the template
+- **Subsequent runs**: Files are skipped if they exist, preserving user changes
+- **Check mode**: Reports `MISSING` for create-only files that don't exist yet,
+  but won't report diffs for files that exist (even if content differs)
+- **Multiple providers**: create_only_files from multiple providers are merged
+  (additive); later providers can add more create-only files
+- **Works with file_mappings**: A file can be both in `file_mappings` (for
+  conditional copying/renaming) and `create_only_files` (for preservation)
+- **Conflicts with delete_files**: If a file is in both `create_only_files` and
+  `delete_files`, the delete wins (file will be deleted)
+
+### Use cases
+
+This feature is ideal for:
+
+- **Initial package scaffolding**: Create the package directory structure,
+  `__init__.py` files, and starter modules for a new project, but leave them
+  alone once the user starts developing
+- **Example/template modules**: Provide example code (`main.py`,
+  `test_example.py`) that users can modify or replace without repolish
+  overwriting their work
+- **Project-specific configs**: Files like `.gitignore`, `README.md`, or
+  `.editorconfig` that should be created initially but are meant to be
+  customized per-project
+- **Type markers and metadata**: Files like `py.typed` that are needed for the
+  package structure but never need updating
+- **Separation of concerns**: Keep repolish managing your tooling/CI/build
+  configs (always updated) while preserving your actual source code (created
+  once, then hands-off)
+
+The key insight: use create-only files for anything that serves as a **starting
+point** rather than a **continuously synced template**. This lets you scaffold
+new projects quickly while still getting the benefits of repolish for keeping
+your tooling configuration up to date.
+
 ## How do I add anchors?
 
 Anchors are intentionally simple so template authors and maintainers can reason

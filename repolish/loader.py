@@ -33,11 +33,15 @@ class Providers(BaseModel):
     - context: merged cookiecutter context
     - anchors: merged anchors mapping
     - delete_files: list of Paths representing files to delete
+    - file_mappings: dict mapping destination paths to source paths in template
+    - create_only_files: list of Paths for files that should only be created if they don't exist
     """
 
     context: dict[str, object] = Field(default_factory=dict)
     anchors: dict[str, str] = Field(default_factory=dict)
     delete_files: list[Path] = Field(default_factory=list)
+    file_mappings: dict[str, str] = Field(default_factory=dict)
+    create_only_files: list[Path] = Field(default_factory=list)
     # provenance mapping: posix path -> list of Decision instances
     delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
 
@@ -228,6 +232,76 @@ def extract_delete_items_from_module(
     return _normalize_delete_iterable(raw)
 
 
+def extract_file_mappings_from_module(
+    module: str | dict[str, object],
+) -> dict[str, str]:
+    """Extract file mappings (dest -> source) from a module path or dict.
+
+    Supports a callable `create_file_mappings()` returning a dict or a
+    module-level `file_mappings` dict. Returns a dict mapping destination
+    paths (str) to source paths (str). Entries with None values are filtered out.
+
+    Files starting with '_repolish.' are only copied when explicitly referenced
+    in the returned mappings.
+    """
+    module_dict = module if isinstance(module, dict) else get_module(str(module))
+
+    fm = _extract_from_module_dict(
+        module_dict,
+        'create_file_mappings',
+        expected_type=dict,
+    )
+    if isinstance(fm, dict):
+        # Filter out None values (means skip this destination)
+        return {k: v for k, v in fm.items() if v is not None}
+
+    raw_res = _extract_from_module_dict(
+        module_dict,
+        'file_mappings',
+        expected_type=dict,
+        allow_callable=False,
+    )
+    if isinstance(raw_res, dict):
+        return {k: v for k, v in raw_res.items() if v is not None}
+
+    return {}
+
+
+def extract_create_only_files_from_module(
+    module: str | dict[str, object],
+) -> list[str]:
+    """Extract create-only file paths from a module path or dict.
+
+    Supports a callable `create_create_only_files()` returning a list/iterable
+    or a module-level `create_only_files` list/iterable.
+
+    These files are only copied if they don't already exist in the destination,
+    allowing template-provided initial files without overwriting user changes.
+
+    Returns a list of file paths (as strings).
+    """
+    module_dict = module if isinstance(module, dict) else get_module(str(module))
+
+    # Try callable first
+    result = _extract_from_module_dict(
+        module_dict,
+        'create_create_only_files',
+        expected_type=(list, tuple, set),
+    )
+    if isinstance(result, (list, tuple, set)):
+        return _normalize_delete_iterable(result)
+
+    # Fall back to module-level variable
+    raw_res = _extract_from_module_dict(
+        module_dict,
+        'create_only_files',
+        expected_type=(list, tuple, set),
+        allow_callable=False,
+    )
+    raw = raw_res if isinstance(raw_res, (list, tuple, set)) else []
+    return _normalize_delete_iterable(raw)
+
+
 def _apply_raw_delete_items(
     delete_set: set[Path],
     raw_items: Iterable[object],
@@ -273,6 +347,8 @@ def _process_provider_dict(  # noqa: PLR0913 - helper function with many args
     module_dict: dict[str, object],
     merged_context: dict[str, object],
     merged_anchors: dict[str, str],
+    merged_file_mappings: dict[str, str],
+    create_only_set: set[Path],
     delete_set: set[Path],
     provider_id: str,
     history: dict[str, list[Decision]],
@@ -284,13 +360,22 @@ def _process_provider_dict(  # noqa: PLR0913 - helper function with many args
     """
     ctx = extract_context_from_module(module_dict) or {}
     anchors = extract_anchors_from_module(module_dict) or {}
+    file_mappings = extract_file_mappings_from_module(module_dict) or {}
     raw_delete_items = extract_delete_items_from_module(module_dict)
     delete_files = _normalize_delete_items(raw_delete_items)
+    raw_create_only_items = extract_create_only_files_from_module(module_dict)
+    create_only_files = _normalize_delete_items(raw_create_only_items)
 
     if ctx:
         merged_context.update(ctx)
     if anchors:
         merged_anchors.update(anchors)
+    if file_mappings:
+        merged_file_mappings.update(file_mappings)
+
+    # Add create_only_files to the set (later providers can add more)
+    for path in create_only_files:
+        create_only_set.add(path)
 
     raw_items = module_dict.get('delete_files') or []
     # Ensure raw_items is a concrete iterable (list/tuple) for type checking
@@ -310,6 +395,8 @@ def create_providers(directories: list[str]) -> Providers:
     Merging semantics:
     - context: dicts are merged in order; later providers override earlier keys.
     - anchors: dicts are merged in order; later providers override earlier keys.
+    - file_mappings: dicts are merged in order; later providers override earlier keys.
+    - create_only_files: lists are merged; later providers can add more files.
     - delete_files: providers supply Path entries; an entry prefixed with a
       leading '!' (literal leading char in the original string) will act as an
       undo for that path (i.e., prevent deletion). The loader will apply
@@ -317,6 +404,8 @@ def create_providers(directories: list[str]) -> Providers:
     """
     merged_context: dict[str, object] = {}
     merged_anchors: dict[str, str] = {}
+    merged_file_mappings: dict[str, str] = {}
+    create_only_set: set[Path] = set()
     delete_set: set[Path] = set()
 
     # provenance history: posix path -> list of Decision instances
@@ -329,6 +418,8 @@ def create_providers(directories: list[str]) -> Providers:
             module_dict,
             merged_context,
             merged_anchors,
+            merged_file_mappings,
+            create_only_set,
             delete_set,
             provider_id,
             history,
@@ -337,5 +428,7 @@ def create_providers(directories: list[str]) -> Providers:
         context=merged_context,
         anchors=merged_anchors,
         delete_files=list(delete_set),
+        file_mappings=merged_file_mappings,
+        create_only_files=list(create_only_set),
         delete_history=history,
     )
