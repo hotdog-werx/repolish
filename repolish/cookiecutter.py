@@ -250,7 +250,7 @@ def _check_regular_files(
         dest = base_dir / rel
 
         if not dest.exists():
-            diffs.append((str(rel), 'MISSING'))
+            diffs.append((rel_str, 'MISSING'))
             continue
 
         same, a_lines, b_lines = _compare_and_prepare_diff(
@@ -270,7 +270,7 @@ def _check_regular_files(
                 lineterm='',
             ),
         )
-        diffs.append((str(rel), ud))
+        diffs.append((rel_str, ud))
 
     return diffs
 
@@ -398,7 +398,7 @@ def check_generated_output(
     for rel in providers.delete_files:
         proj_target = base_dir / rel
         if proj_target.exists():
-            diffs.append((str(rel), 'PRESENT_BUT_SHOULD_BE_DELETED'))
+            diffs.append((rel.as_posix(), 'PRESENT_BUT_SHOULD_BE_DELETED'))
 
     return diffs
 
