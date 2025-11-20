@@ -423,15 +423,23 @@ def _apply_regular_files(
 
         # Skip files starting with _repolish. prefix
         if rel_str.startswith('_repolish.'):
+            logger.debug('skipping_repolish_prefix_file', file=rel_str)
             continue
 
         # Skip files that are source files in file_mappings or existing create-only files
         if rel_str in skip_sources:
+            logger.info('skipping_file', file=rel_str, reason='in_skip_sources')
             continue
 
         dest = base_dir / rel
 
         dest.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            'copying_file',
+            source=str(out),
+            dest=str(dest),
+            rel=rel_str,
+        )
         shutil.copy2(out, dest)
 
 
@@ -474,11 +482,29 @@ def apply_generated_output(
     mapped_sources = set(providers.file_mappings.values())
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
+    logger.info(
+        'apply_generated_output_starting',
+        create_only_files=sorted(create_only_files_set),
+        file_mappings=providers.file_mappings,
+    )
+
     # Build skip set: include create-only files that already exist in the project
     skip_sources = mapped_sources.copy()
     for rel_str in create_only_files_set:
-        if (base_dir / rel_str).exists():
+        target_exists = (base_dir / rel_str).exists()
+        if target_exists:
             skip_sources.add(rel_str)
+            logger.info(
+                'create_only_file_exists_skipping',
+                file=rel_str,
+                target_path=str(base_dir / rel_str),
+            )
+        else:
+            logger.info(
+                'create_only_file_missing_will_create',
+                file=rel_str,
+                target_path=str(base_dir / rel_str),
+            )
 
     # Copy regular files (skip _repolish.* prefix, mapped sources, and existing create-only files)
     _apply_regular_files(
