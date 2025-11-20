@@ -486,6 +486,7 @@ def _apply_file_mappings(
                 dest=dest_path,
                 source=source_path,
                 target_path=str(dest_file),
+                _display_level=1,
             )
             continue
 
@@ -521,6 +522,7 @@ def apply_generated_output(
         'apply_generated_output_starting',
         create_only_files=sorted(create_only_files_set),
         file_mappings=providers.file_mappings,
+        _display_level=1,
     )
 
     # Build skip set: include create-only files that already exist in the project
@@ -533,12 +535,14 @@ def apply_generated_output(
                 'create_only_file_exists_skipping',
                 file=rel_str,
                 target_path=str(base_dir / rel_str),
+                _display_level=1,
             )
         else:
             logger.info(
                 'create_only_file_missing_will_create',
                 file=rel_str,
                 target_path=str(base_dir / rel_str),
+                _display_level=1,
             )
 
     # Copy regular files (skip _repolish.* prefix, mapped sources, and existing create-only files)
