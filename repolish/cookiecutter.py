@@ -438,7 +438,7 @@ def _apply_regular_files(
 
         # Skip files that are source files in file_mappings or existing create-only files
         if rel_str in skip_sources:
-            logger.info('skipping_file', file=rel_str, reason='in_skip_sources')
+            logger.info('skipping_file', file=rel_str, reason='in_skip_sources', _display_level=1)
             continue
 
         dest = base_dir / rel
@@ -449,6 +449,7 @@ def _apply_regular_files(
             source=str(out),
             dest=str(dest),
             rel=rel_str,
+            _display_level=1,
         )
         shutil.copy2(out, dest)
 
@@ -496,6 +497,7 @@ def _apply_file_mappings(
             source=source_path,
             dest=dest_path,
             target_path=str(dest_file),
+            _display_level=1,
         )
         shutil.copy2(source_file, dest_file)
 
