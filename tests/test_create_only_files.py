@@ -475,3 +475,116 @@ def test_multiple_create_only_files(tmp_path: Path):
     # pkg2 and pkg3 should be created
     assert (base_dir / 'src' / 'pkg2' / '__init__.py').read_text() == '# pkg2'
     assert (base_dir / 'src' / 'pkg3' / '__init__.py').read_text() == '# pkg3'
+
+
+def test_create_only_with_file_mapping_skips_when_exists(tmp_path: Path):
+    """Test that create_only works with file_mappings - skips when destination exists."""
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+
+    # Template provides a _repolish. prefixed file that will be mapped
+    (repolish_dir / '_repolish.package_init.py').write_text(
+        '# Template __init__',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # Destination file already exists with custom content
+    (base_dir / 'src' / 'package_name').mkdir(parents=True)
+    (base_dir / 'src' / 'package_name' / '__init__.py').write_text(
+        '# Custom __init__',
+    )
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        file_mappings={
+            'src/package_name/__init__.py': '_repolish.package_init.py',
+        },
+        delete_history={},
+        create_only_files=[
+            Path('src/package_name/__init__.py'),
+        ],  # Destination path
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    # File should NOT be overwritten - user content preserved
+    assert (base_dir / 'src' / 'package_name' / '__init__.py').read_text() == '# Custom __init__'
+
+
+def test_create_only_with_file_mapping_creates_when_missing(tmp_path: Path):
+    """Test that create_only works with file_mappings - creates when destination missing."""
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+
+    # Template provides a _repolish. prefixed file that will be mapped
+    (repolish_dir / '_repolish.package_init.py').write_text(
+        '# Template __init__',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # Destination file doesn't exist yet
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        file_mappings={
+            'src/package_name/__init__.py': '_repolish.package_init.py',
+        },
+        delete_history={},
+        create_only_files=[
+            Path('src/package_name/__init__.py'),
+        ],  # Destination path
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    # File should be created from the mapped source
+    assert (base_dir / 'src' / 'package_name' / '__init__.py').read_text() == '# Template __init__'
+
+
+def test_check_skips_create_only_file_mapping_when_exists(tmp_path: Path):
+    """Test that check doesn't report diff for create_only file_mappings that exist."""
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+
+    # Template provides a _repolish. prefixed file that will be mapped
+    (repolish_dir / '_repolish.package_init.py').write_text(
+        '# Template __init__',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # Destination file exists with different content
+    (base_dir / 'src' / 'package_name').mkdir(parents=True)
+    (base_dir / 'src' / 'package_name' / '__init__.py').write_text(
+        '# User custom content',
+    )
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        file_mappings={
+            'src/package_name/__init__.py': '_repolish.package_init.py',
+        },
+        delete_history={},
+        create_only_files=[
+            Path('src/package_name/__init__.py'),
+        ],  # Destination path
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+
+    # Should have NO diffs - file exists so it's ignored (create_only)
+    assert len(diffs) == 0

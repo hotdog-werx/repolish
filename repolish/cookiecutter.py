@@ -317,8 +317,7 @@ def _check_single_file_mapping(
 
 
 def _check_file_mappings(
-    file_mappings: dict[str, str],
-    delete_files: set[str],
+    providers: Providers,
     setup_output: Path,
     base_dir: Path,
     *,
@@ -326,13 +325,25 @@ def _check_file_mappings(
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
+    Args:
+        providers: Providers object with file_mappings, delete_files, and create_only_files.
+        setup_output: Path to the cookiecutter output directory.
+        base_dir: Base directory where the project root is located.
+        preserve: Whether to preserve line endings when comparing files.
+
     Returns list of (relative_path, message_or_diff).
     """
     diffs: list[tuple[str, str]] = []
+    delete_files_set = {p.as_posix() for p in providers.delete_files}
+    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
-    for dest_path, source_path in file_mappings.items():
+    for dest_path, source_path in providers.file_mappings.items():
         # Skip files marked for deletion (they'll be checked separately)
-        if dest_path in delete_files:
+        if dest_path in delete_files_set:
+            continue
+
+        # Skip create-only files that already exist (no diff should be shown)
+        if dest_path in create_only_files_set and (base_dir / dest_path).exists():
             continue
 
         result = _check_single_file_mapping(
@@ -385,8 +396,7 @@ def check_generated_output(
     # Check file_mappings: compare mapped source files to their destinations
     diffs.extend(
         _check_file_mappings(
-            providers.file_mappings,
-            delete_files_set,
+            providers,
             setup_output,
             base_dir,
             preserve=preserve,
@@ -423,15 +433,24 @@ def _apply_regular_files(
 
         # Skip files starting with _repolish. prefix
         if rel_str.startswith('_repolish.'):
+            logger.debug('skipping_repolish_prefix_file', file=rel_str)
             continue
 
         # Skip files that are source files in file_mappings or existing create-only files
         if rel_str in skip_sources:
+            logger.info('skipping_file', file=rel_str, reason='in_skip_sources', _display_level=1)
             continue
 
         dest = base_dir / rel
 
         dest.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            'copying_file',
+            source=str(out),
+            dest=str(dest),
+            rel=rel_str,
+            _display_level=1,
+        )
         shutil.copy2(out, dest)
 
 
@@ -439,8 +458,16 @@ def _apply_file_mappings(
     file_mappings: dict[str, str],
     setup_output: Path,
     base_dir: Path,
+    create_only_files_set: set[str],
 ) -> None:
-    """Process file_mappings: copy source -> destination with rename."""
+    """Process file_mappings: copy source -> destination with rename.
+
+    Args:
+        file_mappings: Dict mapping destination paths to source paths.
+        setup_output: Path to the cookiecutter output directory.
+        base_dir: Base directory where the project root is located.
+        create_only_files_set: Set of destination paths that should only be created if they don't exist.
+    """
     for dest_path, source_path in file_mappings.items():
         source_file = setup_output / 'repolish' / source_path
         if not source_file.exists():
@@ -452,7 +479,26 @@ def _apply_file_mappings(
             continue
 
         dest_file = base_dir / dest_path
+
+        # Check if this destination is create-only and already exists
+        if dest_path in create_only_files_set and dest_file.exists():
+            logger.info(
+                'create_only_file_mapping_exists_skipping',
+                dest=dest_path,
+                source=source_path,
+                target_path=str(dest_file),
+                _display_level=1,
+            )
+            continue
+
         dest_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            'copying_file_mapping',
+            source=source_path,
+            dest=dest_path,
+            target_path=str(dest_file),
+            _display_level=1,
+        )
         shutil.copy2(source_file, dest_file)
 
 
@@ -474,11 +520,32 @@ def apply_generated_output(
     mapped_sources = set(providers.file_mappings.values())
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
+    logger.info(
+        'apply_generated_output_starting',
+        create_only_files=sorted(create_only_files_set),
+        file_mappings=providers.file_mappings,
+        _display_level=1,
+    )
+
     # Build skip set: include create-only files that already exist in the project
     skip_sources = mapped_sources.copy()
     for rel_str in create_only_files_set:
-        if (base_dir / rel_str).exists():
+        target_exists = (base_dir / rel_str).exists()
+        if target_exists:
             skip_sources.add(rel_str)
+            logger.info(
+                'create_only_file_exists_skipping',
+                file=rel_str,
+                target_path=str(base_dir / rel_str),
+                _display_level=1,
+            )
+        else:
+            logger.info(
+                'create_only_file_missing_will_create',
+                file=rel_str,
+                target_path=str(base_dir / rel_str),
+                _display_level=1,
+            )
 
     # Copy regular files (skip _repolish.* prefix, mapped sources, and existing create-only files)
     _apply_regular_files(
@@ -489,10 +556,12 @@ def apply_generated_output(
     )
 
     # Process file_mappings: copy source -> destination with rename
+    # Respect create_only_files for mapped destinations too
     _apply_file_mappings(
         providers.file_mappings,
         setup_output,
         base_dir,
+        create_only_files_set,
     )
 
     # Now apply deletions at the project root as the final step
