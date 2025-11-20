@@ -317,8 +317,7 @@ def _check_single_file_mapping(
 
 
 def _check_file_mappings(
-    file_mappings: dict[str, str],
-    delete_files: set[str],
+    providers: Providers,
     setup_output: Path,
     base_dir: Path,
     *,
@@ -326,13 +325,25 @@ def _check_file_mappings(
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
+    Args:
+        providers: Providers object with file_mappings, delete_files, and create_only_files.
+        setup_output: Path to the cookiecutter output directory.
+        base_dir: Base directory where the project root is located.
+        preserve: Whether to preserve line endings when comparing files.
+
     Returns list of (relative_path, message_or_diff).
     """
     diffs: list[tuple[str, str]] = []
+    delete_files_set = {p.as_posix() for p in providers.delete_files}
+    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
-    for dest_path, source_path in file_mappings.items():
+    for dest_path, source_path in providers.file_mappings.items():
         # Skip files marked for deletion (they'll be checked separately)
-        if dest_path in delete_files:
+        if dest_path in delete_files_set:
+            continue
+
+        # Skip create-only files that already exist (no diff should be shown)
+        if dest_path in create_only_files_set and (base_dir / dest_path).exists():
             continue
 
         result = _check_single_file_mapping(
@@ -385,8 +396,7 @@ def check_generated_output(
     # Check file_mappings: compare mapped source files to their destinations
     diffs.extend(
         _check_file_mappings(
-            providers.file_mappings,
-            delete_files_set,
+            providers,
             setup_output,
             base_dir,
             preserve=preserve,
@@ -447,8 +457,16 @@ def _apply_file_mappings(
     file_mappings: dict[str, str],
     setup_output: Path,
     base_dir: Path,
+    create_only_files_set: set[str],
 ) -> None:
-    """Process file_mappings: copy source -> destination with rename."""
+    """Process file_mappings: copy source -> destination with rename.
+
+    Args:
+        file_mappings: Dict mapping destination paths to source paths.
+        setup_output: Path to the cookiecutter output directory.
+        base_dir: Base directory where the project root is located.
+        create_only_files_set: Set of destination paths that should only be created if they don't exist.
+    """
     for dest_path, source_path in file_mappings.items():
         source_file = setup_output / 'repolish' / source_path
         if not source_file.exists():
@@ -460,7 +478,24 @@ def _apply_file_mappings(
             continue
 
         dest_file = base_dir / dest_path
+
+        # Check if this destination is create-only and already exists
+        if dest_path in create_only_files_set and dest_file.exists():
+            logger.info(
+                'create_only_file_mapping_exists_skipping',
+                dest=dest_path,
+                source=source_path,
+                target_path=str(dest_file),
+            )
+            continue
+
         dest_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            'copying_file_mapping',
+            source=source_path,
+            dest=dest_path,
+            target_path=str(dest_file),
+        )
         shutil.copy2(source_file, dest_file)
 
 
@@ -515,10 +550,12 @@ def apply_generated_output(
     )
 
     # Process file_mappings: copy source -> destination with rename
+    # Respect create_only_files for mapped destinations too
     _apply_file_mappings(
         providers.file_mappings,
         setup_output,
         base_dir,
+        create_only_files_set,
     )
 
     # Now apply deletions at the project root as the final step

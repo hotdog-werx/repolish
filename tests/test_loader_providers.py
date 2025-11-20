@@ -6,7 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
-from repolish.loader import Providers, create_providers
+from repolish.loader import Providers, _is_suspicious_variable, create_providers
 
 
 @dataclass
@@ -512,10 +512,14 @@ def test_validate_provider_no_warnings_for_normal_variables(
 
 def test_is_suspicious_variable_returns_false_for_normal_names():
     """Direct unit test for _is_suspicious_variable returning False."""
-    from repolish.loader import _is_suspicious_variable
+    valid_variables = {
+        'context',
+        'delete_files',
+        'file_mappings',
+        'create_only_files',
+        'anchors',
+    }
 
-    valid_variables = {'context', 'delete_files', 'file_mappings', 'create_only_files', 'anchors'}
-    
     # These should all return False (not suspicious)
     assert _is_suspicious_variable('my_config', valid_variables) is False
     assert _is_suspicious_variable('package_version', valid_variables) is False
@@ -547,8 +551,7 @@ def test_validate_provider_warns_on_create_only_typo(
 
     # Should warn with specific suggestion about create_create_only_files
     warning_calls = [
-        call for call in mock_logger.warning.call_args_list 
-        if 'suspicious_provider_function' in str(call)
+        call for call in mock_logger.warning.call_args_list if 'suspicious_provider_function' in str(call)
     ]
     assert len(warning_calls) > 0
     assert any('create_createonly_files' in str(call) for call in warning_calls)
