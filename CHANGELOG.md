@@ -1,5 +1,25 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+This changelog is automatically generated using
+[git-cliff](https://git-cliff.org/) from commit messages following
+[Conventional Commits](https://www.conventionalcommits.org/).
+
+View [unreleased changes][unreleased] since the last release.
+
+## [0.3.2] <a name="0.3.2" href="#0.3.2">-</a> January 18, 2026
+
+### ⚙️ Miscellaneous Tasks
+
+- Use latest changes from codeguide (#8) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#8](https://github.com/hotdog-werx/repolish/pull/8)
+
+[0.3.2]: https://github.com/hotdog-werx/repolish/compare/0.3.1...0.3.2
+
+# Changelog
+
 ## 2025-10-30 — Behavior change: ignore line-ending-only diffs by default
 
 - By default `repolish --check` now ignores differences that are only line
