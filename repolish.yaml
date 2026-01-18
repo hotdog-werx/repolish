@@ -1,0 +1,8 @@
+directories:
+  - ./.pkglink/.codeguide/templates
+
+post_process:
+  - poe format-dprint
+
+context:
+  codeguide_ref: topic/repolish
