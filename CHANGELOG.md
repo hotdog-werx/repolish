@@ -18,20 +18,68 @@ View [unreleased changes][unreleased] since the last release.
 
 [0.3.2]: https://github.com/hotdog-werx/repolish/compare/0.3.1...0.3.2
 
-# Changelog
+## [0.3.0] <a name="0.3.0" href="#0.3.0">-</a> November 11, 2025
 
-## 2025-10-30 — Behavior change: ignore line-ending-only diffs by default
+### 🚀 Features
 
-- By default `repolish --check` now ignores differences that are only line
-  ending related (CRLF vs LF). This avoids spurious failures on Windows where
-  files are checked out with CRLF but the canonical template uses LF. The
-  comparison normalizes newlines to LF before comparing file contents so
-  platform-specific line endings do not cause `--check` to fail.
+- Conditional files by [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add create_only_files for initial scaffolding preservation by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
-- If you need to make line-ending differences visible (for example during a
-  provider release where exact bytes matter), set the environment variable
-  `REPOLISH_PRESERVE_LINE_ENDINGS=1` (or `true`) to opt into preserving original
-  line endings when producing unified diffs.
+### 🐛 Bug Fixes
 
-This change makes `--check` more platform-agnostic while still offering an
-opt-out when exact bytes must be enforced.
+- Allow file deletions by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[0.3.0]: https://github.com/hotdog-werx/repolish/compare/0.2.2...0.3.0
+
+## [0.2.1] <a name="0.2.1" href="#0.2.1">-</a> October 28, 2025
+
+### 🐛 Bug Fixes
+
+- New template contents ignored/removed (#3) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#3](https://github.com/hotdog-werx/repolish/pull/3)
+
+[0.2.1]: https://github.com/hotdog-werx/repolish/compare/0.2.0...0.2.1
+
+## [0.1.1] <a name="0.1.1" href="#0.1.1">-</a> October 17, 2025
+
+### 🐛 Bug Fixes
+
+- Missing pydantic dependency by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[0.1.1]: https://github.com/hotdog-werx/repolish/compare/0.1.0...0.1.1
+
+## [0.1.0] <a name="0.1.0" href="#0.1.0">-</a> October 17, 2025
+
+### 🚀 Features
+
+- Setup project and create configuration and loader by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add tag and regex text processors by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add anchor dictionary by [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Allow other optional prefixes by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Create provider by [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Create final provider and include history on file deletion decisions by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add example and update README by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Complete repolish by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+### 💼 Other
+
+- Fix rendering issues by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+### 🚜 Refactor
+
+- Consolidate cookiecutter staging and tighten tests/typing by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+### ⚙️ Miscellaneous Tasks
+
+- Rearrange example by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[0.1.0]: https://github.com/hotdog-werx/repolish/tree/0.1.0
+[unreleased]: https://github.com/hotdog-werx/repolish/compare/0.3.2...HEAD
