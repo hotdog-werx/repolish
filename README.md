@@ -178,6 +178,12 @@ Files in your template directory that start with `_repolish.` are treated as
 explicitly referenced in the `create_file_mappings()` function (or
 `file_mappings` variable) in your `repolish.py`.
 
+**Conditional files can be placed anywhere in your template directory
+structure** — at the root or nested in subdirectories. For example:
+- `_repolish.config.yml` (root level)
+- `.github/workflows/_repolish.ci.yml` (nested in subdirectories)
+- `configs/editors/_repolish.vscode-settings.json` (deeply nested)
+
 The `file_mappings` return value is a dictionary where:
 
 - **Keys** are destination paths in the final project (must be unique)
@@ -195,10 +201,12 @@ templates/my-template/
 ├── repolish.py
 └── repolish/
     ├── README.md                          # Always copied
-    ├── _repolish.github-workflow.yml      # Conditional
-    ├── _repolish.gitlab-ci.yml            # Conditional
-    ├── _repolish.poetry-pyproject.toml    # Conditional
-    └── _repolish.setup-pyproject.toml     # Conditional
+    ├── _repolish.poetry-pyproject.toml    # Conditional (root level)
+    ├── _repolish.setup-pyproject.toml     # Conditional (root level)
+    └── .github/
+        └── workflows/
+            ├── _repolish.github-ci.yml    # Conditional (nested)
+            └── _repolish.gitlab-ci.yml    # Conditional (nested)
 ```
 
 In `repolish.py`:
@@ -219,14 +227,18 @@ def create_file_mappings():
         - Value: source path in template, or None to skip
     
     Files starting with '_repolish.' are only copied when referenced here.
+    They can be at any level in the template directory structure.
     """
     ctx = create_context()
     
     return {
-        # Simple rename: always copy this conditional file
-        ".github/workflows/ci.yml": "_repolish.github-workflow.yml",
+        # Nested conditional file: rename and place in final location
+        ".github/workflows/ci.yml": (
+            ".github/workflows/_repolish.github-ci.yml" if ctx["use_github_actions"]
+            else ".github/workflows/_repolish.gitlab-ci.yml"
+        ),
         
-        # Conditional: pick between alternatives based on context
+        # Root-level conditional: pick between alternatives based on context
         "pyproject.toml": (
             "_repolish.poetry-pyproject.toml" if ctx["use_poetry"]
             else "_repolish.setup-pyproject.toml"
@@ -235,12 +247,6 @@ def create_file_mappings():
         # Conditional: only include if enabled (None means skip)
         ".pre-commit-config.yaml": (
             "_repolish.precommit-config.yaml" if ctx.get("enable_precommit")
-            else None
-        ),
-        
-        # Could also use GitLab instead of GitHub
-        ".gitlab-ci.yml": (
-            "_repolish.gitlab-ci.yml" if ctx.get("use_gitlab")
             else None
         ),
     }

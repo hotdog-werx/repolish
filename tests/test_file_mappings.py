@@ -437,3 +437,53 @@ def test_apply_skips_regular_file_when_used_as_mapping_source(tmp_path: Path):
     # The source file should NOT be copied to its original location
     # (it's used as a mapping source, so it's skipped in the normal copy loop)
     assert not (base_dir / 'template-config.yml').exists()
+
+
+def test_nested_conditional_files_in_subdirectories(tmp_path: Path):
+    """Test that _repolish.* files work when placed in subdirectories.
+    
+    Bug: Currently only works at root level due to startswith() check.
+    Files like .github/workflows/_repolish.ci.yml should be treated as conditional.
+    """
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+
+    # Create a nested subdirectory with _repolish. files
+    workflows_dir = repolish_dir / '.github' / 'workflows'
+    workflows_dir.mkdir(parents=True)
+    
+    # Create conditional files in subdirectory
+    (workflows_dir / '_repolish.github-ci.yml').write_text('github actions content')
+    (workflows_dir / '_repolish.gitlab-ci.yml').write_text('gitlab ci content')
+    
+    # Create a regular file in the same directory
+    (workflows_dir / 'regular.yml').write_text('regular workflow')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # Map only one of the conditional files
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        file_mappings={
+            '.github/workflows/ci.yml': '.github/workflows/_repolish.github-ci.yml',
+        },
+        delete_history={},
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    # The mapped destination should exist
+    assert (base_dir / '.github' / 'workflows' / 'ci.yml').exists()
+    assert (base_dir / '.github' / 'workflows' / 'ci.yml').read_text() == 'github actions content'
+
+    # The regular file should be copied
+    assert (base_dir / '.github' / 'workflows' / 'regular.yml').exists()
+
+    # The _repolish. files themselves should NOT be copied
+    # (they are conditional and should only be copied via mappings)
+    assert not (base_dir / '.github' / 'workflows' / '_repolish.github-ci.yml').exists()
+    assert not (base_dir / '.github' / 'workflows' / '_repolish.gitlab-ci.yml').exists()
