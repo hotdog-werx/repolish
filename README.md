@@ -180,6 +180,7 @@ explicitly referenced in the `create_file_mappings()` function (or
 
 **Conditional files can be placed anywhere in your template directory
 structure** — at the root or nested in subdirectories. For example:
+
 - `_repolish.config.yml` (root level)
 - `.github/workflows/_repolish.ci.yml` (nested in subdirectories)
 - `configs/editors/_repolish.vscode-settings.json` (deeply nested)

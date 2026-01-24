@@ -441,7 +441,7 @@ def test_apply_skips_regular_file_when_used_as_mapping_source(tmp_path: Path):
 
 def test_nested_conditional_files_in_subdirectories(tmp_path: Path):
     """Test that _repolish.* files work when placed in subdirectories.
-    
+
     Bug: Currently only works at root level due to startswith() check.
     Files like .github/workflows/_repolish.ci.yml should be treated as conditional.
     """
@@ -452,11 +452,13 @@ def test_nested_conditional_files_in_subdirectories(tmp_path: Path):
     # Create a nested subdirectory with _repolish. files
     workflows_dir = repolish_dir / '.github' / 'workflows'
     workflows_dir.mkdir(parents=True)
-    
+
     # Create conditional files in subdirectory
-    (workflows_dir / '_repolish.github-ci.yml').write_text('github actions content')
+    (workflows_dir / '_repolish.github-ci.yml').write_text(
+        'github actions content',
+    )
     (workflows_dir / '_repolish.gitlab-ci.yml').write_text('gitlab ci content')
-    
+
     # Create a regular file in the same directory
     (workflows_dir / 'regular.yml').write_text('regular workflow')
 

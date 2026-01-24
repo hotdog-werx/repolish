@@ -20,19 +20,20 @@ logger = get_logger(__name__)
 
 def _is_conditional_file(path_str: str) -> bool:
     """Check if a file's name starts with the _repolish. prefix.
-    
+
     Conditional files are those with filenames starting with '_repolish.'
-    regardless of where they are in the directory structure (e.g., 
+    regardless of where they are in the directory structure (e.g.,
     '_repolish.config.yml' or '.github/workflows/_repolish.ci.yml').
-    
+
     Args:
         path_str: POSIX-style relative path
-        
+
     Returns:
         True if the filename starts with '_repolish.'
     """
     filename = PurePosixPath(path_str).name
     return filename.startswith('_repolish.')
+
 
 def build_final_providers(config: RepolishConfig) -> Providers:
     """Build the final Providers object by merging provider contributions.
@@ -454,7 +455,12 @@ def _apply_regular_files(
 
         # Skip files that are source files in file_mappings or existing create-only files
         if rel_str in skip_sources:
-            logger.info('skipping_file', file=rel_str, reason='in_skip_sources', _display_level=1)
+            logger.info(
+                'skipping_file',
+                file=rel_str,
+                reason='in_skip_sources',
+                _display_level=1,
+            )
             continue
 
         dest = base_dir / rel
