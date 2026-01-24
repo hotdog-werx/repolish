@@ -284,7 +284,7 @@ def _check_regular_files(
                 a_lines,
                 fromfile=str(dest),
                 tofile=str(out),
-                lineterm='',
+                lineterm='\n',
             ),
         )
         diffs.append((rel_str, ud))
@@ -327,7 +327,7 @@ def _check_single_file_mapping(
             a_lines,
             fromfile=str(dest_file),
             tofile=f'{source_path} -> {dest_path}',
-            lineterm='',
+            lineterm='\n',
         ),
     )
     return (dest_path, ud)
@@ -602,12 +602,12 @@ def rich_print_diffs(diffs: list[tuple[str, str]]) -> None:
     Args:
         diffs: List of tuples (relative_path, message_or_unified_diff)
     """
-    console = Console()
+    console = Console(force_terminal=True)  # Enable colors in CI
     for rel, msg in diffs:
         console.rule(f'[bold]{rel}')
         if msg in ('MISSING', 'PRESENT_BUT_SHOULD_BE_DELETED'):
-            console.print(msg)
+            console.print(msg, soft_wrap=True)
         else:
             # highlight as a diff
             syntax = Syntax(msg, 'diff', theme='ansi_dark', word_wrap=False)
-            console.print(syntax)
+            console.print(syntax, soft_wrap=True)
