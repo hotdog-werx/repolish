@@ -8,6 +8,19 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.3.3] <a name="0.3.3" href="#0.3.3">-</a> January 24, 2026
+
+### 🐛 Bug Fixes
+
+- Support conditional files (_repolish.*) in nested subdirectories (#10) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#10](https://github.com/hotdog-werx/repolish/pull/10)
+- Set colors in CI and do not crop content (#11) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#11](https://github.com/hotdog-werx/repolish/pull/11)
+
+[0.3.3]: https://github.com/hotdog-werx/repolish/compare/0.3.2...0.3.3
+
 ## [0.3.2] <a name="0.3.2" href="#0.3.2">-</a> January 18, 2026
 
 ### ⚙️ Miscellaneous Tasks
