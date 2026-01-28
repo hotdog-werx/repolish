@@ -8,7 +8,7 @@ from repolish.loader import (
     Providers,
     create_providers,
 )
-from repolish.loader.orchestrator import extract_create_only_files_from_module
+from repolish.loader.create_only import extract_create_only_files_from_module
 
 
 def test_extract_create_only_files_from_create_function():
