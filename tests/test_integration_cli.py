@@ -22,7 +22,7 @@ def make_template(
     base: Path,
     name: str,
     repo_name_var: str = 'repolish',
-) -> None:
+) -> Path:
     tpl_dir = base / name
     # cookiecutter root contains a directory with the repo name
     repo_dir = tpl_dir / repo_name_var
@@ -56,6 +56,7 @@ def make_template(
         """),
         encoding='utf-8',
     )
+    return tpl_dir
 
 
 def test_integration_cli(
@@ -128,3 +129,104 @@ def test_integration_cli(
     assert len(hist) >= 1
     last = hist[-1]
     assert last.action == Action.delete
+
+
+PRESERVES_CUSTOM_BLOCK_TPL = r"""
+name: ci-checks
+
+on: [push]
+
+jobs:
+    run-checks:
+    runs-on: ubuntu-latest
+
+## repolish-regex[additional-jobs]: ^## post-check-jobs([\s\S]*)$
+## post-check-jobs
+"""
+PRESERVES_CUSTOM_BLOCK_PROJECT = """
+name: ci-checks
+
+jobs:
+    run-checks:
+        runs-on: ubuntu-latest
+
+## post-check-jobs
+## Custom job 1
+    steps:
+        - run: echo "Job 1"
+"""
+
+
+def test_integration_regex_preserves_custom_block(
+    tmp_path: Path,
+    monkeypatch: 'pytest.MonkeyPatch',
+) -> None:
+    """Full integration test: regex processors should preserve custom blocks.
+
+    This creates a template containing a repolish-regex marker and a project
+    file that already contains custom jobs. Running the CLI should merge
+    the custom jobs into the generated template before applying.
+    """
+    # create a template dir
+    templates = tmp_path / 'templates'
+    tpl = make_template(templates, 'template_regex')
+
+    # create a conditional CI checks template file with the repolish-regex marker
+    tpl_repolish = tpl / 'repolish'
+    wf_dir = tpl_repolish / '.github' / 'workflows'
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    # conditional source file prefixed with _repolish.
+    ci_template = wf_dir / '_repolish.ci-checks.yaml'
+    ci_template.write_text(PRESERVES_CUSTOM_BLOCK_TPL, encoding='utf-8')
+
+    # ensure the provider declares the file mapping so the conditional file
+    # is copied to .github/workflows/ci-checks.yaml when applied
+    (tpl / 'repolish.py').write_text(
+        textwrap.dedent("""\
+        def create_context():
+            return {'repo_name': 'repolish'}
+
+        def create_file_mappings():
+            return {
+                '.github/workflows/ci-checks.yaml': '.github/workflows/_repolish.ci-checks.yaml'
+            }
+        """),
+        encoding='utf-8',
+    )
+
+    # create project file with custom jobs that should be preserved
+    # The CLI uses the config file's parent as the base_dir, so create
+    # the project file directly under tmp_path (the config parent).
+    project = tmp_path
+    write_file(
+        project / '.github' / 'workflows' / 'ci-checks.yaml',
+        PRESERVES_CUSTOM_BLOCK_PROJECT,
+    )
+
+    # write config pointing to the template
+    cfg = project / 'repolish.yaml'
+    cfg.write_text(
+        json.dumps(
+            {
+                'directories': [str((tpl).as_posix())],
+                'context': {},
+                'anchors': {},
+                'delete_files': [],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    # run the CLI to apply changes (not check mode)
+    monkeypatch.chdir(project)
+    rv = run(['--config', str(cfg)])
+    assert rv == 0
+
+    # verify the project file now contains the custom job preserved
+    dest_file = project / '.github' / 'workflows' / 'ci-checks.yaml'
+    result = dest_file.read_text()
+    assert '## Custom job 1' in result
+
+    # The conditional source file itself should NOT have been copied
+    src_copy = project / '.github' / 'workflows' / '_repolish.ci-checks.yaml'
+    assert not src_copy.exists()
