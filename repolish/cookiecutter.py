@@ -123,6 +123,9 @@ def preprocess_templates(
     """
     anchors_mapping = {**providers.anchors, **config.anchors}
 
+    # Build reverse mapping for conditional files
+    source_to_dest = {v: k for k, v in providers.file_mappings.items()}
+
     for tpl in setup_input.rglob('*'):
         if not tpl.is_file():
             continue
@@ -139,7 +142,9 @@ def preprocess_templates(
         rel = tpl.relative_to(
             setup_input / '{{cookiecutter._repolish_project}}',
         )
-        local_path = base_dir / rel
+        rel_str = rel.as_posix()
+        # For conditional files, use the mapped destination as local path
+        local_path = base_dir / source_to_dest[rel_str] if rel_str in source_to_dest else base_dir / rel
         local_text = safe_file_read(local_path)
         # Let replace_text raise if something unexpected happens; caller will log
         new_text = replace_text(
