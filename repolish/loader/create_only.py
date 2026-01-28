@@ -1,19 +1,25 @@
 from pathlib import Path, PurePosixPath
 
-from .context import _call_factory_with_context, _extract_from_module_dict
+from .context import call_factory_with_context, extract_from_module_dict
 from .deletes import _normalize_delete_iterable
 from .module import get_module
 
 
-def _process_create_only_files(
+def process_create_only_files(
     module_dict: dict[str, object],
     merged_context: dict[str, object],
     create_only_set: set[Path],
 ) -> None:
+    """Process provider `create_only` contributions and add to set.
+
+    Accepts either a callable `create_create_only_files()` or a module-level
+    `create_only_files` iterable. Normalizes string paths to `Path` and adds
+    them to `create_only_set` without overwriting existing files.
+    """
     co_fact = module_dict.get('create_create_only_files')
     val: object | None
     if callable(co_fact):
-        val = _call_factory_with_context(co_fact, merged_context)
+        val = call_factory_with_context(co_fact, merged_context)
     else:
         val = module_dict.get('create_only_files')
 
@@ -44,7 +50,7 @@ def extract_create_only_files_from_module(
     module_dict = module if isinstance(module, dict) else get_module(str(module))
 
     # Try callable first
-    result = _extract_from_module_dict(
+    result = extract_from_module_dict(
         module_dict,
         'create_create_only_files',
         expected_type=(list, tuple, set),
@@ -53,7 +59,7 @@ def extract_create_only_files_from_module(
         return _normalize_delete_iterable(result)
 
     # Fall back to module-level variable
-    raw_res = _extract_from_module_dict(
+    raw_res = extract_from_module_dict(
         module_dict,
         'create_only_files',
         expected_type=(list, tuple, set),

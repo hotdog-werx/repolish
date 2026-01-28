@@ -275,7 +275,7 @@ def test_normalize_delete_items_skips_non_strings():
     items = [123, 'a/b.txt', None, 'c.txt']
     # In fail-fast mode non-string entries raise
     with pytest.raises(TypeError):
-        loader_mod._normalize_delete_items(items)
+        loader_mod.normalize_delete_items(items)
 
 
 def test_normalize_delete_item_as_posix_raises(mocker: MockerFixture):
@@ -286,7 +286,7 @@ def test_normalize_delete_item_as_posix_raises(mocker: MockerFixture):
     # are read-only on Path subclasses, so patching the class is required.
     mocker.patch.object(type(p), 'as_posix', side_effect=RuntimeError('boom'))
     with pytest.raises(RuntimeError):
-        loader_mod._normalize_delete_item(p)
+        loader_mod.normalize_delete_item(p)
 
 
 def test_validate_provider_warns_on_typo_create_create(

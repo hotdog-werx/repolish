@@ -1,21 +1,27 @@
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 
-from .context import _call_factory_with_context, _extract_from_module_dict
+from .context import call_factory_with_context, extract_from_module_dict
 from .module import get_module
 from .types import Action, Decision
 
 
-def _process_delete_files(
+def process_delete_files(
     module_dict: dict[str, object],
     merged_context: dict[str, object],
     delete_set: set[Path],
 ) -> list[Path]:
+    """Process a provider's delete-file contributions.
+
+    Supports a callable `create_delete_files()` returning a list/tuple or a
+    module-level `delete_files`. Returns a list of normalized `Path` objects
+    that can be used as fallbacks for raw module-level delete entries.
+    """
     df_fact = module_dict.get('create_delete_files')
     df: list | tuple | None = None
     fallback_paths: list[Path] = []
     if callable(df_fact):
-        val = _call_factory_with_context(df_fact, merged_context)
+        val = call_factory_with_context(df_fact, merged_context)
         if val is None:
             df = []
         elif not isinstance(val, (list, tuple)):
@@ -37,7 +43,7 @@ def _process_delete_files(
     return fallback_paths
 
 
-def _normalize_delete_items(items: Iterable[str]) -> list[Path]:
+def normalize_delete_items(items: Iterable[str]) -> list[Path]:
     """Normalize delete file entries (POSIX strings) to platform-native Paths.
 
     The helper `extract_delete_items_from_module` already normalizes provider
@@ -56,7 +62,12 @@ def _normalize_delete_items(items: Iterable[str]) -> list[Path]:
     return paths
 
 
-def _normalize_delete_item(item: object) -> str | None:
+def normalize_delete_item(item: object) -> str | None:
+    """Normalize a single delete entry to a POSIX string.
+
+    Accepts `Path` and `str`. Raises `TypeError` for other types (fail-fast).
+    Returns the POSIX string or `None` when the input is falsy.
+    """
     # Accept real Path objects
     if isinstance(item, Path):
         return item.as_posix()
@@ -77,7 +88,7 @@ def _normalize_delete_iterable(items: Iterable[object]) -> list[str]:
         return out
     # Iteration errors should propagate (fail-fast)
     for it in items:
-        n = _normalize_delete_item(it)
+        n = normalize_delete_item(it)
         if n:
             out.append(n)
     return out
@@ -94,7 +105,7 @@ def extract_delete_items_from_module(
     """
     module_dict = module if isinstance(module, dict) else get_module(str(module))
 
-    df = _extract_from_module_dict(
+    df = extract_from_module_dict(
         module_dict,
         'create_delete_files',
         expected_type=(list, tuple),
@@ -105,7 +116,7 @@ def extract_delete_items_from_module(
         # Normalization raises on bad entries in fail-fast mode
         return _normalize_delete_iterable(df)
 
-    raw_res = _extract_from_module_dict(
+    raw_res = extract_from_module_dict(
         module_dict,
         'delete_files',
         expected_type=(list, tuple),
@@ -133,7 +144,7 @@ def _apply_raw_delete_items(
     # normalized fallback produced from create_delete_files().
     # Collect normalized delete-strings from raw_items (fail-fast if a
     # normalizer raises). Use a comprehension to reduce branching.
-    items = [n for it in raw_items for n in (_normalize_delete_item(it),) if n] if raw_items else []
+    items = [n for it in raw_items for n in (normalize_delete_item(it),) if n] if raw_items else []
 
     # If provider didn't supply module-level raw items, fall back to the
     # normalized list produced from create_delete_files().

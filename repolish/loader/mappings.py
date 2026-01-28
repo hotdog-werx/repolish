@@ -1,15 +1,20 @@
-from .context import _call_factory_with_context
+from .context import call_factory_with_context
 
 
-def _process_file_mappings(
+def process_file_mappings(
     module_dict: dict[str, object],
     merged_context: dict[str, object],
     merged_file_mappings: dict[str, str],
 ) -> None:
+    """Process a provider's file mapping contributions and merge.
+
+    Accepts either a callable `create_file_mappings()` or a module-level
+    `file_mappings` dict. Filters out entries with `None` values.
+    """
     fm_fact = module_dict.get('create_file_mappings')
     fm: dict[str, str] | None = None
     if callable(fm_fact):
-        val = _call_factory_with_context(fm_fact, merged_context)
+        val = call_factory_with_context(fm_fact, merged_context)
         if isinstance(val, dict):
             fm = val
     else:

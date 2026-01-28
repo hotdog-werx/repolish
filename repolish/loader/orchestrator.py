@@ -1,14 +1,14 @@
 from pathlib import Path
 from typing import Any
 
-from .anchors import _process_anchors
-from .context import _collect_contexts, _extract_from_module_dict
-from .create_only import _process_create_only_files
+from .anchors import process_anchors
+from .context import collect_contexts, extract_from_module_dict
+from .create_only import process_create_only_files
 from .deletes import (
     _apply_raw_delete_items,
-    _process_delete_files,
+    process_delete_files,
 )
-from .mappings import _process_file_mappings
+from .mappings import process_file_mappings
 from .module import get_module
 from .types import Accumulators, Decision, Providers
 from .validation import _validate_provider_module
@@ -39,18 +39,18 @@ def _process_phase_two(
     This mutates the provided accumulators in-place.
     """
     for provider_id, module_dict in module_cache:
-        _process_anchors(module_dict, merged_context, accum.merged_anchors)
-        _process_file_mappings(
+        process_anchors(module_dict, merged_context, accum.merged_anchors)
+        process_file_mappings(
             module_dict,
             merged_context,
             accum.merged_file_mappings,
         )
-        fallback_paths = _process_delete_files(
+        fallback_paths = process_delete_files(
             module_dict,
             merged_context,
             accum.delete_set,
         )
-        _process_create_only_files(
+        process_create_only_files(
             module_dict,
             merged_context,
             accum.create_only_set,
@@ -82,7 +82,7 @@ def extract_file_mappings_from_module(
     """
     module_dict = module if isinstance(module, dict) else get_module(str(module))
 
-    fm = _extract_from_module_dict(
+    fm = extract_from_module_dict(
         module_dict,
         'create_file_mappings',
         expected_type=dict,
@@ -91,7 +91,7 @@ def extract_file_mappings_from_module(
         # Filter out None values (means skip this destination)
         return {k: v for k, v in fm.items() if v is not None}
 
-    raw_res = _extract_from_module_dict(
+    raw_res = extract_from_module_dict(
         module_dict,
         'file_mappings',
         expected_type=dict,
@@ -129,7 +129,7 @@ def create_providers(directories: list[str]) -> Providers:
     history: dict[str, list[Decision]] = {}
 
     module_cache = _load_module_cache(directories)
-    merged_context = _collect_contexts(module_cache)
+    merged_context = collect_contexts(module_cache)
     accum = Accumulators(
         merged_anchors=merged_anchors,
         merged_file_mappings=merged_file_mappings,

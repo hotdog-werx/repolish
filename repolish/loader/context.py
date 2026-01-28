@@ -6,7 +6,7 @@ from ._log import logger
 from .module import get_module
 
 
-def _call_factory_with_context(
+def call_factory_with_context(
     factory: Callable[..., object],
     context: dict[str, object],
 ) -> object:
@@ -26,7 +26,7 @@ def _call_factory_with_context(
     raise TypeError(msg)
 
 
-def _extract_from_module_dict(
+def extract_from_module_dict(
     module_dict: dict[str, object],
     name: str,
     *,
@@ -70,7 +70,7 @@ def extract_context_from_module(
     dict or None if not present/invalid.
     """
     module_dict = module if isinstance(module, dict) else get_module(str(module))
-    ctx = _extract_from_module_dict(
+    ctx = extract_from_module_dict(
         module_dict,
         'create_context',
         expected_type=dict,
@@ -78,7 +78,7 @@ def extract_context_from_module(
     if isinstance(ctx, dict):
         return ctx
     # Also accept a module-level `context` variable for compatibility
-    ctx2 = _extract_from_module_dict(
+    ctx2 = extract_from_module_dict(
         module_dict,
         'context',
         expected_type=dict,
@@ -101,7 +101,7 @@ def _collect_context_from_module(
     """Helper: collect and merge context from a single module dict into merged."""
     create_ctx = module_dict.get('create_context')
     if callable(create_ctx):
-        val = _call_factory_with_context(create_ctx, merged)
+        val = call_factory_with_context(create_ctx, merged)
         if val is not None and not isinstance(val, dict):
             msg = 'create_context() must return a dict'
             raise TypeError(msg)
@@ -114,7 +114,7 @@ def _collect_context_from_module(
         merged.update(ctx_var)
 
 
-def _collect_contexts(module_cache: list[tuple[str, dict]]) -> dict[str, Any]:
+def collect_contexts(module_cache: list[tuple[str, dict]]) -> dict[str, Any]:
     """Phase 1: collect and merge contexts from providers.
 
     Returns the merged context dict.
