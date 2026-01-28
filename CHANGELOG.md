@@ -10,10 +10,6 @@ View [unreleased changes][unreleased] since the last release.
 
 ## [0.3.4] <a name="0.3.4" href="#0.3.4">-</a> January 28, 2026
 
-[0.3.4]: https://github.com/hotdog-werx/repolish/compare/0.3.4...0.3.4
-
-## [0.3.4] <a name="0.3.4" href="#0.3.4">-</a> January 28, 2026
-
 ### 🐛 Bug Fixes
 
 - Ensure regex processors use mapped destination for `_repolish.*` templates
@@ -109,4 +105,4 @@ View [unreleased changes][unreleased] since the last release.
 - Rearrange example by [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [0.1.0]: https://github.com/hotdog-werx/repolish/tree/0.1.0
-[unreleased]: https://github.com/hotdog-werx/repolish/compare/0.3.3...HEAD
+[unreleased]: https://github.com/hotdog-werx/repolish/compare/0.3.4...HEAD
