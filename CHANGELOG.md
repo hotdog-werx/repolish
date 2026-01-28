@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.3.4] <a name="0.3.4" href="#0.3.4">-</a> January 28, 2026
+
+### 🐛 Bug Fixes
+
+- Ensure regex processors use mapped destination for `_repolish.*` templates
+  (#13) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#13](https://github.com/hotdog-werx/repolish/pull/13)
+
+[0.3.4]: https://github.com/hotdog-werx/repolish/compare/0.3.3...0.3.4
+
 ## [0.3.3] <a name="0.3.3" href="#0.3.3">-</a> January 25, 2026
 
 ### 🐛 Bug Fixes
