@@ -103,7 +103,10 @@ def extract_file_mappings_from_module(
     return {}
 
 
-def create_providers(directories: list[str]) -> Providers:
+def create_providers(
+    directories: list[str],
+    base_context: dict[str, object] | None = None,
+) -> Providers:
     """Load all template providers and merge their contributions.
 
     Merging semantics:
@@ -119,7 +122,12 @@ def create_providers(directories: list[str]) -> Providers:
     # Two-phase load: first collect contexts (allowing providers to see
     # a base context if provided), then call other factories with the
     # fully merged context so factories can make decisions based on it.
-    merged_context: dict[str, object] = {}
+    # Seed merged context with project-level config when provided so
+    # provider factories see project values during their `create_context()`
+    # calls. Providers may modify the merged context during collection, but
+    # we re-apply `base_context` afterwards so project config wins as the
+    # final override.
+    merged_context: dict[str, object] = dict(base_context or {})
     merged_anchors: dict[str, str] = {}
     merged_file_mappings: dict[str, str] = {}
     create_only_set: set[Path] = set()
@@ -129,7 +137,11 @@ def create_providers(directories: list[str]) -> Providers:
     history: dict[str, list[Decision]] = {}
 
     module_cache = _load_module_cache(directories)
-    merged_context = collect_contexts(module_cache)
+    # Collect provider contexts, allowing providers to see `merged_context`
+    merged_context = collect_contexts(module_cache, initial=merged_context)
+    # Ensure project config takes final precedence
+    if base_context:
+        merged_context.update(base_context)
     accum = Accumulators(
         merged_anchors=merged_anchors,
         merged_file_mappings=merged_file_mappings,

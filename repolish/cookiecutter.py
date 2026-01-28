@@ -43,7 +43,10 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     - Applies config.delete_files entries (with '!' negation) on top of
       provider decisions and records provenance Decisions for config entries
     """
-    providers = create_providers(config.directories)
+    providers = create_providers(
+        config.directories,
+        base_context=config.context,
+    )
 
     # Merge contexts: config wins
     merged_context = {**providers.context, **config.context}

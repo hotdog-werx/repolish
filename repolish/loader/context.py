@@ -114,12 +114,18 @@ def _collect_context_from_module(
         merged.update(ctx_var)
 
 
-def collect_contexts(module_cache: list[tuple[str, dict]]) -> dict[str, Any]:
+def collect_contexts(
+    module_cache: list[tuple[str, dict]],
+    initial: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Phase 1: collect and merge contexts from providers.
 
-    Returns the merged context dict.
+    If `initial` is provided it will be used as the starting merged context
+    so providers see those values when their `create_context()` factories
+    are invoked. The function returns the merged dict (providers may add or
+    override keys).
     """
-    merged: dict[str, Any] = {}
+    merged: dict[str, Any] = dict(initial or {})
     for _provider_id, module_dict in module_cache:
         _collect_context_from_module(module_dict, merged)
     return merged
