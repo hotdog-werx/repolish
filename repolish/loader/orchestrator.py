@@ -1,49 +1,14 @@
-from collections.abc import Iterable
-from enum import Enum
+import inspect
+from collections.abc import Callable, Iterable
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from hotlog import get_logger
-from pydantic import BaseModel, Field
+
+from .types import Accumulators, Action, Decision, Providers
 
 logger = get_logger(__name__)
-
-
-class Action(str, Enum):
-    """Enumeration of possible actions for a path."""
-
-    delete = 'delete'
-    keep = 'keep'
-
-
-class Decision(BaseModel):
-    """Typed provenance decision recorded for each path.
-
-    - source: provider identifier (POSIX string)
-    - action: Action enum
-    """
-
-    source: str
-    action: Action
-
-
-class Providers(BaseModel):
-    """Structured provider contributions collected from template modules.
-
-    - context: merged cookiecutter context
-    - anchors: merged anchors mapping
-    - delete_files: list of Paths representing files to delete
-    - file_mappings: dict mapping destination paths to source paths in template
-    - create_only_files: list of Paths for files that should only be created if they don't exist
-    """
-
-    context: dict[str, object] = Field(default_factory=dict)
-    anchors: dict[str, str] = Field(default_factory=dict)
-    delete_files: list[Path] = Field(default_factory=list)
-    file_mappings: dict[str, str] = Field(default_factory=dict)
-    create_only_files: list[Path] = Field(default_factory=list)
-    # provenance mapping: posix path -> list of Decision instances
-    delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
 
 
 def get_module(module_path: str) -> dict[str, object]:
@@ -56,6 +21,206 @@ def get_module(module_path: str) -> dict[str, object]:
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.__dict__
+
+
+def _call_factory_with_context(
+    factory: Callable[..., object],
+    context: dict[str, object],
+) -> object:
+    """Call a provider factory allowing 0 or 1 positional argument.
+
+    Backwards-compatible: if the factory accepts no parameters it will be
+    invoked without arguments. If it accepts one parameter the merged
+    context dict is passed. Any other signature is rejected.
+    """
+    sig = inspect.signature(factory)
+    params = len(sig.parameters)
+    if params == 0:
+        return factory()
+    if params == 1:
+        return factory(context)
+    msg = f'Provider factory must accept 0 or 1 args, got {params}'
+    raise TypeError(msg)
+
+
+def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
+    """Load provider modules and validate them.
+
+    Returns a list of (provider_id, module_dict) tuples.
+    """
+    cache: list[tuple[str, dict]] = []
+    for directory in directories:
+        module_path = Path(directory) / 'repolish.py'
+        module_dict = get_module(str(module_path))
+        provider_id = Path(directory).as_posix()
+        _validate_provider_module(module_dict)
+        cache.append((provider_id, module_dict))
+    return cache
+
+
+def _collect_context_from_module(
+    module_dict: dict[str, object],
+    merged: dict[str, Any],
+) -> None:
+    """Helper: collect and merge context from a single module dict into merged."""
+    create_ctx = module_dict.get('create_context')
+    if callable(create_ctx):
+        val = _call_factory_with_context(create_ctx, merged)
+        if val is not None and not isinstance(val, dict):
+            msg = 'create_context() must return a dict'
+            raise TypeError(msg)
+        if isinstance(val, dict):
+            merged.update(val)
+        return
+
+    ctx_var = module_dict.get('context')
+    if isinstance(ctx_var, dict):
+        merged.update(ctx_var)
+
+
+def _collect_contexts(module_cache: list[tuple[str, dict]]) -> dict[str, Any]:
+    """Phase 1: collect and merge contexts from providers.
+
+    Returns the merged context dict.
+    """
+    merged: dict[str, Any] = {}
+    for _provider_id, module_dict in module_cache:
+        _collect_context_from_module(module_dict, merged)
+    return merged
+
+
+def _process_phase_two(
+    module_cache: list[tuple[str, dict]],
+    merged_context: dict[str, Any],
+    accum: Accumulators,
+) -> None:
+    """Phase 2: process anchors, file mappings, delete/create-only files.
+
+    This mutates the provided accumulators in-place.
+    """
+    for provider_id, module_dict in module_cache:
+        _process_anchors(module_dict, merged_context, accum.merged_anchors)
+        _process_file_mappings(
+            module_dict,
+            merged_context,
+            accum.merged_file_mappings,
+        )
+        fallback_paths = _process_delete_files(
+            module_dict,
+            merged_context,
+            accum.delete_set,
+        )
+        _process_create_only_files(
+            module_dict,
+            merged_context,
+            accum.create_only_set,
+        )
+
+        # Raw delete history application (module-level raw delete_files)
+        raw_items = module_dict.get('delete_files') or []
+        raw_items_seq = raw_items if isinstance(raw_items, (list, tuple)) else [raw_items]
+        _apply_raw_delete_items(
+            accum.delete_set,
+            raw_items_seq,
+            fallback_paths,
+            provider_id,
+            accum.history,
+        )
+
+
+def _process_anchors(
+    module_dict: dict[str, object],
+    merged_context: dict[str, object],
+    merged_anchors: dict[str, str],
+) -> None:
+    anchors_fact = module_dict.get('create_anchors') or module_dict.get(
+        'anchors',
+    )
+    if callable(anchors_fact):
+        val = _call_factory_with_context(anchors_fact, merged_context)
+        if val is None:
+            return
+        if not isinstance(val, dict):
+            msg = 'create_anchors() must return a dict'
+            raise TypeError(msg)
+        merged_anchors.update(val)
+    elif isinstance(anchors_fact, dict):
+        merged_anchors.update(anchors_fact)
+
+
+def _process_file_mappings(
+    module_dict: dict[str, object],
+    merged_context: dict[str, object],
+    merged_file_mappings: dict[str, str],
+) -> None:
+    fm_fact = module_dict.get('create_file_mappings')
+    fm: dict[str, str] | None = None
+    if callable(fm_fact):
+        val = _call_factory_with_context(fm_fact, merged_context)
+        if isinstance(val, dict):
+            fm = val
+    else:
+        fm_var = module_dict.get('file_mappings')
+        if isinstance(fm_var, dict):
+            fm = fm_var
+    if isinstance(fm, dict):
+        merged_file_mappings.update(
+            {k: v for k, v in fm.items() if v is not None},
+        )
+
+
+def _process_delete_files(
+    module_dict: dict[str, object],
+    merged_context: dict[str, object],
+    delete_set: set[Path],
+) -> list[Path]:
+    df_fact = module_dict.get('create_delete_files')
+    df: list | tuple | None = None
+    fallback_paths: list[Path] = []
+    if callable(df_fact):
+        val = _call_factory_with_context(df_fact, merged_context)
+        if val is None:
+            df = []
+        elif not isinstance(val, (list, tuple)):
+            msg = 'create_delete_files() must return a list or tuple'
+            raise TypeError(msg)
+        else:
+            df = val
+    else:
+        df_var = module_dict.get('delete_files')
+        if isinstance(df_var, (list, tuple)):
+            df = df_var
+
+    if callable(df_fact) and isinstance(df, (list, tuple)):
+        norm = _normalize_delete_iterable(df)
+        for it in norm:
+            p = Path(*PurePosixPath(it).parts)
+            delete_set.add(p)
+            fallback_paths.append(p)
+    return fallback_paths
+
+
+def _process_create_only_files(
+    module_dict: dict[str, object],
+    merged_context: dict[str, object],
+    create_only_set: set[Path],
+) -> None:
+    co_fact = module_dict.get('create_create_only_files')
+    val: object | None
+    if callable(co_fact):
+        val = _call_factory_with_context(co_fact, merged_context)
+    else:
+        val = module_dict.get('create_only_files')
+
+    if not isinstance(val, (list, tuple, set)):
+        return
+
+    for it in val:
+        if isinstance(it, str):
+            p = Path(*PurePosixPath(it).parts)
+            create_only_set.add(p)
+        elif isinstance(it, Path):
+            create_only_set.add(it)
 
 
 def _normalize_delete_items(items: Iterable[str]) -> list[Path]:
@@ -420,52 +585,6 @@ def _apply_raw_delete_items(
         (delete_set.discard if neg else delete_set.add)(p)
 
 
-def _process_provider_dict(  # noqa: PLR0913 - helper function with many args
-    module_dict: dict[str, object],
-    merged_context: dict[str, object],
-    merged_anchors: dict[str, str],
-    merged_file_mappings: dict[str, str],
-    create_only_set: set[Path],
-    delete_set: set[Path],
-    provider_id: str,
-    history: dict[str, list[Decision]],
-) -> None:
-    """Merge a loaded provider module's contributions into the accumulators.
-
-    This helper operates on a preloaded module dict so callers can handle
-    loading and error handling separately.
-    """
-    ctx = extract_context_from_module(module_dict) or {}
-    anchors = extract_anchors_from_module(module_dict) or {}
-    file_mappings = extract_file_mappings_from_module(module_dict) or {}
-    raw_delete_items = extract_delete_items_from_module(module_dict)
-    delete_files = _normalize_delete_items(raw_delete_items)
-    raw_create_only_items = extract_create_only_files_from_module(module_dict)
-    create_only_files = _normalize_delete_items(raw_create_only_items)
-
-    if ctx:
-        merged_context.update(ctx)
-    if anchors:
-        merged_anchors.update(anchors)
-    if file_mappings:
-        merged_file_mappings.update(file_mappings)
-
-    # Add create_only_files to the set (later providers can add more)
-    for path in create_only_files:
-        create_only_set.add(path)
-
-    raw_items = module_dict.get('delete_files') or []
-    # Ensure raw_items is a concrete iterable (list/tuple) for type checking
-    raw_items_seq = raw_items if isinstance(raw_items, (list, tuple)) else [raw_items]
-    _apply_raw_delete_items(
-        delete_set,
-        raw_items_seq,
-        delete_files,
-        provider_id,
-        history,
-    )
-
-
 def create_providers(directories: list[str]) -> Providers:
     """Load all template providers and merge their contributions.
 
@@ -479,6 +598,9 @@ def create_providers(directories: list[str]) -> Providers:
       undo for that path (i.e., prevent deletion). The loader will apply
       additions/removals in provider order.
     """
+    # Two-phase load: first collect contexts (allowing providers to see
+    # a base context if provided), then call other factories with the
+    # fully merged context so factories can make decisions based on it.
     merged_context: dict[str, object] = {}
     merged_anchors: dict[str, str] = {}
     merged_file_mappings: dict[str, str] = {}
@@ -487,29 +609,23 @@ def create_providers(directories: list[str]) -> Providers:
 
     # provenance history: posix path -> list of Decision instances
     history: dict[str, list[Decision]] = {}
-    for directory in directories:
-        module_path = Path(directory) / 'repolish.py'
-        module_dict = get_module(str(module_path))
-        provider_id = Path(directory).as_posix()
 
-        # Validate provider module for common typos
-        _validate_provider_module(module_dict)
+    module_cache = _load_module_cache(directories)
+    merged_context = _collect_contexts(module_cache)
+    accum = Accumulators(
+        merged_anchors=merged_anchors,
+        merged_file_mappings=merged_file_mappings,
+        create_only_set=create_only_set,
+        delete_set=delete_set,
+        history=history,
+    )
+    _process_phase_two(module_cache, merged_context, accum)
 
-        _process_provider_dict(
-            module_dict,
-            merged_context,
-            merged_anchors,
-            merged_file_mappings,
-            create_only_set,
-            delete_set,
-            provider_id,
-            history,
-        )
     return Providers(
         context=merged_context,
-        anchors=merged_anchors,
-        delete_files=list(delete_set),
-        file_mappings=merged_file_mappings,
-        create_only_files=list(create_only_set),
-        delete_history=history,
+        anchors=accum.merged_anchors,
+        delete_files=list(accum.delete_set),
+        file_mappings=accum.merged_file_mappings,
+        create_only_files=list(accum.create_only_set),
+        delete_history=accum.history,
     )
