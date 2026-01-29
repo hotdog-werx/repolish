@@ -110,8 +110,10 @@ def test_apply_context_overrides(mocker: MockerFixture):
     assert context['simple'] == 'new-value'
     assert context['nested']['deep']['value'] == 'updated'
     assert context['direct_list'][1] == 'replaced'  # Direct list replacement works
-    # Check warnings were logged: nonexistent, out-of-range, invalid-index, cannot-navigate
-    assert mock_logger.warning.call_count == 4
+    assert context['nonexistent']['key'] == 'ignored'  # Intermediate structure created
+    # Check warnings were logged: out-of-range, invalid-index, cannot-navigate
+    # Note: nonexistent.key now creates intermediate structure instead of warning
+    assert mock_logger.warning.call_count == 3
 
 
 def test_apply_context_overrides_nested_dict():
@@ -163,3 +165,24 @@ def test_apply_override_edge_cases(mocker: MockerFixture):
     # Should not modify context and not log warnings
     assert context == {'test': 'value'}
     assert mock_logger.warning.call_count == 0
+
+
+def test_apply_context_overrides_dotted_keys_in_nested_dict():
+    """Test that dotted keys in nested dictionaries are properly flattened.
+
+    Regression test for issue where 'base.codeguides': {'base.ref': 'value'}
+    was not correctly flattened to 'base.codeguides.base.ref': 'value',
+    resulting in 'base.ref' being treated as a literal key instead of a path.
+    """
+    context = {}  # Start with empty context - overrides create intermediate structures
+
+    overrides = {
+        'base.codeguides': {
+            'base.ref': 'some-ref',
+        },
+    }
+
+    apply_context_overrides(context, overrides)
+
+    # Should create nested structure: base.codeguides.base.ref = 'some-ref'
+    assert context['base']['codeguides']['base']['ref'] == 'some-ref'

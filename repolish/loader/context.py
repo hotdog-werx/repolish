@@ -152,11 +152,8 @@ def _flatten_override_dict(overrides: dict[str, Any]) -> dict[str, Any]:
     flattened = {}
 
     for key, value in overrides.items():
-        if '.' in key:
-            # Key already contains dots, treat as path
-            flattened[key] = value
-        elif isinstance(value, dict):
-            # Nested dict that needs flattening
+        if isinstance(value, dict):
+            # Nested dict that needs flattening - use the key as prefix
             _flatten_nested_dict(value, key, flattened)
         else:
             # Simple key-value pair
@@ -168,7 +165,7 @@ def _flatten_override_dict(overrides: dict[str, Any]) -> dict[str, Any]:
 def _flatten_nested_dict(nested: dict[str, Any], prefix: str, flattened: dict[str, Any]) -> None:
     """Flatten a nested dictionary into the flattened dict."""
     for key, value in nested.items():
-        full_key = f'{prefix}.{key}'
+        full_key = f'{prefix}.{key}' if prefix else key
         if isinstance(value, dict):
             _flatten_nested_dict(value, full_key, flattened)
         else:
@@ -210,12 +207,8 @@ def _apply_override_to_dict(
         obj[key] = value
         return
     if key not in obj:
-        logger.warning(
-            'context_override_path_not_found',
-            path=key,
-            remaining=remaining,
-        )
-        return
+        # Create intermediate dictionary for nested path navigation
+        obj[key] = {}
     _apply_override(obj[key], remaining, value)
 
 
