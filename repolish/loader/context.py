@@ -162,7 +162,11 @@ def _flatten_override_dict(overrides: dict[str, Any]) -> dict[str, Any]:
     return flattened
 
 
-def _flatten_nested_dict(nested: dict[str, Any], prefix: str, flattened: dict[str, Any]) -> None:
+def _flatten_nested_dict(
+    nested: dict[str, Any],
+    prefix: str,
+    flattened: dict[str, Any],
+) -> None:
     """Flatten a nested dictionary into the flattened dict."""
     for key, value in nested.items():
         full_key = f'{prefix}.{key}' if prefix else key
