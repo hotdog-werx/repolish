@@ -6,7 +6,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
-from repolish.loader import Providers, _is_suspicious_variable, create_providers
+from repolish.loader import Providers, create_providers
+from repolish.loader.validation import _is_suspicious_variable
 
 
 @dataclass
@@ -274,7 +275,7 @@ def test_normalize_delete_items_skips_non_strings():
     items = [123, 'a/b.txt', None, 'c.txt']
     # In fail-fast mode non-string entries raise
     with pytest.raises(TypeError):
-        loader_mod._normalize_delete_items(items)
+        loader_mod.normalize_delete_items(items)
 
 
 def test_normalize_delete_item_as_posix_raises(mocker: MockerFixture):
@@ -285,7 +286,7 @@ def test_normalize_delete_item_as_posix_raises(mocker: MockerFixture):
     # are read-only on Path subclasses, so patching the class is required.
     mocker.patch.object(type(p), 'as_posix', side_effect=RuntimeError('boom'))
     with pytest.raises(RuntimeError):
-        loader_mod._normalize_delete_item(p)
+        loader_mod.normalize_delete_item(p)
 
 
 def test_validate_provider_warns_on_typo_create_create(
@@ -297,7 +298,7 @@ def test_validate_provider_warns_on_typo_create_create(
     provider_dir.mkdir()
 
     # Mock the logger to capture warnings
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     # Simulate the user's typo: create_create (double create) instead of create_create_only_files
     (provider_dir / 'repolish.py').write_text(
@@ -332,7 +333,7 @@ def test_validate_provider_warns_on_unknown_create_function(
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
 
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     (provider_dir / 'repolish.py').write_text(
         dedent(
@@ -359,7 +360,7 @@ def test_validate_provider_warns_on_suspicious_variables(
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
 
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     (provider_dir / 'repolish.py').write_text(
         dedent(
@@ -387,7 +388,7 @@ def test_validate_provider_no_warnings_for_valid_functions(
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
 
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     (provider_dir / 'repolish.py').write_text(
         dedent(
@@ -433,7 +434,7 @@ def test_validate_provider_warns_on_suspicious_files_variable(
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
 
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     (provider_dir / 'repolish.py').write_text(
         dedent(
@@ -460,7 +461,7 @@ def test_validate_provider_warns_on_suspicious_mappings_variable(
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
 
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     (provider_dir / 'repolish.py').write_text(
         dedent(
@@ -536,7 +537,7 @@ def test_validate_provider_warns_on_create_only_typo(
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
 
-    mock_logger = mocker.patch('repolish.loader.logger')
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
 
     (provider_dir / 'repolish.py').write_text(
         dedent(

@@ -7,8 +7,8 @@ from repolish.cookiecutter import apply_generated_output, check_generated_output
 from repolish.loader import (
     Providers,
     create_providers,
-    extract_file_mappings_from_module,
 )
+from repolish.loader.orchestrator import extract_file_mappings_from_module
 
 if TYPE_CHECKING:
     import pytest

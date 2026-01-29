@@ -92,6 +92,7 @@ def test_integration_cli(
             {
                 'directories': [str((t1).as_posix()), str((t2).as_posix())],
                 'context': {},
+                'context_overrides': {'repo_name': 'overridden_repo_name'},
                 'anchors': {},
                 'delete_files': [],
             },
@@ -230,3 +231,63 @@ def test_integration_regex_preserves_custom_block(
     # The conditional source file itself should NOT have been copied
     src_copy = project / '.github' / 'workflows' / '_repolish.ci-checks.yaml'
     assert not src_copy.exists()
+
+
+def test_integration_context_provider_uses_config_and_merges(
+    tmp_path: Path,
+    monkeypatch: 'pytest.MonkeyPatch',
+) -> None:
+    """Providers can read config values and derive additional context.
+
+    Config provides `my_var: 'a'`. The provider's `create_context` will read
+    `my_var`, attempt to override it with 'A' (which should lose to config),
+    and set `my_collection` to `my_var + 'b'` resulting in 'ab'. We assert the
+    generated cookiecutter.json in the setup-output contains the final merged
+    values.
+    """
+    # create a template dir
+    templates = tmp_path / 'templates'
+    tpl = make_template(templates, 'template_ctx')
+
+    # provider that attempts to override my_var and derives my_collection
+    (tpl / 'repolish.py').write_text(
+        textwrap.dedent("""\
+        def create_context(ctx=None):
+            # try to read my_var from incoming context
+            incoming = (ctx or {}).get('my_var')
+            # attempt to override my_var to 'A' (should be trumped by config)
+            # and set my_collection based on incoming value
+            return {'my_var': 'A', 'my_collection': f"{incoming}b"}
+        """),
+        encoding='utf-8',
+    )
+
+    # write config pointing to the template and seed context my_var: 'a'
+    cfg = tmp_path / 'repolish.yaml'
+    cfg.write_text(
+        json.dumps(
+            {
+                'directories': [str((tpl).as_posix())],
+                'context': {'my_var': 'a'},
+                'anchors': {},
+                'delete_files': [],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    # run the CLI to build setup-output (not check mode)
+    monkeypatch.chdir(tmp_path)
+    rv = run(['--config', str(cfg)])
+    assert rv == 0
+
+    # load the setup-input cookiecutter.json produced by the build
+    setup_input = (cfg.resolve().parent) / '.repolish' / 'setup-input'
+    cookie_path = setup_input / 'cookiecutter.json'
+    assert cookie_path.exists(), 'cookiecutter.json not generated in setup-input'
+
+    data = json.loads(cookie_path.read_text(encoding='utf-8'))
+    # config value should be authoritative
+    assert data.get('my_var') == 'a'
+    # derived value should reflect the merged input (my_var from config)
+    assert data.get('my_collection') == 'ab'
