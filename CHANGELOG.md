@@ -8,6 +8,22 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.4.0] <a name="0.4.0" href="#0.4.0">-</a> January 29, 2026
+
+### 🚀 Features
+
+- Enhanced context system with passing and overrides (#16) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#16](https://github.com/hotdog-werx/repolish/pull/16)
+
+### 🐛 Bug Fixes
+
+- Handle binary files in templates without crashes (#17) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#17](https://github.com/hotdog-werx/repolish/pull/17)
+
+[0.4.0]: https://github.com/hotdog-werx/repolish/compare/0.3.4...0.4.0
+
 ## [0.3.4] <a name="0.3.4" href="#0.3.4">-</a> January 28, 2026
 
 ### 🐛 Bug Fixes
