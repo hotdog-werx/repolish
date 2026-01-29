@@ -10,7 +10,6 @@ from hotlog import get_logger
 from rich.console import Console
 from rich.syntax import Syntax
 
-from .builder import create_cookiecutter_template
 from .config import RepolishConfig
 from .loader import Action, Decision, Providers, create_providers
 from .processors import replace_text, safe_file_read
@@ -105,15 +104,6 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     return base_dir, setup_input, setup_output
 
 
-def prepare_template(setup_input: Path, template_dirs: list[Path]) -> None:
-    """Prepare the merged cookiecutter template in setup_input by copying/merging.
-
-    Provided template directories are merged into `setup_input`.
-    """
-    # Delegate to builder helper which knows how to merge provider templates
-    create_cookiecutter_template(setup_input, template_dirs)
-
-
 def preprocess_templates(
     setup_input: Path,
     providers: Providers,
@@ -134,11 +124,11 @@ def preprocess_templates(
         if not tpl.is_file():
             continue
         try:
-            tpl_text = tpl.read_text(encoding='utf-8', errors='replace')
+            tpl_text = tpl.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError) as exc:
-            # skip binary or unreadable files but log at debug level
+            # skip unreadable/binary files but log at debug level
             logger.debug(
-                'unreadable_template_file',
+                'skipping_unreadable_file',
                 template_file=tpl,
                 error=str(exc),
             )
@@ -229,15 +219,21 @@ def _compare_and_prepare_diff(
     # Normalized comparison (ignore CRLF vs LF)
     a_raw = out.read_bytes()
     b_raw = dest.read_bytes()
-    a_text = a_raw.decode('utf-8', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
-    b_text = b_raw.decode('utf-8', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
-    if a_text == b_text:
-        return True, [], []
-    return (
-        False,
-        a_text.splitlines(keepends=True),
-        b_text.splitlines(keepends=True),
-    )
+
+    # Try to decode as text, if it fails treat as binary
+    try:
+        a_text = a_raw.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
+        b_text = b_raw.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
+        if a_text == b_text:
+            return True, [], []
+        return (
+            False,
+            a_text.splitlines(keepends=True),
+            b_text.splitlines(keepends=True),
+        )
+    except UnicodeDecodeError:
+        # Binary files - compare raw bytes
+        return (a_raw == b_raw), [], []
 
 
 def _check_regular_files(

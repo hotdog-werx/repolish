@@ -1,4 +1,5 @@
 import json
+import os
 import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -111,6 +112,43 @@ def test_apply_flow_with_binary_and_deletion(
     assert not (project / 'path' / 'to' / 'file.txt').exists()
     # and the temp directory under the project should have been removed
     assert not (project / 'temp').exists()
+
+
+def test_cli_binary_file_check_mode(tmp_path: Path) -> None:
+    """Test that binary files work correctly in CLI check mode."""
+    templates = tmp_path / 'templates'
+    t1 = templates / 'template_a'
+    make_template_with_binary(templates, 'template_a')
+
+    # create project with existing binary file that should be compared
+    project = tmp_path / 'test_repo'
+    project.mkdir(parents=True, exist_ok=True)
+
+    # Create an existing binary file in the project
+    existing_logo = project / 'logo.png'
+    existing_logo.write_bytes(
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02\x00\x00\x00\x02',
+    )
+
+    cfg = project / 'repolish.yaml'
+    cfg.write_text(
+        json.dumps(
+            {
+                'directories': [str(t1.as_posix())],
+                'context': {},
+                'anchors': {},
+                'delete_files': [],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    # Run check mode - should detect the difference in binary files
+    os.chdir(project)
+    rv = run(['--check', '--config', str(cfg)])
+
+    # Should return 2 (has diffs)
+    assert rv == 2
 
 
 def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
