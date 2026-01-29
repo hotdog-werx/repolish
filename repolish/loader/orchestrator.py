@@ -2,7 +2,11 @@ from pathlib import Path
 from typing import Any
 
 from .anchors import process_anchors
-from .context import collect_contexts, extract_from_module_dict
+from .context import (
+    apply_context_overrides,
+    collect_contexts,
+    extract_from_module_dict,
+)
 from .create_only import process_create_only_files
 from .deletes import (
     _apply_raw_delete_items,
@@ -106,6 +110,7 @@ def extract_file_mappings_from_module(
 def create_providers(
     directories: list[str],
     base_context: dict[str, object] | None = None,
+    context_overrides: dict[str, object] | None = None,
 ) -> Providers:
     """Load all template providers and merge their contributions.
 
@@ -139,6 +144,9 @@ def create_providers(
     module_cache = _load_module_cache(directories)
     # Collect provider contexts, allowing providers to see `merged_context`
     merged_context = collect_contexts(module_cache, initial=merged_context)
+    # Apply context overrides
+    if context_overrides:
+        apply_context_overrides(merged_context, context_overrides)
     # Ensure project config takes final precedence
     if base_context:
         merged_context.update(base_context)

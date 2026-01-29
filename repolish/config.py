@@ -20,6 +20,10 @@ class RepolishConfig(BaseModel):
         default_factory=dict,
         description='Context variables for template rendering',
     )
+    context_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description='Overrides for context variables using dot-notation paths or nested dict structures',
+    )
     anchors: dict[str, str] = Field(
         default_factory=dict,
         description='Anchor content for block replacements',

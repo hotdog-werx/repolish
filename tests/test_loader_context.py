@@ -4,7 +4,9 @@ import pytest
 from pytest_mock import MockerFixture
 
 from repolish.loader.context import (
+    _apply_override,
     _collect_context_from_module,
+    apply_context_overrides,
     call_factory_with_context,
     collect_contexts,
     extract_context_from_module,
@@ -79,3 +81,85 @@ def test__collect_context_from_module_raises_on_bad_return():
     )
     with pytest.raises(TypeError):
         _collect_context_from_module(md, {})
+
+
+def test_apply_context_overrides(mocker: MockerFixture):
+    context = {
+        'devkits': [
+            {'name': 'd1', 'ref': 'v0'},
+            {'name': 'd2', 'ref': 'v1'},
+        ],
+        'simple': 'value',
+        'nested': {'deep': {'value': 'original'}},
+        'string_value': 'not_a_dict',  # This will trigger cannot-navigate when we try to navigate into it
+        'direct_list': ['a', 'b', 'c'],
+    }
+    overrides = {
+        'devkits.0.name': 'new-d1',
+        'simple': 'new-value',
+        'nested.deep.value': 'updated',
+        'nonexistent.key': 'ignored',
+        'devkits.2.name': 'out-of-range',
+        'devkits.invalid.name': 'invalid-index',
+        'string_value.key': 'cannot-navigate',  # Try to navigate into a string
+        'direct_list.1': 'replaced',  # Direct list index replacement
+    }
+    mock_logger = mocker.patch('repolish.loader.context.logger')
+    apply_context_overrides(context, overrides)
+    assert context['devkits'][0]['name'] == 'new-d1'
+    assert context['simple'] == 'new-value'
+    assert context['nested']['deep']['value'] == 'updated'
+    assert context['direct_list'][1] == 'replaced'  # Direct list replacement works
+    # Check warnings were logged: nonexistent, out-of-range, invalid-index, cannot-navigate
+    assert mock_logger.warning.call_count == 4
+
+
+def test_apply_context_overrides_nested_dict():
+    """Test that nested dictionary structures are flattened to dot-notation."""
+    context = {
+        'my_provider': {
+            'devkits': [
+                {'name': 'd1', 'ref': 'v0'},
+                {'name': 'd2', 'ref': 'v1'},
+            ],
+            'some_setting': 42,
+            'nested': {'deep': {'value': 'original'}},
+        },
+        'other_provider': {
+            'config': 'default',
+        },
+    }
+
+    # Test nested dict structure
+    overrides = {
+        'my_provider': {
+            'some_setting': 100,
+            'devkits.0': {
+                'name': 'new-d1',
+                'ref': 'v2',
+            },
+            'nested.deep.value': 'updated',
+        },
+        'other_provider.config': 'overridden',  # Mix flat and nested
+    }
+
+    apply_context_overrides(context, overrides)
+
+    # Check that nested overrides were applied
+    assert context['my_provider']['some_setting'] == 100
+    assert context['my_provider']['devkits'][0]['name'] == 'new-d1'
+    assert context['my_provider']['devkits'][0]['ref'] == 'v2'
+    assert context['my_provider']['nested']['deep']['value'] == 'updated'
+    assert context['other_provider']['config'] == 'overridden'
+
+
+def test_apply_override_edge_cases(mocker: MockerFixture):
+    """Test edge cases in _apply_override function."""
+    mock_logger = mocker.patch('repolish.loader.context.logger')
+
+    # Test empty path_parts (should return early)
+    context = {'test': 'value'}
+    _apply_override(context, [], 'new-value')
+    # Should not modify context and not log warnings
+    assert context == {'test': 'value'}
+    assert mock_logger.warning.call_count == 0

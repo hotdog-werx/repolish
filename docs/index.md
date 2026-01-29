@@ -4,3 +4,8 @@
 > maintaining repo consistency while allowing local customizations. It uses
 > templates with placeholders that can be filled from a context, and regex
 > patterns to preserve existing local content in files.
+
+## Documentation
+
+- [Getting Started](getting-started/)
+- [Provider Patterns](patterns.md)

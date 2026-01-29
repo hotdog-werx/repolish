@@ -46,6 +46,7 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     providers = create_providers(
         config.directories,
         base_context=config.context,
+        context_overrides=config.context_overrides,
     )
 
     # Merge contexts: config wins

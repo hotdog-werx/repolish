@@ -58,6 +58,41 @@ additional variables used by subsequent factories.
   provider keys. Use explicit namespacing (for example `provider_name.key`) when
   you expect keys to be overridden accidentally.
 
+## Context overrides
+
+For fine-grained control over deeply nested context values without duplicating
+large data structures, you can use `context_overrides`. This allows surgical
+updates using dot-notation paths.
+
+Example:
+
+```yaml
+context:
+  devkits:
+    - name: d1
+      ref: v0
+    - name: d2
+      ref: v1
+
+context_overrides:
+  'devkits.0.name': 'new-d1'
+  'devkits.1.ref': 'v2'
+```
+
+Overrides are applied after provider contexts are merged but before project
+config takes final precedence. Invalid paths are logged as warnings but do not
+stop processing.
+
+Supported path formats:
+
+- Simple keys: `'key'`
+- Nested objects: `'parent.child'`
+- Arrays by index: `'list.0.name'`
+- Mixed: `'config.list.1.setting'`
+
+For recommended patterns on structuring provider contexts to work well with
+overrides, see [Provider Patterns](../patterns.md).
+
 ## Tips for template authors
 
 - Keep `create_context()` small and focused; return simple, well-named keys.

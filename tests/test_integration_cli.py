@@ -92,6 +92,7 @@ def test_integration_cli(
             {
                 'directories': [str((t1).as_posix()), str((t2).as_posix())],
                 'context': {},
+                'context_overrides': {'repo_name': 'overridden_repo_name'},
                 'anchors': {},
                 'delete_files': [],
             },
