@@ -9,13 +9,13 @@ from hotlog import (
     resolve_verbosity,
 )
 
+from .builder import create_cookiecutter_template
 from .config import load_config
 from .cookiecutter import (
     apply_generated_output,
     build_final_providers,
     check_generated_output,
     prepare_staging,
-    prepare_template,
     preprocess_templates,
     render_template,
     rich_print_diffs,
@@ -79,7 +79,7 @@ def run(argv: list[str]) -> int:
     base_dir, setup_input, setup_output = prepare_staging(config)
 
     template_dirs = [Path(p) for p in config.directories]
-    prepare_template(setup_input, template_dirs)
+    create_cookiecutter_template(setup_input, template_dirs)
 
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, config, base_dir)
