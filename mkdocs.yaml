@@ -30,8 +30,8 @@ nav:
       # - Text Replacement: wip.md
       # - Post-Processing: wip.md
   - Operations:
-      - Overview: wip.md
-      # - CLI Commands: wip.md
+      # - Overview: wip.md
+      - CLI Commands: operations/cli.md
       # - Check Mode: wip.md
       # - Apply Mode: wip.md
       # - Diff Output: wip.md

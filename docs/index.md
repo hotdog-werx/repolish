@@ -8,4 +8,6 @@
 ## Documentation
 
 - [Getting Started](getting-started/)
-- [Provider Patterns](patterns.md)
+- [CLI Commands](cli.md)
+- [Provider Patterns](guides/patterns.md)
+- [Debugging Preprocessors](guides/debugger.md)

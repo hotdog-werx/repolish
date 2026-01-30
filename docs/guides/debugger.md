@@ -92,10 +92,11 @@ This shows:
 - Regex matching progress and results
 - Final processing summary
 
-!!! note "Debug Logging in Regular CLI" The `-vv` flag also works with the main
-`repolish` command, but it produces much more output since it processes all
-files. The debugger tool is recommended for focused debugging of specific
-templates.
+!!! note "Debug Logging in Regular CLI"
+
+    The `-vv` flag also works with the main `repolish` command, but it produces
+    much more output since it processes all files. The debugger tool is
+    recommended for focused debugging of specific templates.
 
 ## Understanding Preprocessors
 
