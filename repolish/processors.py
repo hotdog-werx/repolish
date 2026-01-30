@@ -2,6 +2,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from hotlog import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class Patterns:
@@ -74,6 +78,7 @@ def replace_tags_in_content(content: str, tags: dict[str, str]) -> str:
     Returns:
         The content with the tags replaced by their corresponding values.
     """
+    logger.debug('replacing_tags', tags=list(tags.keys()))
     for tag, value in tags.items():
         # Build a pattern that matches a whole start line containing the token
         # `repolish-start[tag]`, then captures the inner block, then matches
@@ -162,13 +167,25 @@ def apply_regex_replacements(
         re.MULTILINE,
     )
     content = regex_pattern.sub('', content)
+    logger.debug('applying_regex_replacements', regexes=list(regexes.keys()))
 
     # apply regex replacements
-    for regex_pattern in regexes.values():
+    for regex_name, regex_pattern in regexes.items():
         pattern = re.compile(rf'{regex_pattern}', re.MULTILINE)
         local_match = pattern.search(local_file_content)
         if not local_match:
+            logger.debug(
+                'regex_no_match_in_target',
+                regex=regex_name,
+                pattern=regex_pattern,
+            )
             continue
+
+        logger.debug(
+            'regex_matched_in_target',
+            regex=regex_name,
+            matched=_select_capture(local_match),
+        )
 
         # Prefer the author's explicit capture when present (group 1); if no
         # capture is present fall back to the full match (group 0). This gives
@@ -254,4 +271,10 @@ def replace_text(
             tags_to_replace[tag] = default_value
 
     content = replace_tags_in_content(template_content, tags_to_replace)
-    return apply_regex_replacements(content, patterns.regexes, local_content)
+    result = apply_regex_replacements(content, patterns.regexes, local_content)
+    logger.debug(
+        'text_replacement_completed',
+        tag_blocks_replaced=len(tags_to_replace),
+        regexes_applied=len(patterns.regexes),
+    )
+    return result

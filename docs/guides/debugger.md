@@ -48,6 +48,50 @@ config:
 - `--show-patterns`: Display the patterns extracted from the template
 - `--show-steps`: Show intermediate processing steps (for future expansion)
 - `-v/--verbose`: Increase logging verbosity
+- `-vv`: Enable detailed debug logging showing internal processing steps
+
+## Verbose Debugging
+
+Using `-vv` enables comprehensive debug logging that shows exactly what happens
+during preprocessing. This is invaluable for understanding complex regex
+replacements and troubleshooting issues.
+
+```bash
+repolish-debugger debug.yaml --show-patterns --show-steps -vv
+```
+
+### Debug Output Example
+
+With `-vv`, you'll see detailed logs like:
+
+```
+DEBUG replacing_tags
+  tags:
+  - header
+
+DEBUG applying_regex_replacements
+  regexes:
+  - version
+
+DEBUG regex_matched_in_target
+  matched: 1.2.3
+  regex: version
+
+DEBUG text_replacement_completed
+  regexes_applied: 1
+  tag_blocks_replaced: 1
+```
+
+This shows:
+
+- Which tags are being replaced
+- Regex matching progress and results
+- Final processing summary
+
+!!! note "Debug Logging in Regular CLI" The `-vv` flag also works with the main
+`repolish` command, but it produces much more output since it processes all
+files. The debugger tool is recommended for focused debugging of specific
+templates.
 
 ## Understanding Preprocessors
 
@@ -85,7 +129,8 @@ the template's version with the target's captured group.
 ## Use Cases
 
 - **Template Development**: Test regex patterns and anchor replacements
-- **Debugging**: Understand why a preprocessor isn't working as expected
+- **Debugging**: Understand why a preprocessor isn't working as expected with
+  detailed `-vv` logs
 - **Learning**: Experiment with repolish syntax in isolation
 - **Documentation**: Create examples of preprocessor usage
 
@@ -94,4 +139,5 @@ the template's version with the target's captured group.
 - Use `|` in YAML for multi-line strings to preserve formatting
 - Regex declarations should be on their own line or at line start
 - Test complex regexes incrementally with the `--show-patterns` option
+- Use `-vv` for detailed debugging when patterns aren't working as expected
 - The target file simulates the existing file in your repository
