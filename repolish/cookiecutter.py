@@ -129,7 +129,7 @@ def preprocess_templates(
             # skip unreadable/binary files but log at debug level
             logger.debug(
                 'skipping_unreadable_file',
-                template_file=tpl,
+                template_file=str(tpl),
                 error=str(exc),
             )
             continue
