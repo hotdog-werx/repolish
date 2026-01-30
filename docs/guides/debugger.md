@@ -65,6 +65,9 @@ repolish-debugger debug.yaml --show-patterns --show-steps -vv
 With `-vv`, you'll see detailed logs like:
 
 ```
+DEBUG starting_text_replacement
+  has_anchors: true
+
 DEBUG replacing_tags
   tags:
   - header
@@ -84,6 +87,7 @@ DEBUG text_replacement_completed
 
 This shows:
 
+- Whether anchors were provided
 - Which tags are being replaced
 - Regex matching progress and results
 - Final processing summary

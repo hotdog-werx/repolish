@@ -258,6 +258,10 @@ def replace_text(
     Returns:
         The modified template content with replaced tag blocks and regex patterns.
     """
+    logger.debug(
+        'starting_text_replacement',
+        has_anchors=anchors_dictionary is not None,
+    )
     patterns = extract_patterns(template_content)
 
     # Build the replacement mapping for tag blocks. If an anchors dictionary is
