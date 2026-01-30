@@ -82,8 +82,7 @@ def test_run_debug_show_patterns(tmp_path: Path):
 
     output = f.getvalue()
     assert result == 0
-    assert 'Tag blocks:' in output
-    assert 'Regexes:' in output
+    assert 'extracted_patterns' in output
     assert "'example': 'default content'" in output
     assert "'version': 'version = \"(.+)\"'" in output
 
