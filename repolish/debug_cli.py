@@ -101,7 +101,7 @@ def run_debug(
         'debug_preprocessing_started',
         template_length=len(template),
         target_length=len(target),
-        anchors=list(anchors.keys()),
+        anchors=[str(k) for k in anchors],
     )
     console.print()
 

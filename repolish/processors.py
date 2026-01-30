@@ -78,7 +78,7 @@ def replace_tags_in_content(content: str, tags: dict[str, str]) -> str:
     Returns:
         The content with the tags replaced by their corresponding values.
     """
-    logger.debug('replacing_tags', tags=list(tags.keys()))
+    logger.debug('replacing_tags', tags=[str(tag) for tag in tags])
     for tag, value in tags.items():
         # Build a pattern that matches a whole start line containing the token
         # `repolish-start[tag]`, then captures the inner block, then matches
@@ -167,7 +167,10 @@ def apply_regex_replacements(
         re.MULTILINE,
     )
     content = regex_pattern.sub('', content)
-    logger.debug('applying_regex_replacements', regexes=list(regexes.keys()))
+    logger.debug(
+        'applying_regex_replacements',
+        regexes=[str(name) for name in regexes],
+    )
 
     # apply regex replacements
     for regex_name, regex_pattern in regexes.items():
