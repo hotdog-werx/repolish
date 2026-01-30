@@ -81,6 +81,18 @@ Run a dry-run check (useful for CI):
 repolish --check --config repolish.yaml
 ```
 
+### Debugging preprocessors
+
+For testing and understanding how preprocessors work, Repolish includes a
+debugger tool:
+
+```bash
+repolish-debugger debug.yaml
+```
+
+The debug YAML file contains template content and optional target/config. See
+the [debugging guide](guides/debugger.md) for details.
+
 ### Post-processing / formatters
 
 Repolish supports an optional `post_process` list in `repolish.yaml` that runs
