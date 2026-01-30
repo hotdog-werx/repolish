@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.5.0] <a name="0.5.0" href="#0.5.0">-</a> January 30, 2026
+
+### 🚀 Features
+
+- Add repolish-debugger CLI tool for preprocessor debugging (#19) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#19](https://github.com/hotdog-werx/repolish/pull/19)
+
+[0.5.0]: https://github.com/hotdog-werx/repolish/compare/0.4.0...0.5.0
+
 ## [0.4.0] <a name="0.4.0" href="#0.4.0">-</a> January 29, 2026
 
 ### 🚀 Features
