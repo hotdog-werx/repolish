@@ -83,8 +83,11 @@ def test_run_debug_show_patterns(tmp_path: Path):
     output = f.getvalue()
     assert result == 0
     assert 'extracted_patterns' in output
-    assert "'example': 'default content'" in output
-    assert "'version': 'version = \"(.+)\"'" in output
+    # Check for content in either Python dict repr format or YAML format
+    assert 'example' in output
+    assert 'default content' in output
+    assert 'version' in output
+    assert 'version = "(.+)"' in output
 
 
 def test_run_debug_missing_template(tmp_path: Path):
