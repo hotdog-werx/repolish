@@ -271,11 +271,11 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
 
 
 def test_normalize_delete_items_skips_non_strings():
-    # Should ignore non-string entries and only convert strings
+    # Should raise TypeError for non-string entries (fail-fast mode)
     items = [123, 'a/b.txt', None, 'c.txt']
     # In fail-fast mode non-string entries raise
     with pytest.raises(TypeError):
-        loader_mod.normalize_delete_items(items)
+        loader_mod.normalize_delete_items(items)  # type: ignore - testing bad input
 
 
 def test_normalize_delete_item_as_posix_raises(mocker: MockerFixture):

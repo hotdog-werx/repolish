@@ -9,5 +9,6 @@
 
 - [Getting Started](getting-started/)
 - [CLI Commands](cli.md)
+- [Preprocessors](guides/preprocessors.md)
 - [Provider Patterns](guides/patterns.md)
 - [Debugging Preprocessors](guides/debugger.md)

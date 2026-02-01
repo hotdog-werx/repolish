@@ -39,6 +39,7 @@ nav:
       # - Python Projects: guides/python.md
       - Provider Patterns: guides/patterns.md
       - Debugging Preprocessors: guides/debugger.md
+      - Preprocessors: guides/preprocessors.md
       # - Troubleshooting: wip.md
 
 # Configuration

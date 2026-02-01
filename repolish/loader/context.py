@@ -1,9 +1,11 @@
 import inspect
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from ._log import logger
 from .module import get_module
+
+T = TypeVar('T')
 
 
 def call_factory_with_context(
@@ -30,10 +32,10 @@ def extract_from_module_dict(
     module_dict: dict[str, object],
     name: str,
     *,
-    expected_type: type | tuple[type, ...] | None = None,
+    expected_type: type[T] | tuple[type[T], ...] | type | tuple[type, ...] | None = None,
     allow_callable: bool = True,
-    default: object | None = None,
-) -> object | None:
+    default: T | object | None = None,
+) -> T | object | None:
     """Generic extractor for attributes or factory callables from a module dict.
 
     - If the module defines a callable named `name` and `allow_callable` is True,
@@ -46,7 +48,7 @@ def extract_from_module_dict(
     candidate = module_dict.get(name)
     if allow_callable and callable(candidate):
         # If the factory raises, let the exception propagate (fail-fast)
-        val = candidate()
+        val = cast('Callable[[], object]', candidate)()
         if expected_type is None or isinstance(val, expected_type):
             return val
         msg = f'{name}() returned wrong type: {type(val)!r}'
@@ -76,7 +78,7 @@ def extract_context_from_module(
         expected_type=dict,
     )
     if isinstance(ctx, dict):
-        return ctx
+        return cast('dict[str, object]', ctx)
     # Also accept a module-level `context` variable for compatibility
     ctx2 = extract_from_module_dict(
         module_dict,
@@ -85,7 +87,7 @@ def extract_context_from_module(
         allow_callable=False,
     )
     if isinstance(ctx2, dict):
-        return ctx2
+        return cast('dict[str, object]', ctx2)
     # Missing context is not an error; return None to indicate absence
     logger.warning(
         'create_context_not_found',
@@ -106,12 +108,12 @@ def _collect_context_from_module(
             msg = 'create_context() must return a dict'
             raise TypeError(msg)
         if isinstance(val, dict):
-            merged.update(val)
+            merged.update(cast('dict[str, Any]', val))
         return
 
     ctx_var = module_dict.get('context')
     if isinstance(ctx_var, dict):
-        merged.update(ctx_var)
+        merged.update(cast('dict[str, Any]', ctx_var))
 
 
 def collect_contexts(

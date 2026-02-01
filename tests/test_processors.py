@@ -312,6 +312,38 @@ def test_safe_file_read_directory(tmp_path: Path):
             anchors={},
             expected_contains=['Default header content.'],
         ),
+        ReplaceTextTestCase(
+            id='multiregex_tools_section',
+            template=dedent("""\
+                [settings]
+                experimental = true
+
+                [tools]
+                ## repolish-multiregex-block[tools]: ^\\[tools\\](.*?)(?=\\n\\[|\\Z)
+                ## repolish-multiregex[tools]: ^(")?([^"=\\s]+)(")?\\s*=\\s*"([^"]+)"$
+                uv = "0.0.0"
+                dprint = "0.0.0"
+                starship = "0.0.0"
+            """),
+            local_content=dedent("""\
+                [settings]
+                experimental = true
+
+                [tools]
+                uv = "0.7.20"
+                dprint = "0.50.1"
+                starship = "1.0.0"
+            """),
+            expected_equal=dedent("""\
+                [settings]
+                experimental = true
+
+                [tools]
+                uv = "0.7.20"
+                dprint = "0.50.1"
+                starship = "1.0.0"
+            """),
+        ),
     ],
     ids=lambda x: x.id,
 )
