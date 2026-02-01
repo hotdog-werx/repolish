@@ -412,12 +412,12 @@ def _is_section_exit(line: str, tag: str) -> bool:
 
 def _is_key_value_line(line: str) -> bool:
     """Check if the line is a key=value assignment."""
-    return bool(re.match(r'^(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line))
+    return bool(re.match(r'^\s*(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line))
 
 
 def _replace_key_value(line: str, values: dict[str, str]) -> str:
     """Replace the value in a key=value line if the key exists in values dict."""
-    match = re.match(r'^(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line)
+    match = re.match(r'^\s*(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line)
     if match:
         quote1, key, quote2, default_value = match.groups()
         actual_value = values.get(key, default_value or '')
