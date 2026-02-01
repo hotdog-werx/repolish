@@ -13,6 +13,8 @@ class Patterns:
 
     tag_blocks: dict[str, str]
     regexes: dict[str, str]
+    multiregex_blocks: dict[str, str]
+    multiregexes: dict[str, str]
 
 
 def extract_patterns(content: str) -> Patterns:
@@ -40,6 +42,18 @@ def extract_patterns(content: str) -> Patterns:
         re.DOTALL | re.MULTILINE,
     )
 
+    # Match multiregex block declarations
+    multiregex_block_pattern = re.compile(
+        r'^[^\n]*repolish-multiregex-block\[(.+?)\]: (.*?)\n',
+        re.DOTALL | re.MULTILINE,
+    )
+
+    # Match multiregex declarations
+    multiregex_pattern = re.compile(
+        r'^[^\n]*repolish-multiregex\[(.+?)\]: (.*?)\n',
+        re.DOTALL | re.MULTILINE,
+    )
+
     # Return the raw inner block content (no artificial padding). Strip any
     # leading/trailing newlines that are an artifact of how templates were
     # authored so callers get the pure inner text.
@@ -48,9 +62,22 @@ def extract_patterns(content: str) -> Patterns:
     for k, v in raw_tag_blocks.items():
         tag_blocks[k] = v.strip('\n')
 
+    regexes = dict(regex_pattern.findall(content))
+    multiregex_blocks = dict(multiregex_block_pattern.findall(content))
+    multiregexes = dict(multiregex_pattern.findall(content))
+
+    logger.debug(
+        'extracted_patterns',
+        tag_blocks=[str(k) for k in tag_blocks],
+        regexes=[str(k) for k in regexes],
+        multiregexes=[str(k) for k in multiregexes],
+    )
+
     return Patterns(
         tag_blocks=tag_blocks,
-        regexes=dict(regex_pattern.findall(content)),
+        regexes=regexes,
+        multiregex_blocks=multiregex_blocks,
+        multiregexes=multiregexes,
     )
 
 
@@ -242,6 +269,120 @@ def apply_regex_replacements(
     return content
 
 
+def apply_multiregex_replacements(
+    content: str,
+    multiregex_blocks: dict[str, str],
+    multiregexes: dict[str, str],
+    local_file_content: str,
+) -> str:
+    """Applies multiregex replacements to the content."""
+    logger.debug(
+        'applying_multiregex_replacements',
+        multiregexes=[str(name) for name in multiregexes],
+    )
+
+    # Process each multiregex pair
+    for tag, multi_regex in multiregexes.items():
+        if tag not in multiregex_blocks:
+            logger.debug('multiregex_missing_block', tag=tag)
+            continue
+
+        block_regex = multiregex_blocks[tag]
+
+        # Extract block from local file
+        block_re = re.compile(block_regex, re.DOTALL | re.MULTILINE)
+        block_match = block_re.search(local_file_content)
+        if not block_match:
+            logger.debug(
+                'multiregex_block_not_found_in_target',
+                tag=tag,
+                regex=block_regex,
+            )
+            continue
+
+        block_content = block_match.group(1)
+        logger.debug(
+            'multiregex_block_extracted',
+            tag=tag,
+            block_length=len(block_content),
+        )
+
+        # Extract key-value pairs from block
+        multi_re = re.compile(multi_regex, re.MULTILINE)
+        matches = multi_re.findall(block_content)
+
+        # Build dict of key to value (handle different capture group structures)
+        values = {}
+        for match in matches:
+            if len(match) >= 4:  # Assuming format: (quote1, key, quote2, value)
+                key = match[1]
+                value = match[3]
+                values[key] = value
+            elif len(match) >= 2:  # Fallback for simpler formats
+                key = match[0]
+                value = match[1] if len(match) > 1 else ''
+                values[key] = value
+
+        logger.debug(
+            'multiregex_values_extracted',
+            tag=tag,
+            values=list(values.keys()),
+        )
+
+        # Remove the multiregex comments from template
+        content = re.sub(
+            rf'## repolish-multiregex-block\[{re.escape(tag)}\]:.*\n',
+            '',
+            content,
+            flags=re.MULTILINE,
+        )
+        content = re.sub(
+            rf'## repolish-multiregex\[{re.escape(tag)}\]:.*\n',
+            '',
+            content,
+            flags=re.MULTILINE,
+        )
+
+        # Replace template defaults with extracted values
+        # Find the section in template that corresponds to this tag
+        lines = content.split('\n')
+        result_lines = []
+        in_section = False
+        section_start_pattern = re.compile(r'^\[(\w+)\]')
+
+        for line in lines:
+            # Check if we're entering the tools section (or whatever section the tag represents)
+            section_match = section_start_pattern.match(line.strip())
+            if section_match and section_match.group(1) == tag:
+                in_section = True
+                result_lines.append(line)
+                continue
+
+            if in_section:
+                # Check if we've exited the section (next section starts)
+                if section_match and section_match.group(1) != tag:
+                    in_section = False
+                elif re.match(r'^(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line):
+                    # This is a key=value line, potentially replace it
+                    match = re.match(
+                        r'^(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"',
+                        line,
+                    )
+                    if match:
+                        quote1, key, quote2, default_value = match.groups()
+                        actual_value = values.get(key, default_value or '')
+                        result_lines.append(
+                            f'{quote1 or ""}{key}{quote2 or ""} = "{actual_value}"',
+                        )
+                        continue
+
+            result_lines.append(line)
+
+        content = '\n'.join(result_lines)
+
+    return content
+
+
 def replace_text(
     template_content: str,
     local_content: str,
@@ -278,10 +419,18 @@ def replace_text(
             tags_to_replace[tag] = default_value
 
     content = replace_tags_in_content(template_content, tags_to_replace)
-    result = apply_regex_replacements(content, patterns.regexes, local_content)
+    content = apply_regex_replacements(content, patterns.regexes, local_content)
+    content = apply_multiregex_replacements(
+        content,
+        patterns.multiregex_blocks,
+        patterns.multiregexes,
+        local_content,
+    )
+    result = content
     logger.debug(
         'text_replacement_completed',
         tag_blocks_replaced=len(tags_to_replace),
         regexes_applied=len(patterns.regexes),
+        multiregexes_applied=len(patterns.multiregexes),
     )
     return result

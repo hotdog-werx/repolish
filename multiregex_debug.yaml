@@ -1,0 +1,53 @@
+template: |
+  [settings]
+  experimental = true
+  python.uv_venv_auto = true
+
+  [env]
+  GITHUB_REPO_OWNER = "hotdog-werx"
+  GITHUB_REPO_NAME = "{{ config_root | basename }}"
+  GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"
+  GIT_CLIFF_CONFIG = "./.pkglink/.codeguide/configs/cliff.toml"
+
+  [tasks]
+  pkglink.run = "mise exec -- pkglink sync"
+  setup-hook.run = "mise exec -- poe setup-hook"
+
+  [hooks]
+  postinstall = ["mise run pkglink", "mise run setup-hook"]
+
+  [tools]
+  ## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
+  ## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+  uv = "0.0.0"
+  dprint = "0.0.0"
+  starship = "0.0.0"
+  git-cliff = "0.0.0"
+  actionlint = "0.0.0"
+  shellcheck = "0.0.0"
+
+  new-tool = "1.0.0"
+
+  "pipx:poethepoet" = "0.0.0"
+
+target: |
+  [settings]
+  experimental = true
+  python.uv_venv_auto = true
+
+  [env]
+  GITHUB_REPO_OWNER = "hotdog-werx"
+  GITHUB_REPO_NAME = "{{ config_root | basename }}"
+  GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"
+  GIT_CLIFF_CONFIG = "./.pkglink/.codeguide/configs/cliff.toml"
+
+  [tasks]
+  pkglink.run = "mise exec -- pkglink sync"
+  setup-hook.run = "mise exec -- poe setup-hook"
+
+  [hooks]
+  postinstall = ["mise run pkglink", "mise run setup-hook"]
+
+  [tools]
+  uv = "0.7.20"
+  dprint = "0.50.1"
