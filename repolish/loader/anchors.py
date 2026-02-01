@@ -1,3 +1,5 @@
+from typing import cast
+
 from .context import call_factory_with_context, extract_from_module_dict
 from .module import get_module
 
@@ -23,9 +25,9 @@ def process_anchors(
         if not isinstance(val, dict):
             msg = 'create_anchors() must return a dict'
             raise TypeError(msg)
-        merged_anchors.update(val)
+        merged_anchors.update(cast('dict[str, str]', val))
     elif isinstance(anchors_fact, dict):
-        merged_anchors.update(anchors_fact)
+        merged_anchors.update(cast('dict[str, str]', anchors_fact))
 
 
 def extract_anchors_from_module(
@@ -43,7 +45,7 @@ def extract_anchors_from_module(
         expected_type=dict,
     )
     if isinstance(anchors, dict):
-        return anchors
+        return cast('dict[str, str]', anchors)
     a_obj = extract_from_module_dict(
         module_dict,
         'anchors',
@@ -51,6 +53,6 @@ def extract_anchors_from_module(
         allow_callable=False,
     )
     if isinstance(a_obj, dict):
-        return a_obj
+        return cast('dict[str, str]', a_obj)
     # Absence of anchors is fine; return empty mapping
     return {}

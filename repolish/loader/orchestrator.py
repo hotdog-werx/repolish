@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .anchors import process_anchors
 from .context import (
@@ -93,7 +93,7 @@ def extract_file_mappings_from_module(
     )
     if isinstance(fm, dict):
         # Filter out None values (means skip this destination)
-        return {k: v for k, v in fm.items() if v is not None}
+        return {k: v for k, v in cast('dict[str, str | None]', fm).items() if v is not None}
 
     raw_res = extract_from_module_dict(
         module_dict,
@@ -102,7 +102,7 @@ def extract_file_mappings_from_module(
         allow_callable=False,
     )
     if isinstance(raw_res, dict):
-        return {k: v for k, v in raw_res.items() if v is not None}
+        return {k: v for k, v in cast('dict[str, str | None]', raw_res).items() if v is not None}
 
     return {}
 

@@ -1,3 +1,5 @@
+from typing import cast
+
 from .context import call_factory_with_context
 
 
@@ -16,11 +18,11 @@ def process_file_mappings(
     if callable(fm_fact):
         val = call_factory_with_context(fm_fact, merged_context)
         if isinstance(val, dict):
-            fm = val
+            fm = cast('dict[str, str]', val)
     else:
         fm_var = module_dict.get('file_mappings')
         if isinstance(fm_var, dict):
-            fm = fm_var
+            fm = cast('dict[str, str]', fm_var)
     if isinstance(fm, dict):
         merged_file_mappings.update(
             {k: v for k, v in fm.items() if v is not None},
