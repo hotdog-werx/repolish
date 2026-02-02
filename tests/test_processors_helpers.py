@@ -1,6 +1,6 @@
 import re
 
-from repolish.processors import _select_capture, _trim_block_by_indent
+from repolish.preprocessors.regex import _select_capture, _trim_block_by_indent
 
 
 def test_select_capture_with_group():

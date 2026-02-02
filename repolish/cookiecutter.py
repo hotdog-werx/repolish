@@ -12,7 +12,7 @@ from rich.syntax import Syntax
 
 from .config import RepolishConfig
 from .loader import Action, Decision, Providers, create_providers
-from .processors import replace_text, safe_file_read
+from .preprocessors import replace_text, safe_file_read
 
 logger = get_logger(__name__)
 

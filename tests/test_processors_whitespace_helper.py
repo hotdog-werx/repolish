@@ -1,4 +1,4 @@
-from repolish import processors
+from repolish.preprocessors import regex
 
 
 def test_extend_when_whitespace_and_newline():
@@ -12,7 +12,7 @@ def test_extend_when_whitespace_and_newline():
     tpl_cap_end = trimmed_end + len(between)
 
     assert (
-        processors._extend_trimmed_region_to_include_whitespace(
+        regex._extend_trimmed_region_to_include_whitespace(
             content,
             trimmed_end,
             tpl_cap_end,
@@ -32,7 +32,7 @@ def test_do_not_extend_when_no_newline():
     tpl_cap_end = trimmed_end + len(between)
 
     assert (
-        processors._extend_trimmed_region_to_include_whitespace(
+        regex._extend_trimmed_region_to_include_whitespace(
             content,
             trimmed_end,
             tpl_cap_end,
@@ -52,7 +52,7 @@ def test_do_not_extend_when_non_whitespace_present():
     tpl_cap_end = trimmed_end + len(between)
 
     assert (
-        processors._extend_trimmed_region_to_include_whitespace(
+        regex._extend_trimmed_region_to_include_whitespace(
             content,
             trimmed_end,
             tpl_cap_end,

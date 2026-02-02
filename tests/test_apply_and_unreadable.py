@@ -1,5 +1,4 @@
 import json
-import os
 import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -114,7 +113,10 @@ def test_apply_flow_with_binary_and_deletion(
     assert not (project / 'temp').exists()
 
 
-def test_cli_binary_file_check_mode(tmp_path: Path) -> None:
+def test_cli_binary_file_check_mode(
+    tmp_path: Path,
+    monkeypatch: 'pytest.MonkeyPatch',
+) -> None:
     """Test that binary files work correctly in CLI check mode."""
     templates = tmp_path / 'templates'
     t1 = templates / 'template_a'
@@ -144,7 +146,7 @@ def test_cli_binary_file_check_mode(tmp_path: Path) -> None:
     )
 
     # Run check mode - should detect the difference in binary files
-    os.chdir(project)
+    monkeypatch.chdir(project)
     rv = run(['--check', '--config', str(cfg)])
 
     # Should return 2 (has diffs)

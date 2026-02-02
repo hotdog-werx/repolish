@@ -4,7 +4,7 @@ from textwrap import dedent
 
 import pytest
 
-from repolish.processors import (
+from repolish.preprocessors import (
     replace_text,
     safe_file_read,
 )

@@ -5,7 +5,7 @@ from textwrap import dedent
 
 import pytest
 
-from repolish.processors import (
+from repolish.preprocessors.multiregex import (
     _extract_block_content,
     _extract_values_from_block,
     _is_key_value_line,
