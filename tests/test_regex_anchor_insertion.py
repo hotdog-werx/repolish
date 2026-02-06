@@ -1,4 +1,4 @@
-from repolish.processors import replace_text
+from repolish.preprocessors import replace_text
 
 TEMPLATE = r"""
 cat1:

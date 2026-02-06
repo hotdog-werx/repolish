@@ -1,13 +1,17 @@
-import os
 import textwrap
 from pathlib import Path
 
+import pytest
 from pytest_mock import MockerFixture
 
 from repolish.debug_cli import main
 
 
-def test_integration_debug_cli(tmp_path: Path, mocker: MockerFixture) -> None:
+def test_integration_debug_cli(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Integration test for the debug CLI with a full debug configuration."""
     # Create a debug.yaml file with template, target, and config
     debug_file = tmp_path / 'debug.yaml'
@@ -45,12 +49,7 @@ def test_integration_debug_cli(tmp_path: Path, mocker: MockerFixture) -> None:
     )
 
     # Change to tmp_path so relative paths work
-    old_cwd = Path.cwd()
-    try:
-        os.chdir(tmp_path)
-        # Mock sys.argv to simulate command line arguments
+    monkeypatch.chdir(tmp_path)
 
-        result = main()
-        assert result == 0
-    finally:
-        os.chdir(old_cwd)
+    result = main()
+    assert result == 0

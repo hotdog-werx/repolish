@@ -12,7 +12,7 @@ from hotlog import (
 from pydantic import BaseModel, Field
 from rich.console import Console
 
-from .processors import extract_patterns, replace_text
+from .preprocessors import extract_patterns, replace_text
 
 logger = get_logger(__name__)
 
