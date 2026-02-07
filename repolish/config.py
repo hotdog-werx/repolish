@@ -134,31 +134,20 @@ class RepolishConfig(BaseModel):
             )
 
     def validate_directories(self) -> None:
-        """Validate that all directories exist."""
-        # If both directories and providers_order are empty, require directories
-        if not self.directories and not self.providers_order:
-            msg = 'Either directories or providers_order must be specified'
+        """Validate that all directories exist and have required structure.
+        
+        Note: directories should already be populated by load_config() if using providers.
+        """
+        if not self.directories:
+            # If using providers_order, directories might be empty if providers not yet linked
+            if self.providers_order:
+                return  # Skip validation - providers not linked yet
+            msg = 'No directories configured'
             raise ValueError(msg)
 
-        # Get directories (either explicit or auto-built from providers)
-        resolved_dirs = self.get_directories()
-
-        # If using providers and none resolved, skip validation (all logged warnings already)
-        if not self.directories and not resolved_dirs:
-            return
-
-        # Validate the resolved directories
-        # Use the original directories list for error messages
-        # For providers, create labels for each provider based on resolution success
-        # For providers: match the count of resolved dirs with provider names
-        # We know resolved_dirs has the successfully resolved providers
-        # Build labels by taking the first N providers that would have resolved
-        original_dirs = (
-            self.directories
-            if self.directories
-            else [f'provider:{p}' for p in self.providers_order[: len(resolved_dirs)]]
-        )
-        self._validate_directory_list(original_dirs, resolved_dirs)
+        # Resolve and validate
+        resolved_dirs = self._resolve_directories(self.directories)
+        self._validate_directory_list(self.directories, resolved_dirs)
 
     def _resolve_directories(self, directories: list[str]) -> list[Path]:
         """Resolve a list of directory strings to Path objects."""
@@ -347,6 +336,13 @@ def load_config(yaml_file: Path, *, validate: bool = True) -> RepolishConfig:
     # store the location of the config file on the model so relative paths can
     # be resolved later
     config.config_file = yaml_file
+    
+    # If directories is empty but providers_order is set, auto-populate from providers
+    if not config.directories and config.providers_order:
+        resolved_dirs = config.get_directories()
+        # Convert back to strings for the config model
+        config.directories = [str(d) for d in resolved_dirs]
+    
     if validate:
         config.validate_directories()
     return config

@@ -281,7 +281,7 @@ def test_config_requires_directories_or_providers_order(
     # Should raise - neither directories nor providers_order is set
     with pytest.raises(
         ValueError,
-        match='Either directories or providers_order must be specified',
+        match='No directories configured',
     ):
         load_config(config_path)
 
