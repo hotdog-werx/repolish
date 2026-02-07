@@ -107,6 +107,87 @@ Both commands support verbose logging levels:
     with `repolish-debugger` for understanding complex regex replacements and
     troubleshooting issues.
 
+## `repolish-link`
+
+A command-line tool for orchestrating multiple provider link CLIs. This tool
+allows you to run link commands for multiple libraries in a single invocation,
+making it easier to manage complex projects that depend on multiple resource
+providers.
+
+```bash
+repolish-link [OPTIONS]
+```
+
+#### Options
+
+- `--config PATH`: Path to repolish configuration file (default:
+  `repolish.yaml`)
+- `-v, --verbose`: Increase logging verbosity (-v for verbose, -vv for debug)
+- `--help`: Show help message and exit
+
+#### Behavior
+
+The tool reads the `providers` section from your `repolish.yaml` configuration
+and runs each provider's link CLI in sequence. For each provider:
+
+1. Calls the provider's link CLI (e.g., `codeguide-link`)
+2. Creates any additional symlinks specified in the configuration
+
+The order in which providers are processed is determined by the
+`providers_order` section in the configuration file. If `providers_order` is not
+specified, all providers in the `providers` section are processed in arbitrary
+order.
+
+#### Configuration
+
+The `repolish-link` command requires a `providers` section in your
+`repolish.yaml` configuration file. Each provider defines the link CLI command
+to invoke and optional additional symlinks to create.
+
+```yaml
+providers:
+  codeguide:
+    link: codeguide-link
+    templates_dir: templates
+    symlinks:
+      - source: configs/.editorconfig
+        target: .editorconfig
+
+providers_order:
+  - codeguide
+```
+
+#### Provider Configuration Options
+
+- `link` (required): The CLI command to execute for linking
+- `templates_dir` (optional): Subdirectory within provider resources containing
+  templates (default: `templates`)
+- `symlinks` (optional): Additional symlinks to create from provider resources
+  to repo root
+
+Each symlink entry has:
+
+- `source`: Path relative to provider resources
+- `target`: Path relative to repo root
+
+#### Examples
+
+```bash
+# Link all configured providers
+repolish-link
+
+# Link with verbose output
+repolish-link -v
+
+# Use custom config file
+repolish-link --config my-config.yaml
+```
+
+#### Exit Codes
+
+- `0`: All providers linked successfully
+- `1`: Configuration error or one or more providers failed to link
+
 ## Exit Codes
 
 - `0`: Success

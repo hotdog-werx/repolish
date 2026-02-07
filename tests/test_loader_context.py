@@ -106,11 +106,11 @@ def test_apply_context_overrides(mocker: MockerFixture):
     }
     mock_logger = mocker.patch('repolish.loader.context.logger')
     apply_context_overrides(context, overrides)
-    assert context['devkits'][0]['name'] == 'new-d1'  # type: ignore[index]
+    assert context['devkits'][0]['name'] == 'new-d1'
     assert context['simple'] == 'new-value'
-    assert context['nested']['deep']['value'] == 'updated'  # type: ignore[index]
+    assert context['nested']['deep']['value'] == 'updated'
     assert context['direct_list'][1] == 'replaced'  # Direct list replacement works
-    assert context['nonexistent']['key'] == 'ignored'  # type: ignore[index] Intermediate structure created
+    assert context['nonexistent']['key'] == 'ignored'
     # Check warnings were logged: out-of-range, invalid-index, cannot-navigate
     # Note: nonexistent.key now creates intermediate structure instead of warning
     assert mock_logger.warning.call_count == 3
@@ -149,9 +149,9 @@ def test_apply_context_overrides_nested_dict():
 
     # Check that nested overrides were applied
     assert context['my_provider']['some_setting'] == 100
-    assert context['my_provider']['devkits'][0]['name'] == 'new-d1'  # type: ignore[index]
-    assert context['my_provider']['devkits'][0]['ref'] == 'v2'  # type: ignore[index]
-    assert context['my_provider']['nested']['deep']['value'] == 'updated'  # type: ignore[index]
+    assert context['my_provider']['devkits'][0]['name'] == 'new-d1'
+    assert context['my_provider']['devkits'][0]['ref'] == 'v2'
+    assert context['my_provider']['nested']['deep']['value'] == 'updated'
     assert context['other_provider']['config'] == 'overridden'
 
 

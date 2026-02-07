@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 repolish = "repolish.cli:main"
 repolish-debugger = "repolish.debug_cli:main"
+repolish-link = "repolish.link_cli:main"
 
 [dependency-groups]
 dev = [
