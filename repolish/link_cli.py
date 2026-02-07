@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -89,7 +90,7 @@ def run_provider_link(provider_name: str, link_command: str) -> dict[str, str]:
 
     Args:
         provider_name: Name of the provider
-        link_command: CLI command to run (e.g., 'codeguide-link')
+        link_command: CLI command to run (e.g., 'codeguide-link' or 'codeguide-link -v')
 
     Returns:
         Dict with provider information from --info flag
@@ -104,13 +105,16 @@ def run_provider_link(provider_name: str, link_command: str) -> dict[str, str]:
         _display_level=1,
     )
 
+    # Split command to handle arguments (e.g., "codeguide-link -v")
+    cmd_parts = shlex.split(link_command)
+
     # First get info from the CLI
     logger.debug('getting_provider_info', command=f'{link_command} --info')
     # S603: subprocess call is intentional - we need to call provider link CLIs
     # configured by the user (e.g., 'codeguide-link'). This is the core
     # functionality of repolish-link and the commands are from the config file.
     result = subprocess.run(  # noqa: S603
-        [link_command, '--info'],
+        [*cmd_parts, '--info'],
         capture_output=True,
         text=True,
         check=True,
@@ -121,7 +125,7 @@ def run_provider_link(provider_name: str, link_command: str) -> dict[str, str]:
     logger.debug('running_link_command', command=link_command)
     # S603: subprocess call is intentional - see comment above
     subprocess.run(  # noqa: S603
-        [link_command],
+        cmd_parts,
         check=True,
     )
 
