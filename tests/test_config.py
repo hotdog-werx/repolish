@@ -409,3 +409,44 @@ def test_load_provider_info_oserror(
 
     # Should return empty list due to OSError
     assert directories == []
+
+
+def test_templates_dir_fallback_to_yaml_config(
+    tmp_path: Path,
+    config_file: Callable[[dict], Path],
+):
+    """Test that templates_dir falls back to YAML config when not in JSON."""
+    # Manually create provider directory and JSON without templates_dir
+    provider_dir = tmp_path / '.repolish' / 'provider1'
+    provider_dir.mkdir(parents=True)
+    info = {
+        'library_name': 'provider1',
+        'target_dir': f'{provider_dir}',
+    }
+    with (provider_dir / '.provider-info.json').open('w') as f:
+        json.dump(info, f)
+
+    # Create custom-templates directory
+    (provider_dir / 'custom-templates').mkdir()
+    (provider_dir / 'custom-templates' / 'repolish.py').write_text('# dummy')
+    (provider_dir / 'custom-templates' / 'repolish').mkdir()
+
+    config_data = {
+        'providers_order': ['provider1'],
+        'providers': {
+            'provider1': {
+                'link': 'provider1-link',
+                'templates_dir': 'custom-templates',  # Only in YAML
+            },
+        },
+        'context': {},
+        'post_process': [],
+    }
+    config_path = config_file(config_data)
+
+    config = load_config(config_path)
+    directories = config.get_directories()
+
+    # Should use templates_dir from YAML config
+    assert len(directories) == 1
+    assert directories[0] == (provider_dir / 'custom-templates').resolve()

@@ -166,6 +166,44 @@ class RepolishConfig(BaseModel):
 
         return resolved
 
+    def _handle_directory_from_provider(
+        self,
+        provider_name: str,
+        config_dir: Path,
+    ) -> Path | None:
+        """Build directory path from a single provider.
+
+        Returns None if the provider info cannot be loaded.
+        """
+        provider_info = _load_provider_info(provider_name, config_dir)
+        if not provider_info or 'target_dir' not in provider_info:
+            logger.warning(
+                'could_not_load_provider_info',
+                provider=provider_name,
+            )
+            return None
+
+        # Get target_dir from provider info (where resources are linked)
+        target_dir = Path(provider_info['target_dir'])
+        if not target_dir.is_absolute():
+            target_dir = config_dir / target_dir
+
+        # Get templates_dir: prioritize JSON, then YAML config, then default
+        if 'templates_dir' in provider_info:
+            templates_subdir = provider_info['templates_dir']
+        else:
+            provider_config = self.providers.get(provider_name)
+            templates_subdir = provider_config.templates_dir if provider_config else 'templates'
+
+        # Combine to get full templates path
+        templates_path = target_dir / templates_subdir
+        logger.debug(
+            'auto_added_directory_from_provider',
+            provider=provider_name,
+            directory=str(templates_path),
+        )
+        return templates_path.resolve()
+
     def _build_directories_from_providers(self) -> list[Path]:
         """Build directories list from providers_order."""
         if not self.providers_order or not self.config_file:
@@ -175,25 +213,9 @@ class RepolishConfig(BaseModel):
         resolved = []
 
         for provider_name in self.providers_order:
-            provider_info = _load_provider_info(provider_name, config_dir)
-            if provider_info and 'templates_dir' in provider_info:
-                templates_dir = provider_info['templates_dir']
-                p = Path(templates_dir)
-                if not p.is_absolute():
-                    # templates_dir is relative to the provider directory
-                    provider_dir = config_dir / '.repolish' / provider_name
-                    p = provider_dir / p
-                resolved.append(p.resolve())
-                logger.debug(
-                    'auto_added_directory_from_provider',
-                    provider=provider_name,
-                    directory=str(p),
-                )
-            else:
-                logger.warning(
-                    'could_not_determine_templates_directory',
-                    provider=provider_name,
-                )
+            templates_path = self._handle_directory_from_provider(provider_name, config_dir)
+            if templates_path:
+                resolved.append(templates_path)
 
         return resolved
 
