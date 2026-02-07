@@ -70,8 +70,12 @@ def _save_provider_alias(alias: str, target_dir: Path) -> None:
         with aliases_file.open('r') as f:
             aliases = json.load(f)
 
-    # Update with new alias (store relative path from .repolish/)
-    aliases[alias] = str(target_dir.relative_to(repolish_dir.parent))
+    # Update with new alias (store relative path from current directory)
+    # Resolve both to absolute paths first to handle cases where target_dir
+    # might already be absolute
+    target_abs = target_dir.resolve()
+    cwd = Path.cwd()
+    aliases[alias] = str(target_abs.relative_to(cwd))
 
     # Save aliases
     with aliases_file.open('w') as f:
