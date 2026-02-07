@@ -143,9 +143,21 @@ class RepolishConfig(BaseModel):
         # Get directories (either explicit or auto-built from providers)
         resolved_dirs = self.get_directories()
 
+        # If using providers and none resolved, skip validation (all logged warnings already)
+        if not self.directories and not resolved_dirs:
+            return
+
         # Validate the resolved directories
-        # Use the original directories list for error messages, or empty list if using providers
-        original_dirs = self.directories if self.directories else [f'provider:{p}' for p in self.providers_order]
+        # Use the original directories list for error messages
+        # For providers, create labels for each provider based on resolution success
+        # For providers: match the count of resolved dirs with provider names
+        # We know resolved_dirs has the successfully resolved providers
+        # Build labels by taking the first N providers that would have resolved
+        original_dirs = (
+            self.directories
+            if self.directories
+            else [f'provider:{p}' for p in self.providers_order[: len(resolved_dirs)]]
+        )
         self._validate_directory_list(original_dirs, resolved_dirs)
 
     def _resolve_directories(self, directories: list[str]) -> list[Path]:
@@ -213,7 +225,10 @@ class RepolishConfig(BaseModel):
         resolved = []
 
         for provider_name in self.providers_order:
-            templates_path = self._handle_directory_from_provider(provider_name, config_dir)
+            templates_path = self._handle_directory_from_provider(
+                provider_name,
+                config_dir,
+            )
             if templates_path:
                 resolved.append(templates_path)
 
@@ -285,11 +300,13 @@ def _load_provider_info(
         return data
 
 
-def load_config(yaml_file: Path) -> RepolishConfig:
+def load_config(yaml_file: Path, *, validate: bool = True) -> RepolishConfig:
     """Find the repolish configuration file in the specified directory.
 
     Args:
         yaml_file: Path to the YAML configuration file.
+        validate: Whether to validate directories. Set to False when linking
+                  providers (before .provider-info.json files exist).
 
     Returns:
         An instance of RepolishConfig with validated data.
@@ -300,5 +317,6 @@ def load_config(yaml_file: Path) -> RepolishConfig:
     # store the location of the config file on the model so relative paths can
     # be resolved later
     config.config_file = yaml_file
-    config.validate_directories()
+    if validate:
+        config.validate_directories()
     return config

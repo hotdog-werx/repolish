@@ -353,6 +353,9 @@ def test_build_directories_from_providers_no_config_file(tmp_path: Path):
     directories = config.get_directories()
     assert directories == []
 
+    # Validate should also handle this gracefully
+    config.validate_directories()  # Should not raise, just skip validation
+
 
 def test_load_provider_info_invalid_json(
     tmp_path: Path,
@@ -453,3 +456,27 @@ def test_templates_dir_fallback_to_yaml_config(
     # Should use templates_dir from YAML config
     assert len(directories) == 1
     assert directories[0] == (provider_dir / 'custom-templates').resolve()
+
+
+def test_load_config_skip_validation(
+    tmp_path: Path,
+    config_file: Callable[[dict], Path],
+):
+    """Test that validation can be skipped when loading config."""
+    # Create config with providers_order but no provider info files
+    config_data = {
+        'providers_order': ['nonexistent_provider'],
+        'context': {},
+        'post_process': [],
+    }
+    config_path = config_file(config_data)
+
+    # Should load successfully without validation
+    config = load_config(config_path, validate=False)
+    assert config.providers_order == ['nonexistent_provider']
+
+    # With validation, it should also succeed (logs warnings but doesn't fail when no dirs resolve)
+    config_validated = load_config(config_path, validate=True)
+    assert config_validated.providers_order == ['nonexistent_provider']
+    # The validation should have been called but skipped because no dirs resolved
+    assert config_validated.get_directories() == []

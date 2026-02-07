@@ -239,7 +239,7 @@ def run(argv: list[str]) -> int:
         config_file=str(config_path),
         _display_level=1,
     )
-    config = load_config(config_path)
+    config = load_config(config_path, validate=False)
 
     if not config.providers:
         logger.warning('no_providers_configured', _display_level=1)
