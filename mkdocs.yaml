@@ -9,7 +9,7 @@ nav:
       - Installation: getting-started/installation.md
       # - Quick Start: getting-started/quick-start.md
   - Configuration:
-      # - Overview: wip.md
+      - Overview: configuration/overview.md
       - Context: configuration/context.md
       # - Overrides: wip.md
       # - Anchors: wip.md
@@ -38,6 +38,7 @@ nav:
   - Guides:
       # - Python Projects: guides/python.md
       - Provider Patterns: guides/patterns.md
+      - Resource Linker: guides/linker.md
       - Debugging Preprocessors: guides/debugger.md
       - Preprocessors: guides/preprocessors.md
       # - Troubleshooting: wip.md
