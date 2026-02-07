@@ -68,8 +68,11 @@ def provider_info(tmp_path: Path):
         }
         with (provider_dir / '.provider-info.json').open('w') as f:
             json.dump(info, f)
-        # Create templates dir
-        (provider_dir / templates_dir).mkdir()
+        # Create templates dir with required structure
+        templates_path = provider_dir / templates_dir
+        templates_path.mkdir()
+        (templates_path / 'repolish.py').write_text('# dummy')
+        (templates_path / 'repolish').mkdir()
         return provider_dir
 
     return _create_provider

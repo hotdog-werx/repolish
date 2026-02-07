@@ -135,18 +135,18 @@ class RepolishConfig(BaseModel):
 
     def validate_directories(self) -> None:
         """Validate that all directories exist."""
-        # If directories is empty but providers_order is set, auto-build from providers
-        if not self.directories and self.providers_order:
-            logger.info('auto_building_directories_from_providers')
-            return
-
         # If both directories and providers_order are empty, require directories
         if not self.directories and not self.providers_order:
             msg = 'Either directories or providers_order must be specified'
             raise ValueError(msg)
 
+        # Get directories (either explicit or auto-built from providers)
         resolved_dirs = self.get_directories()
-        self._validate_directory_list(self.directories, resolved_dirs)
+
+        # Validate the resolved directories
+        # Use the original directories list for error messages, or empty list if using providers
+        original_dirs = self.directories if self.directories else [f'provider:{p}' for p in self.providers_order]
+        self._validate_directory_list(original_dirs, resolved_dirs)
 
     def _resolve_directories(self, directories: list[str]) -> list[Path]:
         """Resolve a list of directory strings to Path objects."""
