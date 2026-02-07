@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from hotlog import get_logger, configure_logging
+from hotlog import add_verbosity_argument, get_logger, configure_logging, resolve_verbosity
 
 from .symlinks import link_resources
 
@@ -98,6 +98,8 @@ def resource_linker(
                 description=f'Link {library_name} resources to your project.',
                 formatter_class=argparse.RawDescriptionHelpFormatter,
             )
+            # add standard verbosity switch provided by hotlog
+            add_verbosity_argument(parser)
 
             parser.add_argument(
                 '--source-dir',
@@ -126,7 +128,9 @@ def resource_linker(
             )
 
             args = parser.parse_args()
-            configure_logging()
+            # Configure logging using resolved verbosity (supports CI auto-detection)
+            verbosity = resolve_verbosity(args)
+            configure_logging(verbosity=verbosity)
 
             # If --info mode, output JSON and exit
             if args.info:
