@@ -254,20 +254,50 @@ class RepolishConfig(BaseModel):
         return self._build_directories_from_providers()
 
 
+def _resolve_provider_alias(
+    provider_name: str,
+    config_dir: Path,
+) -> str | None:
+    """Resolve a provider alias to its actual directory path.
+
+    Args:
+        provider_name: Provider name (may be an alias)
+        config_dir: Directory containing the repolish.yaml file
+
+    Returns:
+        Relative path to provider directory, or None if not an alias
+    """
+    aliases_file = config_dir / '.repolish' / '.provider-aliases.json'
+    if not aliases_file.exists():
+        return None
+
+    try:
+        with aliases_file.open('r') as f:
+            aliases = json.load(f)
+        return aliases.get(provider_name)
+    except (json.JSONDecodeError, OSError):  # nopragma: no cover - error path not easily exercised in tests
+        return None
+
+
 def _load_provider_info(
     provider_name: str,
     config_dir: Path,
 ) -> dict[str, Any] | None:
     """Load provider info from .repolish/<provider>/.provider-info.json.
 
+    Supports provider aliases by checking .provider-aliases.json first.
+
     Args:
-        provider_name: Name of the provider
+        provider_name: Name of the provider (may be an alias)
         config_dir: Directory containing the repolish.yaml file
 
     Returns:
         Provider info dict or None if not found
     """
-    provider_dir = config_dir / '.repolish' / provider_name
+    # Check if provider_name is an alias
+    actual_dir = _resolve_provider_alias(provider_name, config_dir)
+    provider_dir = config_dir / actual_dir if actual_dir else config_dir / '.repolish' / provider_name
+
     info_file = provider_dir / '.provider-info.json'
 
     if not info_file.exists():

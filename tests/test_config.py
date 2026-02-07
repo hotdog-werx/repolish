@@ -480,3 +480,88 @@ def test_load_config_skip_validation(
     assert config_validated.providers_order == ['nonexistent_provider']
     # The validation should have been called but skipped because no dirs resolved
     assert config_validated.get_directories() == []
+
+
+def test_provider_alias_resolution(
+    tmp_path: Path,
+    config_file: Callable[[dict], Path],
+):
+    """Test that provider aliases are resolved correctly."""
+    # Create provider directory with actual name
+    provider_dir = tmp_path / '.repolish' / 'codeguide'
+    provider_dir.mkdir(parents=True)
+
+    # Create provider info
+    info = {
+        'library_name': 'codeguide',
+        'target_dir': '.repolish/codeguide',
+        'templates_dir': 'templates',
+    }
+    with (provider_dir / '.provider-info.json').open('w') as f:
+        json.dump(info, f)
+
+    # Create templates directory
+    templates_path = provider_dir / 'templates'
+    templates_path.mkdir()
+    (templates_path / 'repolish.py').write_text('# dummy')
+    (templates_path / 'repolish').mkdir()
+
+    # Create alias mapping (base -> codeguide)
+    aliases = {'base': '.repolish/codeguide'}
+    with (tmp_path / '.repolish' / '.provider-aliases.json').open('w') as f:
+        json.dump(aliases, f)
+
+    # Config uses alias "base"
+    config_data = {
+        'providers_order': ['base'],
+        'context': {},
+        'post_process': [],
+    }
+    config_path = config_file(config_data)
+
+    # Should resolve alias and find the provider
+    config = load_config(config_path)
+    directories = config.get_directories()
+
+    assert len(directories) == 1
+    assert directories[0] == (provider_dir / 'templates').resolve()
+
+
+def test_provider_alias_fallback_to_direct_name(
+    tmp_path: Path,
+    config_file: Callable[[dict], Path],
+):
+    """Test that provider loading falls back to direct name if no alias exists."""
+    # Create provider directory with name matching config
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+
+    # Create provider info
+    info = {
+        'library_name': 'mylib',
+        'target_dir': '.repolish/mylib',
+        'templates_dir': 'templates',
+    }
+    with (provider_dir / '.provider-info.json').open('w') as f:
+        json.dump(info, f)
+
+    # Create templates directory
+    templates_path = provider_dir / 'templates'
+    templates_path.mkdir()
+    (templates_path / 'repolish.py').write_text('# dummy')
+    (templates_path / 'repolish').mkdir()
+
+    # No alias file created - should fallback to direct name
+    config_data = {
+        'providers_order': ['mylib'],
+        'context': {},
+        'post_process': [],
+    }
+    config_path = config_file(config_data)
+
+    # Should find provider by direct name
+    config = load_config(config_path)
+    directories = config.get_directories()
+
+    assert len(directories) == 1
+    assert directories[0] == (provider_dir / 'templates').resolve()

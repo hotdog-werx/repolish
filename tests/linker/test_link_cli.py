@@ -433,6 +433,63 @@ def test_save_provider_info(tmp_path: Path):
     assert saved_info == cli_info
 
 
+def test_save_provider_info_with_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test that _save_provider_info saves alias when name differs from directory."""
+    monkeypatch.chdir(tmp_path)
+
+    # Provider is called "base" in config, but CLI creates "codeguide" directory
+    cli_info = {
+        'library_name': 'codeguide',
+        'source_dir': '/path/to/codeguide/resources',
+        'target_dir': '.repolish/codeguide',
+        'templates_dir': 'templates',
+    }
+
+    _save_provider_info('base', cli_info)
+
+    # Provider info should be saved
+    info_file = tmp_path / '.repolish' / 'codeguide' / '.provider-info.json'
+    assert info_file.exists()
+
+    saved_info = json.loads(info_file.read_text())
+    assert saved_info == cli_info
+
+    # Alias mapping should also be saved
+    alias_file = tmp_path / '.repolish' / '.provider-aliases.json'
+    assert alias_file.exists()
+
+    aliases = json.loads(alias_file.read_text())
+    assert aliases == {'base': '.repolish/codeguide'}
+
+
+def test_save_provider_info_no_alias_when_names_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test that _save_provider_info doesn't create alias when names match."""
+    monkeypatch.chdir(tmp_path)
+
+    cli_info = {
+        'library_name': 'mylib',
+        'source_dir': '/path/to/mylib/resources',
+        'target_dir': '.repolish/mylib',
+        'templates_dir': 'templates',
+    }
+
+    _save_provider_info('mylib', cli_info)
+
+    # Provider info should be saved
+    info_file = tmp_path / '.repolish' / 'mylib' / '.provider-info.json'
+    assert info_file.exists()
+
+    # No alias file should be created when names match
+    alias_file = tmp_path / '.repolish' / '.provider-aliases.json'
+    assert not alias_file.exists()
+
+
 def test_run_provider_link_saves_info(
     mocker: pytest_mock.MockerFixture,
     tmp_path: Path,

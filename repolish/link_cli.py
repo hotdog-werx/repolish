@@ -23,9 +23,10 @@ def _save_provider_info(provider_name: str, cli_info: dict[str, str]) -> None:
     """Save provider info to .repolish/<provider>/.provider-info.json.
 
     This allows repolish to auto-build directories from providers_order.
+    Also saves an alias mapping so the provider can be referenced by its config name.
 
     Args:
-        provider_name: Name of the provider
+        provider_name: Name of the provider (alias in config)
         cli_info: Information from the provider's CLI --info
     """
     target_dir = Path(cli_info.get('target_dir', f'.repolish/{provider_name}'))
@@ -44,7 +45,39 @@ def _save_provider_info(provider_name: str, cli_info: dict[str, str]) -> None:
     with info_file.open('w') as f:
         json.dump(cli_info, f, indent=2)
 
+    # Save alias mapping if provider_name differs from actual directory
+    # This allows using aliases in providers_order
+    actual_dir_name = target_dir.name
+    if actual_dir_name != provider_name:
+        _save_provider_alias(provider_name, target_dir)
+
     logger.debug('provider_info_saved', provider=provider_name)
+
+
+def _save_provider_alias(alias: str, target_dir: Path) -> None:
+    """Save an alias mapping for a provider.
+
+    Args:
+        alias: The alias name used in the config
+        target_dir: The actual directory where the provider is linked
+    """
+    repolish_dir = Path('.repolish')
+    aliases_file = repolish_dir / '.provider-aliases.json'
+
+    # Load existing aliases
+    aliases = {}
+    if aliases_file.exists():
+        with aliases_file.open('r') as f:
+            aliases = json.load(f)
+
+    # Update with new alias (store relative path from .repolish/)
+    aliases[alias] = str(target_dir.relative_to(repolish_dir.parent))
+
+    # Save aliases
+    with aliases_file.open('w') as f:
+        json.dump(aliases, f, indent=2)
+
+    logger.debug('provider_alias_saved', alias=alias, target=str(target_dir))
 
 
 def run_provider_link(provider_name: str, link_command: str) -> dict[str, str]:
