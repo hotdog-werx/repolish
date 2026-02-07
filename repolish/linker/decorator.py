@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from hotlog import get_logger
+from hotlog import get_logger, configure_logging
 
 from .symlinks import link_resources
 
@@ -126,6 +126,7 @@ def resource_linker(
             )
 
             args = parser.parse_args()
+            configure_logging()
 
             # If --info mode, output JSON and exit
             if args.info:

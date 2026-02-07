@@ -338,7 +338,8 @@ def load_config(yaml_file: Path, *, validate: bool = True) -> RepolishConfig:
     config.config_file = yaml_file
     
     # If directories is empty but providers_order is set, auto-populate from providers
-    if not config.directories and config.providers_order:
+    # Skip this during linking (validate=False) since provider info doesn't exist yet
+    if validate and not config.directories and config.providers_order:
         resolved_dirs = config.get_directories()
         # Convert back to strings for the config model
         config.directories = [str(d) for d in resolved_dirs]
