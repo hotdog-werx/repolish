@@ -97,12 +97,12 @@ def test_load_config_and_create_context(
     config = load_config(config_path)
 
     # Verify config was loaded correctly
-    assert config.directories == temp_repolish_dirs
+    assert [str(d) for d in config.directories] == temp_repolish_dirs
     assert config.context == {'project_name': 'MyProject'}
     assert config.post_process == ["echo 'Done'"]
 
     # Create providers from the directories
-    providers = create_providers(config.directories)
+    providers = create_providers([str(d) for d in config.directories])
     context = providers.context
 
     # Verify the merged context
@@ -263,7 +263,7 @@ def test_config_allows_empty_directories_with_providers_order(
 
     # Should not raise - providers_order is set
     config = load_config(config_path)
-    assert config.directories == []
+    assert config.directories == []  # Empty when providers not linked yet
     assert config.providers_order == ['provider1', 'provider2']
 
 
@@ -441,7 +441,7 @@ def test_templates_dir_fallback_to_yaml_config(
         'providers_order': ['provider1'],
         'providers': {
             'provider1': {
-                'link': 'provider1-link',
+                'cli': 'provider1-link',
                 'templates_dir': 'custom-templates',  # Only in YAML
             },
         },

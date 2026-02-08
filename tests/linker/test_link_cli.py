@@ -126,9 +126,9 @@ def test_get_provider_names_with_order():
         directories=['./templates'],
         providers_order=['lib1', 'lib2', 'lib3'],
         providers={
-            'lib1': ProviderConfig(link='lib1-link'),
-            'lib2': ProviderConfig(link='lib2-link'),
-            'lib3': ProviderConfig(link='lib3-link'),
+            'lib1': ProviderConfig(cli='lib1-link'),
+            'lib2': ProviderConfig(cli='lib2-link'),
+            'lib3': ProviderConfig(cli='lib3-link'),
         },
     )
 
@@ -142,8 +142,8 @@ def test_get_provider_names_without_order():
     config = RepolishConfig(
         directories=['./templates'],
         providers={
-            'lib1': ProviderConfig(link='lib1-link'),
-            'lib2': ProviderConfig(link='lib2-link'),
+            'lib1': ProviderConfig(cli='lib1-link'),
+            'lib2': ProviderConfig(cli='lib2-link'),
         },
     )
 
@@ -167,7 +167,7 @@ def test_process_single_provider_error_handling(
     mocker: pytest_mock.MockerFixture,
 ):
     """Test _process_single_provider handles various error conditions."""
-    provider_config = ProviderConfig(link='mylib-link')
+    provider_config = ProviderConfig(cli='mylib-link')
 
     if exception is None:
         # Success case
@@ -202,7 +202,7 @@ def test_process_single_provider_with_symlinks(
     (provider_dir / 'config.txt').write_text('content')
 
     provider_config = ProviderConfig(
-        link='mylib-link',
+        cli='mylib-link',
         symlinks=[
             ProviderSymlink(source='config.txt', target='config.txt'),
         ],

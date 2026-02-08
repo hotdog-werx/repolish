@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from repolish.config import (
     ProviderConfig,
     ProviderSymlink,
@@ -11,9 +13,9 @@ from repolish.config import (
 
 def test_provider_config_minimal():
     """Test minimal provider configuration."""
-    provider = ProviderConfig(link='mylib-link')
+    provider = ProviderConfig(cli='mylib-link')
 
-    assert provider.link == 'mylib-link'
+    assert provider.cli == 'mylib-link'
     assert provider.templates_dir == 'templates'  # default
     assert provider.symlinks == []  # default
 
@@ -21,7 +23,7 @@ def test_provider_config_minimal():
 def test_provider_config_with_symlinks():
     """Test provider configuration with symlinks."""
     provider = ProviderConfig(
-        link='codeguide-link',
+        cli='codeguide-link',
         templates_dir='custom_templates',
         symlinks=[
             ProviderSymlink(
@@ -32,7 +34,7 @@ def test_provider_config_with_symlinks():
         ],
     )
 
-    assert provider.link == 'codeguide-link'
+    assert provider.cli == 'codeguide-link'
     assert provider.templates_dir == 'custom_templates'
     assert len(provider.symlinks) == 2
     assert provider.symlinks[0].source == 'configs/.editorconfig'
@@ -50,7 +52,7 @@ providers_order: [codeguide, python-tools]
 
 providers:
   codeguide:
-    link: codeguide-link
+    cli: codeguide-link
     symlinks:
       - source: configs/.editorconfig
         target: .editorconfig
@@ -58,7 +60,7 @@ providers:
         target: .prettierrc
 
   python-tools:
-    link: python-tools-link
+    cli: python-tools-link
     templates_dir: custom_templates
 """)
 
@@ -74,14 +76,14 @@ providers:
 
     # Check codeguide provider
     codeguide = config.providers['codeguide']
-    assert codeguide.link == 'codeguide-link'
+    assert codeguide.cli == 'codeguide-link'
     assert codeguide.templates_dir == 'templates'  # default
     assert len(codeguide.symlinks) == 2
     assert codeguide.symlinks[0].source == 'configs/.editorconfig'
 
     # Check python-tools provider
     python_tools = config.providers['python-tools']
-    assert python_tools.link == 'python-tools-link'
+    assert python_tools.cli == 'python-tools-link'
     assert python_tools.templates_dir == 'custom_templates'
     assert len(python_tools.symlinks) == 0
 
@@ -117,3 +119,30 @@ def test_provider_symlink_model():
 
     assert symlink.source == 'configs/.editorconfig'
     assert symlink.target == '.editorconfig'
+
+
+def test_provider_config_with_directory():
+    """Test provider configuration with direct directory path."""
+    provider = ProviderConfig(directory='./local-templates')
+
+    assert provider.directory == './local-templates'
+    assert provider.cli is None
+    assert provider.templates_dir == 'templates'
+
+
+def test_provider_config_requires_cli_or_directory():
+    """Test that either cli or directory must be provided."""
+    with pytest.raises(
+        ValueError,
+        match='Either cli or directory must be provided',
+    ):
+        ProviderConfig()
+
+
+def test_provider_config_rejects_both_cli_and_directory():
+    """Test that both cli and directory cannot be provided."""
+    with pytest.raises(
+        ValueError,
+        match='Cannot specify both cli and directory',
+    ):
+        ProviderConfig(cli='mylib-link', directory='./templates')

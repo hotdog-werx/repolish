@@ -4,7 +4,7 @@ from typing import Any
 
 import yaml
 from hotlog import get_logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 logger = get_logger(__name__)
 
@@ -23,8 +23,13 @@ class ProviderSymlink(BaseModel):
 class ProviderConfig(BaseModel):
     """Configuration for a single provider."""
 
-    link: str = Field(
+    cli: str | None = Field(
+        default=None,
         description='CLI command to call for linking (e.g., codeguide-link)',
+    )
+    directory: str | None = Field(
+        default=None,
+        description='Direct path to provider directory (alternative to cli)',
     )
     templates_dir: str = Field(
         default='templates',
@@ -34,6 +39,17 @@ class ProviderConfig(BaseModel):
         default_factory=list,
         description='Additional symlinks to create from provider resources to repo',
     )
+
+    @model_validator(mode='after')
+    def validate_cli_or_directory(self) -> 'ProviderConfig':
+        """Ensure exactly one of cli or directory is provided."""
+        if self.cli is None and self.directory is None:
+            msg = 'Either cli or directory must be provided'
+            raise ValueError(msg)
+        if self.cli is not None and self.directory is not None:
+            msg = 'Cannot specify both cli and directory'
+            raise ValueError(msg)
+        return self
 
 
 class RepolishConfig(BaseModel):
@@ -135,7 +151,7 @@ class RepolishConfig(BaseModel):
 
     def validate_directories(self) -> None:
         """Validate that all directories exist and have required structure.
-        
+
         Note: directories should already be populated by load_config() if using providers.
         """
         if not self.directories:
@@ -176,6 +192,25 @@ class RepolishConfig(BaseModel):
 
         Returns None if the provider info cannot be loaded.
         """
+        provider_config = self.providers.get(provider_name)
+
+        # If provider has a direct directory, use it
+        if provider_config and provider_config.directory:
+            directory = Path(provider_config.directory)
+            if not directory.is_absolute():
+                directory = config_dir / directory
+
+            # Get templates subdirectory
+            templates_path = directory / provider_config.templates_dir
+            logger.debug(
+                'auto_added_directory_from_provider',
+                provider=provider_name,
+                directory=str(templates_path),
+                source='direct_directory',
+            )
+            return templates_path.resolve()
+
+        # Otherwise, try to load from linked provider info
         provider_info = _load_provider_info(provider_name, config_dir)
         if not provider_info or 'target_dir' not in provider_info:
             logger.warning(
@@ -193,7 +228,6 @@ class RepolishConfig(BaseModel):
         if 'templates_dir' in provider_info:
             templates_subdir = provider_info['templates_dir']
         else:
-            provider_config = self.providers.get(provider_name)
             templates_subdir = provider_config.templates_dir if provider_config else 'templates'
 
         # Combine to get full templates path
@@ -202,6 +236,7 @@ class RepolishConfig(BaseModel):
             'auto_added_directory_from_provider',
             provider=provider_name,
             directory=str(templates_path),
+            source='linked_provider',
         )
         return templates_path.resolve()
 
@@ -264,7 +299,10 @@ def _resolve_provider_alias(
         with aliases_file.open('r') as f:
             aliases = json.load(f)
         return aliases.get(provider_name)
-    except (json.JSONDecodeError, OSError):  # nopragma: no cover - error path not easily exercised in tests
+    except (
+        json.JSONDecodeError,
+        OSError,
+    ):  # nopragma: no cover - error path not easily exercised in tests
         return None
 
 
@@ -336,14 +374,14 @@ def load_config(yaml_file: Path, *, validate: bool = True) -> RepolishConfig:
     # store the location of the config file on the model so relative paths can
     # be resolved later
     config.config_file = yaml_file
-    
+
     # If directories is empty but providers_order is set, auto-populate from providers
     # Skip this during linking (validate=False) since provider info doesn't exist yet
     if validate and not config.directories and config.providers_order:
         resolved_dirs = config.get_directories()
         # Convert back to strings for the config model
         config.directories = [str(d) for d in resolved_dirs]
-    
+
     if validate:
         config.validate_directories()
     return config

@@ -7,7 +7,12 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from hotlog import add_verbosity_argument, get_logger, configure_logging, resolve_verbosity
+from hotlog import (
+    add_verbosity_argument,
+    configure_logging,
+    get_logger,
+    resolve_verbosity,
+)
 
 from .symlinks import link_resources
 
