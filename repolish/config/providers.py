@@ -3,6 +3,19 @@ from pathlib import Path
 from .models import AllProviders, ProviderInfo
 
 
+def get_provider_info_path(provider_alias: str, config_dir: Path) -> Path:
+    """Get the path to a provider's info file.
+
+    Args:
+        provider_alias: Name of the provider (alias name)
+        config_dir: Directory containing the repolish.yaml file
+
+    Returns:
+        Path to the provider info file
+    """
+    return config_dir / '.repolish' / '_' / f'provider-info.{provider_alias}.json'
+
+
 def resolve_provider_alias(
     provider_alias: str,
     config_dir: Path,
@@ -38,5 +51,5 @@ def load_provider_info(
     Returns:
         ProviderInfo model or None if not found
     """
-    info_file = config_dir / '.repolish' / '_' / f'provider-info.{provider_alias}.json'
+    info_file = get_provider_info_path(provider_alias, config_dir)
     return ProviderInfo.from_file(info_file)

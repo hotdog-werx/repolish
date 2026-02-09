@@ -141,6 +141,7 @@ def provider_setup(tmp_path: Path):
 
         info_data = {
             'target_dir': target_dir,
+            'source_dir': f'/fake/source/{alias}',
             'templates_dir': templates_dir,
             'library_name': library_name,
         }

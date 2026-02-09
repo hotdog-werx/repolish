@@ -8,15 +8,18 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_mock
 
-from repolish.config import ProviderConfig, ProviderSymlink, RepolishConfig
+from repolish.config import ProviderConfig, ProviderInfo, ProviderSymlink
+from repolish.config.models import RepolishConfigFile
 from repolish.link_cli import (
     _get_provider_names,
-    _process_single_provider,
-    _save_provider_info,
-    create_provider_symlinks,
     main,
     run,
+)
+from repolish.linker import (
+    create_provider_symlinks,
+    process_provider,
     run_provider_link,
+    save_provider_info,
 )
 
 
@@ -34,10 +37,10 @@ def test_run_provider_link_error_handling(
     mocker: pytest_mock.MockerFixture,
 ):
     """Test run_provider_link handles success and failure cases."""
-    cli_info = {
+    provider_info_data = {
         'library_name': 'mylib',
-        'source_dir': '/path/to/mylib/resources',
         'target_dir': '.repolish/mylib',
+        'source_dir': '/fake/source/mylib',
         'templates_dir': 'templates',
     }
 
@@ -46,13 +49,15 @@ def test_run_provider_link_error_handling(
     if exception is None:
         # Success case
         mock_info = MagicMock()
-        mock_info.stdout = json.dumps(cli_info)
+        mock_info.stdout = json.dumps(provider_info_data)
         mock_link = MagicMock()
         mock_run.side_effect = [mock_info, mock_link]
 
         result = run_provider_link('mylib', 'mylib-link')
 
-        assert result == cli_info
+        assert isinstance(result, ProviderInfo)
+        assert result.library_name == 'mylib'
+        assert result.target_dir == '.repolish/mylib'
         assert mock_run.call_count == 2
 
         # Verify --info call
@@ -75,15 +80,19 @@ def test_run_provider_link_error_handling(
                 run_provider_link('mylib', 'mylib-link')
         else:
             result = run_provider_link('mylib', 'mylib-link')
-            assert result == cli_info
+            assert isinstance(result, ProviderInfo)
 
 
 def test_create_provider_symlinks_no_symlinks():
     """Test create_provider_symlinks handles empty symlinks list."""
-    cli_info = {'library_name': 'mylib', 'target_dir': '.repolish/mylib'}
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir='.repolish/mylib',
+        source_dir='/fake/source/mylib',
+    )
 
     # Should not raise, should just return
-    create_provider_symlinks('mylib', cli_info, [])
+    create_provider_symlinks('mylib', provider_info, [])
 
 
 def test_create_provider_symlinks_creates_links(
@@ -101,17 +110,24 @@ def test_create_provider_symlinks_creates_links(
     (config_dir / '.editorconfig').write_text('root = true')
     (config_dir / '.prettierrc').write_text('{}')
 
-    cli_info = {
-        'library_name': 'mylib',
-        'target_dir': str(provider_dir),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_dir),
+        source_dir='/fake/source/mylib',
+    )
 
     symlinks = [
-        {'source': 'configs/.editorconfig', 'target': '.editorconfig'},
-        {'source': 'configs/.prettierrc', 'target': '.prettierrc'},
+        ProviderSymlink(
+            source=Path('configs/.editorconfig'),
+            target=Path('.editorconfig'),
+        ),
+        ProviderSymlink(
+            source=Path('configs/.prettierrc'),
+            target=Path('.prettierrc'),
+        ),
     ]
 
-    create_provider_symlinks('mylib', cli_info, symlinks)
+    create_provider_symlinks('mylib', provider_info, symlinks)
 
     # Verify symlinks/copies were created
     assert (tmp_path / '.editorconfig').exists()
@@ -122,8 +138,7 @@ def test_create_provider_symlinks_creates_links(
 
 def test_get_provider_names_with_order():
     """Test _get_provider_names returns providers_order when set."""
-    config = RepolishConfig(
-        directories=['./templates'],
+    config = RepolishConfigFile(
         providers_order=['lib1', 'lib2', 'lib3'],
         providers={
             'lib1': ProviderConfig(cli='lib1-link'),
@@ -139,18 +154,18 @@ def test_get_provider_names_with_order():
 
 def test_get_provider_names_without_order():
     """Test _get_provider_names returns all providers when no order set."""
-    config = RepolishConfig(
-        directories=['./templates'],
+    config = RepolishConfigFile(
         providers={
             'lib1': ProviderConfig(cli='lib1-link'),
             'lib2': ProviderConfig(cli='lib2-link'),
+            'local': ProviderConfig(directory='./templates'),
         },
     )
 
     result = _get_provider_names(config)
 
     # Order is arbitrary but should include all providers
-    assert set(result) == {'lib1', 'lib2'}
+    assert set(result) == {'lib1', 'lib2', 'local'}
 
 
 @pytest.mark.parametrize(
@@ -164,27 +179,32 @@ def test_get_provider_names_without_order():
 def test_process_single_provider_error_handling(
     exception: subprocess.CalledProcessError | FileNotFoundError | None,
     expected_result: int,
+    tmp_path: Path,
     mocker: pytest_mock.MockerFixture,
 ):
-    """Test _process_single_provider handles various error conditions."""
+    """Test process_provider handles various error conditions."""
     provider_config = ProviderConfig(cli='mylib-link')
 
     if exception is None:
         # Success case
-        cli_info = {'library_name': 'mylib', 'target_dir': '.repolish/mylib'}
-        _ = mocker.patch(
-            'repolish.link_cli.run_provider_link',
-            return_value=cli_info,
+        provider_info = ProviderInfo(
+            library_name='mylib',
+            target_dir=str(tmp_path / '.repolish' / 'mylib'),
+            source_dir='/fake/source/mylib',
         )
-        result = _process_single_provider('mylib', provider_config)
+        _ = mocker.patch(
+            'repolish.linker.orchestrator.run_provider_link',
+            return_value=provider_info,
+        )
+        result = process_provider('mylib', provider_config, tmp_path)
         assert result == expected_result
     else:
         # Error cases
         _ = mocker.patch(
-            'repolish.link_cli.run_provider_link',
+            'repolish.linker.orchestrator.run_provider_link',
             side_effect=exception,
         )
-        result = _process_single_provider('mylib', provider_config)
+        result = process_provider('mylib', provider_config, tmp_path)
         assert result == expected_result
 
 
@@ -193,7 +213,7 @@ def test_process_single_provider_with_symlinks(
     monkeypatch: pytest.MonkeyPatch,
     mocker: pytest_mock.MockerFixture,
 ):
-    """Test _process_single_provider creates additional symlinks."""
+    """Test process_provider creates additional symlinks."""
     monkeypatch.chdir(tmp_path)
 
     # Setup provider resources
@@ -204,20 +224,24 @@ def test_process_single_provider_with_symlinks(
     provider_config = ProviderConfig(
         cli='mylib-link',
         symlinks=[
-            ProviderSymlink(source='config.txt', target='config.txt'),
+            ProviderSymlink(
+                source=Path('config.txt'),
+                target=Path('config.txt'),
+            ),
         ],
     )
 
-    cli_info = {
-        'library_name': 'mylib',
-        'target_dir': str(provider_dir),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_dir),
+        source_dir='/fake/source/mylib',
+    )
 
     _ = mocker.patch(
-        'repolish.link_cli.run_provider_link',
-        return_value=cli_info,
+        'repolish.linker.orchestrator.run_provider_link',
+        return_value=provider_info,
     )
-    result = _process_single_provider('mylib', provider_config)
+    result = process_provider('mylib', provider_config, tmp_path)
 
     assert result == 0
     assert (tmp_path / 'config.txt').exists()
@@ -258,7 +282,7 @@ directories:
 
 providers:
   mylib:
-    link: mylib-link
+    cli: mylib-link
 """)
 
     # Create dummy template directory
@@ -266,18 +290,62 @@ providers:
     (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
     (tmp_path / 'templates' / 'repolish').mkdir()
 
-    cli_info = {
-        'library_name': 'mylib',
-        'target_dir': '.repolish/mylib',
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(tmp_path / '.repolish' / 'mylib'),
+        source_dir='/fake/source/mylib',
+    )
 
     mocker.patch(
-        'repolish.link_cli.run_provider_link',
-        return_value=cli_info,
+        'repolish.linker.orchestrator.run_provider_link',
+        return_value=provider_info,
     )
     result = run(['--config', str(config_file)])
 
     assert result == 0
+
+
+def test_run_with_directory_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """Test run processes directory-based providers (no CLI, just directory path)."""
+    monkeypatch.chdir(tmp_path)
+
+    # Create provider directory with templates
+    provider_dir = tmp_path / 'local_provider'
+    provider_dir.mkdir()
+    templates_dir = provider_dir / 'templates'
+    templates_dir.mkdir()
+    (templates_dir / 'repolish.py').write_text('# local provider')
+    (templates_dir / 'repolish').mkdir()
+
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(f"""
+directories:
+  - ./templates
+
+providers:
+  local:
+    directory: {provider_dir}
+""")
+
+    # Create dummy template directory
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
+    (tmp_path / 'templates' / 'repolish').mkdir()
+
+    # Mock should NOT be called since directory providers don't use run_provider_link
+    mock_run_provider_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+    )
+
+    result = run(['--config', str(config_file)])
+
+    assert result == 0
+    # Verify run_provider_link was NOT called for directory-based provider
+    mock_run_provider_link.assert_not_called()
 
 
 def test_run_provider_not_in_order(
@@ -297,9 +365,9 @@ providers_order: [lib1, lib2, nonexistent]
 
 providers:
   lib1:
-    link: lib1-link
+    cli: lib1-link
   lib2:
-    link: lib2-link
+    cli: lib2-link
 """)
 
     # Create dummy template directory
@@ -307,14 +375,15 @@ providers:
     (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
     (tmp_path / 'templates' / 'repolish').mkdir()
 
-    cli_info = {
-        'library_name': 'lib',
-        'target_dir': '.repolish/lib',
-    }
+    provider_info = ProviderInfo(
+        library_name='lib',
+        target_dir=str(tmp_path / '.repolish' / 'lib'),
+        source_dir='/fake/source/lib',
+    )
 
     mocker.patch(
-        'repolish.link_cli.run_provider_link',
-        return_value=cli_info,
+        'repolish.linker.orchestrator.run_provider_link',
+        return_value=provider_info,
     )
     result = run(['--config', str(config_file)])
 
@@ -337,7 +406,7 @@ directories:
 
 providers:
   mylib:
-    link: mylib-link
+    cli: mylib-link
 """)
 
     # Create dummy template directory
@@ -346,7 +415,7 @@ providers:
     (tmp_path / 'templates' / 'repolish').mkdir()
 
     mocker.patch(
-        'repolish.link_cli.run_provider_link',
+        'repolish.linker.orchestrator.run_provider_link',
         side_effect=subprocess.CalledProcessError(1, 'cmd'),
     )
     result = run(['--config', str(config_file)])
@@ -415,101 +484,82 @@ directories:
     assert result == 0
 
 
-def test_save_provider_info(tmp_path: Path):
-    """Test that _save_provider_info saves provider info correctly."""
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': '/path/to/mylib/resources',
-        'target_dir': '.repolish/mylib',
-        'templates_dir': 'templates',
-    }
+def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test that save_provider_info saves provider info correctly."""
+    monkeypatch.chdir(tmp_path)
 
-    _save_provider_info('mylib', cli_info)
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(tmp_path / '.repolish' / 'mylib'),
+        source_dir='/fake/source/mylib',
+        templates_dir='templates',
+    )
 
-    info_file = Path('.repolish/mylib/.provider-info.json')
+    save_provider_info('mylib', provider_info, tmp_path)
+
+    # Check provider info file saved in .repolish/_/ directory
+    info_file = tmp_path / '.repolish' / '_' / 'provider-info.mylib.json'
     assert info_file.exists()
 
     saved_info = json.loads(info_file.read_text())
-    assert saved_info == cli_info
+    assert saved_info['library_name'] == 'mylib'
+    assert saved_info['target_dir'] == str(tmp_path / '.repolish' / 'mylib')
+    assert saved_info['templates_dir'] == 'templates'
 
 
 def test_save_provider_info_with_alias(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test that _save_provider_info saves alias when name differs from directory."""
+    """Test that save_provider_info saves alias when name differs from directory."""
     monkeypatch.chdir(tmp_path)
 
-    # Provider is called "base" in config, but CLI creates "codeguide" directory
-    cli_info = {
-        'library_name': 'codeguide',
-        'source_dir': '/path/to/codeguide/resources',
-        'target_dir': '.repolish/codeguide',
-        'templates_dir': 'templates',
-    }
+    # Provider is called "base" in config, but target_dir is "codeguide"
+    provider_info = ProviderInfo(
+        library_name='codeguide',
+        target_dir=str(tmp_path / '.repolish' / 'codeguide'),
+        source_dir='/fake/source/codeguide',
+        templates_dir='templates',
+    )
 
-    _save_provider_info('base', cli_info)
+    save_provider_info('base', provider_info, tmp_path)
 
-    # Provider info should be saved
-    info_file = tmp_path / '.repolish' / 'codeguide' / '.provider-info.json'
+    # Provider info should be saved in .repolish/_/
+    info_file = tmp_path / '.repolish' / '_' / 'provider-info.base.json'
     assert info_file.exists()
 
     saved_info = json.loads(info_file.read_text())
-    assert saved_info == cli_info
+    assert saved_info['library_name'] == 'codeguide'
 
     # Alias mapping should also be saved
-    alias_file = tmp_path / '.repolish' / '.provider-aliases.json'
+    alias_file = tmp_path / '.repolish' / '_' / '.all-providers.json'
     assert alias_file.exists()
 
     aliases = json.loads(alias_file.read_text())
-    assert aliases == {'base': '.repolish/codeguide'}
+    assert 'aliases' in aliases
+    assert aliases['aliases']['base'] == 'codeguide'
 
 
-def test_save_provider_info_no_alias_when_names_match(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Test that _save_provider_info doesn't create alias when names match."""
-    monkeypatch.chdir(tmp_path)
-
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': '/path/to/mylib/resources',
-        'target_dir': '.repolish/mylib',
-        'templates_dir': 'templates',
-    }
-
-    _save_provider_info('mylib', cli_info)
-
-    # Provider info should be saved
-    info_file = tmp_path / '.repolish' / 'mylib' / '.provider-info.json'
-    assert info_file.exists()
-
-    # No alias file should be created when names match
-    alias_file = tmp_path / '.repolish' / '.provider-aliases.json'
-    assert not alias_file.exists()
-
-
-def test_run_provider_link_saves_info(
+def test_run_provider_link_no_extra_save(
     mocker: pytest_mock.MockerFixture,
     tmp_path: Path,
 ):
-    """Test that run_provider_link saves provider info after linking."""
-    cli_info = {
+    """Test that run_provider_link doesn't save info (that's done by process_provider)."""
+    provider_info_data = {
         'library_name': 'mylib',
         'target_dir': '.repolish/mylib',
+        'source_dir': '/fake/source/mylib',
         'templates_dir': 'templates',
     }
 
     mock_run = mocker.patch('subprocess.run')
     mock_info = MagicMock()
-    mock_info.stdout = json.dumps(cli_info)
+    mock_info.stdout = json.dumps(provider_info_data)
     mock_link = MagicMock()
     mock_run.side_effect = [mock_info, mock_link]
 
-    mock_save = mocker.patch('repolish.link_cli._save_provider_info')
-
     result = run_provider_link('mylib', 'mylib-link')
 
-    assert result == cli_info
-    mock_save.assert_called_once_with('mylib', cli_info)
+    assert isinstance(result, ProviderInfo)
+    assert result.library_name == 'mylib'
+    assert result.target_dir == '.repolish/mylib'

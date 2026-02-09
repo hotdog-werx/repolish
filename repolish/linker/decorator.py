@@ -14,6 +14,7 @@ from hotlog import (
     resolve_verbosity,
 )
 
+from ..config.models import ProviderInfo
 from .symlinks import link_resources
 
 logger = get_logger(__name__)
@@ -139,15 +140,15 @@ def resource_linker(
 
             # If --info mode, output JSON and exit
             if args.info:
-                info = {
-                    'library_name': library_name,
-                    'source_dir': str(args.source_dir.resolve()),
-                    'target_dir': str(
-                        args.target_dir.absolute(),
-                    ),  # Use absolute() not resolve() to avoid following symlink
-                    'templates_dir': templates_subdir,
-                }
-                print(json.dumps(info, indent=2))  # noqa: T201 - Allow print for CLI output
+                # Create ProviderInfo model and output as JSON
+                # Note: target_dir uses absolute() not resolve() to avoid following symlinks
+                info = ProviderInfo(
+                    target_dir=str(args.target_dir.absolute()),
+                    source_dir=str(args.source_dir.absolute()),
+                    templates_dir=templates_subdir,
+                    library_name=library_name,
+                )
+                print(json.dumps(info.model_dump(), indent=2))  # noqa: T201 - Allow print for CLI output
                 return
 
             try:

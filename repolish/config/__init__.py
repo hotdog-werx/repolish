@@ -1,4 +1,4 @@
-from .loader import load_config
+from .loader import load_config, load_config_file
 from .models import (
     AllProviders,
     ProviderConfig,
@@ -7,6 +7,7 @@ from .models import (
     RepolishConfig,
     ResolvedProviderInfo,
 )
+from .providers import get_provider_info_path
 
 __all__ = [
     # Models
@@ -18,4 +19,7 @@ __all__ = [
     'ResolvedProviderInfo',
     # Loader
     'load_config',
+    'load_config_file',
+    # Providers
+    'get_provider_info_path',
 ]

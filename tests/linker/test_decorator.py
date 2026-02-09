@@ -1,5 +1,3 @@
-"""Tests for repolish.linker.decorator module."""
-
 import json
 import sys
 from collections.abc import Callable
@@ -12,53 +10,11 @@ import pytest_mock
 
 from repolish.linker.decorator import resource_linker
 
-
-@pytest.fixture
-def test_package(tmp_path: Path):
-    """Fixture that creates a basic test package structure."""
-    pkg_root = tmp_path / 'mylib'
-    pkg_root.mkdir()
-    resources = pkg_root / 'resources'
-    resources.mkdir()
-    return {'pkg_root': pkg_root, 'resources': resources}
-
-
-@pytest.fixture
-def mocked_package(tmp_path: Path, mocker: pytest_mock.MockerFixture):
-    """Fixture that sets up a mock package structure and common mocks."""
-    pkg_root = tmp_path / 'mylib'
-    pkg_root.mkdir()
-    resources = pkg_root / 'resources'
-    resources.mkdir()
-
-    # Mock _get_package_root to return our test package
-    mocker.patch(
-        'repolish.linker.decorator._get_package_root',
-        return_value=pkg_root,
-    )
-
-    return {
-        'pkg_root': pkg_root,
-        'resources': resources,
-        'mock_link_resources': mocker.patch(
-            'repolish.linker.decorator.link_resources',
-            return_value=True,
-        ),
-    }
-
-
-@pytest.fixture
-def basic_link_cli(mocked_package: dict[str, Any]) -> Callable[[], None]:
-    """Fixture that returns a basic decorated link_cli function."""
-
-    @resource_linker(
-        library_name='mylib',
-        default_source_dir='resources',
-    )
-    def link_cli() -> None:
-        pass
-
-    return link_cli
+from .conftest import (
+    _BasicLinkCliFixture,
+    _MockedPackageDict,
+    _TestPackageDict,
+)
 
 
 def _call_with_argv(
@@ -113,8 +69,8 @@ def _assert_link_resources_called(
 def test_resource_linker_basic_usage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: dict[str, Any],
-    basic_link_cli: Callable[[], None],
+    mocked_package: _MockedPackageDict,
+    basic_link_cli: _BasicLinkCliFixture,
     mocker: pytest_mock.MockerFixture,
 ):
     """Test basic usage of resource_linker decorator."""
@@ -132,7 +88,7 @@ def test_resource_linker_basic_usage(
 
 
 def test_resource_linker_info_mode(
-    test_package: dict[str, Path],
+    test_package: _TestPackageDict,
     capsys: pytest.CaptureFixture[str],
     mocker: pytest_mock.MockerFixture,
 ):
@@ -160,8 +116,8 @@ def test_resource_linker_info_mode(
 def test_resource_linker_custom_target_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: dict[str, Any],
-    basic_link_cli: Callable[[], None],
+    mocked_package: _MockedPackageDict,
+    basic_link_cli: _BasicLinkCliFixture,
     mocker: pytest_mock.MockerFixture,
 ):
     """Test resource_linker with custom target directory."""
@@ -188,8 +144,8 @@ def test_resource_linker_force_flag(
     tmp_path: Path,
     mocker: pytest_mock.MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: dict[str, Any],
-    basic_link_cli: Callable[[], None],
+    mocked_package: _MockedPackageDict,
+    basic_link_cli: _BasicLinkCliFixture,
 ):
     """Test resource_linker with --force flag."""
     monkeypatch.chdir(tmp_path)
@@ -206,7 +162,7 @@ def test_resource_linker_force_flag(
 
 
 def test_resource_linker_custom_templates_subdir(
-    test_package: dict[str, Path],
+    test_package: _TestPackageDict,
     capsys: pytest.CaptureFixture[str],
     mocker: pytest_mock.MockerFixture,
 ):
@@ -233,7 +189,7 @@ def test_resource_linker_calls_wrapped_function(
     tmp_path: Path,
     mocker: pytest_mock.MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: dict[str, Any],
+    mocked_package: _MockedPackageDict,
 ):
     """Test resource_linker calls the wrapped function after linking."""
     monkeypatch.chdir(tmp_path)
@@ -328,7 +284,7 @@ def test_resource_linker_custom_target_base(
 
 
 def test_resource_linker_does_not_call_wrapped_in_info_mode(
-    test_package: dict[str, Path],
+    test_package: _TestPackageDict,
     mocker: pytest_mock.MockerFixture,
 ):
     """Test resource_linker doesn't call wrapped function in --info mode."""

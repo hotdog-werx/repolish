@@ -73,7 +73,7 @@ class LoadProviderInfoCase:
     [
         LoadProviderInfoCase(
             name='valid_info_all_fields',
-            info_content='{"target_dir": ".repolish/codeguide/resources", "templates_dir": "templates", "library_name": "codeguide"}',
+            info_content='{"target_dir": ".repolish/codeguide/resources", "source_dir": "/fake/source/codeguide", "templates_dir": "templates", "library_name": "codeguide"}',
             provider_alias='base',
             expected_target_dir='.repolish/codeguide/resources',
             expected_templates_dir='templates',
@@ -81,7 +81,7 @@ class LoadProviderInfoCase:
         ),
         LoadProviderInfoCase(
             name='valid_info_required_only',
-            info_content='{"target_dir": ".repolish/python-tools/res"}',
+            info_content='{"target_dir": ".repolish/python-tools/res", "source_dir": "/fake/source/python-tools"}',
             provider_alias='py',
             expected_target_dir='.repolish/python-tools/res',
             expected_templates_dir=None,

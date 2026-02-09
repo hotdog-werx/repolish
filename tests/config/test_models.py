@@ -141,12 +141,12 @@ class ProviderInfoCase:
         ),
         ProviderInfoCase(
             name='valid_minimal',
-            file_content='{"target_dir": ".repolish/provider1"}',
+            file_content='{"target_dir": ".repolish/provider1", "source_dir": "/fake/source/provider1"}',
             expected_target_dir='.repolish/provider1',
         ),
         ProviderInfoCase(
             name='valid_with_optional_fields',
-            file_content='{"target_dir": ".repolish/provider1", "templates_dir": "custom", "library_name": "mylib"}',
+            file_content='{"target_dir": ".repolish/provider1", "source_dir": "/fake/source/provider1", "templates_dir": "custom", "library_name": "mylib"}',
             expected_target_dir='.repolish/provider1',
             expected_templates_dir='custom',
             expected_library_name='mylib',

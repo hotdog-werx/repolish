@@ -7,6 +7,22 @@ from .resolution import resolve_config
 from .validation import validate_config_file, validate_resolved_config
 
 
+def load_config_file(yaml_file: Path) -> RepolishConfigFile:
+    """Load and validate YAML configuration file without resolution.
+
+    Args:
+        yaml_file: Path to the YAML configuration file.
+
+    Returns:
+        A validated RepolishConfigFile instance (not yet resolved).
+    """
+    with yaml_file.open(encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    config_file = RepolishConfigFile.model_validate(data)
+    config_file.config_file = yaml_file
+    return config_file
+
+
 def load_config(yaml_file: Path, *, validate: bool = True) -> RepolishConfig:
     """Load and resolve a repolish configuration from a YAML file.
 
@@ -18,13 +34,8 @@ def load_config(yaml_file: Path, *, validate: bool = True) -> RepolishConfig:
     Returns:
         A fully resolved RepolishConfig instance ready for runtime use.
     """
-    # Load raw YAML into model
-    with yaml_file.open(encoding='utf-8') as f:
-        data = yaml.safe_load(f)
-    config_file = RepolishConfigFile.model_validate(data)
-
-    # Store config file location for path resolution
-    config_file.config_file = yaml_file
+    # Load and validate config file
+    config_file = load_config_file(yaml_file)
 
     # Always validate the raw config structure (pre-resolution)
     validate_config_file(config_file)

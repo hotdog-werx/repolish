@@ -7,7 +7,11 @@ import yaml
 
 from repolish.config import load_config
 
-from .conftest import ProviderSetupFixture, TemplateDirFixture, YamlConfigFileFixture
+from .conftest import (
+    ProviderSetupFixture,
+    TemplateDirFixture,
+    YamlConfigFileFixture,
+)
 
 
 @dataclass
@@ -130,7 +134,10 @@ def test_load_config_invalid_directory_not_a_directory(
     }
     config_path = yaml_config_file(config_data)
 
-    with pytest.raises(ValueError, match='Invalid directories.*not a directory'):
+    with pytest.raises(
+        ValueError,
+        match='Invalid directories.*not a directory',
+    ):
         load_config(config_path)
 
 
@@ -203,7 +210,8 @@ def test_load_config_with_directories_deprecated_warning(
 
         # Check our specific deprecation warning was raised
         deprecation_warnings = [
-            warning for warning in w
+            warning
+            for warning in w
             if issubclass(warning.category, DeprecationWarning)
             and 'directories' in str(warning.message).lower()
             and 'v1.0' in str(warning.message)

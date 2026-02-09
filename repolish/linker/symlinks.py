@@ -5,6 +5,8 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from ..config.models import ProviderInfo
+
 logger = get_logger(__name__)
 
 
@@ -135,7 +137,8 @@ def link_resources(
 
 
 def create_additional_link(
-    cli_info: dict[str, str],
+    provider_info: ProviderInfo,
+    provider_name: str,
     source: str,
     target: str,
     *,
@@ -146,10 +149,8 @@ def create_additional_link(
     This is used by repolish to create additional symlinks defined in repolish.yaml.
 
     Args:
-        cli_info: Dict from CLI's --info output with keys:
-                  - library_name: Name of the library
-                  - source_dir: Absolute path to library's resources
-                  - target_dir: Absolute path where resources are linked
+        provider_info: Provider information containing target_dir and library_name
+        provider_name: Name of the provider (used as fallback for library_name)
         source: Path relative to the provider's resources (e.g., 'configs/.editorconfig')
         target: Path relative to repo root (e.g., '.editorconfig')
         force: If True, remove existing target before creating link
@@ -158,26 +159,27 @@ def create_additional_link(
         True if symlink was created, False if copy was used
 
     Example:
-        >>> info = {
-        ...     'library_name': 'codeguide',
-        ...     'source_dir': '/path/to/site-packages/codeguide/resources',
-        ...     'target_dir': '/path/to/project/.repolish/codeguide'
-        ... }
+        >>> from repolish.config.models import ProviderInfo
+        >>> provider_info = ProviderInfo(
+        ...     library_name='codeguide',
+        ...     target_dir='/path/to/project/.repolish/codeguide'
+        ... )
         >>> # Create .editorconfig -> .repolish/codeguide/configs/.editorconfig
         >>> create_additional_link(
-        ...     cli_info=info,
+        ...     provider_info=provider_info,
+        ...     provider_name='codeguide',
         ...     source='configs/.editorconfig',
         ...     target='.editorconfig',
         ... )
     """
     # Resolve paths
-    provider_resources = Path(cli_info['target_dir'])
+    provider_resources = Path(provider_info.target_dir)
     source_path = provider_resources / source
     target_path = Path(target)
 
     logger.info(
         'creating_additional_link',
-        provider=cli_info['library_name'],
+        provider=provider_info.library_name or provider_name,
         source=source,
         target=target,
         _display_level=1,

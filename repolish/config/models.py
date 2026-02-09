@@ -175,6 +175,9 @@ class ProviderInfo(BaseModel):
     target_dir: str = Field(
         description='Directory where provider resources are linked',
     )
+    source_dir: str = Field(
+        description='Directory where provider resources originate (e.g., in site-packages)',
+    )
     templates_dir: str | None = Field(
         default=None,
         description='Subdirectory containing templates (optional)',

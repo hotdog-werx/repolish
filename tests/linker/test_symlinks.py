@@ -8,6 +8,7 @@ import pytest
 import pytest_mock
 from pytest_mock import MockerFixture
 
+from repolish.config.models import ProviderInfo
 from repolish.linker.symlinks import (
     _remove_target,
     create_additional_link,
@@ -204,14 +205,15 @@ def test_create_additional_link_file(
     config_file = config_dir / '.editorconfig'
     config_file.write_text('root = true')
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     result = create_additional_link(
-        cli_info=cli_info,
+        provider_info=provider_info,
+        provider_name='mylib',
         source='configs/.editorconfig',
         target='.editorconfig',
     )
@@ -236,14 +238,15 @@ def test_create_additional_link_directory(
     docs_dir.mkdir()
     (docs_dir / 'README.md').write_text('# Docs')
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     result = create_additional_link(
-        cli_info=cli_info,
+        provider_info=provider_info,
+        provider_name='mylib',
         source='docs',
         target='documentation',
     )
@@ -259,15 +262,16 @@ def test_create_additional_link_source_not_exists(tmp_path: Path):
     provider_resources = tmp_path / '.repolish' / 'mylib'
     provider_resources.mkdir(parents=True)
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     with pytest.raises(FileNotFoundError, match='Source does not exist'):
         create_additional_link(
-            cli_info=cli_info,
+            provider_info=provider_info,
+            provider_name='mylib',
             source='nonexistent/file.txt',
             target='target.txt',
         )
@@ -290,15 +294,16 @@ def test_create_additional_link_target_exists_without_force(
 
     monkeypatch.chdir(tmp_path)
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     with pytest.raises(FileExistsError, match='Target already exists'):
         create_additional_link(
-            cli_info=cli_info,
+            provider_info=provider_info,
+            provider_name='mylib',
             source='config.txt',
             target='config.txt',
             force=False,
@@ -322,14 +327,15 @@ def test_create_additional_link_replaces_target_with_force(
     target_path = tmp_path / 'config.txt'
     target_path.write_text('old content')
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     result = create_additional_link(
-        cli_info=cli_info,
+        provider_info=provider_info,
+        provider_name='mylib',
         source='config.txt',
         target='config.txt',
         force=True,
@@ -353,14 +359,15 @@ def test_create_additional_link_creates_parent_directories(
     config_file = provider_resources / 'config.txt'
     config_file.write_text('content')
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     result = create_additional_link(
-        cli_info=cli_info,
+        provider_info=provider_info,
+        provider_name='mylib',
         source='config.txt',
         target='nested/deep/config.txt',
     )
@@ -387,14 +394,15 @@ def test_create_additional_link_copies_when_no_symlinks(
     config_file = provider_resources / 'config.txt'
     config_file.write_text('content')
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     result = create_additional_link(
-        cli_info=cli_info,
+        provider_info=provider_info,
+        provider_name='mylib',
         source='config.txt',
         target='config.txt',
     )
@@ -427,14 +435,15 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
         return_value=False,
     )
 
-    cli_info = {
-        'library_name': 'mylib',
-        'source_dir': str(provider_resources.parent),
-        'target_dir': str(provider_resources),
-    }
+    provider_info = ProviderInfo(
+        library_name='mylib',
+        target_dir=str(provider_resources),
+        source_dir='/fake/source/mylib',
+    )
 
     is_symlink = create_additional_link(
-        cli_info=cli_info,
+        provider_info=provider_info,
+        provider_name='mylib',
         source='configs',
         target='configs',
     )
