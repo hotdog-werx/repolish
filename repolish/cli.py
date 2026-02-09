@@ -66,7 +66,7 @@ def run(argv: list[str]) -> int:
     providers = build_final_providers(config)
     logger.info(
         'final_providers_generated',
-        template_directories=config.directories,
+        template_directories=[str(d) for d in config.directories],
         context=providers.context,
         delete_paths=[p.as_posix() for p in providers.delete_files],
         delete_history={

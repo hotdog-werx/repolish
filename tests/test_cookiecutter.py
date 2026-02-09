@@ -17,7 +17,8 @@ def test_config_level_provenance(tmp_path: Path):
 
     cfg = RepolishConfig.model_validate(
         {
-            'directories': [str(d)],
+            'config_dir': tmp_path,
+            'directories': [d],
             'context': {},
             'anchors': {},
             'post_process': [],
@@ -25,8 +26,6 @@ def test_config_level_provenance(tmp_path: Path):
             'delete_files': ['!a.txt', 'b.txt'],
         },
     )
-    # set a config file path so provenance records the source
-    cfg.config_file = tmp_path / 'repolish.yaml'
 
     providers = build_final_providers(cfg)
 
@@ -39,12 +38,12 @@ def test_config_level_provenance(tmp_path: Path):
     a_hist = providers.delete_history.get('a.txt')
     assert a_hist
     assert len(a_hist) >= 1
-    assert a_hist[-1].source == cfg.config_file.as_posix()
+    assert a_hist[-1].source == cfg.config_dir.as_posix()
     assert a_hist[-1].action.value == 'keep'
 
     # Provenance: last decision for b.txt must be from the config and be 'delete'
     b_hist = providers.delete_history.get('b.txt')
     assert b_hist
     assert len(b_hist) >= 1
-    assert b_hist[-1].source == cfg.config_file.as_posix()
+    assert b_hist[-1].source == cfg.config_dir.as_posix()
     assert b_hist[-1].action.value == 'delete'
