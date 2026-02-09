@@ -14,7 +14,8 @@ from hotlog import (
     resolve_verbosity,
 )
 
-from ..config.models import ProviderInfo
+from repolish.config.models import ProviderInfo
+
 from .symlinks import link_resources
 
 logger = get_logger(__name__)

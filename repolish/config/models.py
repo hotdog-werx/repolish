@@ -80,7 +80,7 @@ class RepolishConfigFile(BaseModel):
 
     directories: list[str] = Field(
         default_factory=list,
-        description='DEPRECATED: Use providers instead. List of paths to template directories. Will be removed in v1.0.',
+        description='DEPRECATED: Use providers instead. List of template directories. Removed in v1.0.',
         deprecated=True,
     )
     context: dict[str, Any] = Field(
@@ -208,7 +208,6 @@ class ProviderInfo(BaseModel):
                 file=str(file_path),
                 data=info.model_dump(),
             )
-            return info
         except (ValidationError, ValueError) as e:
             logger.warning(
                 'invalid_provider_info_file',
@@ -216,6 +215,8 @@ class ProviderInfo(BaseModel):
                 error=str(e),
             )
             return None
+        else:
+            return info
 
 
 class ResolvedProviderInfo(BaseModel):

@@ -10,16 +10,13 @@ from .models import (
 from .providers import get_provider_info_path
 
 __all__ = [
-    # Models
     'AllProviders',
     'ProviderConfig',
     'ProviderInfo',
     'ProviderSymlink',
     'RepolishConfig',
     'ResolvedProviderInfo',
-    # Loader
+    'get_provider_info_path',
     'load_config',
     'load_config_file',
-    # Providers
-    'get_provider_info_path',
 ]

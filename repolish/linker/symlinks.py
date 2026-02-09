@@ -5,7 +5,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from ..config.models import ProviderInfo
+from repolish.config.models import ProviderInfo
 
 logger = get_logger(__name__)
 

@@ -136,7 +136,7 @@ def test_load_config_invalid_directory_not_a_directory(
 
     with pytest.raises(
         ValueError,
-        match='Invalid directories.*not a directory',
+        match=r'Invalid directories.*not a directory',
     ):
         load_config(config_path)
 
@@ -157,7 +157,7 @@ def test_load_config_missing_repolish_structure(
 
     with pytest.raises(
         ValueError,
-        match='missing repolish.py or repolish/ folder',
+        match=r'missing repolish.py or repolish/ folder',
     ):
         load_config(config_path)
 
@@ -166,7 +166,7 @@ def test_load_config_missing_symlink_source(
     provider_setup: ProviderSetupFixture,
 ):
     """Test that missing symlink sources are caught during validation."""
-    config_dir, target_dir = provider_setup('test', create_templates=True)
+    config_dir, _ = provider_setup('test', create_templates=True)
 
     # Provider is linked (has info file), but symlink source doesn't exist
     config_data = {

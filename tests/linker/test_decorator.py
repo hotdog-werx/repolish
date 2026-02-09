@@ -11,9 +11,9 @@ import pytest_mock
 from repolish.linker.decorator import resource_linker
 
 from .conftest import (
-    _BasicLinkCliFixture,
-    _MockedPackageDict,
-    _TestPackageDict,
+    BasicLinkCliFixture,
+    MockedPackageDict,
+    PackageDictFixture,
 )
 
 
@@ -69,8 +69,8 @@ def _assert_link_resources_called(
 def test_resource_linker_basic_usage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: _MockedPackageDict,
-    basic_link_cli: _BasicLinkCliFixture,
+    mocked_package: MockedPackageDict,
+    basic_link_cli: BasicLinkCliFixture,
     mocker: pytest_mock.MockerFixture,
 ):
     """Test basic usage of resource_linker decorator."""
@@ -88,7 +88,7 @@ def test_resource_linker_basic_usage(
 
 
 def test_resource_linker_info_mode(
-    test_package: _TestPackageDict,
+    test_package: PackageDictFixture,
     capsys: pytest.CaptureFixture[str],
     mocker: pytest_mock.MockerFixture,
 ):
@@ -116,8 +116,8 @@ def test_resource_linker_info_mode(
 def test_resource_linker_custom_target_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: _MockedPackageDict,
-    basic_link_cli: _BasicLinkCliFixture,
+    mocked_package: MockedPackageDict,
+    basic_link_cli: BasicLinkCliFixture,
     mocker: pytest_mock.MockerFixture,
 ):
     """Test resource_linker with custom target directory."""
@@ -144,8 +144,8 @@ def test_resource_linker_force_flag(
     tmp_path: Path,
     mocker: pytest_mock.MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: _MockedPackageDict,
-    basic_link_cli: _BasicLinkCliFixture,
+    mocked_package: MockedPackageDict,
+    basic_link_cli: BasicLinkCliFixture,
 ):
     """Test resource_linker with --force flag."""
     monkeypatch.chdir(tmp_path)
@@ -162,7 +162,7 @@ def test_resource_linker_force_flag(
 
 
 def test_resource_linker_custom_templates_subdir(
-    test_package: _TestPackageDict,
+    test_package: PackageDictFixture,
     capsys: pytest.CaptureFixture[str],
     mocker: pytest_mock.MockerFixture,
 ):
@@ -189,7 +189,7 @@ def test_resource_linker_calls_wrapped_function(
     tmp_path: Path,
     mocker: pytest_mock.MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    mocked_package: _MockedPackageDict,
+    mocked_package: MockedPackageDict,
 ):
     """Test resource_linker calls the wrapped function after linking."""
     monkeypatch.chdir(tmp_path)
@@ -284,7 +284,7 @@ def test_resource_linker_custom_target_base(
 
 
 def test_resource_linker_does_not_call_wrapped_in_info_mode(
-    test_package: _TestPackageDict,
+    test_package: PackageDictFixture,
     mocker: pytest_mock.MockerFixture,
 ):
     """Test resource_linker doesn't call wrapped function in --info mode."""

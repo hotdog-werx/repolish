@@ -7,15 +7,17 @@ from typing import Any, Protocol, TypedDict
 import pytest
 import pytest_mock
 
+from repolish.linker.decorator import resource_linker
 
-class _TestPackageDict(TypedDict):
+
+class PackageDictFixture(TypedDict):
     """Type for test_package fixture return value."""
 
     pkg_root: Path
     resources: Path
 
 
-class _MockedPackageDict(TypedDict):
+class MockedPackageDict(TypedDict):
     """Type for mocked_package fixture return value."""
 
     pkg_root: Path
@@ -23,7 +25,7 @@ class _MockedPackageDict(TypedDict):
     mock_link_resources: Any
 
 
-class _BasicLinkCliFixture(Protocol):
+class BasicLinkCliFixture(Protocol):
     """Type for basic_link_cli fixture callable."""
 
     def __call__(self) -> None:
@@ -68,7 +70,6 @@ def mocked_package(tmp_path: Path, mocker: pytest_mock.MockerFixture):
 @pytest.fixture
 def basic_link_cli(mocked_package: dict[str, Any]) -> Callable[[], None]:
     """Fixture that returns a basic decorated link_cli function."""
-    from repolish.linker.decorator import resource_linker
 
     @resource_linker(
         library_name='mylib',
