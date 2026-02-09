@@ -84,7 +84,7 @@ providers_order:
 
 providers:
   mylib:
-    link: mylib-link
+    cli: mylib-link
 
 context:
   package_name: 'my-project'

@@ -37,7 +37,7 @@ post_process:
 # Provider linking configuration (optional)
 providers:
   mylib:
-    link: mylib-link
+    cli: mylib-link
     templates_dir: templates
     symlinks:
       - source: configs/.editorconfig
@@ -45,6 +45,12 @@ providers:
 ```
 
 ## Directories Section
+
+> **⚠️ DEPRECATED:** The `directories` field is deprecated and will be removed
+> in v1.0. Use the `providers` configuration with either `cli` or `directory`
+> instead. See the
+> [Provider Linking Configuration](#provider-linking-configuration) section
+> below.
 
 The `directories` section specifies template directories to load. Each directory
 must contain either a `repolish.py` file or a `repolish/` folder with provider
@@ -78,9 +84,9 @@ providers_order:
 
 providers:
   codeguide:
-    link: codeguide-link
+    cli: codeguide-link
   mylib:
-    link: mylib-link
+    cli: mylib-link
 
 context:
   package_name: 'my-project'
@@ -167,25 +173,46 @@ configure provider linking through the `providers` section. This allows the
 ```yaml
 providers:
   mylib:
-    link: mylib-link
+    cli: mylib-link
     templates_dir: templates
     symlinks:
       - source: configs/.editorconfig
         target: .editorconfig
   anotherlib:
-    link: anotherlib-link
+    cli: anotherlib-link
     templates_dir: ui-templates
+  locallib:
+    directory: ./path/to/locallib/resources
+    templates_dir: templates
 ```
 
-### Provider Link Options
+### Provider Configuration Options
 
 Each provider in the linking configuration supports these options:
 
-- `link` (required): The CLI command to call for linking resources
+- `cli` (optional): The CLI command to call for linking resources (mutually
+  exclusive with `directory`)
+- `directory` (optional): Direct path to provider resources (mutually exclusive
+  with `cli`)
 - `templates_dir` (optional): Subdirectory within provider resources containing
   templates (default: `templates`)
 - `symlinks` (optional): Additional symlinks to create from provider resources
   to repo root
+
+**Note:** Each provider must specify either `cli` or `directory`, but not both.
+
+**When to use `cli`:**
+
+- For libraries installed via pip/uv that provide their own link command
+- When the provider is a separate package (e.g., `codeguide`, `python-tools`)
+- When you want automatic updates via symlinks (on Unix/macOS)
+
+**When to use `directory`:**
+
+- For local provider directories in your repository
+- For providers that haven't created their own link CLI yet
+- For development/testing of new providers
+- When you need direct control over the provider location
 
 ### Symlink Configuration
 
@@ -210,7 +237,7 @@ post_process:
 
 providers:
   codeguide:
-    link: codeguide-link
+    cli: codeguide-link
     templates_dir: templates
     symlinks:
       - source: configs/.editorconfig
@@ -235,7 +262,7 @@ post_process:
 
 providers:
   codeguide:
-    link: codeguide-link
+    cli: codeguide-link
     symlinks:
       - source: configs/.editorconfig
         target: .editorconfig

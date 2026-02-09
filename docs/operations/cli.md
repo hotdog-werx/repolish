@@ -147,7 +147,7 @@ to invoke and optional additional symlinks to create.
 ```yaml
 providers:
   codeguide:
-    link: codeguide-link
+    cli: codeguide-link
     templates_dir: templates
     symlinks:
       - source: configs/.editorconfig
@@ -159,11 +159,16 @@ providers_order:
 
 #### Provider Configuration Options
 
-- `link` (required): The CLI command to execute for linking
+- `cli` (optional): The CLI command to execute for linking (mutually exclusive
+  with `directory`)
+- `directory` (optional): Direct path to provider resources (mutually exclusive
+  with `cli`)
 - `templates_dir` (optional): Subdirectory within provider resources containing
   templates (default: `templates`)
 - `symlinks` (optional): Additional symlinks to create from provider resources
   to repo root
+
+**Note:** Each provider must specify either `cli` or `directory`, but not both.
 
 Each symlink entry has:
 

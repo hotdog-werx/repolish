@@ -1,4 +1,4 @@
-site_name: hotdog-werx/repolish
+site_name: repolish
 site_description: A hybrid templating and diff/patch system for maintaining repository consistency while preserving local customizations.
 site_url: https://hotdog-werx.github.io/repolish
 repo_url: https://github.com/hotdog-werx/repolish
