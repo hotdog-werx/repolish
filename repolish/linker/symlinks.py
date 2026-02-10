@@ -6,6 +6,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config.models import ProviderInfo
+from repolish.exceptions import SymlinkError
 
 logger = get_logger(__name__)
 
@@ -105,7 +106,7 @@ def link_resources(
     if not source_dir.is_dir():
         logger.error('source_is_not_directory', source=str(source_dir))
         msg = f'Source must be a directory: {source_dir}'
-        raise ValueError(msg)
+        raise SymlinkError(msg)
 
     # Skip if target exists and not forcing
     if target_dir.exists() and not force:

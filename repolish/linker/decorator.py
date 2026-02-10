@@ -15,10 +15,96 @@ from hotlog import (
 )
 
 from repolish.config.models import ProviderInfo
+from repolish.exceptions import ResourceLinkerError
 
 from .symlinks import link_resources
 
 logger = get_logger(__name__)
+
+
+def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
+    """Auto-detect library name from the caller's package.
+
+    Converts package name to library name by replacing underscores with dashes
+    (Python packages use _, but repo/project names conventionally use -).
+
+    Args:
+        caller_frame: Frame info of the caller
+
+    Returns:
+        Library name derived from package name
+
+    Raises:
+        ResourceLinkerError: If library name cannot be determined
+    """
+    caller_module = inspect.getmodule(caller_frame.frame)
+    if caller_module is None or not hasattr(caller_module, '__package__'):  # pragma: no cover
+        # This edge case is difficult to test in practice - requires calling from a context
+        # where inspect.getmodule() returns None or a module without __package__ attribute.
+        # Real-world usage from properly structured Python packages will not hit this path.
+        msg = 'Could not determine library name from caller module'
+        raise ResourceLinkerError(msg)
+
+    package_name = caller_module.__package__
+    if package_name:  # pragma: no cover
+        # Use the top-level package name, converting underscores to dashes
+        return package_name.split('.')[0].replace('_', '-')
+
+    # This fallback is nearly impossible to trigger - a module with __package__ attribute
+    # set to None/empty is not a standard Python module scenario that developers can control.
+    msg = 'Could not determine library name: caller module has no package'  # pragma: no cover
+    raise ResourceLinkerError(msg)  # pragma: no cover
+
+
+def _create_argument_parser(
+    library_name: str,
+    resolved_source_dir: Path,
+    default_target_base_path: Path,
+) -> argparse.ArgumentParser:
+    """Create and configure the argument parser for the resource linker CLI.
+
+    Args:
+        library_name: Name of the library
+        resolved_source_dir: Resolved path to source directory
+        default_target_base_path: Base path for target directory
+
+    Returns:
+        Configured ArgumentParser instance
+    """
+    parser = argparse.ArgumentParser(
+        description=f'Link {library_name} resources to your project.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    # add standard verbosity switch provided by hotlog
+    add_verbosity_argument(parser)
+
+    parser.add_argument(
+        '--source-dir',
+        type=Path,
+        default=resolved_source_dir,
+        help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
+    )
+
+    parser.add_argument(
+        '--target-dir',
+        type=Path,
+        default=default_target_base_path / library_name,
+        help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
+    )
+
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force recreation even if target exists and is up-to-date',
+    )
+
+    parser.add_argument(
+        '--info',
+        action='store_true',
+        help='Output JSON with source/target information instead of linking',
+    )
+
+    return parser
 
 
 def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
@@ -29,7 +115,7 @@ def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
         caller_module is None or not hasattr(caller_module, '__file__') or caller_module.__file__ is None
     ):  # pragma: no cover - Edge case: module without __file__ (e.g., built-ins, interactive REPL)
         msg = 'Could not determine package root from caller module'
-        raise ValueError(msg)
+        raise ResourceLinkerError(msg)
 
     caller_file = Path(caller_module.__file__).resolve()
 
@@ -54,8 +140,8 @@ def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
 
 def resource_linker(
     *,
-    library_name: str,
-    default_source_dir: str,
+    library_name: str | None = None,
+    default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     templates_subdir: str = 'templates',
 ) -> Callable:
@@ -65,8 +151,10 @@ def resource_linker(
     a library's resource directory to a target location.
 
     Args:
-        library_name: Name of the library (used for default target subdirectory)
-        default_source_dir: Path to resources relative to package root (e.g., 'resources' or 'mylib/templates')
+        library_name: Name of the library (used for default target subdirectory).
+            If not provided, auto-detects from the caller's top-level package name.
+        default_source_dir: Path to resources relative to package root (default: 'resources').
+            Can be overridden for custom locations (e.g., 'mylib/templates').
         default_target_base: Default base directory for the target (default: .repolish)
         templates_subdir: Subdirectory within resources containing templates (default: templates)
 
@@ -74,9 +162,15 @@ def resource_linker(
         ```python
         from pkglink.repolish import resource_linker
 
+        # Minimal usage - auto-detects library name from package
+        @resource_linker()
+        def main():
+            print("Resources linked successfully!")
+
+        # Override specific parameters as needed
         @resource_linker(
-            library_name='mylib',
-            default_source_dir='resources',
+            library_name='custom-name',
+            default_source_dir='templates',
         )
         def main():
             print("Resources linked successfully!")
@@ -94,6 +188,10 @@ def resource_linker(
     caller_frame = inspect.stack()[1]
     package_root = _get_package_root(caller_frame)
 
+    # Auto-compute library_name if not provided
+    if library_name is None:
+        library_name = _auto_detect_library_name(caller_frame)
+
     # Resolve source dir relative to package root
     # Convert to Path to handle both forward slashes (Unix) and backslashes (Windows)
     resolved_source_dir = package_root / Path(default_source_dir)
@@ -101,39 +199,11 @@ def resource_linker(
 
     def decorator(func: Callable) -> Callable:
         def wrapper() -> None:
-            parser = argparse.ArgumentParser(
-                description=f'Link {library_name} resources to your project.',
-                formatter_class=argparse.RawDescriptionHelpFormatter,
+            parser = _create_argument_parser(
+                library_name,
+                resolved_source_dir,
+                default_target_base_path,
             )
-            # add standard verbosity switch provided by hotlog
-            add_verbosity_argument(parser)
-
-            parser.add_argument(
-                '--source-dir',
-                type=Path,
-                default=resolved_source_dir,
-                help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
-            )
-
-            parser.add_argument(
-                '--target-dir',
-                type=Path,
-                default=default_target_base_path / library_name,
-                help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
-            )
-
-            parser.add_argument(
-                '--force',
-                action='store_true',
-                help='Force recreation even if target exists and is up-to-date',
-            )
-
-            parser.add_argument(
-                '--info',
-                action='store_true',
-                help='Output JSON with source/target information instead of linking',
-            )
-
             args = parser.parse_args()
             # Configure logging using resolved verbosity (supports CI auto-detection)
             verbosity = resolve_verbosity(args)
@@ -153,14 +223,6 @@ def resource_linker(
                 return
 
             try:
-                logger.info(
-                    'linking_resources',
-                    library_name=library_name,
-                    source=str(args.source_dir),
-                    target=str(args.target_dir),
-                    _display_level=1,
-                )
-
                 is_symlink = link_resources(
                     source_dir=args.source_dir,
                     target_dir=args.target_dir,
@@ -176,7 +238,7 @@ def resource_linker(
                     _display_level=1,
                 )
 
-                # Call the wrapped function
+                # Call the wrapped function (for custom messages or actions)
                 func()
 
             except Exception as e:
@@ -186,3 +248,64 @@ def resource_linker(
         return wrapper
 
     return decorator
+
+
+def resource_linker_cli(
+    *,
+    library_name: str | None = None,
+    default_source_dir: str = 'resources',
+    default_target_base: str = '.repolish',
+    templates_subdir: str = 'templates',
+) -> Callable[[], None]:
+    """Create a resource linker CLI function.
+
+    This is a simpler alternative to the @resource_linker decorator.
+    Just assign it to `main` and register it in your pyproject.toml.
+
+    Args:
+        library_name: Name of the library (used for default target subdirectory).
+            If not provided, auto-detects from the caller's top-level package name.
+        default_source_dir: Path to resources relative to package root (default: 'resources').
+        default_target_base: Default base directory for the target (default: .repolish)
+        templates_subdir: Subdirectory within resources containing templates (default: templates)
+
+    Returns:
+        A callable that runs the resource linking CLI
+
+    Example:
+        In your CLI module (e.g., mylib/cli.py):
+        ```python
+        from pkglink.repolish import resource_linker_cli
+
+        main = resource_linker_cli()
+        ```
+
+        In pyproject.toml:
+        ```toml
+        [project.scripts]
+        mylib-link = "mylib.cli:main"
+        ```
+    """
+    # Get caller's frame for library name detection
+    caller_frame = inspect.stack()[1]
+
+    # Determine library name early
+    detected_library_name = _auto_detect_library_name(caller_frame) if library_name is None else library_name
+
+    # Create a function with auto-generated success message
+    def _success_message() -> None:
+        """Auto-generated success message."""
+        print(  # noqa: T201 - Allow print for CLI output
+            f'`{default_source_dir}` from {detected_library_name} are now available',
+        )
+
+    # Apply the decorator to create the CLI
+    decorator_factory = resource_linker(
+        library_name=library_name,
+        default_source_dir=default_source_dir,
+        default_target_base=default_target_base,
+        templates_subdir=templates_subdir,
+    )
+
+    # Get the wrapped function and return it
+    return decorator_factory(_success_message)

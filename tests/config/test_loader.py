@@ -6,6 +6,12 @@ import pytest
 import yaml
 
 from repolish.config import load_config
+from repolish.exceptions import (
+    ConfigValidationError,
+    DirectoryValidationError,
+    ProviderConfigError,
+    ProviderOrderError,
+)
 
 from .conftest import (
     ProviderSetupFixture,
@@ -30,13 +36,13 @@ class InvalidConfigCase:
         InvalidConfigCase(
             name='empty_config',
             config_data={},
-            error_type=ValueError,
+            error_type=ConfigValidationError,
             error_match='must specify either "directories" or "providers_order"',
         ),
         InvalidConfigCase(
             name='missing_required_fields',
             config_data={'context': {'key': 'value'}},
-            error_type=ValueError,
+            error_type=ConfigValidationError,
             error_match='must specify either "directories" or "providers_order"',
         ),
         InvalidConfigCase(
@@ -49,7 +55,7 @@ class InvalidConfigCase:
                     },
                 },
             },
-            error_type=ValueError,
+            error_type=ProviderConfigError,
             error_match='Either cli or directory must be provided',
         ),
         InvalidConfigCase(
@@ -63,7 +69,7 @@ class InvalidConfigCase:
                     },
                 },
             },
-            error_type=ValueError,
+            error_type=ProviderConfigError,
             error_match='Cannot specify both cli and directory',
         ),
         InvalidConfigCase(
@@ -76,7 +82,7 @@ class InvalidConfigCase:
                     },
                 },
             },
-            error_type=ValueError,
+            error_type=ProviderOrderError,
             error_match='providers_order references undefined providers: undefined',
         ),
         InvalidConfigCase(
@@ -89,7 +95,7 @@ class InvalidConfigCase:
                     },
                 },
             },
-            error_type=ValueError,
+            error_type=DirectoryValidationError,
             error_match='No directories resolved - providers may not be linked yet',
         ),
     ],
@@ -116,7 +122,7 @@ def test_load_config_missing_directory(
     }
     config_path = yaml_config_file(config_data)
 
-    with pytest.raises(ValueError, match='Missing directories'):
+    with pytest.raises(DirectoryValidationError, match='Missing directories'):
         load_config(config_path)
 
 
@@ -135,7 +141,7 @@ def test_load_config_invalid_directory_not_a_directory(
     config_path = yaml_config_file(config_data)
 
     with pytest.raises(
-        ValueError,
+        DirectoryValidationError,
         match=r'Invalid directories.*not a directory',
     ):
         load_config(config_path)
@@ -156,7 +162,7 @@ def test_load_config_missing_repolish_structure(
     config_path = yaml_config_file(config_data)
 
     with pytest.raises(
-        ValueError,
+        DirectoryValidationError,
         match=r'missing repolish.py or repolish/ folder',
     ):
         load_config(config_path)
@@ -188,7 +194,10 @@ def test_load_config_missing_symlink_source(
     with config_path.open('w') as f:
         yaml.dump(config_data, f)
 
-    with pytest.raises(ValueError, match='symlink sources not found'):
+    with pytest.raises(
+        DirectoryValidationError,
+        match='symlink sources not found',
+    ):
         load_config(config_path)
 
 

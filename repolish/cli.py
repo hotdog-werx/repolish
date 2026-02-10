@@ -8,6 +8,7 @@ from hotlog import (
     get_logger,
     resolve_verbosity,
 )
+from pydantic import ValidationError
 
 from .builder import create_cookiecutter_template
 from .config import load_config
@@ -20,6 +21,7 @@ from .cookiecutter import (
     render_template,
     rich_print_diffs,
 )
+from .exceptions import RepolishError, log_exception
 from .utils import run_post_process
 from .version import __version__
 
@@ -128,6 +130,9 @@ def main() -> int:
         return run(sys.argv[1:])
     except SystemExit:
         raise
+    except (ValidationError, RepolishError) as e:
+        log_exception(logger, e)
+        return 1
     except Exception:  # pragma: no cover - high level CLI error handling
         logger.exception('failed_to_run_repolish')
         return 1

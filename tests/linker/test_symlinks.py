@@ -9,6 +9,7 @@ import pytest_mock
 from pytest_mock import MockerFixture
 
 from repolish.config.models import ProviderInfo
+from repolish.exceptions import SymlinkError
 from repolish.linker.symlinks import (
     _remove_target,
     create_additional_link,
@@ -55,12 +56,12 @@ def test_link_resources_source_not_exists(tmp_path: Path):
 
 
 def test_link_resources_source_not_directory(tmp_path: Path):
-    """Test link_resources raises ValueError when source is not a directory."""
+    """Test link_resources raises SymlinkError when source is not a directory."""
     source = tmp_path / 'file.txt'
     source.write_text('content')
     target = tmp_path / 'target'
 
-    with pytest.raises(ValueError, match='Source must be a directory'):
+    with pytest.raises(SymlinkError, match='Source must be a directory'):
         link_resources(source, target)
 
 

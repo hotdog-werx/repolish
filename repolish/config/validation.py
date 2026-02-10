@@ -3,6 +3,12 @@
 import warnings
 from pathlib import Path
 
+from repolish.exceptions import (
+    ConfigValidationError,
+    DirectoryValidationError,
+    ProviderOrderError,
+)
+
 from .models import RepolishConfig, RepolishConfigFile
 
 
@@ -30,14 +36,14 @@ def validate_config_file(config: RepolishConfigFile) -> None:
     # Basic validation: must have either directories or providers_order
     if not config.directories and not config.providers_order:
         msg = 'Configuration must specify either "directories" or "providers_order"'
-        raise ValueError(msg)
+        raise ConfigValidationError(msg)
 
     # Validate providers_order references only defined providers
     if config.providers_order:
         undefined = [p for p in config.providers_order if p not in config.providers]
         if undefined:
             msg = f'providers_order references undefined providers: {", ".join(undefined)}'
-            raise ValueError(msg)
+            raise ProviderOrderError(msg)
 
 
 def validate_resolved_config(config: RepolishConfig) -> None:
@@ -54,7 +60,7 @@ def validate_resolved_config(config: RepolishConfig) -> None:
     """
     if not config.directories:
         msg = 'No directories resolved - providers may not be linked yet'
-        raise ValueError(msg)
+        raise DirectoryValidationError(msg)
 
     # Validate directory structure
     _validate_directory_structure(config.directories)
@@ -113,7 +119,7 @@ def _validate_provider_symlinks(config: RepolishConfig) -> None:
 
     if missing_sources:
         error_msg = f'Provider symlink sources not found: {missing_sources}'
-        raise ValueError(error_msg)
+        raise DirectoryValidationError(error_msg)
 
 
 def _raise_validation_errors(
@@ -142,4 +148,4 @@ def _raise_validation_errors(
         error_messages.append(
             f'Directories missing repolish.py or repolish/ folder: {invalid_template}',
         )
-    raise ValueError(' ; '.join(error_messages))
+    raise DirectoryValidationError(' ; '.join(error_messages))

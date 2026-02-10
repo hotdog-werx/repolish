@@ -13,6 +13,7 @@ from hotlog import (
 
 from .config import load_config_file
 from .config.models import RepolishConfigFile
+from .exceptions import RepolishError, log_exception
 from .linker import process_provider
 
 logger = get_logger(__name__)
@@ -113,6 +114,9 @@ def main() -> int:
         raise
     except FileNotFoundError as e:
         logger.exception('config_not_found', error=str(e))
+        return 1
+    except RepolishError as e:
+        log_exception(logger, e)
         return 1
     except Exception:  # pragma: no cover - high level CLI error handling
         logger.exception('failed_to_run_repolish_link')

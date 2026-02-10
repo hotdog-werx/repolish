@@ -1,6 +1,7 @@
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -8,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_mock
 
-from repolish.linker.decorator import resource_linker
+from repolish.linker.decorator import resource_linker, resource_linker_cli
 
 from .conftest import (
     BasicLinkCliFixture,
@@ -306,3 +307,136 @@ def test_resource_linker_does_not_call_wrapped_in_info_mode(
 
     # Wrapped function should NOT be called in --info mode
     assert called == []
+
+
+@dataclass
+class ResourceLinkerCliCase:
+    name: str
+    package_name: str
+    library_name_arg: str | None
+    source_dir: str
+    expected_lib_name: str
+    expected_msg: str
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        ResourceLinkerCliCase(
+            name='auto_detection_with_underscore_to_dash',
+            package_name='my_library',
+            library_name_arg=None,
+            source_dir='resources',
+            expected_lib_name='my-library',
+            expected_msg='`resources` from my-library are now available',
+        ),
+        ResourceLinkerCliCase(
+            name='custom_library_name',
+            package_name='mylib',
+            library_name_arg='custom-name',
+            source_dir='resources',
+            expected_lib_name='custom-name',
+            expected_msg='`resources` from custom-name are now available',
+        ),
+        ResourceLinkerCliCase(
+            name='custom_source_directory',
+            package_name='mylib',
+            library_name_arg=None,
+            source_dir='templates',
+            expected_lib_name='mylib',
+            expected_msg='`templates` from mylib are now available',
+        ),
+    ],
+    ids=lambda case: case.name,
+)
+def test_resource_linker_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+    capsys: pytest.CaptureFixture[str],
+    case: ResourceLinkerCliCase,
+):
+    """Test resource_linker_cli with various configurations."""
+    monkeypatch.chdir(tmp_path)
+
+    # Set up package structure
+    pkg_root = tmp_path / case.package_name
+    pkg_root.mkdir()
+    source_path = pkg_root / case.source_dir
+    source_path.mkdir()
+
+    # Mock package detection
+    mocker.patch(
+        'repolish.linker.decorator._get_package_root',
+        return_value=pkg_root,
+    )
+    mock_frame = mocker.MagicMock()
+    mock_module = mocker.MagicMock()
+    mock_module.__package__ = case.package_name
+    mocker.patch('inspect.getmodule', return_value=mock_module)
+    mocker.patch('inspect.stack', return_value=[None, mock_frame])
+
+    # Mock link_resources
+    mock_link = mocker.patch(
+        'repolish.linker.decorator.link_resources',
+        return_value=True,
+    )
+
+    # Create the CLI
+    main = resource_linker_cli(
+        library_name=case.library_name_arg,
+        default_source_dir=case.source_dir,
+    )
+
+    # Call it
+    mocker.patch.object(sys, 'argv', ['link-cli'])
+    main()
+
+    # Verify link_resources was called
+    _assert_link_resources_called(
+        mock_link,
+        source_path,
+        Path('.repolish') / case.expected_lib_name,
+        expected_force=False,
+    )
+
+    # Verify success message
+    captured = capsys.readouterr()
+    assert case.expected_msg in captured.out
+
+
+def test_resource_linker_cli_info_mode(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    capsys: pytest.CaptureFixture[str],
+):
+    """Test resource_linker_cli --info mode outputs JSON."""
+    pkg_root = tmp_path / 'mylib'
+    pkg_root.mkdir()
+    resources = pkg_root / 'resources'
+    resources.mkdir()
+
+    mocker.patch(
+        'repolish.linker.decorator._get_package_root',
+        return_value=pkg_root,
+    )
+    mock_frame = mocker.MagicMock()
+    mock_module = mocker.MagicMock()
+    mock_module.__package__ = 'mylib'
+    mocker.patch('inspect.getmodule', return_value=mock_module)
+    mocker.patch('inspect.stack', return_value=[None, mock_frame])
+
+    main = resource_linker_cli()
+
+    mocker.patch.object(sys, 'argv', ['link-cli', '--info'])
+    main()
+
+    captured = capsys.readouterr()
+    info = json.loads(captured.out)
+
+    assert info['library_name'] == 'mylib'
+    assert info['templates_dir'] == 'templates'
+    assert 'source_dir' in info
+    assert 'target_dir' in info
+    # Should NOT print the success message in info mode
+    assert 'are now available' not in captured.out

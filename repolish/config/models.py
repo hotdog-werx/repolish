@@ -10,6 +10,8 @@ from pydantic import (
     model_validator,
 )
 
+from repolish.exceptions import ProviderConfigError
+
 logger = get_logger(__name__)
 
 
@@ -64,10 +66,10 @@ class ProviderConfig(BaseModel):
         """Ensure exactly one of cli or directory is provided."""
         if self.cli is None and self.directory is None:
             msg = 'Either cli or directory must be provided'
-            raise ValueError(msg)
+            raise ProviderConfigError(msg)
         if self.cli is not None and self.directory is not None:
             msg = 'Cannot specify both cli and directory'
-            raise ValueError(msg)
+            raise ProviderConfigError(msg)
         return self
 
 

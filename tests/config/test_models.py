@@ -13,6 +13,7 @@ from repolish.config.models import (
     ProviderConfig,
     ProviderInfo,
 )
+from repolish.exceptions import ProviderConfigError
 
 
 @dataclass
@@ -59,7 +60,7 @@ class ProviderConfigCase:
 def test_provider_config_validation(case: ProviderConfigCase):
     """Test ProviderConfig validation rules."""
     if case.should_raise:
-        with pytest.raises(ValueError, match=case.error_match):
+        with pytest.raises(ProviderConfigError, match=case.error_match):
             ProviderConfig(cli=case.cli, directory=case.directory)
     else:
         provider = ProviderConfig(cli=case.cli, directory=case.directory)
