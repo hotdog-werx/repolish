@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -208,33 +209,64 @@ def test_process_single_provider_error_handling(
         assert result == expected_result
 
 
-def test_process_single_provider_with_symlinks(
+@dataclass
+class SymlinkTestCase:
+    name: str
+    config_symlinks: list[ProviderSymlink] | None
+    provider_symlinks: list[ProviderSymlink]
+    should_create_link: bool
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        SymlinkTestCase(
+            name='explicit_symlinks',
+            config_symlinks=[
+                ProviderSymlink(source=Path('config.txt'), target=Path('config.txt')),
+            ],
+            provider_symlinks=[],
+            should_create_link=True,
+        ),
+        SymlinkTestCase(
+            name='default_symlinks',
+            config_symlinks=None,
+            provider_symlinks=[
+                ProviderSymlink(source=Path('default.txt'), target=Path('default.txt')),
+            ],
+            should_create_link=True,
+        ),
+        SymlinkTestCase(
+            name='skip_symlinks',
+            config_symlinks=[],
+            provider_symlinks=[
+                ProviderSymlink(source=Path('default.txt'), target=Path('default.txt')),
+            ],
+            should_create_link=False,
+        ),
+    ],
+    ids=lambda case: case.name,
+)
+def test_process_provider_symlinks(
+    case: SymlinkTestCase,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     mocker: pytest_mock.MockerFixture,
 ):
-    """Test process_provider creates additional symlinks."""
+    """Test process_provider handles different symlink configurations."""
     monkeypatch.chdir(tmp_path)
 
-    # Setup provider resources
     provider_dir = tmp_path / '.repolish' / 'mylib'
     provider_dir.mkdir(parents=True)
     (provider_dir / 'config.txt').write_text('content')
+    (provider_dir / 'default.txt').write_text('default')
 
-    provider_config = ProviderConfig(
-        cli='mylib-link',
-        symlinks=[
-            ProviderSymlink(
-                source=Path('config.txt'),
-                target=Path('config.txt'),
-            ),
-        ],
-    )
-
+    provider_config = ProviderConfig(cli='mylib-link', symlinks=case.config_symlinks)
     provider_info = ProviderInfo(
         library_name='mylib',
         target_dir=str(provider_dir),
         source_dir='/fake/source/mylib',
+        symlinks=case.provider_symlinks,
     )
 
     _ = mocker.patch(
@@ -244,7 +276,9 @@ def test_process_single_provider_with_symlinks(
     result = process_provider('mylib', provider_config, tmp_path)
 
     assert result == 0
-    assert (tmp_path / 'config.txt').exists()
+    # Check if the expected link was created based on the test case
+    expected_file = 'config.txt' if case.config_symlinks else 'default.txt'
+    assert (tmp_path / expected_file).exists() == case.should_create_link
 
 
 def test_run_no_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

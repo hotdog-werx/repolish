@@ -106,12 +106,25 @@ def process_provider(
     # Save provider info
     save_provider_info(provider_name, provider_info, config_dir)
 
-    # Create additional symlinks if configured
-    if provider_config.symlinks:
+    # Create additional symlinks based on configuration
+    # - None (default): use provider's default symlinks
+    # - Empty list []: skip symlinks entirely
+    # - Non-empty list: use specified symlinks
+    if provider_config.symlinks is None:
+        # Use provider defaults
+        symlinks_to_create = provider_info.symlinks
+    elif provider_config.symlinks:
+        # Use configured symlinks
+        symlinks_to_create = provider_config.symlinks
+    else:
+        # Empty list - skip symlinks
+        symlinks_to_create = []
+
+    if symlinks_to_create:
         create_provider_symlinks(
             provider_name,
             provider_info,
-            provider_config.symlinks,
+            symlinks_to_create,
         )
 
     return 0
