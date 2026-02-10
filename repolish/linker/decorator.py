@@ -160,6 +160,7 @@ def resource_linker(
     default_target_base: str = '.repolish',
     templates_subdir: str = 'templates',
     default_symlinks: list[Symlink] | None = None,
+    _caller_frame: inspect.FrameInfo | None = None,
 ) -> Callable:
     """Decorator to create a CLI for linking library resources.
 
@@ -207,7 +208,8 @@ def resource_linker(
         --force: Force recreation even if target exists and is up-to-date
     """
     # Get caller's frame to determine package root
-    caller_frame = inspect.stack()[1]
+    # Use provided frame (from resource_linker_cli) or inspect the stack
+    caller_frame = _caller_frame if _caller_frame is not None else inspect.stack()[1]
     package_root = _get_package_root(caller_frame)
 
     # Auto-compute library_name if not provided
@@ -338,12 +340,14 @@ def resource_linker_cli(
         )
 
     # Apply the decorator to create the CLI
+    # Pass the caller frame so resource_linker uses the correct package context
     decorator_factory = resource_linker(
         library_name=library_name,
         default_source_dir=default_source_dir,
         default_target_base=default_target_base,
         templates_subdir=templates_subdir,
         default_symlinks=default_symlinks,
+        _caller_frame=caller_frame,
     )
 
     # Get the wrapped function and return it
