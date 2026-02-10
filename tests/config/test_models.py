@@ -12,6 +12,7 @@ from repolish.config.models import (
     AllProviders,
     ProviderConfig,
     ProviderInfo,
+    RepolishConfigFile,
 )
 from repolish.exceptions import ProviderConfigError
 
@@ -174,3 +175,61 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
         assert info.target_dir == case.expected_target_dir
         assert info.templates_dir == case.expected_templates_dir
         assert info.library_name == case.expected_library_name
+
+
+@dataclass
+class ProviderShorthandCase:
+    name: str
+    providers_config: dict
+    expected_cli: dict[str, str | None]  # provider_name -> expected cli value
+    expected_directory: dict[str, str | None]  # provider_name -> expected directory value
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        ProviderShorthandCase(
+            name='shorthand_string_cli',
+            providers_config={'base': 'codeguide-link'},
+            expected_cli={'base': 'codeguide-link'},
+            expected_directory={'base': None},
+        ),
+        ProviderShorthandCase(
+            name='multiple_shorthand',
+            providers_config={
+                'base': 'codeguide-link',
+                'py-tools': 'pytools-link',
+            },
+            expected_cli={'base': 'codeguide-link', 'py-tools': 'pytools-link'},
+            expected_directory={'base': None, 'py-tools': None},
+        ),
+        ProviderShorthandCase(
+            name='mixed_shorthand_and_expanded',
+            providers_config={
+                'base': 'codeguide-link',
+                'local': {'directory': './templates'},
+            },
+            expected_cli={'base': 'codeguide-link', 'local': None},
+            expected_directory={'base': None, 'local': './templates'},
+        ),
+        ProviderShorthandCase(
+            name='expanded_with_cli',
+            providers_config={'base': {'cli': 'codeguide-link'}},
+            expected_cli={'base': 'codeguide-link'},
+            expected_directory={'base': None},
+        ),
+    ],
+    ids=lambda case: case.name,
+)
+def test_provider_shorthand_normalization(case: ProviderShorthandCase):
+    """Test that provider shorthand syntax is normalized to full ProviderConfig."""
+    config = RepolishConfigFile(providers=case.providers_config)
+
+    assert len(config.providers) == len(case.expected_cli)
+
+    for provider_name, expected_cli in case.expected_cli.items():
+        assert provider_name in config.providers
+        provider = config.providers[provider_name]
+        assert isinstance(provider, ProviderConfig)
+        assert provider.cli == expected_cli
+        assert provider.directory == case.expected_directory[provider_name]

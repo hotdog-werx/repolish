@@ -124,6 +124,40 @@ class RepolishConfigFile(BaseModel):
         exclude=True,
     )
 
+    @field_validator('providers', mode='before')
+    @classmethod
+    def normalize_provider_configs(
+        cls,
+        value: dict[str, Any],
+    ) -> dict[str, ProviderConfig | dict[str, Any]]:
+        """Normalize provider configurations from shorthand string to full ProviderConfig.
+
+        Supports shorthand syntax where the value is just the CLI command:
+            providers:
+              base: codeguide-link
+
+        Which is equivalent to:
+            providers:
+              base:
+                cli: codeguide-link
+
+        Args:
+            value: Raw provider configurations from YAML (always a dict due to field type)
+
+        Returns:
+            Normalized provider configurations (dict or ProviderConfig objects)
+        """
+        normalized: dict[str, ProviderConfig | dict[str, Any]] = {}
+        for name, config in value.items():
+            if isinstance(config, str):
+                # Shorthand: treat string as CLI command
+                normalized[name] = {'cli': config}
+            else:
+                # Already a dict/ProviderConfig, let Pydantic handle it
+                normalized[name] = config
+
+        return normalized
+
 
 class AllProviders(BaseModel):
     """Model for .all-providers.json file structure.
