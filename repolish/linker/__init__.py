@@ -1,4 +1,4 @@
-from .decorator import Symlink, resource_linker
+from .decorator import Symlink, resource_linker, resource_linker_cli
 from .orchestrator import create_provider_symlinks, process_provider
 from .providers import (
     run_provider_link,
@@ -14,6 +14,7 @@ __all__ = [
     'link_resources',
     'process_provider',
     'resource_linker',
+    'resource_linker_cli',
     'run_provider_link',
     'save_provider_alias',
     'save_provider_info',

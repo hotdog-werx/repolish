@@ -196,8 +196,12 @@ Each provider in the linking configuration supports these options:
   with `cli`)
 - `templates_dir` (optional): Subdirectory within provider resources containing
   templates (default: `templates`)
-- `symlinks` (optional): Additional symlinks to create from provider resources
-  to repo root
+- `symlinks` (optional): Symlinks to create from provider resources to repo
+  root. Can be:
+  - Omitted: Use the provider's default symlinks (if defined in the
+    `resource_linker` decorator)
+  - Empty list `[]`: Disable all symlinks (override provider defaults)
+  - Custom list: Override provider defaults with your own symlinks
 
 **Note:** Each provider must specify either `cli` or `directory`, but not both.
 
@@ -220,6 +224,28 @@ Each symlink entry has:
 
 - `source`: Path relative to provider resources (e.g., `configs/.editorconfig`)
 - `target`: Path relative to repo root (e.g., `.editorconfig`)
+
+**Overriding Provider Defaults:**
+
+Many providers define default symlinks (e.g., for `.editorconfig` or
+`.gitignore`). You can customize this behavior in your `repolish.yaml`:
+
+```yaml
+providers:
+  mylib:
+    cli: mylib-link
+    # Use provider's default symlinks (omit symlinks field)
+
+  anotherlib:
+    cli: anotherlib-link
+    symlinks: [] # Disable all symlinks
+
+  customlib:
+    cli: customlib-link
+    symlinks: # Override with custom list
+      - source: configs/.editorconfig
+        target: .editorconfig
+```
 
 ### Example: Complete Configuration
 

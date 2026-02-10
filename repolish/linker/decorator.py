@@ -287,6 +287,7 @@ def resource_linker_cli(
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     templates_subdir: str = 'templates',
+    default_symlinks: list[Symlink] | None = None,
 ) -> Callable[[], None]:
     """Create a resource linker CLI function.
 
@@ -299,6 +300,8 @@ def resource_linker_cli(
         default_source_dir: Path to resources relative to package root (default: 'resources').
         default_target_base: Default base directory for the target (default: .repolish)
         templates_subdir: Subdirectory within resources containing templates (default: templates)
+        default_symlinks: List of Symlink objects defining default symlinks from provider resources.
+            Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
 
     Returns:
         A callable that runs the resource linking CLI
@@ -306,9 +309,13 @@ def resource_linker_cli(
     Example:
         In your CLI module (e.g., mylib/cli.py):
         ```python
-        from pkglink.repolish import resource_linker_cli
+        from repolish.linker import resource_linker_cli, Symlink
 
-        main = resource_linker_cli()
+        main = resource_linker_cli(
+            default_symlinks=[
+                Symlink(source='configs/.editorconfig', target='.editorconfig'),
+            ],
+        )
         ```
 
         In pyproject.toml:
@@ -336,6 +343,7 @@ def resource_linker_cli(
         default_source_dir=default_source_dir,
         default_target_base=default_target_base,
         templates_subdir=templates_subdir,
+        default_symlinks=default_symlinks,
     )
 
     # Get the wrapped function and return it

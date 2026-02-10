@@ -165,8 +165,11 @@ providers_order:
   with `cli`)
 - `templates_dir` (optional): Subdirectory within provider resources containing
   templates (default: `templates`)
-- `symlinks` (optional): Additional symlinks to create from provider resources
-  to repo root
+- `symlinks` (optional): Symlinks to create from provider resources to repo
+  root. Can be:
+  - Omitted: Use the provider's default symlinks (if any)
+  - Empty list `[]`: Disable all symlinks
+  - Custom list: Override provider defaults
 
 **Note:** Each provider must specify either `cli` or `directory`, but not both.
 
@@ -174,6 +177,10 @@ Each symlink entry has:
 
 - `source`: Path relative to provider resources
 - `target`: Path relative to repo root
+
+Many providers define default symlinks (e.g., for `.editorconfig`). You can
+override these in your configuration by specifying a custom `symlinks` list or
+disable them with `symlinks: []`.
 
 #### Examples
 
