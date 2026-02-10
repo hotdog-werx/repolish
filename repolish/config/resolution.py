@@ -144,22 +144,26 @@ def _resolve_single_provider(
     if provider_info:
         # Use info from linked provider
         target_dir = _resolve_path(provider_info.target_dir, config_dir)
+        # Use user-specified symlinks if provided, otherwise use provider defaults
+        symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
         return ResolvedProviderInfo(
             alias=alias,
             target_dir=target_dir,
             templates_dir=provider_info.templates_dir or provider_config.templates_dir,
             library_name=provider_info.library_name,
-            symlinks=provider_config.symlinks,
+            symlinks=symlinks,
         )
     if provider_config.directory:
         # Use direct directory from config
         target_dir = _resolve_path(provider_config.directory, config_dir)
+        # For directory providers, use user symlinks or empty list as default
+        symlinks = provider_config.symlinks if provider_config.symlinks is not None else []
         return ResolvedProviderInfo(
             alias=alias,
             target_dir=target_dir,
             templates_dir=provider_config.templates_dir,
             library_name=None,
-            symlinks=provider_config.symlinks,
+            symlinks=symlinks,
         )
     # Neither info file nor directory config
     logger.warning(

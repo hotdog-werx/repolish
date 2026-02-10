@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_mock
 
+from repolish.linker import Symlink
 from repolish.linker.decorator import resource_linker, resource_linker_cli
 
 from .conftest import (
@@ -440,3 +441,46 @@ def test_resource_linker_cli_info_mode(
     assert 'target_dir' in info
     # Should NOT print the success message in info mode
     assert 'are now available' not in captured.out
+
+
+def test_resource_linker_with_default_symlinks(
+    test_package: PackageDictFixture,
+    capsys: pytest.CaptureFixture[str],
+    mocker: pytest_mock.MockerFixture,
+):
+    """Test resource_linker includes default_symlinks in --info output."""
+
+    @resource_linker(
+        library_name='mylib',
+        default_source_dir='resources',
+        default_symlinks=[
+            Symlink(
+                source='configs/.editorconfig',
+                target='.editorconfig',
+            ),
+            Symlink(
+                source='configs/.gitignore',
+                target='.gitignore',
+            ),
+        ],
+    )
+    def link_cli() -> None:
+        pass
+
+    mocker.patch.object(sys, 'argv', ['link-cli', '--info'])
+    mocker.patch(
+        'repolish.linker.decorator._get_package_root',
+        return_value=test_package['pkg_root'],
+    )
+    link_cli()
+
+    captured = capsys.readouterr()
+    info = json.loads(captured.out)
+
+    assert info['library_name'] == 'mylib'
+    assert 'symlinks' in info
+    assert len(info['symlinks']) == 2
+    assert info['symlinks'][0]['source'] == 'configs/.editorconfig'
+    assert info['symlinks'][0]['target'] == '.editorconfig'
+    assert info['symlinks'][1]['source'] == 'configs/.gitignore'
+    assert info['symlinks'][1]['target'] == '.gitignore'

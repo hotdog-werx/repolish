@@ -1,4 +1,4 @@
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from hotlog import get_logger
@@ -6,6 +6,7 @@ from pydantic import (
     BaseModel,
     Field,
     ValidationError,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -16,29 +17,23 @@ logger = get_logger(__name__)
 
 
 class ProviderSymlink(BaseModel):
-    """Configuration for a provider symlink."""
+    """Configuration for a provider symlink.
+
+    Internal model used in config resolution and provider info.
+    For the decorator API, use the Symlink dataclass from repolish.linker.
+    """
 
     source: Path = Field(
-        description='Path relative to provider resources (e.g., configs/.editorconfig)',
+        description='Path relative to provider resources (e.g., "configs/.editorconfig").',
     )
     target: Path = Field(
-        description='Path relative to repo root (e.g., .editorconfig)',
+        description='Path relative to repo root (e.g., ".editorconfig").',
     )
 
-    @field_validator('source', 'target', mode='before')
-    @classmethod
-    def parse_posix_path(cls, value: str | Path) -> Path:
-        """Parse POSIX-style paths from YAML into Path objects.
-
-        YAML files use forward slashes (POSIX), but we need to convert
-        them to Path objects that work on the current platform.
-        """
-        if isinstance(value, Path):
-            return value  # pragma: no cover - Already a Path, no need to parse
-        # Parse as PurePosixPath first, then convert to platform Path
-        # This ensures "configs/.editorconfig" works on Windows
-        posix_path = PurePosixPath(value)
-        return Path(*posix_path.parts)
+    @field_serializer('source', 'target', when_used='json')
+    def serialize_path(self, value: Path) -> str:
+        """Serialize Path to string for JSON output."""
+        return value.as_posix()
 
 
 class ProviderConfig(BaseModel):
@@ -56,9 +51,9 @@ class ProviderConfig(BaseModel):
         default='templates',
         description='Subdirectory within provider resources containing templates',
     )
-    symlinks: list[ProviderSymlink] = Field(
-        default_factory=list,
-        description='Additional symlinks to create from provider resources to repo',
+    symlinks: list[ProviderSymlink] | None = Field(
+        default=None,
+        description='Symlinks from resources to repo. Use provider defaults with None. Skip symlinks with empty list.',
     )
 
     @model_validator(mode='after')
@@ -221,6 +216,10 @@ class ProviderInfo(BaseModel):
     library_name: str | None = Field(
         default=None,
         description='Name of the provider library (optional)',
+    )
+    symlinks: list[ProviderSymlink] = Field(
+        default_factory=list,
+        description='Default symlinks provided by the provider',
     )
 
     @classmethod

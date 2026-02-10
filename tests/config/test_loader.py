@@ -1,3 +1,4 @@
+import json
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -419,6 +420,116 @@ def test_load_config_with_symlinks(provider_setup: ProviderSetupFixture):
     symlink = config.providers['test'].symlinks[0]
     assert symlink.source == Path('configs/editorconfig')
     assert symlink.target == Path('.editorconfig')
+
+
+def test_load_config_with_provider_default_symlinks(
+    provider_setup: ProviderSetupFixture,
+):
+    """Test that provider default symlinks are used when user doesn't specify any."""
+    config_dir, target_dir = provider_setup('test', create_templates=True)
+
+    # Create the symlink source files
+    configs_dir = target_dir / 'configs'
+    configs_dir.mkdir()
+    (configs_dir / '.editorconfig').write_text('# editorconfig')
+    (configs_dir / '.gitignore').write_text('# gitignore')
+
+    # Write provider info with default symlinks
+    info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
+    info_file.write_text(
+        json.dumps(
+            {
+                'target_dir': str(target_dir),
+                'source_dir': '/fake/source',
+                'templates_dir': 'templates',
+                'library_name': 'test',
+                'symlinks': [
+                    {
+                        'source': 'configs/.editorconfig',
+                        'target': '.editorconfig',
+                    },
+                    {'source': 'configs/.gitignore', 'target': '.gitignore'},
+                ],
+            },
+        ),
+    )
+
+    config_data = {
+        'providers_order': ['test'],
+        'providers': {
+            'test': {
+                'cli': 'test-link',
+                # Note: no symlinks specified - should use provider defaults
+            },
+        },
+    }
+    config_path = config_dir / 'repolish.yaml'
+    with config_path.open('w') as f:
+        yaml.dump(config_data, f)
+
+    config = load_config(config_path)
+
+    # Should use provider's default symlinks
+    assert 'test' in config.providers
+    assert len(config.providers['test'].symlinks) == 2
+    assert config.providers['test'].symlinks[0].source == Path(
+        'configs/.editorconfig',
+    )
+    assert config.providers['test'].symlinks[0].target == Path('.editorconfig')
+    assert config.providers['test'].symlinks[1].source == Path(
+        'configs/.gitignore',
+    )
+    assert config.providers['test'].symlinks[1].target == Path('.gitignore')
+
+
+def test_load_config_override_provider_symlinks_with_empty_list(
+    provider_setup: ProviderSetupFixture,
+):
+    """Test that user can override provider symlinks with empty list (no symlinks)."""
+    config_dir, target_dir = provider_setup('test', create_templates=True)
+
+    # Create the symlink source files (even though they won't be used)
+    configs_dir = target_dir / 'configs'
+    configs_dir.mkdir()
+    (configs_dir / '.editorconfig').write_text('# editorconfig')
+
+    # Write provider info with default symlinks
+    info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
+    info_file.write_text(
+        json.dumps(
+            {
+                'target_dir': str(target_dir),
+                'source_dir': '/fake/source',
+                'templates_dir': 'templates',
+                'library_name': 'test',
+                'symlinks': [
+                    {
+                        'source': 'configs/.editorconfig',
+                        'target': '.editorconfig',
+                    },
+                ],
+            },
+        ),
+    )
+
+    config_data = {
+        'providers_order': ['test'],
+        'providers': {
+            'test': {
+                'cli': 'test-link',
+                'symlinks': [],  # Explicitly override with no symlinks
+            },
+        },
+    }
+    config_path = config_dir / 'repolish.yaml'
+    with config_path.open('w') as f:
+        yaml.dump(config_data, f)
+
+    config = load_config(config_path)
+
+    # Should use user's override (empty list)
+    assert 'test' in config.providers
+    assert len(config.providers['test'].symlinks) == 0
 
 
 def test_load_config_skip_validation_for_linking(

@@ -1,4 +1,4 @@
-from .decorator import resource_linker
+from .decorator import Symlink, resource_linker
 from .orchestrator import create_provider_symlinks, process_provider
 from .providers import (
     run_provider_link,
@@ -8,6 +8,7 @@ from .providers import (
 from .symlinks import create_additional_link, link_resources
 
 __all__ = [
+    'Symlink',
     'create_additional_link',
     'create_provider_symlinks',
     'link_resources',

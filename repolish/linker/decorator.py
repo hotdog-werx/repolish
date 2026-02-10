@@ -5,6 +5,7 @@ import inspect
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from hotlog import (
@@ -14,12 +15,23 @@ from hotlog import (
     resolve_verbosity,
 )
 
-from repolish.config.models import ProviderInfo
+from repolish.config.models import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
 
 from .symlinks import link_resources
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class Symlink:
+    """A symlink from provider resources to the project.
+
+    Simple dataclass for the decorator API. Accepts strings for paths.
+    """
+
+    source: str
+    target: str
 
 
 def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
@@ -38,7 +50,10 @@ def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
         ResourceLinkerError: If library name cannot be determined
     """
     caller_module = inspect.getmodule(caller_frame.frame)
-    if caller_module is None or not hasattr(caller_module, '__package__'):  # pragma: no cover
+    if caller_module is None or not hasattr(
+        caller_module,
+        '__package__',
+    ):  # pragma: no cover
         # This edge case is difficult to test in practice - requires calling from a context
         # where inspect.getmodule() returns None or a module without __package__ attribute.
         # Real-world usage from properly structured Python packages will not hit this path.
@@ -144,6 +159,7 @@ def resource_linker(
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     templates_subdir: str = 'templates',
+    default_symlinks: list[Symlink] | None = None,
 ) -> Callable:
     """Decorator to create a CLI for linking library resources.
 
@@ -157,20 +173,26 @@ def resource_linker(
             Can be overridden for custom locations (e.g., 'mylib/templates').
         default_target_base: Default base directory for the target (default: .repolish)
         templates_subdir: Subdirectory within resources containing templates (default: templates)
+        default_symlinks: List of Symlink objects defining default symlinks from provider resources.
+            Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
 
     Example:
         ```python
-        from pkglink.repolish import resource_linker
+        from repolish.linker import resource_linker, Symlink
 
         # Minimal usage - auto-detects library name from package
         @resource_linker()
         def main():
             print("Resources linked successfully!")
 
-        # Override specific parameters as needed
+        # With default symlinks
         @resource_linker(
             library_name='custom-name',
             default_source_dir='templates',
+            default_symlinks=[
+                Symlink(source='configs/.editorconfig', target='.editorconfig'),
+                Symlink(source='configs/.gitignore', target='.gitignore'),
+            ],
         )
         def main():
             print("Resources linked successfully!")
@@ -213,13 +235,22 @@ def resource_linker(
             if args.info:
                 # Create ProviderInfo model and output as JSON
                 # Note: target_dir uses absolute() not resolve() to avoid following symlinks
+                # Convert Symlink to ProviderSymlink
+                provider_symlinks = [
+                    ProviderSymlink(
+                        source=Path(s.source),
+                        target=Path(s.target),
+                    )
+                    for s in (default_symlinks or [])
+                ]
                 info = ProviderInfo(
                     target_dir=str(args.target_dir.absolute()),
                     source_dir=str(args.source_dir.absolute()),
                     templates_dir=templates_subdir,
                     library_name=library_name,
+                    symlinks=provider_symlinks,
                 )
-                print(json.dumps(info.model_dump(), indent=2))  # noqa: T201 - Allow print for CLI output
+                print(json.dumps(info.model_dump(mode='json'), indent=2))  # noqa: T201 - Allow print for CLI output
                 return
 
             try:

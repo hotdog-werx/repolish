@@ -182,7 +182,10 @@ class ProviderShorthandCase:
     name: str
     providers_config: dict
     expected_cli: dict[str, str | None]  # provider_name -> expected cli value
-    expected_directory: dict[str, str | None]  # provider_name -> expected directory value
+    expected_directory: dict[
+        str,
+        str | None,
+    ]  # provider_name -> expected directory value
 
 
 @pytest.mark.parametrize(
