@@ -72,9 +72,9 @@ def save_provider_info(
     # Ensure target directory exists
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save the info
+    # Save the info (use mode='json' to trigger field serializers for Path -> str conversion)
     with info_file.open('w') as f:
-        json.dump(provider_info.model_dump(), f, indent=2)
+        json.dump(provider_info.model_dump(mode='json'), f, indent=2)
 
     # Save alias mapping - extract folder name from target_dir
     folder_name = target_dir.relative_to(config_dir / '.repolish').parts[0]

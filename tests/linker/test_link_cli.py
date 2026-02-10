@@ -493,6 +493,16 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         target_dir=str(tmp_path / '.repolish' / 'mylib'),
         source_dir='/fake/source/mylib',
         templates_dir='templates',
+        symlinks=[
+            ProviderSymlink(
+                source=Path('configs/.editorconfig'),
+                target=Path('.editorconfig'),
+            ),
+            ProviderSymlink(
+                source=Path('configs/.gitignore'),
+                target=Path('.gitignore'),
+            ),
+        ],
     )
 
     save_provider_info('mylib', provider_info, tmp_path)
@@ -505,6 +515,9 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert saved_info['library_name'] == 'mylib'
     assert saved_info['target_dir'] == str(tmp_path / '.repolish' / 'mylib')
     assert saved_info['templates_dir'] == 'templates'
+    assert len(saved_info['symlinks']) == 2
+    assert saved_info['symlinks'][0]['source'] == 'configs/.editorconfig'
+    assert saved_info['symlinks'][0]['target'] == '.editorconfig'
 
 
 def test_save_provider_info_with_alias(
