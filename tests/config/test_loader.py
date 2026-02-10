@@ -38,18 +38,17 @@ class InvalidConfigCase:
             name='empty_config',
             config_data={},
             error_type=ConfigValidationError,
-            error_match='must specify either "directories" or "providers_order"',
+            error_match='must specify either "directories" or "providers"',
         ),
         InvalidConfigCase(
             name='missing_required_fields',
             config_data={'context': {'key': 'value'}},
             error_type=ConfigValidationError,
-            error_match='must specify either "directories" or "providers_order"',
+            error_match='must specify either "directories" or "providers"',
         ),
         InvalidConfigCase(
             name='invalid_provider_config_no_cli_or_directory',
             config_data={
-                'providers_order': ['test'],
                 'providers': {
                     'test': {
                         'templates_dir': 'templates',
@@ -62,7 +61,6 @@ class InvalidConfigCase:
         InvalidConfigCase(
             name='invalid_provider_config_both_cli_and_directory',
             config_data={
-                'providers_order': ['test'],
                 'providers': {
                     'test': {
                         'cli': 'test-link',
@@ -89,7 +87,6 @@ class InvalidConfigCase:
         InvalidConfigCase(
             name='unlinked_provider_with_validation',
             config_data={
-                'providers_order': ['unlinked'],
                 'providers': {
                     'unlinked': {
                         'cli': 'unlinked-link',
@@ -583,3 +580,33 @@ def test_load_config_all_fields(
     assert config.post_process == ['black .', 'ruff check .']
     assert config.delete_files == ['old.txt', '!keep.txt']
     assert config.config_dir == config_path.parent.resolve()
+
+
+def test_load_config_providers_order_optional(
+    provider_setup: ProviderSetupFixture,
+):
+    """Test that providers_order is optional and defaults to providers dict key order."""
+    config_dir, target1 = provider_setup('base', create_templates=True)
+    _, target2 = provider_setup('python', create_templates=True)
+    _, target3 = provider_setup('extras', create_templates=True)
+
+    # Config WITHOUT providers_order - should use dict key order from YAML
+    config_data = {
+        'providers': {
+            'base': {'directory': str(target1)},
+            'python': {'directory': str(target2)},
+            'extras': {'directory': str(target3)},
+        },
+    }
+    config_path = config_dir / 'repolish.yaml'
+    with config_path.open('w') as f:
+        yaml.dump(config_data, f, sort_keys=False)  # Preserve order
+
+    config = load_config(config_path)
+
+    # Should process providers in the order they appear in the YAML (dict key order)
+    assert len(config.directories) == 3
+    assert config.directories[0].name == 'templates'
+    assert config.directories[0].parent.name == 'base'
+    assert config.directories[1].parent.name == 'python'
+    assert config.directories[2].parent.name == 'extras'

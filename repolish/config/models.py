@@ -105,7 +105,7 @@ class RepolishConfigFile(BaseModel):
     )
     providers_order: list[str] = Field(
         default_factory=list,
-        description='Order in which to process providers for template processing',
+        description='Optional: Order in which to process providers. Defaults to providers dict key order from YAML.',
     )
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,

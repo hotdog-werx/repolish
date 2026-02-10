@@ -3,6 +3,7 @@
 import argparse
 import inspect
 import json
+import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,7 +23,14 @@ from repolish.exceptions import ResourceLinkerError
 from .symlinks import link_resources
 
 logger = get_logger(__name__)
-console = Console()
+
+# Create Console with auto-detection: disable colors during tests
+# (similar to hotlog's get_console behavior)
+_force_terminal = True
+if 'pytest' in sys.modules or any(key.startswith('PYTEST_') for key in os.environ):
+    _force_terminal = False
+
+console = Console(force_terminal=_force_terminal)
 
 
 @dataclass

@@ -33,9 +33,10 @@ def validate_config_file(config: RepolishConfigFile) -> None:
             stacklevel=2,
         )
 
-    # Basic validation: must have either directories or providers_order
-    if not config.directories and not config.providers_order:
-        msg = 'Configuration must specify either "directories" or "providers_order"'
+    # Basic validation: must have either directories or providers
+    # providers_order is optional - defaults to providers dict key order
+    if not config.directories and not config.providers:
+        msg = 'Configuration must specify either "directories" or "providers"'
         raise ConfigValidationError(msg)
 
     # Validate providers_order references only defined providers

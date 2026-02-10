@@ -58,7 +58,8 @@ def _resolve_directories(
     """Resolve directory configuration to absolute Path objects.
 
     If directories are explicitly configured, resolve them.
-    If providers_order is configured, build directories from providers.
+    If providers are configured, build directories from providers
+    (using providers_order if specified, else providers dict key order).
 
     Args:
         config: Raw configuration
@@ -72,8 +73,8 @@ def _resolve_directories(
     if config.directories:
         return _resolve_directory_list(config.directories, config_dir)
 
-    # Otherwise, build from providers_order if available
-    if config.providers_order:
+    # Otherwise, build from providers (using providers_order if specified, else dict key order)
+    if config.providers:
         return _build_directories_from_providers(config, config_dir)
 
     # No directories configured
@@ -192,7 +193,9 @@ def _build_directories_from_providers(
     config: RepolishConfigFile,
     config_dir: Path,
 ) -> list[Path]:
-    """Build directories list from providers_order.
+    """Build directories list from providers.
+
+    Uses providers_order if specified, otherwise uses providers dict key order.
 
     Args:
         config: Raw configuration
@@ -202,8 +205,10 @@ def _build_directories_from_providers(
         List of resolved directory paths from providers
     """
     resolved = []
+    # Use providers_order if specified, else use providers dict key order (preserves YAML order)
+    provider_names = config.providers_order if config.providers_order else list(config.providers.keys())
 
-    for provider_name in config.providers_order:
+    for provider_name in provider_names:
         templates_path = _get_provider_templates_dir(
             config,
             provider_name,

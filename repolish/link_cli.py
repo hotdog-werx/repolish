@@ -26,11 +26,11 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
         config: Raw repolish configuration file
 
     Returns:
-        List of provider names to process
+        List of provider names to process (from providers_order or providers dict key order)
     """
     if config.providers_order:
         return config.providers_order
-    # If no order specified, use all providers in arbitrary order
+    # If no order specified, use providers dict key order (preserves YAML order)
     return list(config.providers.keys())
 
 
