@@ -1,4 +1,4 @@
-site_name: hotdog-werx/repolish
+site_name: repolish
 site_description: A hybrid templating and diff/patch system for maintaining repository consistency while preserving local customizations.
 site_url: https://hotdog-werx.github.io/repolish
 repo_url: https://github.com/hotdog-werx/repolish
@@ -9,7 +9,7 @@ nav:
       - Installation: getting-started/installation.md
       # - Quick Start: getting-started/quick-start.md
   - Configuration:
-      # - Overview: wip.md
+      - Overview: configuration/overview.md
       - Context: configuration/context.md
       # - Overrides: wip.md
       # - Anchors: wip.md
@@ -38,6 +38,7 @@ nav:
   - Guides:
       # - Python Projects: guides/python.md
       - Provider Patterns: guides/patterns.md
+      - Resource Linker: guides/linker.md
       - Debugging Preprocessors: guides/debugger.md
       - Preprocessors: guides/preprocessors.md
       # - Troubleshooting: wip.md

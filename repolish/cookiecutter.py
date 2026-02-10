@@ -43,7 +43,7 @@ def build_final_providers(config: RepolishConfig) -> Providers:
       provider decisions and records provenance Decisions for config entries
     """
     providers = create_providers(
-        config.directories,
+        [str(d) for d in config.directories],
         base_context=config.context,
         context_overrides=config.context_overrides,
     )
@@ -63,9 +63,8 @@ def build_final_providers(config: RepolishConfig) -> Providers:
             delete_set.discard(p)
         else:
             delete_set.add(p)
-        # provenance source: config file path if set, else 'config'
-        cfg_file = config.config_file
-        src = cfg_file.as_posix() if isinstance(cfg_file, Path) else 'config'
+        # provenance source: config dir path
+        src = config.config_dir.as_posix()
         providers.delete_history.setdefault(p.as_posix(), []).append(
             Decision(
                 source=src,
@@ -89,8 +88,7 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
 
     Returns: (base_dir, setup_input_path, setup_output_path)
     """
-    cfg_file = config.config_file
-    base_dir = Path(cfg_file).resolve().parent if cfg_file else Path.cwd()
+    base_dir = config.config_dir
     staging = base_dir / '.repolish'
     setup_input = staging / 'setup-input'
     setup_output = staging / 'setup-output'
