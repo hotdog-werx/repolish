@@ -14,6 +14,7 @@ from hotlog import (
     get_logger,
     resolve_verbosity,
 )
+from rich.console import Console
 
 from repolish.config.models import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
@@ -21,6 +22,7 @@ from repolish.exceptions import ResourceLinkerError
 from .symlinks import link_resources
 
 logger = get_logger(__name__)
+console = Console()
 
 
 @dataclass
@@ -335,8 +337,9 @@ def resource_linker_cli(
     # Create a function with auto-generated success message
     def _success_message() -> None:
         """Auto-generated success message."""
-        print(  # noqa: T201 - Allow print for CLI output
-            f'`{default_source_dir}` from {detected_library_name} are now available',
+        console.print(
+            f':white_check_mark: [bold cyan]{default_source_dir}[/bold cyan] from '
+            f'[bold green]{detected_library_name}[/bold green] are now available',
         )
 
     # Apply the decorator to create the CLI

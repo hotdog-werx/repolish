@@ -329,7 +329,7 @@ class ResourceLinkerCliCase:
             library_name_arg=None,
             source_dir='resources',
             expected_lib_name='my-library',
-            expected_msg='`resources` from my-library are now available',
+            expected_msg='resources from my-library are now available',
         ),
         ResourceLinkerCliCase(
             name='custom_library_name',
@@ -337,7 +337,7 @@ class ResourceLinkerCliCase:
             library_name_arg='custom-name',
             source_dir='resources',
             expected_lib_name='custom-name',
-            expected_msg='`resources` from custom-name are now available',
+            expected_msg='resources from custom-name are now available',
         ),
         ResourceLinkerCliCase(
             name='custom_source_directory',
@@ -345,7 +345,7 @@ class ResourceLinkerCliCase:
             library_name_arg=None,
             source_dir='templates',
             expected_lib_name='mylib',
-            expected_msg='`templates` from mylib are now available',
+            expected_msg='templates from mylib are now available',
         ),
     ],
     ids=lambda case: case.name,
