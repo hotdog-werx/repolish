@@ -241,7 +241,7 @@ class ProviderInfo(BaseModel):
             logger.debug(
                 'loaded_provider_info',
                 file=str(file_path),
-                data=info.model_dump(),
+                data=info.model_dump(mode='json'),
             )
         except (ValidationError, ValueError) as e:
             logger.warning(

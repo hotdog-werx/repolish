@@ -66,7 +66,7 @@ def save_provider_info(
         'saving_provider_info',
         provider=provider_name,
         info_file=str(info_file),
-        info=provider_info.model_dump(),
+        info=provider_info.model_dump(mode='json'),
     )
 
     # Ensure target directory exists
@@ -135,7 +135,7 @@ def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
     logger.info(
         'provider_linked',
         provider=provider_name,
-        target=provider_info.target_dir,
+        target=str(provider_info.target_dir),
         _display_level=1,
     )
 
