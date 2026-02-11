@@ -474,3 +474,51 @@ def test_supports_symlinks_when_os_lacks_symlink_attribute(
     mocker.patch('builtins.hasattr', side_effect=mock_hasattr)
 
     assert supports_symlinks() is False
+
+
+def test_link_resources_with_broken_symlink_target(tmp_path: Path):
+    """Test link_resources when target is a broken symlink.
+    
+    This reproduces a crash scenario when updating packages that changed location:
+    1. Create symlink from fileA to fileB
+    2. Delete fileA (source) - symlink becomes broken
+    3. Create fileC and try to create symlink from fileC to fileB
+    
+    In some cases this can cause a crash when trying to overwrite the broken symlink.
+    """
+    # Skip test if symlinks are not supported
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+    
+    # Step 1: Create initial source and target, create symlink
+    file_a = tmp_path / 'fileA'
+    file_a.mkdir()
+    (file_a / 'content.txt').write_text('from A')
+    
+    file_b = tmp_path / 'fileB'
+    
+    # Create symlink from fileA to fileB
+    result = link_resources(file_a, file_b, force=False)
+    assert result is True  # Should return True for symlink
+    assert file_b.is_symlink()
+    assert file_b.exists()
+    assert (file_b / 'content.txt').read_text() == 'from A'
+    
+    # Step 2: Delete the source (fileA) - now fileB is a broken symlink
+    import shutil
+    shutil.rmtree(file_a)
+    assert not file_a.exists()
+    assert file_b.is_symlink()  # Still a symlink
+    assert not file_b.exists()  # But broken (points to non-existent target)
+    
+    # Step 3: Create fileC and try to create symlink from fileC to fileB
+    file_c = tmp_path / 'fileC'
+    file_c.mkdir()
+    (file_c / 'content.txt').write_text('from C')
+    
+    # This should successfully replace the broken symlink with a new one
+    result = link_resources(file_c, file_b, force=True)
+    assert result is True
+    assert file_b.is_symlink()
+    assert file_b.exists()
+    assert (file_b / 'content.txt').read_text() == 'from C'

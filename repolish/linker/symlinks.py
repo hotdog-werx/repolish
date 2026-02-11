@@ -113,8 +113,9 @@ def link_resources(
         logger.info('target_exists_skipping', _display_level=1)
         return target_dir.is_symlink()
 
-    # Remove existing target if present
-    if target_dir.exists():
+    # Remove existing target if present (including broken symlinks)
+    # Note: exists() returns False for broken symlinks, so check is_symlink() too
+    if target_dir.exists() or target_dir.is_symlink():
         logger.info(
             'removing_existing_target',
             target=str(target_dir),
