@@ -223,7 +223,10 @@ class SymlinkTestCase:
         SymlinkTestCase(
             name='explicit_symlinks',
             config_symlinks=[
-                ProviderSymlink(source=Path('config.txt'), target=Path('config.txt')),
+                ProviderSymlink(
+                    source=Path('config.txt'),
+                    target=Path('config.txt'),
+                ),
             ],
             provider_symlinks=[],
             should_create_link=True,
@@ -232,7 +235,10 @@ class SymlinkTestCase:
             name='default_symlinks',
             config_symlinks=None,
             provider_symlinks=[
-                ProviderSymlink(source=Path('default.txt'), target=Path('default.txt')),
+                ProviderSymlink(
+                    source=Path('default.txt'),
+                    target=Path('default.txt'),
+                ),
             ],
             should_create_link=True,
         ),
@@ -240,7 +246,10 @@ class SymlinkTestCase:
             name='skip_symlinks',
             config_symlinks=[],
             provider_symlinks=[
-                ProviderSymlink(source=Path('default.txt'), target=Path('default.txt')),
+                ProviderSymlink(
+                    source=Path('default.txt'),
+                    target=Path('default.txt'),
+                ),
             ],
             should_create_link=False,
         ),
@@ -261,7 +270,10 @@ def test_process_provider_symlinks(
     (provider_dir / 'config.txt').write_text('content')
     (provider_dir / 'default.txt').write_text('default')
 
-    provider_config = ProviderConfig(cli='mylib-link', symlinks=case.config_symlinks)
+    provider_config = ProviderConfig(
+        cli='mylib-link',
+        symlinks=case.config_symlinks,
+    )
     provider_info = ProviderInfo(
         library_name='mylib',
         target_dir=str(provider_dir),

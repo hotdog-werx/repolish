@@ -346,7 +346,7 @@ def resource_linker_cli(
     def _success_message() -> None:
         """Auto-generated success message."""
         console.print(
-            f'  - [bold cyan]{default_source_dir}[/bold cyan] from '
+            f'- [bold cyan]{default_source_dir}[/bold cyan] from '
             f'[bold green]{detected_library_name}[/bold green] are now available',
         )
 

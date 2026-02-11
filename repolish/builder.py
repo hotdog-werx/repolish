@@ -37,6 +37,9 @@ def _copy_template_dir(template_dir: Path, staging_dir: Path) -> None:
         dest_root = staging_dir / '{{cookiecutter._repolish_project}}'
         for item in repolish_dir.rglob('*'):
             rel = item.relative_to(repolish_dir)
+            # Strip .jinja extension from destination filename
+            if rel.suffix == '.jinja':
+                rel = rel.with_suffix('')
             dest = dest_root / rel
             if item.is_dir():
                 dest.mkdir(parents=True, exist_ok=True)

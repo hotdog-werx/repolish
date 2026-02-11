@@ -41,6 +41,7 @@ nav:
       - Resource Linker: guides/linker.md
       - Debugging Preprocessors: guides/debugger.md
       - Preprocessors: guides/preprocessors.md
+      - Templates: guides/templates.md
       # - Troubleshooting: wip.md
 
 # Configuration
