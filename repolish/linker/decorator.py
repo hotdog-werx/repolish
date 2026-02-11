@@ -120,7 +120,7 @@ def _create_argument_parser(
     parser.add_argument(
         '--force',
         action='store_true',
-        help='Force recreation even if target exists and is up-to-date',
+        help='Force recreation even if target already exists and is correct',
     )
 
     parser.add_argument(

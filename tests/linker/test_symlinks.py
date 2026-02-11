@@ -1,6 +1,7 @@
 """Tests for repolish.linker.symlinks module."""
 
 import os
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -478,47 +479,192 @@ def test_supports_symlinks_when_os_lacks_symlink_attribute(
 
 def test_link_resources_with_broken_symlink_target(tmp_path: Path):
     """Test link_resources when target is a broken symlink.
-    
+
     This reproduces a crash scenario when updating packages that changed location:
     1. Create symlink from fileA to fileB
     2. Delete fileA (source) - symlink becomes broken
     3. Create fileC and try to create symlink from fileC to fileB
-    
+
     In some cases this can cause a crash when trying to overwrite the broken symlink.
     """
     # Skip test if symlinks are not supported
     if not supports_symlinks():
         pytest.skip('Symlinks not supported on this system')
-    
+
     # Step 1: Create initial source and target, create symlink
     file_a = tmp_path / 'fileA'
     file_a.mkdir()
     (file_a / 'content.txt').write_text('from A')
-    
+
     file_b = tmp_path / 'fileB'
-    
+
     # Create symlink from fileA to fileB
     result = link_resources(file_a, file_b, force=False)
     assert result is True  # Should return True for symlink
     assert file_b.is_symlink()
     assert file_b.exists()
     assert (file_b / 'content.txt').read_text() == 'from A'
-    
+
     # Step 2: Delete the source (fileA) - now fileB is a broken symlink
-    import shutil
+
     shutil.rmtree(file_a)
     assert not file_a.exists()
     assert file_b.is_symlink()  # Still a symlink
     assert not file_b.exists()  # But broken (points to non-existent target)
-    
+
     # Step 3: Create fileC and try to create symlink from fileC to fileB
     file_c = tmp_path / 'fileC'
     file_c.mkdir()
     (file_c / 'content.txt').write_text('from C')
-    
+
     # This should successfully replace the broken symlink with a new one
     result = link_resources(file_c, file_b, force=True)
     assert result is True
     assert file_b.is_symlink()
     assert file_b.exists()
     assert (file_b / 'content.txt').read_text() == 'from C'
+
+
+def test_link_resources_replace_valid_symlink(tmp_path: Path):
+    """Test replacing a valid symlink with a new one pointing to different location.
+
+    This tests whether we can change where a symlink points:
+    1. Create symlink from fileA to fileB
+    2. Create fileC and try to create symlink from fileC to fileB
+
+    Expected behavior:
+    - Without force: If fileB points to wrong location, it gets fixed automatically
+    - With force: fileB gets recreated even if already correct
+    """
+    # Skip test if symlinks are not supported
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+
+    # Step 1: Create initial source and target, create symlink
+    file_a = tmp_path / 'fileA'
+    file_a.mkdir()
+    (file_a / 'content.txt').write_text('from A')
+
+    file_b = tmp_path / 'fileB'
+
+    # Create symlink from fileA to fileB
+    result = link_resources(file_a, file_b, force=False)
+    assert result is True  # Should return True for symlink
+    assert file_b.is_symlink()
+    assert file_b.exists()
+    assert (file_b / 'content.txt').read_text() == 'from A'
+
+    # Step 2: Create fileC and try to create symlink from fileC to fileB
+    file_c = tmp_path / 'fileC'
+    file_c.mkdir()
+    (file_c / 'content.txt').write_text('from C')
+
+    # Without force, should detect wrong target and fix it automatically
+    result = link_resources(file_c, file_b, force=False)
+    assert result is True  # Returns True for symlink
+    assert file_b.is_symlink()
+    assert file_b.exists()
+    assert (file_b / 'content.txt').read_text() == 'from C'  # Now points to fileC
+
+    # Step 3: Try again with same source - should skip since it's already correct
+    result = link_resources(file_c, file_b, force=False)
+    assert result is True
+    assert file_b.is_symlink()
+    assert (file_b / 'content.txt').read_text() == 'from C'  # Still points to fileC
+
+    # Step 4: With force=True, should recreate even though already correct
+    result = link_resources(file_c, file_b, force=True)
+    assert result is True
+    assert file_b.is_symlink()
+    assert file_b.exists()
+    assert (file_b / 'content.txt').read_text() == 'from C'  # Still points to fileC
+
+
+def test_link_resources_handles_symlink_readlink_error(
+    mocker: MockerFixture,
+    tmp_path: Path,
+):
+    """Test handling of OSError when reading a symlink.
+
+    This can happen due to permission issues, filesystem corruption, or race conditions.
+    """
+    # Skip test if symlinks are not supported
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+
+    # Create source and symlink
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'file.txt').write_text('content')
+
+    target = tmp_path / 'target'
+    target.symlink_to(source, target_is_directory=True)
+
+    # Mock readlink to raise OSError (simulating permission error or corruption)
+    original_readlink = Path.readlink
+
+    def mock_readlink(self: Path) -> Path:
+        if self == target:
+            msg = 'Permission denied'
+            raise OSError(msg)
+        return original_readlink(self)
+
+    mocker.patch.object(Path, 'readlink', mock_readlink)
+
+    # Create new source to link
+    new_source = tmp_path / 'new_source'
+    new_source.mkdir()
+    (new_source / 'file.txt').write_text('new content')
+
+    # Should handle the error gracefully and recreate the symlink
+    result = link_resources(new_source, target, force=False)
+    assert result is True
+    assert target.is_symlink()
+    # Verify it now points to new_source (readlink works after recreation)
+    mocker.stopall()
+    assert target.readlink().resolve() == new_source.resolve()
+
+
+def test_link_resources_updates_outdated_copy_without_symlinks(
+    mocker: MockerFixture,
+    tmp_path: Path,
+):
+    """Test that copies are always updated when symlinks aren't supported.
+
+    On Windows (or when symlinks aren't available), we can't verify if a copied
+    directory is up-to-date, so we always recreate it to ensure it's current.
+    """
+    # Mock to simulate system without symlink support
+    mock_supports = mocker.patch('repolish.linker.symlinks.supports_symlinks')
+    mock_supports.return_value = False
+
+    # Step 1: Create initial source and copy it
+    source_a = tmp_path / 'source_a'
+    source_a.mkdir()
+    (source_a / 'file.txt').write_text('version 1')
+
+    target = tmp_path / 'target'
+
+    result = link_resources(source_a, target, force=False)
+    assert result is False  # Returns False for copy
+    assert target.exists()
+    assert not target.is_symlink()
+    assert (target / 'file.txt').read_text() == 'version 1'
+
+    # Step 2: Update source content
+    (source_a / 'file.txt').write_text('version 2')
+    (source_a / 'new_file.txt').write_text('new content')
+
+    # Step 3: Run link_resources again WITHOUT force
+    # Should automatically update because we can't verify if copy is current
+    result = link_resources(source_a, target, force=False)
+    assert result is False  # Returns False for copy
+    assert target.exists()
+    assert not target.is_symlink()
+    assert (target / 'file.txt').read_text() == 'version 2'  # Updated!
+    assert (target / 'new_file.txt').read_text() == 'new content'  # New file present!
+
+    # Step 4: Verify it recreates every time (no caching on Windows)
+    (source_a / 'file.txt').write_text('version 3')
+    result = link_resources(source_a, target, force=False)
+    assert (target / 'file.txt').read_text() == 'version 3'  # Always fresh!

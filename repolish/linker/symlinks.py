@@ -65,6 +65,178 @@ def _remove_target(target: Path) -> None:
         logger.debug('target_does_not_exist')
 
 
+def _check_symlink_validity(
+    target_dir: Path,
+    source_dir: Path,
+    *,
+    force: bool,
+) -> tuple[bool, bool]:
+    """Check if an existing symlink is valid and pointing to the correct source.
+
+    Args:
+        target_dir: The symlink to check
+        source_dir: The expected source directory
+        force: Whether force recreation is requested
+
+    Returns:
+        Tuple of (needs_update, is_correct_symlink)
+        - needs_update: True if the symlink should be recreated
+        - is_correct_symlink: True if it's already pointing to the correct source
+    """
+    try:
+        current_target = target_dir.readlink().resolve()
+        if current_target == source_dir:
+            if force:
+                logger.info(
+                    'target_correct_but_forcing_recreation',
+                    _display_level=1,
+                )
+                return (True, True)
+            logger.info('target_already_correct_skipping', _display_level=1)
+            return (False, True)
+
+        logger.info(
+            'target_points_to_wrong_location',
+            current=str(current_target),
+            expected=str(source_dir),
+            _display_level=1,
+        )
+    except (OSError, ValueError):
+        # Broken or invalid symlink
+        logger.info('target_is_broken_symlink', _display_level=1)
+        return (True, False)
+    else:
+        return (True, False)
+
+
+def _check_copy_validity(*, force: bool) -> tuple[bool, bool]:
+    """Check if an existing copied directory needs to be updated.
+
+    Args:
+        force: Whether force recreation is requested
+
+    Returns:
+        Tuple of (needs_update, skip_and_return_false)
+        - needs_update: True if the copy should be recreated
+        - skip_and_return_false: True if we should skip and return False from link_resources
+    """
+    # If symlinks are not supported on this system, we can't verify if the copy
+    # is up-to-date, so always recreate it to be safe (especially on Windows)
+    if not supports_symlinks():
+        logger.info(
+            'copy_exists_recreating_to_ensure_current',
+            _display_level=1,
+        )
+        return (True, False)
+
+    if force:
+        logger.info('target_exists_forcing_recreation', _display_level=1)
+        return (True, False)
+
+    # On systems with symlink support, if the user created a regular directory
+    # instead of a symlink, respect it and skip unless force=True
+    logger.info('target_exists_skipping', _display_level=1)
+    return (False, True)
+
+
+def _handle_existing_target(
+    target_dir: Path,
+    source_dir: Path,
+    *,
+    force: bool,
+) -> bool | None:
+    """Handle an existing target directory or symlink.
+
+    Args:
+        target_dir: The existing target path
+        source_dir: The source directory to link/copy
+        force: Whether to force recreation
+
+    Returns:
+        True if already a correct symlink (caller should return True)
+        False if a copy that should be skipped (caller should return False)
+        None if target was removed and caller should proceed with creation
+    """
+    if target_dir.is_symlink():
+        needs_update, _ = _check_symlink_validity(
+            target_dir,
+            source_dir,
+            force=force,
+        )
+        if not needs_update:
+            return True  # Already correct symlink
+
+        logger.info(
+            'removing_existing_target',
+            target=str(target_dir),
+            _display_level=1,
+        )
+        _remove_target(target_dir)
+        return None  # Proceed with creation
+
+    # Target is a directory or file (not a symlink)
+    needs_update, should_skip = _check_copy_validity(force=force)
+    if should_skip:
+        return False  # Skip and return False because it's a copy
+
+    logger.info(
+        'removing_existing_target',
+        target=str(target_dir),
+        _display_level=1,
+    )
+    _remove_target(target_dir)
+    return None  # Proceed with creation
+
+
+def _validate_source(source_dir: Path) -> None:
+    """Validate that source directory exists and is a directory.
+
+    Args:
+        source_dir: Path to validate
+
+    Raises:
+        FileNotFoundError: If source_dir does not exist
+        SymlinkError: If source_dir is not a directory
+    """
+    if not source_dir.exists():
+        logger.error('source_does_not_exist', source=str(source_dir))
+        msg = f'Source directory does not exist: {source_dir}'
+        raise FileNotFoundError(msg)
+
+    if not source_dir.is_dir():
+        logger.error('source_is_not_directory', source=str(source_dir))
+        msg = f'Source must be a directory: {source_dir}'
+        raise SymlinkError(msg)
+
+
+def _create_link_or_copy(source_dir: Path, target_dir: Path) -> bool:
+    """Create a symlink or copy from source to target.
+
+    Args:
+        source_dir: Source directory to link/copy from
+        target_dir: Target location for the link/copy
+
+    Returns:
+        True if symlink was created, False if copy was used
+    """
+    # Create parent directory
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create symlink or copy
+    if supports_symlinks():
+        logger.debug('creating_symlink')
+        target_dir.symlink_to(source_dir, target_is_directory=True)
+        logger.info('symlink_created_successfully', _display_level=1)
+        return True
+
+    logger.debug('symlinks_not_supported_copying_directory')
+    shutil.copytree(source_dir, target_dir)
+    logger.info('copy_created_successfully', _display_level=1)
+    return False
+
+    return False
+
+
 def link_resources(
     source_dir: Path,
     target_dir: Path,
@@ -97,45 +269,16 @@ def link_resources(
         _display_level=1,
     )
 
-    # Validate source
-    if not source_dir.exists():
-        logger.error('source_does_not_exist', source=str(source_dir))
-        msg = f'Source directory does not exist: {source_dir}'
-        raise FileNotFoundError(msg)
+    _validate_source(source_dir)
 
-    if not source_dir.is_dir():
-        logger.error('source_is_not_directory', source=str(source_dir))
-        msg = f'Source must be a directory: {source_dir}'
-        raise SymlinkError(msg)
-
-    # Skip if target exists and not forcing
-    if target_dir.exists() and not force:
-        logger.info('target_exists_skipping', _display_level=1)
-        return target_dir.is_symlink()
-
-    # Remove existing target if present (including broken symlinks)
-    # Note: exists() returns False for broken symlinks, so check is_symlink() too
+    # Handle existing target if present
     if target_dir.exists() or target_dir.is_symlink():
-        logger.info(
-            'removing_existing_target',
-            target=str(target_dir),
-            _display_level=1,
-        )
-        _remove_target(target_dir)
+        result = _handle_existing_target(target_dir, source_dir, force=force)
+        if result is not None:
+            return result
 
-    # Create parent directory
-    target_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    # Create symlink or copy
-    if supports_symlinks():
-        logger.debug('creating_symlink')
-        target_dir.symlink_to(source_dir, target_is_directory=True)
-        logger.info('symlink_created_successfully', _display_level=1)
-        return True
-    logger.debug('symlinks_not_supported_copying_directory')
-    shutil.copytree(source_dir, target_dir)
-    logger.info('copy_created_successfully', _display_level=1)
-    return False
+    # Create the symlink or copy
+    return _create_link_or_copy(source_dir, target_dir)
 
 
 def create_additional_link(
