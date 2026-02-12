@@ -8,6 +8,28 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.6.0] <a name="0.6.0" href="#0.6.0">-</a> February 12, 2026
+
+### 🚀 Features
+
+- Implement multiregex preprocessor (#21) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#21](https://github.com/hotdog-werx/repolish/pull/21)
+- Add providers orchestration and auto-directory resolution (#23) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#23](https://github.com/hotdog-werx/repolish/pull/23)
+- Strip .jinja extension from template filenames (#24) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#24](https://github.com/hotdog-werx/repolish/pull/24)
+
+### 🐛 Bug Fixes
+
+- Fix broken symlink handling and improve test organization (#25) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#25](https://github.com/hotdog-werx/repolish/pull/25)
+
+[0.6.0]: https://github.com/hotdog-werx/repolish/compare/0.5.0...0.6.0
+
 ## [0.5.0] <a name="0.5.0" href="#0.5.0">-</a> January 30, 2026
 
 ### 🚀 Features
