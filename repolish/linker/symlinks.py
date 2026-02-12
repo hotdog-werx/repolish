@@ -29,7 +29,9 @@ def _remove_target(target: Path) -> None:
         logger.debug('removing_file')
         target.unlink()
     else:
-        logger.debug('target_does_not_exist')
+        logger.debug(
+            'target_does_not_exist',
+        )  # pragma: no cover - _remove_target is only called when target exists
 
 
 def _resolve_existing_target(

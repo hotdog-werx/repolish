@@ -7,6 +7,7 @@ from typing import Any, Protocol, TypedDict
 import pytest
 import pytest_mock
 
+from repolish.config.models import ProviderInfo
 from repolish.linker.decorator import resource_linker
 
 
@@ -79,3 +80,30 @@ def basic_link_cli(mocked_package: dict[str, Any]) -> Callable[[], None]:
         pass
 
     return link_cli
+
+
+@pytest.fixture
+def source_with_file(tmp_path: Path) -> Path:
+    """Create a source directory with a test file."""
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'file.txt').write_text('content')
+    return source
+
+
+@pytest.fixture
+def provider_resources_setup(tmp_path: Path) -> Path:
+    """Set up provider resources directory structure."""
+    provider_resources = tmp_path / '.repolish' / 'mylib'
+    provider_resources.mkdir(parents=True)
+    return provider_resources
+
+
+@pytest.fixture
+def basic_provider_info(tmp_path: Path) -> ProviderInfo:
+    """Create a basic ProviderInfo for testing."""
+    return ProviderInfo(
+        library_name='mylib',
+        target_dir=str(tmp_path / '.repolish' / 'mylib'),
+        source_dir='/fake/source/mylib',
+    )

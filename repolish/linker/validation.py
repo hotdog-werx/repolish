@@ -67,7 +67,7 @@ def validate_existing_symlink(
     """
     try:
         current_target = target_dir.readlink().resolve()
-        if current_target == source_dir:
+        if current_target == source_dir and current_target.exists():
             if force:
                 logger.info(
                     'target_correct_but_forcing_recreation',
