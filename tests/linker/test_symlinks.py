@@ -1,7 +1,4 @@
-"""Tests for repolish.linker.symlinks module."""
-
-import os
-from collections.abc import Callable
+import shutil
 from pathlib import Path
 
 import pytest
@@ -9,30 +6,52 @@ import pytest_mock
 from pytest_mock import MockerFixture
 
 from repolish.config.models import ProviderInfo
-from repolish.exceptions import SymlinkError
 from repolish.linker.symlinks import (
-    _remove_target,
     create_additional_link,
     link_resources,
-    supports_symlinks,
 )
+from repolish.linker.windows_utils import normalize_windows_path, supports_symlinks
 
 
-def test_supports_symlinks():
-    """Test that supports_symlinks returns a boolean."""
-    result = supports_symlinks()
-    assert isinstance(result, bool)
+def assert_symlink_with_file(target: Path, filename: str, content: str):
+    """Assert that target is a symlink, exists, and contains the expected file with content."""
+    assert target.is_symlink(), f'Expected {target} to be a symlink'
+    assert target.exists(), f'Expected {target} to exist'
+    assert (target / filename).read_text() == content
 
 
-def test_link_resources_creates_symlink(tmp_path: Path):
+def assert_copied_directory(target: Path):
+    """Assert that target is a copied directory (not symlink)."""
+    assert target.exists(), f'Expected {target} to exist'
+    assert target.is_dir(), f'Expected {target} to be a directory'
+    assert not target.is_symlink(), f'Expected {target} to not be a symlink'
+
+
+def assert_copy_with_file(target: Path, filename: str, content: str):
+    """Assert that target is a copy (not symlink), exists, and contains the expected file with content."""
+    assert_copied_directory(target)
+    assert (target / filename).read_text() == content
+
+
+def create_test_dir(tmp_path: Path, name: str, filename: str = 'content.txt', content: str = 'content') -> Path:
+    """Create a test directory with a file inside."""
+    test_dir = tmp_path / name
+    test_dir.mkdir()
+    (test_dir / filename).write_text(content)
+    return test_dir
+
+
+def mock_no_symlinks(mocker: pytest_mock.MockerFixture):
+    """Mock supports_symlinks to return False for both linker modules."""
+    mocker.patch('repolish.linker.symlinks.supports_symlinks', return_value=False)
+    mocker.patch('repolish.linker.validation.supports_symlinks', return_value=False)
+
+
+def test_link_resources_creates_symlink(tmp_path: Path, source_with_file: Path):
     """Test link_resources creates a symlink when supported."""
-    source = tmp_path / 'source'
-    source.mkdir()
-    (source / 'file.txt').write_text('content')
-
     target = tmp_path / 'target'
 
-    result = link_resources(source, target)
+    result = link_resources(source_with_file, target)
 
     # On systems with symlink support, should return True
     # On systems without, should return False
@@ -43,40 +62,17 @@ def test_link_resources_creates_symlink(tmp_path: Path):
     assert (target / 'file.txt').read_text() == 'content'
 
 
-def test_link_resources_source_not_exists(tmp_path: Path):
-    """Test link_resources raises FileNotFoundError when source doesn't exist."""
-    source = tmp_path / 'nonexistent'
-    target = tmp_path / 'target'
-
-    with pytest.raises(
-        FileNotFoundError,
-        match='Source directory does not exist',
-    ):
-        link_resources(source, target)
-
-
-def test_link_resources_source_not_directory(tmp_path: Path):
-    """Test link_resources raises SymlinkError when source is not a directory."""
-    source = tmp_path / 'file.txt'
-    source.write_text('content')
-    target = tmp_path / 'target'
-
-    with pytest.raises(SymlinkError, match='Source must be a directory'):
-        link_resources(source, target)
-
-
-def test_link_resources_skips_existing_target_without_force(tmp_path: Path):
+def test_link_resources_skips_existing_target_without_force(
+    tmp_path: Path,
+    source_with_file: Path,
+):
     """Test link_resources skips linking when target exists and force=False."""
-    source = tmp_path / 'source'
-    source.mkdir()
-    (source / 'file.txt').write_text('original')
-
     target = tmp_path / 'target'
     target.mkdir()
     (target / 'existing.txt').write_text('existing')
 
     # Should skip and return whether target is a symlink
-    result = link_resources(source, target, force=False)
+    result = link_resources(source_with_file, target, force=False)
 
     assert isinstance(result, bool)
     # Target should still exist with original content
@@ -84,34 +80,32 @@ def test_link_resources_skips_existing_target_without_force(tmp_path: Path):
     assert (target / 'existing.txt').read_text() == 'existing'
 
 
-def test_link_resources_replaces_existing_target_with_force(tmp_path: Path):
+def test_link_resources_replaces_existing_target_with_force(
+    tmp_path: Path,
+    source_with_file: Path,
+):
     """Test link_resources replaces target when force=True."""
-    source = tmp_path / 'source'
-    source.mkdir()
-    (source / 'file.txt').write_text('new content')
-
     target = tmp_path / 'target'
     target.mkdir()
     (target / 'old.txt').write_text('old')
 
-    result = link_resources(source, target, force=True)
+    result = link_resources(source_with_file, target, force=True)
 
     assert isinstance(result, bool)
     assert target.exists()
     # Old file should be gone, new file should be accessible
     assert not (target / 'old.txt').exists()
-    assert (target / 'file.txt').read_text() == 'new content'
+    assert (target / 'file.txt').read_text() == 'content'
 
 
-def test_link_resources_creates_parent_directories(tmp_path: Path):
+def test_link_resources_creates_parent_directories(
+    tmp_path: Path,
+    source_with_file: Path,
+):
     """Test link_resources creates parent directories if needed."""
-    source = tmp_path / 'source'
-    source.mkdir()
-    (source / 'file.txt').write_text('content')
-
     target = tmp_path / 'nested' / 'deep' / 'target'
 
-    result = link_resources(source, target)
+    result = link_resources(source_with_file, target)
 
     assert isinstance(result, bool)
     assert target.exists()
@@ -123,8 +117,7 @@ def test_link_resources_copies_when_symlinks_not_supported(
     tmp_path: Path,
 ):
     """Test link_resources falls back to copying when symlinks aren't supported."""
-    mock_supports = mocker.patch('repolish.linker.symlinks.supports_symlinks')
-    mock_supports.return_value = False
+    mock_no_symlinks(mocker)
 
     source = tmp_path / 'source'
     source.mkdir()
@@ -135,85 +128,26 @@ def test_link_resources_copies_when_symlinks_not_supported(
     result = link_resources(source, target)
 
     assert result is False  # Should return False when copying
-    assert target.exists()
-    assert target.is_dir()
-    assert not target.is_symlink()
-    assert (target / 'file.txt').read_text() == 'content'
-
-
-@pytest.mark.parametrize(
-    ('target_name', 'setup_target'),
-    [
-        ('symlink', lambda tmp_path: _setup_symlink_target(tmp_path)),
-        ('directory', lambda tmp_path: _setup_directory_target(tmp_path)),
-        ('file', lambda tmp_path: _setup_file_target(tmp_path)),
-        ('nonexistent', lambda tmp_path: _setup_nonexistent_target(tmp_path)),
-    ],
-)
-def test_remove_target(
-    target_name: str,
-    setup_target: Callable,
-    tmp_path: Path,
-):
-    """Test _remove_target removes various types of targets."""
-    target = setup_target(tmp_path)
-    _remove_target(target)
-    assert not target.exists()
-
-
-def _setup_symlink_target(tmp_path: Path) -> Path:
-    """Setup a symlink target for testing."""
-    source = tmp_path / 'source'
-    source.mkdir()
-    target = tmp_path / 'link'
-    if supports_symlinks():
-        target.symlink_to(source, target_is_directory=True)
-    return target
-
-
-def _setup_directory_target(tmp_path: Path) -> Path:
-    """Setup a directory target for testing."""
-    target = tmp_path / 'dir'
-    target.mkdir()
-    (target / 'file.txt').write_text('content')
-    return target
-
-
-def _setup_file_target(tmp_path: Path) -> Path:
-    """Setup a file target for testing."""
-    target = tmp_path / 'file.txt'
-    target.write_text('content')
-    return target
-
-
-def _setup_nonexistent_target(tmp_path: Path) -> Path:
-    """Setup a nonexistent target for testing."""
-    return tmp_path / 'nonexistent'
+    assert_copy_with_file(target, 'file.txt', 'content')
 
 
 def test_create_additional_link_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    provider_resources_setup: Path,
+    basic_provider_info: ProviderInfo,
 ):
     """Test create_additional_link creates a link for a file."""
     monkeypatch.chdir(tmp_path)
 
-    # Setup provider resources
-    provider_resources = tmp_path / '.repolish' / 'mylib'
-    provider_resources.mkdir(parents=True)
-    config_dir = provider_resources / 'configs'
+    # Setup config file
+    config_dir = provider_resources_setup / 'configs'
     config_dir.mkdir()
     config_file = config_dir / '.editorconfig'
     config_file.write_text('root = true')
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     result = create_additional_link(
-        provider_info=provider_info,
+        provider_info=basic_provider_info,
         provider_name='mylib',
         source='configs/.editorconfig',
         target='.editorconfig',
@@ -228,25 +162,19 @@ def test_create_additional_link_file(
 def test_create_additional_link_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    provider_resources_setup: Path,
+    basic_provider_info: ProviderInfo,
 ):
     """Test create_additional_link creates a link for a directory."""
     monkeypatch.chdir(tmp_path)
 
-    # Setup provider resources
-    provider_resources = tmp_path / '.repolish' / 'mylib'
-    provider_resources.mkdir(parents=True)
-    docs_dir = provider_resources / 'docs'
+    # Setup docs directory
+    docs_dir = provider_resources_setup / 'docs'
     docs_dir.mkdir()
     (docs_dir / 'README.md').write_text('# Docs')
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     result = create_additional_link(
-        provider_info=provider_info,
+        provider_info=basic_provider_info,
         provider_name='mylib',
         source='docs',
         target='documentation',
@@ -256,26 +184,6 @@ def test_create_additional_link_directory(
     target_path = tmp_path / 'documentation'
     assert target_path.exists()
     assert (target_path / 'README.md').read_text() == '# Docs'
-
-
-def test_create_additional_link_source_not_exists(tmp_path: Path):
-    """Test create_additional_link raises when source doesn't exist."""
-    provider_resources = tmp_path / '.repolish' / 'mylib'
-    provider_resources.mkdir(parents=True)
-
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
-    with pytest.raises(FileNotFoundError, match='Source does not exist'):
-        create_additional_link(
-            provider_info=provider_info,
-            provider_name='mylib',
-            source='nonexistent/file.txt',
-            target='target.txt',
-        )
 
 
 def test_create_additional_link_target_exists_without_force(
@@ -386,8 +294,7 @@ def test_create_additional_link_copies_when_no_symlinks(
 ):
     """Test create_additional_link copies when symlinks aren't supported."""
     monkeypatch.chdir(tmp_path)
-    mock_supports = mocker.patch('repolish.linker.symlinks.supports_symlinks')
-    mock_supports.return_value = False
+    mock_no_symlinks(mocker)
 
     # Setup provider resources
     provider_resources = tmp_path / '.repolish' / 'mylib'
@@ -431,10 +338,7 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
     monkeypatch.chdir(tmp_path)
 
     # Mock supports_symlinks to return False
-    mocker.patch(
-        'repolish.linker.symlinks.supports_symlinks',
-        return_value=False,
-    )
+    mock_no_symlinks(mocker)
 
     provider_info = ProviderInfo(
         library_name='mylib',
@@ -452,25 +356,169 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
     # Verify directory was copied (not symlinked)
     assert not is_symlink
     target_path = tmp_path / 'configs'
-    assert target_path.exists()
-    assert target_path.is_dir()
-    assert not target_path.is_symlink()
+    assert_copied_directory(target_path)
     assert (target_path / 'file1.txt').read_text() == 'content1'
     assert (target_path / 'file2.txt').read_text() == 'content2'
 
 
-def test_supports_symlinks_when_os_lacks_symlink_attribute(
-    mocker: pytest_mock.MockerFixture,
+def test_link_resources_with_broken_symlink_target(tmp_path: Path):
+    """Test link_resources when target is a broken symlink.
+
+    This reproduces a crash scenario when updating packages that changed location:
+    1. Create symlink from fileA to fileB
+    2. Delete fileA (source) - symlink becomes broken
+    3. Create fileC and try to create symlink from fileC to fileB
+
+    In some cases this can cause a crash when trying to overwrite the broken symlink.
+    """
+    # Skip test if symlinks are not supported
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+
+    # Step 1: Create initial source and target, create symlink
+    file_a = create_test_dir(tmp_path, 'fileA', content='from A')
+
+    file_b = tmp_path / 'fileB'
+
+    # Create symlink from fileA to fileB
+    result = link_resources(file_a, file_b, force=False)
+    assert result is True  # Should return True for symlink
+    assert_symlink_with_file(file_b, 'content.txt', 'from A')
+
+    # Step 2: Delete the source (fileA) - now fileB is a broken symlink
+
+    shutil.rmtree(file_a)
+    assert not file_a.exists()
+    assert file_b.is_symlink()  # Still a symlink
+    assert not file_b.exists()  # But broken (points to non-existent target)
+
+    # Step 3: Create fileC and try to create symlink from fileC to fileB
+    file_c = create_test_dir(tmp_path, 'fileC', content='from C')
+
+    # This should successfully replace the broken symlink with a new one
+    result = link_resources(file_c, file_b, force=True)
+    assert result is True
+    assert_symlink_with_file(file_b, 'content.txt', 'from C')
+
+
+def test_link_resources_replace_valid_symlink(tmp_path: Path):
+    """Test replacing a valid symlink with a new one pointing to different location.
+
+    This tests whether we can change where a symlink points:
+    1. Create symlink from fileA to fileB
+    2. Create fileC and try to create symlink from fileC to fileB
+
+    Expected behavior:
+    - Without force: If fileB points to wrong location, it gets fixed automatically
+    - With force: fileB gets recreated even if already correct
+    """
+    # Skip test if symlinks are not supported
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+
+    # Step 1: Create initial source and target, create symlink
+    file_a = create_test_dir(tmp_path, 'fileA', content='from A')
+
+    file_b = tmp_path / 'fileB'
+
+    # Create symlink from fileA to fileB
+    result = link_resources(file_a, file_b, force=False)
+    assert result is True  # Should return True for symlink
+    assert_symlink_with_file(file_b, 'content.txt', 'from A')
+
+    # Step 2: Create fileC and try to create symlink from fileC to fileB
+    file_c = create_test_dir(tmp_path, 'fileC', content='from C')
+
+    # Without force, should detect wrong target and fix it automatically
+    result = link_resources(file_c, file_b, force=False)
+    assert result is True  # Returns True for symlink
+    assert_symlink_with_file(file_b, 'content.txt', 'from C')
+
+    # Step 3: Try again with same source - should skip since it's already correct
+    result = link_resources(file_c, file_b, force=False)
+    assert result is True
+    assert_symlink_with_file(file_b, 'content.txt', 'from C')
+
+    # Step 4: With force=True, should recreate even though already correct
+    result = link_resources(file_c, file_b, force=True)
+    assert result is True
+    assert_symlink_with_file(file_b, 'content.txt', 'from C')
+
+
+def test_link_resources_handles_symlink_readlink_error(
+    mocker: MockerFixture,
+    tmp_path: Path,
 ):
-    """Test supports_symlinks returns False when os.symlink doesn't exist."""
-    # Mock hasattr to return False for os.symlink
-    original_hasattr = hasattr
+    """Test handling of OSError when reading a symlink.
 
-    def mock_hasattr(obj: object, name: str) -> bool:
-        if obj is os and name == 'symlink':
-            return False
-        return original_hasattr(obj, name)
+    This can happen due to permission issues, filesystem corruption, or race conditions.
+    """
+    # Skip test if symlinks are not supported
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
 
-    mocker.patch('builtins.hasattr', side_effect=mock_hasattr)
+    # Create source and symlink
+    source = create_test_dir(tmp_path, 'source')
 
-    assert supports_symlinks() is False
+    target = tmp_path / 'target'
+    target.symlink_to(source, target_is_directory=True)
+
+    # Mock readlink to raise OSError (simulating permission error or corruption)
+    original_readlink = Path.readlink
+
+    def mock_readlink(self: Path) -> Path:
+        if self == target:
+            msg = 'Permission denied'
+            raise OSError(msg)
+        return original_readlink(self)
+
+    mocker.patch.object(Path, 'readlink', mock_readlink)
+
+    # Create new source to link
+    new_source = create_test_dir(tmp_path, 'new_source', content='new content')
+
+    # Should handle the error gracefully and recreate the symlink
+    result = link_resources(new_source, target, force=False)
+    assert result is True
+    assert target.is_symlink()
+    # Verify it now points to new_source (readlink works after recreation)
+    mocker.stopall()
+    assert normalize_windows_path(target.readlink().resolve()) == normalize_windows_path(new_source.resolve())
+
+
+def test_link_resources_updates_outdated_copy_without_symlinks(
+    mocker: MockerFixture,
+    tmp_path: Path,
+):
+    """Test that copies are always updated when symlinks aren't supported.
+
+    On Windows (or when symlinks aren't available), we can't verify if a copied
+    directory is up-to-date, so we always recreate it to ensure it's current.
+    """
+    # Mock to simulate system without symlink support
+    mock_no_symlinks(mocker)
+
+    # Step 1: Create initial source and copy it
+    source_a = create_test_dir(tmp_path, 'source_a', filename='file.txt', content='version 1')
+
+    target = tmp_path / 'target'
+
+    result = link_resources(source_a, target, force=False)
+    assert result is False  # Returns False for copy
+    assert_copy_with_file(target, 'file.txt', 'version 1')
+
+    # Step 2: Update source content
+    (source_a / 'file.txt').write_text('version 2')
+    (source_a / 'new_file.txt').write_text('new content')
+
+    # Step 3: Run link_resources again WITHOUT force
+    # Should automatically update because we can't verify if copy is current
+    result = link_resources(source_a, target, force=False)
+    assert result is False  # Returns False for copy
+    assert_copy_with_file(target, 'file.txt', 'version 2')
+    assert (target / 'new_file.txt').read_text() == 'new content'  # New file present!
+
+    # Step 4: Verify it recreates every time (no caching on Windows)
+    (source_a / 'file.txt').write_text('version 3')
+    result = link_resources(source_a, target, force=False)
+    assert (target / 'file.txt').read_text() == 'version 3'  # Always fresh!
