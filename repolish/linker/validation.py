@@ -5,7 +5,7 @@ from hotlog import get_logger
 
 from repolish.exceptions import SymlinkError
 
-from .windows_utils import supports_symlinks
+from .windows_utils import normalize_windows_path, supports_symlinks
 
 logger = get_logger(__name__)
 
@@ -66,8 +66,9 @@ def validate_existing_symlink(
         - is_correct: True if it's already pointing to the correct source
     """
     try:
-        current_target = target_dir.readlink().resolve()
-        if current_target == source_dir and current_target.exists():
+        current_target = normalize_windows_path(target_dir.readlink().resolve())
+        expected_target = normalize_windows_path(source_dir.resolve())
+        if current_target == expected_target and current_target.exists():
             if force:
                 logger.info(
                     'target_correct_but_forcing_recreation',
@@ -80,7 +81,7 @@ def validate_existing_symlink(
         logger.info(
             'target_points_to_wrong_location',
             current=str(current_target),
-            expected=str(source_dir),
+            expected=str(expected_target),
             _display_level=1,
         )
     except (OSError, ValueError):

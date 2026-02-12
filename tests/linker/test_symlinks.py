@@ -10,7 +10,7 @@ from repolish.linker.symlinks import (
     create_additional_link,
     link_resources,
 )
-from repolish.linker.windows_utils import supports_symlinks
+from repolish.linker.windows_utils import normalize_windows_path, supports_symlinks
 
 
 def assert_symlink_with_file(target: Path, filename: str, content: str):
@@ -483,7 +483,7 @@ def test_link_resources_handles_symlink_readlink_error(
     assert target.is_symlink()
     # Verify it now points to new_source (readlink works after recreation)
     mocker.stopall()
-    assert target.readlink().resolve() == new_source.resolve()
+    assert normalize_windows_path(target.readlink().resolve()) == normalize_windows_path(new_source.resolve())
 
 
 def test_link_resources_updates_outdated_copy_without_symlinks(

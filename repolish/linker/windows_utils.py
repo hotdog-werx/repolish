@@ -3,6 +3,14 @@ import tempfile
 from pathlib import Path
 
 
+def normalize_windows_path(path: Path) -> Path:
+    """Normalize Windows extended-length paths by removing the //?/ prefix."""
+    path_str = str(path)
+    if path_str.startswith('\\\\?\\'):  # pragma: no cover - Windows' retarded extended path prefix
+        return Path(path_str[4:])
+    return path
+
+
 def _cleanup_symlink_test(
     test_link: Path,
     test_path: Path,
