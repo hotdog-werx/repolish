@@ -124,8 +124,14 @@ def test_link_resources_copies_when_symlinks_not_supported(
     tmp_path: Path,
 ):
     """Test link_resources falls back to copying when symlinks aren't supported."""
-    mock_supports = mocker.patch('repolish.linker.symlinks.supports_symlinks')
-    mock_supports.return_value = False
+    mocker.patch(
+        'repolish.linker.symlinks.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch(
+        'repolish.linker.validation.supports_symlinks',
+        return_value=False,
+    )
 
     source = tmp_path / 'source'
     source.mkdir()
@@ -387,8 +393,14 @@ def test_create_additional_link_copies_when_no_symlinks(
 ):
     """Test create_additional_link copies when symlinks aren't supported."""
     monkeypatch.chdir(tmp_path)
-    mock_supports = mocker.patch('repolish.linker.symlinks.supports_symlinks')
-    mock_supports.return_value = False
+    mocker.patch(
+        'repolish.linker.symlinks.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch(
+        'repolish.linker.validation.supports_symlinks',
+        return_value=False,
+    )
 
     # Setup provider resources
     provider_resources = tmp_path / '.repolish' / 'mylib'
@@ -434,6 +446,10 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
     # Mock supports_symlinks to return False
     mocker.patch(
         'repolish.linker.symlinks.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch(
+        'repolish.linker.validation.supports_symlinks',
         return_value=False,
     )
 
@@ -635,8 +651,14 @@ def test_link_resources_updates_outdated_copy_without_symlinks(
     directory is up-to-date, so we always recreate it to ensure it's current.
     """
     # Mock to simulate system without symlink support
-    mock_supports = mocker.patch('repolish.linker.symlinks.supports_symlinks')
-    mock_supports.return_value = False
+    mocker.patch(
+        'repolish.linker.symlinks.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch(
+        'repolish.linker.validation.supports_symlinks',
+        return_value=False,
+    )
 
     # Step 1: Create initial source and copy it
     source_a = tmp_path / 'source_a'
