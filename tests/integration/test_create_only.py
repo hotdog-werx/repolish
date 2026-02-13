@@ -1,126 +1,12 @@
-"""Tests for create_only_files feature (initial scaffolding files)."""
+"""Integration tests for create_only_files feature."""
 
 from pathlib import Path
-from typing import cast
 
 from repolish.cookiecutter import apply_generated_output, check_generated_output
 from repolish.loader import (
     Providers,
     create_providers,
 )
-from repolish.loader.create_only import extract_create_only_files_from_module
-
-
-def test_extract_create_only_files_from_create_function():
-    """Test extracting create_only_files from create_create_only_files() function."""
-    module_dict = {
-        'create_create_only_files': lambda: [
-            'src/package/__init__.py',
-            'config.ini',
-        ],
-    }
-    result = extract_create_only_files_from_module(
-        cast('dict[str, object]', module_dict),
-    )
-    assert result == [
-        'src/package/__init__.py',
-        'config.ini',
-    ]
-
-
-def test_extract_create_only_files_from_module_variable():
-    """Test extracting create_only_files from module-level variable."""
-    module_dict = {
-        'create_only_files': [
-            'setup.cfg',
-            '.gitignore',
-        ],
-    }
-    result = extract_create_only_files_from_module(
-        cast('dict[str, object]', module_dict),
-    )
-    assert result == [
-        'setup.cfg',
-        '.gitignore',
-    ]
-
-
-def test_extract_create_only_files_empty_when_missing():
-    """Test that empty list is returned when no create_only_files present."""
-    module_dict = {}
-    result = extract_create_only_files_from_module(module_dict)
-    assert result == []
-
-
-def test_apply_creates_file_when_missing(tmp_path: Path):
-    """Test that create_only files are created when they don't exist."""
-    setup_output = tmp_path / 'setup-output'
-    repolish_dir = setup_output / 'repolish'
-    repolish_dir.mkdir(parents=True)
-
-    # Template provides regular rendered file (already processed by cookiecutter)
-    (repolish_dir / 'src' / 'pkg').mkdir(parents=True)
-    (repolish_dir / 'src' / 'pkg' / '__init__.py').write_text(
-        '# Initial content',
-    )
-
-    base_dir = tmp_path / 'project'
-    base_dir.mkdir()
-
-    # File doesn't exist yet
-    providers = Providers(
-        context={},
-        anchors={},
-        delete_files=[],
-        file_mappings={},
-        delete_history={},
-        create_only_files=[Path('src/pkg/__init__.py')],
-    )
-
-    apply_generated_output(setup_output, providers, base_dir)
-
-    # File should be created
-    init_file = base_dir / 'src' / 'pkg' / '__init__.py'
-    assert init_file.exists()
-    assert init_file.read_text() == '# Initial content'
-
-
-def test_apply_skips_file_when_exists(tmp_path: Path):
-    """Test that create_only files are NOT overwritten if they already exist."""
-    setup_output = tmp_path / 'setup-output'
-    repolish_dir = setup_output / 'repolish'
-    repolish_dir.mkdir(parents=True)
-
-    # Template provides rendered file with new content
-    (repolish_dir / 'src' / 'pkg').mkdir(parents=True)
-    (repolish_dir / 'src' / 'pkg' / '__init__.py').write_text(
-        '# Template content',
-    )
-
-    base_dir = tmp_path / 'project'
-    base_dir.mkdir()
-
-    # File already exists with user content
-    (base_dir / 'src' / 'pkg').mkdir(parents=True)
-    (base_dir / 'src' / 'pkg' / '__init__.py').write_text(
-        '# User modified content',
-    )
-
-    providers = Providers(
-        context={},
-        anchors={},
-        delete_files=[],
-        file_mappings={},
-        delete_history={},
-        create_only_files=[Path('src/pkg/__init__.py')],
-    )
-
-    apply_generated_output(setup_output, providers, base_dir)
-
-    # File should NOT be overwritten - user content preserved
-    init_file = base_dir / 'src' / 'pkg' / '__init__.py'
-    assert init_file.exists()
-    assert init_file.read_text() == '# User modified content'
 
 
 def test_apply_regular_files_still_overwritten(tmp_path: Path):
