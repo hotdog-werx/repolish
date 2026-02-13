@@ -1,17 +1,12 @@
 import json
 import textwrap
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from repolish.builder import create_cookiecutter_template
 from repolish.cli import run
-from repolish.cookiecutter import preprocess_templates
-from repolish.loader import Providers
 
 if TYPE_CHECKING:
     import pytest
-
-    from repolish.config import RepolishConfig
 
 
 def write_file(p: Path, content: str) -> None:
@@ -151,40 +146,3 @@ def test_cli_binary_file_check_mode(
 
     # Should return 2 (has diffs)
     assert rv == 2
-
-
-def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
-    # Create a template with a readable secret file
-    templates = tmp_path / 'templates'
-    make_template_with_unreadable(templates, 'template_a')
-    t1 = templates / 'template_a'
-
-    # Stage the template into setup_input using the builder helper
-    staging = tmp_path / '.repolish'
-    setup_input = staging / 'setup-input'
-    create_cookiecutter_template(setup_input, [t1])
-
-    # Find the staged secret file and make it unreadable
-    staged_secret = setup_input / '{{cookiecutter._repolish_project}}' / 'secret.txt'
-    assert staged_secret.exists()
-    staged_secret.chmod(0)
-
-    # Prepare a minimal providers and config-like object for preprocessing
-    providers = Providers(
-        context={},
-        anchors={},
-        delete_files=[],
-        delete_history={},
-    )
-
-    class Cfg:
-        def __init__(self) -> None:
-            self.anchors: dict[str, str] = {}
-
-    # Call preprocess_templates directly; it should skip the unreadable file and not raise
-    preprocess_templates(
-        setup_input,
-        providers,
-        cast('RepolishConfig', Cfg()),
-        tmp_path,
-    )

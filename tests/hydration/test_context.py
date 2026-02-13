@@ -1,11 +1,14 @@
+"""Tests for hydration context building functionality."""
+
 from pathlib import Path
 from textwrap import dedent
 
 from repolish.config import RepolishConfig
-from repolish.cookiecutter import build_final_providers
+from repolish.hydration.context import build_final_providers
 
 
 def test_config_level_provenance(tmp_path: Path):
+    """Test that config-level delete file decisions override provider decisions with proper provenance."""
     # Create a provider that requests deletion of 'a.txt'
     d = tmp_path / 'prov0'
     d.mkdir()
