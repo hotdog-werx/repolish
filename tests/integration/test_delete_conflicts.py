@@ -1,4 +1,4 @@
-"""Tests for conflicts between file operations and deletions."""
+"""Integration tests for conflicts between file operations and deletions."""
 
 from pathlib import Path
 

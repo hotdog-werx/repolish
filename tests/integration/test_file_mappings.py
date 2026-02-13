@@ -1,4 +1,4 @@
-"""Tests for file_mappings feature (conditional/renamed files)."""
+"""Integration tests for file_mappings feature (conditional/renamed files)."""
 
 from pathlib import Path
 from typing import TYPE_CHECKING

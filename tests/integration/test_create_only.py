@@ -1,4 +1,4 @@
-"""Tests for create_only_files feature (initial scaffolding files)."""
+"""Integration tests for create_only_files feature."""
 
 from pathlib import Path
 
