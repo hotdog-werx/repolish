@@ -10,7 +10,10 @@ from repolish.linker.symlinks import (
     create_additional_link,
     link_resources,
 )
-from repolish.linker.windows_utils import normalize_windows_path, supports_symlinks
+from repolish.linker.windows_utils import (
+    normalize_windows_path,
+    supports_symlinks,
+)
 
 
 def assert_symlink_with_file(target: Path, filename: str, content: str):
@@ -33,7 +36,12 @@ def assert_copy_with_file(target: Path, filename: str, content: str):
     assert (target / filename).read_text() == content
 
 
-def create_test_dir(tmp_path: Path, name: str, filename: str = 'content.txt', content: str = 'content') -> Path:
+def create_test_dir(
+    tmp_path: Path,
+    name: str,
+    filename: str = 'content.txt',
+    content: str = 'content',
+) -> Path:
     """Create a test directory with a file inside."""
     test_dir = tmp_path / name
     test_dir.mkdir()
@@ -43,8 +51,14 @@ def create_test_dir(tmp_path: Path, name: str, filename: str = 'content.txt', co
 
 def mock_no_symlinks(mocker: pytest_mock.MockerFixture):
     """Mock supports_symlinks to return False for both linker modules."""
-    mocker.patch('repolish.linker.symlinks.supports_symlinks', return_value=False)
-    mocker.patch('repolish.linker.validation.supports_symlinks', return_value=False)
+    mocker.patch(
+        'repolish.linker.symlinks.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch(
+        'repolish.linker.validation.supports_symlinks',
+        return_value=False,
+    )
 
 
 def test_link_resources_creates_symlink(tmp_path: Path, source_with_file: Path):
@@ -483,7 +497,9 @@ def test_link_resources_handles_symlink_readlink_error(
     assert target.is_symlink()
     # Verify it now points to new_source (readlink works after recreation)
     mocker.stopall()
-    assert normalize_windows_path(target.readlink().resolve()) == normalize_windows_path(new_source.resolve())
+    assert normalize_windows_path(
+        target.readlink().resolve(),
+    ) == normalize_windows_path(new_source.resolve())
 
 
 def test_link_resources_updates_outdated_copy_without_symlinks(
@@ -499,7 +515,12 @@ def test_link_resources_updates_outdated_copy_without_symlinks(
     mock_no_symlinks(mocker)
 
     # Step 1: Create initial source and copy it
-    source_a = create_test_dir(tmp_path, 'source_a', filename='file.txt', content='version 1')
+    source_a = create_test_dir(
+        tmp_path,
+        'source_a',
+        filename='file.txt',
+        content='version 1',
+    )
 
     target = tmp_path / 'target'
 
