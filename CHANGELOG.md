@@ -8,6 +8,22 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.7.0] <a name="0.7.0" href="#0.7.0">-</a> February 16, 2026
+
+### 🚀 Features
+
+- Unify repolish under single CLI with backwards compatibility (#28) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#28](https://github.com/hotdog-werx/repolish/pull/28)
+
+### 🚜 Refactor
+
+- Split cookiecutter module into hydration package and reorganize tests (#27) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#27](https://github.com/hotdog-werx/repolish/pull/27)
+
+[0.7.0]: https://github.com/hotdog-werx/repolish/compare/0.6.0...0.7.0
+
 ## [0.6.0] <a name="0.6.0" href="#0.6.0">-</a> February 12, 2026
 
 ### 🚀 Features
