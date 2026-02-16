@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from repolish.cli import run
+from repolish.commands.apply import command as run_repolish
 
 if TYPE_CHECKING:
     import pytest
@@ -94,7 +94,7 @@ def test_apply_flow_with_binary_and_deletion(
     )
 
     monkeypatch.chdir(project)
-    rv = run(['--config', str(cfg)])
+    rv = run_repolish(cfg, check_only=False)
     assert rv == 0
 
     # logo should be copied into the project
@@ -142,7 +142,7 @@ def test_cli_binary_file_check_mode(
 
     # Run check mode - should detect the difference in binary files
     monkeypatch.chdir(project)
-    rv = run(['--check', '--config', str(cfg)])
+    rv = run_repolish(cfg, check_only=True)
 
     # Should return 2 (has diffs)
     assert rv == 2

@@ -3,7 +3,7 @@ import textwrap
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from repolish.debug_cli import run_debug
+from repolish.commands.preview import command as run_debug
 
 
 def test_run_debug_basic(tmp_path: Path):

@@ -1,18 +1,10 @@
-import argparse
-import sys
 from pathlib import Path
 
-from hotlog import (
-    add_verbosity_argument,
-    configure_logging,
-    get_logger,
-    resolve_verbosity,
-)
-from pydantic import ValidationError
+from hotlog import get_logger
 
-from .builder import create_cookiecutter_template
-from .config import load_config
-from .cookiecutter import (
+from repolish.builder import create_cookiecutter_template
+from repolish.config import load_config
+from repolish.cookiecutter import (
     apply_generated_output,
     build_final_providers,
     check_generated_output,
@@ -21,44 +13,15 @@ from .cookiecutter import (
     render_template,
     rich_print_diffs,
 )
-from .exceptions import RepolishError, log_exception
-from .utils import run_post_process
-from .version import __version__
+from repolish.utils import run_post_process
+from repolish.version import __version__
 
 logger = get_logger(__name__)
 
 
-def run(argv: list[str]) -> int:
-    """Run repolish with argv-like list and return an exit code.
-
-    This is separated from `main()` so we can keep `main()` small and
-    maintain a low cyclomatic complexity for the top-level entrypoint.
-    """
-    parser = argparse.ArgumentParser(prog='repolish')
-    # add standard verbosity switch provided by hotlog
-    add_verbosity_argument(parser)
-
-    parser.add_argument(
-        '--check',
-        dest='check',
-        action='store_true',
-        help='Load config and create context (dry-run check)',
-    )
-    parser.add_argument(
-        '--config',
-        dest='config',
-        type=Path,
-        default=Path('repolish.yaml'),
-        help='Path to the repolish YAML configuration file',
-    )
-    parser.add_argument('--version', action='version', version=__version__)
-    args = parser.parse_args(argv)
-    check_only = args.check
-    config_path = args.config
-
-    # Configure logging using resolved verbosity (supports CI auto-detection)
-    verbosity = resolve_verbosity(args)
-    configure_logging(verbosity=verbosity)
+def command(config_path: Path, *, check_only: bool) -> int:
+    """Run repolish with the given config and options."""
+    # Logging is already configured in the callback
 
     # Log the running version early so CI logs always show which repolish wrote the output
     logger.info('running_repolish', version=__version__)
@@ -81,6 +44,7 @@ def run(argv: list[str]) -> int:
     base_dir, setup_input, setup_output = prepare_staging(config)
 
     template_dirs = [Path(p) for p in config.directories]
+
     create_cookiecutter_template(setup_input, template_dirs)
 
     # Preprocess templates (anchor-driven replacements)
@@ -108,7 +72,7 @@ def run(argv: list[str]) -> int:
         if diffs:
             logger.error(
                 'check_results',
-                suggestion='run `repolish` to apply changes',
+                suggestion='run `repolish apply` to apply changes',
             )
             rich_print_diffs(diffs)
         return 2 if diffs else 0
@@ -116,27 +80,3 @@ def run(argv: list[str]) -> int:
     # apply into project
     apply_generated_output(setup_output, providers, base_dir)
     return 0
-
-
-def main() -> int:
-    """Main entry point for the repolish CLI.
-
-    This function keeps a very small surface area and delegates the work to
-    `run()`. High-level error handling lives here so callers (and tests) get
-    stable exit codes.
-    """
-    try:
-        # Forward the real command-line arguments so flags like --version work.
-        return run(sys.argv[1:])
-    except SystemExit:
-        raise
-    except (ValidationError, RepolishError) as e:
-        log_exception(logger, e)
-        return 1
-    except Exception:  # pragma: no cover - high level CLI error handling
-        logger.exception('failed_to_run_repolish')
-        return 1
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())

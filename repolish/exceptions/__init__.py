@@ -5,7 +5,7 @@ from repolish.exceptions.config import (
     ProviderConfigError,
     ProviderOrderError,
 )
-from repolish.exceptions.core import RepolishError, log_exception
+from repolish.exceptions.core import RepolishError
 from repolish.exceptions.linker import (
     LinkerError,
     ResourceLinkerError,
@@ -22,5 +22,4 @@ __all__ = [
     'RepolishError',
     'ResourceLinkerError',
     'SymlinkError',
-    'log_exception',
 ]

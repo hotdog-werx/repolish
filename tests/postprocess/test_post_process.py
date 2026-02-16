@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from repolish.cli import run
+from repolish.commands.apply import command as run
 
 if TYPE_CHECKING:
     import pytest
@@ -54,7 +54,7 @@ def provide(context):
     # Monkeypatch CWD by running from within tmp_path using monkeypatch.chdir
     monkeypatch.chdir(tmp_path)
 
-    rv = run(['--config', str(cfg)])
+    rv = run(cfg, check_only=False)
     assert rv == 0, 'CLI should exit 0 on successful apply'
 
     # The post_process should have replaced file.txt content with 'FIXED'

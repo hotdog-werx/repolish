@@ -8,15 +8,16 @@ requires-python = ">=3.11"
 dynamic = ["version"]
 
 dependencies = [
-  "hotlog >= 0.1.1",
+  "hotlog @ git+https://github.com/hotdog-werx/hotlog.git@topic/typer-support",
   "cookiecutter >= 2.6.0",
   "pydantic >= 2.0.0",
+  "typer >= 0.9.0",
 ]
 
 [project.scripts]
-repolish = "repolish.cli:main"
-repolish-debugger = "repolish.debug_cli:main"
-repolish-link = "repolish.link_cli:main"
+repolish = "repolish.cli.main:app"
+repolish-debugger = "repolish.cli.standalone.preview_cli:app"
+repolish-link = "repolish.cli.standalone.link_cli:app"
 
 [dependency-groups]
 dev = [
