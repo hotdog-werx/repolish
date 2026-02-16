@@ -60,11 +60,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
     # run post_process within the rendered project folder inside setup_output
     project_folder = str(providers.context.get('_repolish_project', 'repolish'))
     post_cwd = setup_output / project_folder
-    try:
-        run_post_process(config.post_process, post_cwd)
-    except Exception:  # pragma: no cover - error path exercised indirectly
-        logger.exception('post_process_failed')
-        return 3
+    run_post_process(config.post_process, post_cwd)
 
     # Decide whether to check or apply generated output
     if check_only:

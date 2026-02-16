@@ -36,17 +36,9 @@ def command(
     """Run the preview preprocessor tool."""
     console = Console()
 
-    try:
-        with Path(debug_file).open(encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        debug_config = DebugConfig.model_validate(data)
-    except Exception as e:
-        logger.exception(
-            'failed_to_load_debug_config',
-            file=str(debug_file),
-            error=str(e),
-        )
-        return 1
+    with Path(debug_file).open(encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    debug_config = DebugConfig.model_validate(data)
 
     template = debug_config.template
     target = debug_config.target

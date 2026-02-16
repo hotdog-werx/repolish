@@ -20,6 +20,7 @@ class CLITestCase:
     argv: list[str]
     config_content: str
     config_filename: str = 'repolish.yaml'
+    error_has: str = ''
 
 
 @pytest.mark.parametrize(
@@ -34,6 +35,7 @@ class CLITestCase:
                   some-provider:
                     link: some-link-cli
                 """),
+            error_has='Either cli or directory must be provided',
         ),
         # REMOVE later when standalone apps are removed
         CLITestCase(
@@ -45,6 +47,7 @@ class CLITestCase:
                   some-provider:
                     link: some-link-cli
                 """),
+            error_has='Either cli or directory must be provided',
         ),
         CLITestCase(
             name='link_both_cli_and_directory',
@@ -56,6 +59,7 @@ class CLITestCase:
                     cli: some-link-cli
                     directory: ./templates
                 """),
+            error_has='Cannot specify both cli and directory',
         ),
         # REMOVE later when link CLI is removed
         CLITestCase(
@@ -68,6 +72,7 @@ class CLITestCase:
                     cli: some-link-cli
                     directory: ./templates
                 """),
+            error_has='Cannot specify both cli and directory',
         ),
         CLITestCase(
             name='preview_missing_template',
@@ -80,6 +85,7 @@ class CLITestCase:
                   anchors: {}
                 """),
             config_filename='debug.yaml',
+            error_has='Field required',
         ),
         # REMOVE later when debug CLI is removed
         CLITestCase(
@@ -93,6 +99,7 @@ class CLITestCase:
                   anchors: {}
                 """),
             config_filename='debug.yaml',
+            error_has='Field required',
         ),
     ],
     ids=lambda case: case.name,
@@ -103,7 +110,7 @@ def test_cli_exception_handling(
     monkeypatch: pytest.MonkeyPatch,
     mocker: MockerFixture,
 ) -> None:
-    """Test that CLI exits with code 1 when configuration is invalid."""
+    """Test that CLI shows errors when configuration is invalid."""
     # Create the config file
     config_file = tmp_path / case.config_filename
     config_file.write_text(case.config_content, encoding='utf-8')
@@ -114,6 +121,8 @@ def test_cli_exception_handling(
     monkeypatch.chdir(tmp_path)
     mocker.patch('sys.argv', argv)
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(Exception) as exc_info:  # noqa: PT011 -- making sure we fail
         case.main_func()
-    assert exc_info.value.code == 1
+
+    if case.error_has:
+        assert case.error_has in str(exc_info.value)
