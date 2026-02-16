@@ -108,3 +108,29 @@ def test_run_debug_missing_template(tmp_path: Path):
 
     assert 'template' in str(exc_info.value)
     assert 'Field required' in str(exc_info.value)
+
+
+def test_run_debug_with_emoji(tmp_path: Path):
+    """Test debug with emoji in template (confirms Windows encoding issues)."""
+    debug_file = tmp_path / 'debug.yaml'
+    debug_file.write_text(
+        textwrap.dedent("""\
+        template: |
+          ## repolish-start[bugfix] ##
+          default content
+          ## repolish-end[bugfix] ##
+
+        config:
+          anchors:
+            bugfix: "🐛 Bug Fixes"
+        """),
+        encoding='utf-8',
+    )
+
+    f = io.StringIO()
+    with redirect_stdout(f):
+        result = run_debug(debug_file, show_patterns=False, show_steps=False)
+
+    output = f.getvalue()
+    assert result == 0
+    assert '🐛 Bug Fixes' in output
