@@ -1,5 +1,3 @@
-"""Tests for repolish.link_cli module."""
-
 import json
 import subprocess
 from dataclasses import dataclass
@@ -9,13 +7,14 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_mock
 
+from repolish.commands.link import (
+    _get_provider_names,
+)
+from repolish.commands.link import (
+    command as run_link,
+)
 from repolish.config import ProviderConfig, ProviderInfo, ProviderSymlink
 from repolish.config.models import RepolishConfigFile
-from repolish.link_cli import (
-    _get_provider_names,
-    main,
-    run,
-)
 from repolish.linker import (
     create_provider_symlinks,
     process_provider,
@@ -308,7 +307,7 @@ directories:
     (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
     (tmp_path / 'templates' / 'repolish').mkdir()
 
-    result = run(['--config', str(config_file)])
+    result = run_link(config_file)
 
     assert result == 0
 
@@ -346,7 +345,7 @@ providers:
         'repolish.linker.orchestrator.run_provider_link',
         return_value=provider_info,
     )
-    result = run(['--config', str(config_file)])
+    result = run_link(config_file)
 
     assert result == 0
 
@@ -387,7 +386,7 @@ providers:
         'repolish.linker.orchestrator.run_provider_link',
     )
 
-    result = run(['--config', str(config_file)])
+    result = run_link(config_file)
 
     assert result == 0
     # Verify run_provider_link was NOT called for directory-based provider
@@ -431,7 +430,7 @@ providers:
         'repolish.linker.orchestrator.run_provider_link',
         return_value=provider_info,
     )
-    result = run(['--config', str(config_file)])
+    result = run_link(config_file)
 
     # Should succeed despite missing provider in order
     assert result == 0
@@ -464,70 +463,9 @@ providers:
         'repolish.linker.orchestrator.run_provider_link',
         side_effect=subprocess.CalledProcessError(1, 'cmd'),
     )
-    result = run(['--config', str(config_file)])
+    result = run_link(config_file)
 
     assert result == 1
-
-
-@pytest.mark.parametrize(
-    ('exception', 'expected_result', 'raises_system_exit'),
-    [
-        (None, 0, False),  # Success case
-        (FileNotFoundError('not found'), 1, False),  # File not found
-        (RuntimeError('unexpected'), 1, False),  # Unexpected error
-        (SystemExit(42), None, True),  # SystemExit should be re-raised
-    ],
-)
-def test_main_error_handling(
-    exception: FileNotFoundError | RuntimeError | SystemExit | None,
-    expected_result: int | None,
-    *,
-    raises_system_exit: bool,
-    mocker: pytest_mock.MockerFixture,
-):
-    """Test main handles various error conditions."""
-    if raises_system_exit:
-        mocker.patch('repolish.link_cli.run', side_effect=exception)
-        with pytest.raises(SystemExit) as exc_info:
-            main()
-        # In this branch, exception is guaranteed to be SystemExit from parametrize
-        assert exc_info.value.code == exception.code  # type: ignore[attr-defined]
-    elif exception is None:
-        # Success case - patch to return 0
-        mocker.patch('repolish.link_cli.run', return_value=0)
-        result = main()
-        assert result == expected_result
-    else:
-        # Error cases
-        mocker.patch(
-            'repolish.link_cli.run',
-            side_effect=exception,
-        )
-        result = main()
-        assert result == expected_result
-
-
-def test_run_with_custom_verbosity(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Test run respects verbosity flags."""
-    monkeypatch.chdir(tmp_path)
-
-    config_file = tmp_path / 'repolish.yaml'
-    config_file.write_text("""
-directories:
-  - ./templates
-""")
-
-    # Create dummy template directory
-    (tmp_path / 'templates').mkdir()
-    (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
-    (tmp_path / 'templates' / 'repolish').mkdir()
-
-    result = run(['--config', str(config_file), '-v'])
-
-    assert result == 0
 
 
 def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from repolish.debug_cli import main
+from repolish.cli.main import app
 
 
 def test_integration_debug_cli(
@@ -41,7 +41,8 @@ def test_integration_debug_cli(
     mocker.patch(
         'sys.argv',
         [
-            'repolish-debugger',
+            'repolish',
+            'preview',
             str(debug_file),
             '--show-patterns',
             '--show-steps',
@@ -51,5 +52,7 @@ def test_integration_debug_cli(
     # Change to tmp_path so relative paths work
     monkeypatch.chdir(tmp_path)
 
-    result = main()
-    assert result == 0
+    with pytest.raises(SystemExit) as exc_info:
+        app()
+
+    assert exc_info.value.code == 0

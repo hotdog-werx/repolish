@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from repolish import cli
+from repolish.cli.main import app
 from repolish.version import __version__
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ def test_main_version_prints_and_exits(
     # Simulate calling the program with --version
     monkeypatch.setattr(sys, 'argv', ['repolish', '--version'])
     with pytest.raises(SystemExit) as exc:
-        cli.main()
+        app()
     # argparse uses exit code 0 for --version
     assert exc.value.code == 0
     captured = capsys.readouterr()

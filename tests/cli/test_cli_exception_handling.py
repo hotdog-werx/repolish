@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from repolish.cli import main as cli_main
-from repolish.debug_cli import main as debug_cli_main
-from repolish.link_cli import main as link_cli_main
+from repolish.cli.main import app as cli_main
+from repolish.cli.standalone.link_cli import app as link_cli_main
+from repolish.cli.standalone.preview_cli import app as debug_cli_main
 
 
 @dataclass
@@ -28,6 +28,17 @@ class CLITestCase:
         CLITestCase(
             name='cli_invalid_provider_config',
             main_func=cli_main,
+            argv=['repolish', 'apply', '--config', '{config_path}'],
+            config_content=textwrap.dedent("""\
+                providers:
+                  some-provider:
+                    link: some-link-cli
+                """),
+        ),
+        # REMOVE later when standalone apps are removed
+        CLITestCase(
+            name='cli_invalid_provider_config',
+            main_func=cli_main,
             argv=['repolish', '--config', '{config_path}'],
             config_content=textwrap.dedent("""\
                 providers:
@@ -35,6 +46,18 @@ class CLITestCase:
                     link: some-link-cli
                 """),
         ),
+        CLITestCase(
+            name='link_both_cli_and_directory',
+            main_func=cli_main,
+            argv=['repolish', 'link', '--config', '{config_path}'],
+            config_content=textwrap.dedent("""\
+                providers:
+                  some-provider:
+                    cli: some-link-cli
+                    directory: ./templates
+                """),
+        ),
+        # REMOVE later when link CLI is removed
         CLITestCase(
             name='link_cli_both_cli_and_directory',
             main_func=link_cli_main,
@@ -46,6 +69,19 @@ class CLITestCase:
                     directory: ./templates
                 """),
         ),
+        CLITestCase(
+            name='preview_missing_template',
+            main_func=cli_main,
+            argv=['repolish', 'preview', '{config_path}'],
+            config_content=textwrap.dedent("""\
+                target: |
+                  some content
+                config:
+                  anchors: {}
+                """),
+            config_filename='debug.yaml',
+        ),
+        # REMOVE later when debug CLI is removed
         CLITestCase(
             name='debug_cli_missing_template',
             main_func=debug_cli_main,
@@ -78,7 +114,6 @@ def test_cli_exception_handling(
     monkeypatch.chdir(tmp_path)
     mocker.patch('sys.argv', argv)
 
-    rv = case.main_func()
-
-    # Should exit with error code 1
-    assert rv == 1
+    with pytest.raises(SystemExit) as exc_info:
+        case.main_func()
+    assert exc_info.value.code == 1

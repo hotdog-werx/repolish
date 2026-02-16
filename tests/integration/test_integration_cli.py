@@ -4,7 +4,7 @@ from pathlib import Path
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING
 
-from repolish.cli import run
+from repolish.commands.apply import command as run_repolish
 from repolish.config import load_config
 from repolish.cookiecutter import build_final_providers, check_generated_output
 from repolish.loader import Action
@@ -104,7 +104,7 @@ def test_integration_cli(
     # change working directory to tmp_path so the CLI compares generated files
     # against the project files we created under tmp_path/test_repo
     monkeypatch.chdir(tmp_path)
-    rv = run(['--check', '--config', str(cfg)])
+    rv = run_repolish(cfg, check_only=True)
     # run should return 2 when differences are found (we expect diffs)
     assert rv == 2
 
@@ -220,7 +220,7 @@ def test_integration_regex_preserves_custom_block(
 
     # run the CLI to apply changes (not check mode)
     monkeypatch.chdir(project)
-    rv = run(['--config', str(cfg)])
+    rv = run_repolish(cfg, check_only=False)
     assert rv == 0
 
     # verify the project file now contains the custom job preserved
@@ -278,7 +278,7 @@ def test_integration_context_provider_uses_config_and_merges(
 
     # run the CLI to build setup-output (not check mode)
     monkeypatch.chdir(tmp_path)
-    rv = run(['--config', str(cfg)])
+    rv = run_repolish(cfg, check_only=False)
     assert rv == 0
 
     # load the setup-input cookiecutter.json produced by the build
