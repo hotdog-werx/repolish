@@ -291,3 +291,68 @@ def test_integration_context_provider_uses_config_and_merges(
     assert data.get('my_var') == 'a'
     # derived value should reflect the merged input (my_var from config)
     assert data.get('my_collection') == 'ab'
+
+
+def test_integration_emoji_encoding(
+    tmp_path: Path,
+    monkeypatch: 'pytest.MonkeyPatch',
+) -> None:
+    """Test that repolish handles emoji content correctly (exposes Windows encoding issues)."""
+    # create template dir with emoji content
+    templates = tmp_path / 'templates'
+    tpl_dir = templates / 'emoji_template'
+    repo_dir = tpl_dir / 'repolish'
+    repo_dir.mkdir(parents=True, exist_ok=True)
+
+    # file with emoji content
+    write_file(
+        repo_dir / 'CHANGELOG.md',
+        textwrap.dedent("""\
+        # Changelog
+
+        ## 🐛 Bug Fixes
+        - Fixed something important
+
+        ## 🚀 Features
+        - Added something cool
+        """),
+    )
+
+    # repolish.py provider file (required for template validation)
+    repolish_py = tpl_dir / 'repolish.py'
+    write_file(
+        repolish_py,
+        textwrap.dedent("""\
+        def create_context():
+            return {}
+
+        def create_delete_files():
+            return []
+        """),
+    )
+
+    # write config file
+    cfg = tmp_path / 'repolish.yaml'
+    cfg.write_text(
+        json.dumps(
+            {
+                'directories': [str((tpl_dir).as_posix())],
+                'context': {},
+                'anchors': {},
+                'delete_files': [],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    # run repolish apply
+    monkeypatch.chdir(tmp_path)
+    rv = run_repolish(cfg, check_only=False)
+    assert rv == 0
+
+    # verify emoji content was preserved (file is copied to current directory)
+    result_file = tmp_path / 'CHANGELOG.md'
+    assert result_file.exists()
+    content = result_file.read_text(encoding='utf-8')
+    assert '🐛 Bug Fixes' in content
+    assert '🚀 Features' in content
