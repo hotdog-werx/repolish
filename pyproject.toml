@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 dynamic = ["version"]
 
 dependencies = [
-  "hotlog @ git+https://github.com/hotdog-werx/hotlog.git@topic/typer-support",
+  "hotlog >= 0.2.0",
   "cookiecutter >= 2.6.0",
   "pydantic >= 2.0.0",
   "typer >= 0.9.0",
