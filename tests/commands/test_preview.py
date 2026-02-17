@@ -3,6 +3,9 @@ import textwrap
 from contextlib import redirect_stdout
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from repolish.commands.preview import command as run_debug
 
 
@@ -100,5 +103,8 @@ def test_run_debug_missing_template(tmp_path: Path):
         encoding='utf-8',
     )
 
-    result = run_debug(debug_file, show_patterns=False, show_steps=False)
-    assert result == 1
+    with pytest.raises(ValidationError) as exc_info:
+        run_debug(debug_file, show_patterns=False, show_steps=False)
+
+    assert 'template' in str(exc_info.value)
+    assert 'Field required' in str(exc_info.value)

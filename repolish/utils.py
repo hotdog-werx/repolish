@@ -3,6 +3,7 @@ import shlex
 import subprocess
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import IO
 
 from hotlog import get_logger
 
@@ -79,3 +80,18 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
         if not argv:
             continue
         _run_argv(argv, cwd)
+
+
+def read_text_utf8(path: Path) -> str:
+    """Read text from a file using UTF-8 encoding."""
+    return path.read_text(encoding='utf-8')
+
+
+def write_text_utf8(path: Path, content: str) -> None:
+    """Write text to a file using UTF-8 encoding."""
+    path.write_text(content, encoding='utf-8')
+
+
+def open_utf8(path: Path, mode: str = 'r') -> IO[str]:
+    """Open a file with UTF-8 encoding."""
+    return path.open(mode, encoding='utf-8')
