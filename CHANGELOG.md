@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.7.1] <a name="0.7.1" href="#0.7.1">-</a> February 17, 2026
+
+### 🐛 Bug Fixes
+
+- Show full stack traces for CLI errors instead of silent failures (#30) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#30](https://github.com/hotdog-werx/repolish/pull/30)
+
+[0.7.1]: https://github.com/hotdog-werx/repolish/compare/0.7.0...0.7.1
+
 ## [0.7.0] <a name="0.7.0" href="#0.7.0">-</a> February 16, 2026
 
 ### 🚀 Features
