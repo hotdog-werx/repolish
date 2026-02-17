@@ -13,6 +13,7 @@ from repolish.exceptions import (
     ProviderConfigError,
     ProviderOrderError,
 )
+from repolish.utils import open_utf8
 
 from .conftest import (
     ProviderSetupFixture,
@@ -189,7 +190,7 @@ def test_load_config_missing_symlink_source(
     }
 
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     with pytest.raises(
@@ -270,7 +271,7 @@ def test_load_config_with_relative_directories(
         'directories': ['templates/base'],
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     with warnings.catch_warnings():
@@ -308,7 +309,7 @@ def test_load_config_with_provider_directory(
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     config = load_config(config_path)
@@ -340,7 +341,7 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     config = load_config(config_path)
@@ -370,7 +371,7 @@ def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     config = load_config(config_path)
@@ -406,7 +407,7 @@ def test_load_config_with_symlinks(provider_setup: ProviderSetupFixture):
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     config = load_config(config_path)
@@ -461,7 +462,7 @@ def test_load_config_with_provider_default_symlinks(
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     config = load_config(config_path)
@@ -519,7 +520,7 @@ def test_load_config_override_provider_symlinks_with_empty_list(
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f)
 
     config = load_config(config_path)
@@ -599,7 +600,7 @@ def test_load_config_providers_order_optional(
         },
     }
     config_path = config_dir / 'repolish.yaml'
-    with config_path.open('w') as f:
+    with open_utf8(config_path, 'w') as f:
         yaml.dump(config_data, f, sort_keys=False)  # Preserve order
 
     config = load_config(config_path)

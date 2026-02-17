@@ -13,6 +13,7 @@ from hotlog import get_logger
 from repolish.preprocessors.anchors import replace_tags_in_content
 from repolish.preprocessors.multiregex import apply_multiregex_replacements
 from repolish.preprocessors.regex import apply_regex_replacements
+from repolish.utils import read_text_utf8
 
 logger = get_logger(__name__)
 
@@ -101,7 +102,7 @@ def safe_file_read(file_path: Path) -> str:
         The content of the file, or an empty string if the file does not exist.
     """
     if file_path.exists() and file_path.is_file():
-        return file_path.read_text()
+        return read_text_utf8(file_path)
     return ''
 
 

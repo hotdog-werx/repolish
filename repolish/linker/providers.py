@@ -9,6 +9,7 @@ from hotlog import get_logger
 
 from repolish.config.models import ProviderInfo
 from repolish.config.providers import get_provider_info_path
+from repolish.utils import open_utf8
 
 logger = get_logger(__name__)
 
@@ -27,7 +28,7 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
     # Load existing data
     data = {'aliases': {}}
     if aliases_file.exists():
-        with aliases_file.open('r') as f:
+        with open_utf8(aliases_file, 'r') as f:
             data = json.load(f)
 
     # Update with new alias (store only folder name)
@@ -35,7 +36,7 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
 
     # Save data
     repolish_dir.mkdir(parents=True, exist_ok=True)
-    with aliases_file.open('w') as f:
+    with open_utf8(aliases_file, 'w') as f:
         json.dump(data, f, indent=2)
 
     logger.debug('provider_alias_saved', alias=alias, folder=folder_name)
@@ -73,7 +74,7 @@ def save_provider_info(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the info (use mode='json' to trigger field serializers for Path -> str conversion)
-    with info_file.open('w') as f:
+    with open_utf8(info_file, 'w') as f:
         json.dump(provider_info.model_dump(mode='json'), f, indent=2)
 
     # Save alias mapping - extract folder name from target_dir

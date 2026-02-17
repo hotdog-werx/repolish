@@ -6,6 +6,8 @@ from typing import Protocol
 import pytest
 import yaml
 
+from repolish.utils import open_utf8
+
 
 class YamlConfigFileFixture(Protocol):
     """Type for yaml_config_file fixture callable."""
@@ -71,7 +73,7 @@ def yaml_config_file(tmp_path: Path):
 
     def _create(data: dict) -> Path:
         config_path = tmp_path / 'repolish.yaml'
-        with config_path.open('w') as f:
+        with open_utf8(config_path, 'w') as f:
             yaml.dump(data, f)
         return config_path
 
