@@ -29,6 +29,42 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     return base_dir, setup_input, setup_output
 
 
+def _process_single_template_file(
+    tpl: Path,
+    setup_input: Path,
+    source_to_dest: dict[str, str],
+    anchors_mapping: dict[str, str],
+    base_dir: Path,
+) -> None:
+    """Process a single template file for anchor-driven replacements."""
+    try:
+        tpl_text = tpl.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as exc:
+        # skip unreadable/binary files but log at debug level
+        logger.debug(
+            'skipping_unreadable_file',
+            template_file=str(tpl),
+            error=str(exc),
+        )
+        return
+
+    rel = tpl.relative_to(setup_input / '{{cookiecutter._repolish_project}}')
+    rel_str = rel.as_posix()
+
+    # For conditional files, use the mapped destination as local path
+    local_path = base_dir / source_to_dest[rel_str] if rel_str in source_to_dest else base_dir / rel
+    local_text = safe_file_read(local_path)
+
+    # Let replace_text raise if something unexpected happens; caller will log
+    new_text = replace_text(
+        tpl_text,
+        local_text,
+        anchors_dictionary=anchors_mapping,
+    )
+    if new_text != tpl_text:
+        tpl.write_text(new_text, encoding='utf-8')
+
+
 def preprocess_templates(
     setup_input: Path,
     providers: Providers,
@@ -42,34 +78,21 @@ def preprocess_templates(
     """
     anchors_mapping = {**providers.anchors, **config.anchors}
 
-    # Build reverse mapping for conditional files
-    source_to_dest = {v: k for k, v in providers.file_mappings.items()}
+    # Build reverse mapping for conditional files. Support tuple-valued
+    # file_mappings where the value is (source_template, extra_context).
+    source_to_dest: dict[str, str] = {}
+    for dest, src in providers.file_mappings.items():
+        key = src[0] if isinstance(src, tuple) and len(src) == 2 else src
+        if isinstance(key, str):
+            source_to_dest[key] = dest
 
     for tpl in setup_input.rglob('*'):
         if not tpl.is_file():
             continue
-        try:
-            tpl_text = tpl.read_text(encoding='utf-8')
-        except (OSError, UnicodeDecodeError) as exc:
-            # skip unreadable/binary files but log at debug level
-            logger.debug(
-                'skipping_unreadable_file',
-                template_file=str(tpl),
-                error=str(exc),
-            )
-            continue
-        rel = tpl.relative_to(
-            setup_input / '{{cookiecutter._repolish_project}}',
+        _process_single_template_file(
+            tpl,
+            setup_input,
+            source_to_dest,
+            anchors_mapping,
+            base_dir,
         )
-        rel_str = rel.as_posix()
-        # For conditional files, use the mapped destination as local path
-        local_path = base_dir / source_to_dest[rel_str] if rel_str in source_to_dest else base_dir / rel
-        local_text = safe_file_read(local_path)
-        # Let replace_text raise if something unexpected happens; caller will log
-        new_text = replace_text(
-            tpl_text,
-            local_text,
-            anchors_dictionary=anchors_mapping,
-        )
-        if new_text != tpl_text:
-            tpl.write_text(new_text, encoding='utf-8')

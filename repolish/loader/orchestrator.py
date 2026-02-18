@@ -134,7 +134,7 @@ def create_providers(
     # final override.
     merged_context: dict[str, object] = dict(base_context or {})
     merged_anchors: dict[str, str] = {}
-    merged_file_mappings: dict[str, str] = {}
+    merged_file_mappings: dict[str, str | tuple[str, dict]] = {}
     create_only_set: set[Path] = set()
     delete_set: set[Path] = set()
 

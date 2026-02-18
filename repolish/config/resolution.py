@@ -39,6 +39,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
     resolved_providers = _resolve_providers(config, config_dir)
 
     return RepolishConfig(
+        no_cookiecutter=config.no_cookiecutter,
         config_dir=config_dir,
         directories=directories,
         context=config.context,

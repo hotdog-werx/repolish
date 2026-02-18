@@ -206,9 +206,12 @@ def _check_file_mappings(
         if dest_path in create_only_files_set and (base_dir / dest_path).exists():
             continue
 
+        # Normalize tuple-valued mappings to the source string for checking
+        src = source_path[0] if isinstance(source_path, tuple) else source_path
+
         result = _check_single_file_mapping(
             dest_path,
-            source_path,
+            src,
             setup_output,
             base_dir,
             preserve=preserve,
@@ -232,7 +235,7 @@ def check_generated_output(
     diffs: list[tuple[str, str]] = []
 
     preserve = _preserve_line_endings()
-    mapped_sources = set(providers.file_mappings.values())
+    mapped_sources = {v for v in providers.file_mappings.values() if isinstance(v, str)}
     delete_files_set = {str(p) for p in providers.delete_files}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
