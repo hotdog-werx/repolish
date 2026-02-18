@@ -59,6 +59,40 @@ def test_render_template_with_no_cookiecutter_renders_jinja(tmp_path: Path):
     assert 'Description: Acme project' in text
 
 
+def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
+    """Merged provider context should be available as top-level variables.
+
+    This allows templates to drop the `cookiecutter.` prefix during migration.
+    """
+    tpl = tmp_path / 'tpl-top-level'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+
+    # Use both cookiecutter.package_name and package_name in content and path
+    (tpl / 'repolish' / '{{package_name}}').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / '{{package_name}}' / 'README.md.jinja').write_text(
+        'name: {{ cookiecutter.package_name }}\nalt: {{ package_name }}\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    providers = Providers(
+        context={'package_name': 'acme', '_repolish_project': 'repolish'},
+    )
+    preprocess_templates(setup_input, providers, config, base_dir)
+
+    config.no_cookiecutter = True
+    render_template(setup_input, providers, setup_output, config)
+
+    out_file = setup_output / 'repolish' / 'acme' / 'README.md'
+    assert out_file.exists()
+    text = out_file.read_text(encoding='utf-8')
+    assert 'name: acme' in text
+    assert 'alt: acme' in text
+
+
 def test_cookiecutter_and_jinja_paths_produce_equivalent_output(tmp_path: Path):
     """Ensure disabling cookiecutter produces equivalent rendered files."""
     tpl = _make_template_dir(tmp_path, name='tpl2')

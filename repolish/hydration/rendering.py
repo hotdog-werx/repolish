@@ -21,9 +21,12 @@ def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
     """Render each part of a Path using Jinja and return a Path object."""
     rendered_parts: list[str] = []
     for part in rel.parts:
-        # Render path component (supports templated directory/filenames)
+        # Render path component (supports templated directory/filenames).
+        # Provide merged context both as top-level variables and under the
+        # `cookiecutter` name so templates can migrate away from the
+        # `cookiecutter.` prefix gradually.
         tpl = env.from_string(part)
-        rendered = tpl.render(cookiecutter=ctx)
+        rendered = tpl.render(**ctx, cookiecutter=ctx)
         rendered_parts.append(rendered)
     return Path(*rendered_parts)
 
@@ -71,7 +74,12 @@ def render_with_jinja(
             continue
 
         try:
-            rendered_txt = env.from_string(txt).render(cookiecutter=merged_ctx)
+            # Make the merged context available both as top-level variables
+            # and under `cookiecutter` for backward compatibility.
+            rendered_txt = env.from_string(txt).render(
+                **merged_ctx,
+                cookiecutter=merged_ctx,
+            )
         except TemplateSyntaxError as exc:
             logger.exception(
                 'template_content_syntax_error',
