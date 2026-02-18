@@ -50,6 +50,34 @@ The loader will call Provider B's factories with the merged context so
 `create_context(ctx)` can see values supplied by Provider A and derive
 additional variables used by subsequent factories.
 
+### File mappings: tuple form (per-file extra context)
+
+Starting with the opt-in Jinja renderer, `create_file_mappings()` or the
+module-level `file_mappings` may return `tuple` values to provide per-file extra
+context. This is useful when you want to reuse a single template to generate
+multiple files with different parameters.
+
+Example (provider `repolish.py`):
+
+```py
+def create_file_mappings(ctx):
+    # Render the same template three times with different `module` values
+    return {
+        'src/a.py': ('templates/module_template.jinja', {'module': 'a'}),
+        'src/b.py': ('templates/module_template.jinja', {'module': 'b'}),
+        'src/c.py': ('templates/module_template.jinja', {'module': 'c'}),
+        'LICENSE': 'templates/license.txt',
+    }
+```
+
+Notes:
+
+- Tuple-valued mappings are only supported when `no_cookiecutter: true` is
+  enabled in config.
+- Each tuple entry is `(source_template_path, extra_context)` and the
+  `extra_context` is merged with the provider's merged context for that specific
+  file during rendering.
+
 ## Precedence and overrides
 
 - Project-level configuration is authoritative and should be considered the

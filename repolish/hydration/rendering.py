@@ -202,7 +202,10 @@ def _process_tuple_file_mappings(
 
         try:
             txt = template_file.read_text(encoding='utf-8')
-        except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover -- see below
+        except (
+            OSError,
+            UnicodeDecodeError,
+        ) as exc:  # pragma: no cover -- see below
             # will be caught by earlier existence check in render_with_jinja
             logger.exception(
                 'file_mapping_template_unreadable',
