@@ -103,6 +103,16 @@ class RepolishConfigFile(BaseModel):
             " '!' to negate (keep) a previously-added path."
         ),
     )
+    # Opt-in: allow users to disable cookiecutter rendering and instead use
+    # Jinja2 directly on the staged templates. Default is False (use
+    # cookiecutter) to preserve existing behavior.
+    no_cookiecutter: bool = Field(
+        default=False,
+        description=(
+            'When true, skip cookiecutter and render templates with Jinja2 using the merged provider context (opt-in).'
+        ),
+    )
+
     providers_order: list[str] = Field(
         default_factory=list,
         description='Optional: Order in which to process providers. Defaults to providers dict key order from YAML.',
@@ -317,6 +327,15 @@ class RepolishConfig(BaseModel):
     delete_files: list[str] = Field(
         default_factory=list,
         description='List of POSIX-style paths to delete after generation',
+    )
+    # Opt-in: when true, skip calling cookiecutter and render templates with
+    # Jinja2 directly using `providers.context`. Default is False to preserve
+    # the existing cookiecutter-based behavior.
+    no_cookiecutter: bool = Field(
+        default=False,
+        description=(
+            'If true, render templates with Jinja2 directly and skip cookiecutter (opt-in experimental feature).'
+        ),
     )
     providers: dict[str, ResolvedProviderInfo] = Field(
         default_factory=dict,

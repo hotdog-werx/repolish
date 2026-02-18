@@ -50,8 +50,8 @@ def command(config_path: Path, *, check_only: bool) -> int:
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # Render once using cookiecutter
-    render_template(setup_input, providers, setup_output)
+    # Render once (cookiecutter by default; can opt-out via config.no_cookiecutter)
+    render_template(setup_input, providers, setup_output, config)
 
     # Run any configured post-processing commands (formatters, linters, etc.)
     # Run them in the generated output directory so tools operate on the files
