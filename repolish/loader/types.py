@@ -35,7 +35,10 @@ class Providers(BaseModel):
     context: dict[str, object] = Field(default_factory=dict)
     anchors: dict[str, str] = Field(default_factory=dict)
     delete_files: list[Path] = Field(default_factory=list)
-    file_mappings: dict[str, str] = Field(default_factory=dict)
+    # destination -> source OR (source_template, extra_context)
+    file_mappings: dict[str, str | tuple[str, dict]] = Field(
+        default_factory=dict,
+    )
     create_only_files: list[Path] = Field(default_factory=list)
     # provenance mapping: posix path -> list of Decision instances
     delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
@@ -50,7 +53,7 @@ class Accumulators(BaseModel):
     """
 
     merged_anchors: dict[str, str]
-    merged_file_mappings: dict[str, str]
+    merged_file_mappings: dict[str, str | tuple[str, dict]]
     create_only_set: set[Path]
     delete_set: set[Path]
     history: dict[str, list[Decision]]

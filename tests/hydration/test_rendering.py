@@ -93,6 +93,51 @@ def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
     assert 'alt: acme' in text
 
 
+def test_render_with_file_mappings_tuple_generates_multiple_files(
+    tmp_path: Path,
+):
+    """Tuple-valued file_mappings should render a template multiple times with extra context."""
+    tpl = tmp_path / 'tpl-multi'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+
+    # Template named `item` (builder strips .jinja at copy time) containing a
+    # placeholder that will be provided via extra_context in the mapping tuple.
+    (tpl / 'repolish' / 'item.jinja').write_text(
+        'FILE #{{ file_number }}\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+
+    create_cookiecutter_template(setup_input, [tpl])
+
+    providers = Providers(
+        context={'_repolish_project': 'repolish'},
+        file_mappings={
+            'file-1.txt': ('item', {'file_number': 1}),
+            'file-2.txt': ('item', {'file_number': 2}),
+            'file-3.txt': ('item', {'file_number': 3}),
+        },
+    )
+
+    preprocess_templates(setup_input, providers, config, base_dir)
+
+    config.no_cookiecutter = True
+    render_template(setup_input, providers, setup_output, config)
+
+    for i in (1, 2, 3):
+        out = setup_output / 'repolish' / f'file-{i}.txt'
+        assert out.exists()
+        assert out.read_text(encoding='utf-8').strip() == f'FILE #{i}'
+
+    # Providers.file_mappings should be normalized to string source paths so
+    # downstream code can continue to treat values as strings.
+    assert providers.file_mappings['file-1.txt'] == 'file-1.txt'
+    assert providers.file_mappings['file-2.txt'] == 'file-2.txt'
+    assert providers.file_mappings['file-3.txt'] == 'file-3.txt'
+
+
 def test_cookiecutter_and_jinja_paths_produce_equivalent_output(tmp_path: Path):
     """Ensure disabling cookiecutter produces equivalent rendered files."""
     tpl = _make_template_dir(tmp_path, name='tpl2')

@@ -58,7 +58,7 @@ def _apply_regular_files(
 
 
 def _apply_file_mappings(
-    file_mappings: dict[str, str],
+    file_mappings: dict[str, str | tuple[str, dict]],
     setup_output: Path,
     base_dir: Path,
     create_only_files_set: set[str],
@@ -66,17 +66,19 @@ def _apply_file_mappings(
     """Process file_mappings: copy source -> destination with rename.
 
     Args:
-        file_mappings: Dict mapping destination paths to source paths.
+        file_mappings: Dict mapping destination paths to source paths (or tuple mappings).
         setup_output: Path to the cookiecutter output directory.
         base_dir: Base directory where the project root is located.
         create_only_files_set: Set of destination paths that should only be created if they don't exist.
     """
     for dest_path, source_path in file_mappings.items():
-        source_file = setup_output / 'repolish' / source_path
+        # Accept either a string source or a tuple (template_name, extra_ctx).
+        source_str = source_path[0] if isinstance(source_path, tuple) else source_path
+        source_file = setup_output / 'repolish' / source_str
         if not source_file.exists():
             logger.warning(
                 'file_mapping_source_not_found',
-                source=source_path,
+                source=source_str,
                 dest=dest_path,
             )
             continue
@@ -120,7 +122,7 @@ def apply_generated_output(
     Returns None. Exceptions during per-file operations are raised to caller.
     """
     output_files = collect_output_files(setup_output)
-    mapped_sources = set(providers.file_mappings.values())
+    mapped_sources = {v for v in providers.file_mappings.values() if isinstance(v, str)}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     logger.info(
