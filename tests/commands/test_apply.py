@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from pytest_mock import MockerFixture
 
 from repolish.commands.apply import command as run_repolish
+from repolish.hydration.rendering import _compute_merged_context
+from repolish.loader.models import Providers
 
 
 def write_file(p: Path, content: str) -> None:
@@ -64,6 +66,84 @@ def make_template_with_unreadable(base: Path, name: str) -> None:
 # (CLI check-mode test that uses the deprecated `directories` config key)
 
 
+def test_apply_logs_migrated_and_nonmigrated_context(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """`final_providers_generated` event should break the context down.
+
+    The logged payload must include:
+      * ``non_migrated`` - the merged context used by unmigrated providers (keys
+        from migrated providers removed)
+      * ``migrated`` - a dict mapping provider names to their own contexts
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    fake_config = SimpleNamespace(
+        providers_order=[],
+        providers={},
+        directories=[],
+        template_overrides={},
+        no_cookiecutter=False,
+        provider_scoped_template_context=False,
+        context={},
+        context_overrides={},
+        anchors={},
+        post_process=[],
+        delete_files=[],
+    )
+
+    # build a Providers model where "a" is migrated and "b" is not
+    fake_providers = Providers(
+        context={'foo': 'bar', 'a': 'X'},
+        provider_contexts={'a': {'a': 1}, 'b': {'b': 2}},
+        provider_migrated={'a': True, 'b': False},
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = fake_providers
+
+    info_calls: list = []
+
+    def fake_info(event, **kwargs) -> None:  # noqa: ANN001, ANN003 -- its a test!!!
+        info_calls.append((event, kwargs))
+
+    mocker.patch('repolish.commands.apply.logger.info', fake_info)
+
+    # stub remaining pipeline steps out of the way
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch('repolish.commands.apply.create_cookiecutter_template')
+    mocker.patch('repolish.commands.apply.preprocess_templates')
+    mocker.patch('repolish.commands.apply.render_template')
+    mocker.patch(
+        'repolish.commands.apply.check_generated_output',
+    ).return_value = []
+    mocker.patch('repolish.commands.apply.apply_generated_output')
+
+    rv = run_repolish(cfg_path, check_only=False)
+    assert rv == 0
+
+    assert info_calls, 'expected at least one logger.info call'
+    # find the `final_providers_generated` call which may not be the first log
+    found = [(e, p) for e, p in info_calls if e == 'final_providers_generated']
+    assert found, 'expected a final_providers_generated event'
+    _, payload = found[0]
+
+    ctx = payload['context']
+
+    assert ctx['non_migrated'] == _compute_merged_context(fake_providers)
+    assert ctx['migrated'] == {'a': {'a': 1}}
+
+
 def test_apply_command_handles_missing_provider_and_extra_directory(
     tmp_path: Path,
     mocker: MockerFixture,
@@ -116,15 +196,16 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         fake_create,
     )
 
-    # stub out remainder of the pipeline so command completes successfully
     mocker.patch(
         'repolish.commands.apply.build_final_providers',
-    ).return_value = SimpleNamespace(
+    ).return_value = Providers(
         context={},
         delete_files=[],
         delete_history={},
         create_only_files=[],
         file_mappings={},
+        provider_contexts={},
+        provider_migrated={},
     )
     mocker.patch(
         'repolish.commands.apply.preprocess_templates',

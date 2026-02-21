@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from repolish.config.models import RepolishConfig
 from repolish.loader import Providers
 from repolish.loader.types import FileMode, TemplateMapping
+from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
 
@@ -271,23 +272,6 @@ def _load_and_validate_template(
         return None
 
 
-def _extra_context_to_dict(extra_ctx: object | None) -> dict[str, object]:
-    """Normalize typed or untyped extra-context into a plain dict.
-
-    Accepts Pydantic models or plain dicts; unknown types and None map to
-    an empty dict to preserve rendering stability.
-    """
-    if isinstance(extra_ctx, BaseModel):
-        return cast('dict[str, object]', extra_ctx.model_dump())
-    if isinstance(extra_ctx, dict):
-        # only module style  providers may hit this branch.
-        return cast(
-            'dict[str, object]',
-            extra_ctx,
-        )  # pragma: no cover -- branch to be removed in v1
-    return {}
-
-
 def _render_mapping_text(
     env: Environment,
     txt: str,
@@ -295,7 +279,7 @@ def _render_mapping_text(
     extra_ctx: object,
 ) -> str:
     """Render mapping text with a base context (either merged or provider-scoped) and per-mapping extra context."""
-    extra_ctx_dict = _extra_context_to_dict(extra_ctx)
+    extra_ctx_dict = ctx_to_dict(extra_ctx)
     render_ctx = {**base_ctx, **extra_ctx_dict}
     # Pass merged-style `cookiecutter` namespace for backward compatibility
     return env.from_string(txt).render(**render_ctx, cookiecutter=base_ctx)
@@ -376,7 +360,7 @@ def _render_single_mapping(
         providers=providers,
     )
     # compose context for rendering and delegate
-    render_ctx = {**base_ctx, **_extra_context_to_dict(mapping.extra_context)}
+    render_ctx = {**base_ctx, **ctx_to_dict(mapping.extra_context)}
     try:
         rendered = _jinja_render(
             env,

@@ -14,6 +14,12 @@ from repolish.cookiecutter import (
     render_template,
     rich_print_diffs,
 )
+
+# use rendering helper to compute the merged context used by non-migrated
+# providers; importing the private function is fine since it lives in the
+# same package and keeps the algorithm in one place.
+from repolish.hydration.rendering import _compute_merged_context
+from repolish.misc import ctx_to_dict
 from repolish.utils import run_post_process
 from repolish.version import __version__
 
@@ -71,10 +77,26 @@ def command(config_path: Path, *, check_only: bool) -> int:
     config = load_config(config_path)
 
     providers = build_final_providers(config)
+
+    # build a more detailed context payload for the log event.  non-migrated
+    # providers receive the merged context with migrated keys removed; migrated
+    # providers render using their own captured contexts, which we emit under
+    # their alias so the log shows exactly what each new-style provider will
+    # supply.  un-migrated providers are grouped under ``non_migrated``; when
+    # there are none this will be an empty dict.
+    non_migrated_ctx = _compute_merged_context(providers)
+
+    migrated_ctxs: dict[str, dict[str, object]] = {}
+    for pid, migrated in providers.provider_migrated.items():
+        if not migrated:
+            continue
+        migrated_ctxs[pid] = ctx_to_dict(providers.provider_contexts.get(pid))
+
     logger.info(
         'final_providers_generated',
         template_directories=[str(d) for d in config.directories],
-        context=providers.context,
+        # new structure for context makes it clear what each provider sees
+        context={'non_migrated': non_migrated_ctx, 'migrated': migrated_ctxs},
         delete_paths=[p.as_posix() for p in providers.delete_files],
         delete_history={
             key: [{'source': d.source, 'action': d.action.value} for d in decisions]

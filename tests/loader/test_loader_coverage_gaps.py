@@ -40,6 +40,7 @@ from repolish.loader.types import (
     TemplateMapping,
 )
 from repolish.loader.validation import _emit_provider_migration_suggestion
+from repolish.misc import ctx_to_dict
 
 
 # ---- helpers and minimal provider implementations ------------------------
@@ -318,6 +319,20 @@ def test_normalize_inputs_various():
     assert _normalize_inputs('p', None) is None
     # raw non-dict triggers warning and returns None
     assert _normalize_inputs('p', 'hello') is None
+
+
+def test_ctx_to_dict_behaves_consistently():
+    class M(BaseModel):
+        x: int
+
+    # BaseModel -> dict
+    assert ctx_to_dict(M(x=1)) == {'x': 1}
+    # dict passes through
+    assert ctx_to_dict({'a': 2}) == {'a': 2}
+    # None becomes empty dict
+    assert ctx_to_dict(None) == {}
+    # other types fallback to empty dict (safety)
+    assert ctx_to_dict(123) == {}
 
 
 @pytest.mark.parametrize(

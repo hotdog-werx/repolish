@@ -24,7 +24,6 @@ from repolish.loader.module_loader import (
 from repolish.loader.three_phase import (
     build_provider_metadata,
     compute_recipient_flags,
-    ctx_to_dict,
     finalize_provider_contexts,
     gather_received_inputs,
 )
@@ -35,6 +34,7 @@ from repolish.loader.types import (
     TemplateMapping,
 )
 from repolish.loader.validation import _validate_provider_module
+from repolish.misc import ctx_to_dict
 
 
 def _find_provider_class(

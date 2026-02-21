@@ -7,6 +7,7 @@ from pydantic import BaseModel as _BaseModel
 
 from repolish.loader._log import logger
 from repolish.loader.models import Provider as _ProviderBase
+from repolish.misc import ctx_to_dict
 
 # helpers previously nested inside orchestrator._run_three_phase ------------
 
@@ -71,17 +72,6 @@ def _normalize_inputs(
         )
         return None
     return cast('dict[str, object]', raw)
-
-
-def ctx_to_dict(ctx: object | None) -> dict[str, object]:
-    """Return a plain dict representation for a provider context object.
-
-    The context value may be a ``BaseModel`` (in which case we call
-    ``model_dump()``) or already a dict.  ``None`` becomes an empty dict.
-    """
-    if isinstance(ctx, _BaseModel):
-        return ctx.model_dump()
-    return cast('dict[str, object]', ctx or {})
 
 
 def _retrieve_instance_inputs(
