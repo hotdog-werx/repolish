@@ -769,6 +769,9 @@ def test_validate_provider_emits_migration_suggestion(
     # Verify suggested methods mention class-style equivalents
     assert any('create_context' in str(call) for call in warning_calls)
     assert any('create_file_mappings' in str(call) for call in warning_calls)
+    # the warning should include the provider identifier so users know which
+    # module triggered it
+    assert any(call.kwargs.get('provider') == str(provider_dir) for call in warning_calls)
 
 
 def test_is_suspicious_variable_returns_false_for_normal_names():

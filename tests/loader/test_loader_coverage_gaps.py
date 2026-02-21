@@ -1,13 +1,9 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
+from pytest_mock import MockerFixture
 
 from repolish.loader import create_providers
 from repolish.loader.mappings import (
@@ -44,9 +40,8 @@ from repolish.loader.types import (
 )
 from repolish.loader.validation import _emit_provider_migration_suggestion
 
+
 # ---- helpers and minimal provider implementations ------------------------
-
-
 class DummyProvider(_ProviderBase):
     """Simplest concrete provider used in helpers."""
 
@@ -418,3 +413,15 @@ def test_finalize_provider_contexts_edge_cases() -> None:
 def test_emit_provider_migration_suggestion_no_legacy():
     # should quietly return without warning
     _emit_provider_migration_suggestion({})
+
+
+def test_emit_provider_migration_suggestion_includes_provider(
+    mocker: MockerFixture,
+) -> None:
+    """When a provider_id is passed the log record should include it."""
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
+    module = {'create_context': dict, 'file_mappings': {}}
+    _emit_provider_migration_suggestion(module, provider_id='foo/bar')
+    calls = [call for call in mock_logger.warning.call_args_list if 'provider_migration_suggestion' in str(call)]
+    assert calls, 'expected a migration suggestion warning'
+    assert any(call.kwargs.get('provider') == 'foo/bar' for call in calls)

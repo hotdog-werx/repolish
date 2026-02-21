@@ -126,6 +126,7 @@ def _load_module_cache(
         _validate_provider_module(
             module_dict,
             require_file_mappings=require_file_mappings,
+            provider_id=provider_id,
         )
         cache.append((provider_id, module_dict))
     return cache

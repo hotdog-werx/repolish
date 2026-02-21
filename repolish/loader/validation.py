@@ -69,11 +69,15 @@ VALID_PROVIDER_VARIABLES: set[str] = {
 }
 
 
-def _emit_provider_migration_suggestion(module_dict: dict[str, object]) -> None:
+def _emit_provider_migration_suggestion(
+    module_dict: dict[str, object],
+    provider_id: str | None = None,
+) -> None:
     """Emit a migration suggestion if the module looks like a module-style provider.
 
-    The function is idempotent and returns quietly if no legacy symbols are
-    present.
+    When ``provider_id`` is provided it will be included in the log record so
+    users can identify which provider triggered the warning.  The function is
+    idempotent and returns quietly if no legacy symbols are present.
     """
     legacy_symbols = [
         name for name in module_dict if name in VALID_PROVIDER_FUNCTIONS or name in VALID_PROVIDER_VARIABLES
@@ -85,15 +89,17 @@ def _emit_provider_migration_suggestion(module_dict: dict[str, object]) -> None:
         {_PROVIDER_MIGRATION_MAP[s] for s in legacy_symbols if s in _PROVIDER_MIGRATION_MAP},
     )
     if suggested:
-        logger.warning(
-            'provider_migration_suggestion',
-            message=(
+        kwargs: dict = {
+            'message': (
                 'Module-style provider detected; consider migrating to the '
                 'class-based `Provider` API. Implement the following methods '
                 'on your Provider subclass to preserve current behaviour.'
             ),
-            recommended_methods=suggested,
-        )
+            'recommended_methods': suggested,
+        }
+        if provider_id is not None:
+            kwargs['provider'] = provider_id
+        logger.warning('provider_migration_suggestion', **kwargs)
 
 
 def _has_provider_class(module_dict: dict[str, object]) -> bool:
@@ -138,6 +144,7 @@ def _validate_provider_module(
     module_dict: dict[str, object],
     *,
     require_file_mappings: bool = False,
+    provider_id: str | None = None,
 ) -> None:
     """Validate provider module for common typos and emit warnings.
 
@@ -153,9 +160,10 @@ def _validate_provider_module(
     RuntimeError for missing mappings.
     """
     # If the module already exports a class-based Provider, skip the
-    # migration suggestion step.
+    # migration suggestion step.  Pass along the provider_id so logs become
+    # actionable when non-class providers are detected.
     if not _has_provider_class(module_dict):
-        _emit_provider_migration_suggestion(module_dict)
+        _emit_provider_migration_suggestion(module_dict, provider_id)
 
     _warn_about_suspicious_module_symbols(module_dict)
 
