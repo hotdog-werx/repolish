@@ -1,7 +1,10 @@
 from pydantic import BaseModel
 
-from repolish.loader.models import Provider
-from repolish.loader.types import FileMode, TemplateMapping
+from repolish import (
+    FileMode,
+    Provider,
+    TemplateMapping,
+)  # re-exported for simple API
 
 
 class Ctx(BaseModel):
