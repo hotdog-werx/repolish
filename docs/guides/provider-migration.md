@@ -133,8 +133,10 @@ How the loader recognizes the class
 
 Practical notes
 
-- Still set `provider_migrated = True` at module level to mark the provider as
-  migrated for strict `provider_scoped_template_context` enforcement.
+- Set `provider_migrated = True` at module level to mark the provider as
+  migrated; only migrated providers will have their mappings rendered against
+  their own context. Non-migrated providers continue to receive merged context
+  even when `provider_scoped_template_context` is turned on.
 - The class-based API is optional but recommended for larger providers and when
   you want compile/test-time reassurance (Pydantic types give IDE + validation
   benefits).
@@ -177,9 +179,10 @@ Commands & quick checks
 
 Final notes
 
-- This migration is opt‑in and strict by design: once you enable
-  `provider_scoped_template_context` the renderer will fail if any provider is
-  not migrated. That makes the migration explicit and prevents subtle
-  cross-provider coupling from continuing unnoticed.
+- This migration is opt‑in: enabling `provider_scoped_template_context` does not
+  immediately break existing module-style providers. Only providers that have
+  opted in via `provider_migrated = True` are isolated; others still render with
+  the merged context. You can gradually migrate providers and flip the flag at
+  your own pace.
 - If you want, I can update the example providers in `examples/` to show a full
   end‑to‑end migrated provider.

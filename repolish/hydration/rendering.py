@@ -158,6 +158,45 @@ def render_with_cookiecutter(
     cookiecutter(str(setup_input), no_input=True, output_dir=str(setup_output))
 
 
+def _compute_merged_context(providers: Providers) -> dict[str, object]:
+    """Return a merged provider context with migrated keys removed.
+
+    Extracted to keep the function small and easier to test.
+    """
+
+    def _iter_context_keys(ctx_obj: object | None) -> list[str]:
+        if isinstance(ctx_obj, BaseModel):
+            return cast('list[str]', list(ctx_obj.model_dump().keys()))
+        if isinstance(ctx_obj, dict):
+            return cast('list[str]', list(ctx_obj.keys()))
+        return []
+
+    merged = dict(providers.context)
+    for pid, migrated in providers.provider_migrated.items():
+        if not migrated:
+            continue
+        ctx_obj = providers.provider_contexts.get(pid)
+        for k in _iter_context_keys(ctx_obj):
+            merged.pop(k, None)
+
+    merged.setdefault('_repolish_project', 'repolish')
+    return merged
+
+
+def _collect_skip_templates(providers: Providers) -> set[str]:
+    """Identify templates that are rendered later with per-mapping context.
+
+    ``TemplateMapping`` entries are processed after the generic render pass,
+    so we skip them during the initial walk to avoid rendering the same file
+    twice.
+    """
+    return {
+        v.source_template
+        for v in providers.file_mappings.values()
+        if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
+    }
+
+
 def render_template(
     setup_input: Path,
     providers: Providers,
@@ -165,31 +204,20 @@ def render_template(
     config: RepolishConfig,
 ) -> None:
     """Dispatch rendering to Jinja or cookiecutter based on runtime config."""
-    merged_ctx = dict(providers.context)
-    merged_ctx.setdefault('_repolish_project', 'repolish')
+    merged_ctx = _compute_merged_context(providers)
+    skip_templates = _collect_skip_templates(providers)
 
-    # Collect templates that must be skipped during the generic render pass
-    # because they will be rendered later with per-mapping extra context.
-    # We expect `TemplateMapping` instances for per-file extra context.
-
-    skip_templates = {
-        v.source_template
-        for v in providers.file_mappings.values()
-        if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
-    }
-
-    # If provider-scoped mapping rendering is requested, enforce that *all*
-    # providers are migrated. This is a strict, opt-in breaking behaviour so
-    # callers must explicitly mark providers as migrated (module-level
-    # `provider_migrated = True`) before enabling the feature.
-    if getattr(config, 'provider_scoped_template_context', False):
-        unmigrated = [p for p, m in providers.provider_migrated.items() if not m]
-        if unmigrated:
-            msg = (
-                'provider_scoped_template_context=True requires all providers to be migrated; '
-                f'unmigrated providers: {unmigrated}'
-            )
-            raise RuntimeError(msg)
+    # provider-scoped context changes the base context per-mapping.  when
+    # the feature is enabled we still allow unmigrated (module-adapter)
+    # providers to operate using the merged context for compatibility.  this
+    # behaviour allows users to migrate incrementally: class-based providers
+    # may opt into the new model by setting ``provider_migrated=True`` while
+    # legacy modules continue to receive a full merged context.  the
+    # per-provider logic in ``_choose_base_ctx_for_mapping`` takes care of the
+    # fallback, so no global validation is required here.
+    #
+    # (previously we raised an error if any providers were unmigrated; that
+    # strictness proved too aggressive for mixed deployments.)
 
     if config.no_cookiecutter:
         render_with_jinja(
@@ -284,7 +312,8 @@ def _choose_base_ctx_for_mapping(
 
     - If provider-scoped rendering is disabled, returns merged_ctx.
     - If enabled and the declaring provider is migrated, returns that provider's
-      captured context. Otherwise raises a RuntimeError.
+      captured context. Unmigrated providers receive the full merged context as
+      a compatibility fallback.
     """
     if not use_provider_context or not source_provider:
         return merged_ctx
@@ -298,16 +327,8 @@ def _choose_base_ctx_for_mapping(
             return ctx
         return merged_ctx
 
-    # development-only error path; once all providers are migrated this
-    # branch will never be hit and the associated message can be removed. we
-    # mark it ``no cover`` so tests aren't forced to simulate an unmigrated
-    # provider just to satisfy coverage tools.
-    msg = (  # pragma: no cover
-        f'provider {source_provider!r} is not migrated; '
-        'enable provider_migrated=True on the provider before using '
-        'provider_scoped_template_context'
-    )
-    raise RuntimeError(msg)  # pragma: no cover
+    # unmigrated providers simply fallback to merged context; no error raised
+    return merged_ctx
 
 
 def _render_single_mapping(

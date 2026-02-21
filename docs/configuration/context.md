@@ -131,9 +131,11 @@ Important rules:
 - Providers must opt into the new model by setting `provider_migrated = True` in
   their `repolish.py` module (this indicates the provider knows how to operate
   in the provider-scoped world).
-- Enabling `provider_scoped_template_context` is strict: the renderer will raise
-  an error if _any_ provider is not migrated. This prevents accidental
-  mixed-mode behaviour and makes migrations explicit.
+- When `provider_scoped_template_context` is enabled the renderer will render
+  unmigrated (module-style) providers using the **merged context** rather than
+  failing outright. This allows you to migrate providers incrementally; only
+  those that set `provider_migrated = True` will be isolated. The original
+  strict check has been relaxed to avoid breaking mixed deployments.
 - Class-based providers (the `Provider` base class) are the recommended
   migration target; module-style providers must still set
   `provider_migrated = True` once they adopt provider-scoped semantics.

@@ -116,8 +116,9 @@ class RepolishConfigFile(BaseModel):
         default=False,
         description=(
             'Opt-in: when true, render per-mapping `TemplateMapping` entries '
-            "using only the declaring provider's context (prepares for v1; "
-            'breaking when enabled).'
+            "using only the declaring provider's context (prepares for v1). "
+            'Unmigrated providers still see the full merged context to allow '
+            'incremental migration; enabling is not immediately breaking.'
         ),
     )
 

@@ -266,10 +266,15 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     tmp_path: Path,
     mocker: MockerFixture,
 ):
-    """When provider-scoped context is enabled, migrated providers are.
+    """Migrated providers are isolated; unmigrated providers no longer inherit migrated keys.
 
-    Rendered with their own context while unmigrated providers continue to
-    receive merged context (compatibility fallback).
+    This proves two things:
+    1. Turning on ``provider_scoped_template_context`` never raises even when
+       some providers are still using the old module adapter (backwards
+       compatibility).
+    2. Templates belonging to unmigrated providers no longer see keys from
+       providers that have already migrated.  those values are stripped from
+       the merged context as soon as a provider is marked ``provider_migrated``.
     """
     tpl = tmp_path / 'tpl-providers'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
@@ -330,18 +335,20 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     config.provider_scoped_template_context = True
 
     # Render: migrated provider's mapping sees only its context; unmigrated
-    # provider's mapping sees merged context (compatibility)
+    # provider's mapping does *not* inherit the migrated provider's keys.
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # When provider-scoped rendering is enabled globally but not all
-    # providers have opted into the new model, the renderer must raise.
     migrated_map = providers.provider_migrated
     assert any(migrated_map.values())
     assert any(not v for v in migrated_map.values())
 
+    # B's template references `a_key` (owned by migrated provider A) - since
+    # A's context is removed from the merged context the render should fail.
+    # the failure happens when rendering mappings, so the error is wrapped in a
+    # RuntimeError by ``_process_template_mappings``.
     with pytest.raises(RuntimeError) as exc:
         render_template(setup_input, providers, setup_output, config)
-    assert 'unmigrated providers' in str(exc.value)
+    assert 'a_key' in str(exc.value)
 
 
 def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
@@ -389,6 +396,55 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
     assert (setup_output / 'repolish' / 'm.txt').read_text(
         encoding='utf-8',
     ).strip() == 'X=VAL'
+
+
+def test_render_context_excludes_migrated_providers(tmp_path: Path):
+    """Keys from migrated providers are excluded from the merged context.
+
+    Keys from migrated (class-based) providers are not present in
+    the merged context, as demonstrated by a failing render.
+
+    This behaviour is independent of the
+    ``provider_scoped_template_context`` flag; merging occurs once per
+    ``render_template`` invocation and always omits migrated contexts.
+    """
+    tpl = tmp_path / 'tpl-mig'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    # single template that references ``foo``
+    (tpl / 'repolish' / 'out.jinja').write_text(
+        'VALUE={{ foo }}\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    # provider A is migrated and supplies ``foo``; provider B is unmigrated
+    p_a = tmp_path / 'pa'
+    p_a.mkdir()
+    (p_a / 'repolish.py').write_text(
+        """provider_migrated = True
+
+def create_context():
+    return {'foo': 'A'}
+""",
+    )
+    p_b = tmp_path / 'pb'
+    p_b.mkdir()
+    (p_b / 'repolish.py').write_text(
+        """def create_context():
+    return {'bar': 'B'}
+""",
+    )
+
+    providers = create_providers([str(p_a), str(p_b)])
+    preprocess_templates(setup_input, providers, config, base_dir)
+    config.no_cookiecutter = True
+
+    # rendering should blow up because ``foo`` was stripped from merged_ctx
+    with pytest.raises(UndefinedError):
+        render_template(setup_input, providers, setup_output, config)
 
 
 def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
