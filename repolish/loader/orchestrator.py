@@ -24,6 +24,7 @@ from repolish.loader.module_loader import (
 from repolish.loader.three_phase import (
     build_provider_metadata,
     compute_recipient_flags,
+    ctx_to_dict,
     finalize_provider_contexts,
     gather_received_inputs,
 )
@@ -135,6 +136,7 @@ def _load_module_cache(
 def _process_phase_two(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, Any],
+    provider_contexts: dict[str, object],
     accum: Accumulators,
 ) -> None:
     """Phase 2: process anchors, file mappings, delete/create-only files.
@@ -150,20 +152,23 @@ def _process_phase_two(
         inst = cast('_ProviderBase', inst)
 
         process_anchors(inst, merged_context, accum.merged_anchors)
+        # pass the provider's own context when invoking the helper; for
+        # module-style adapters the adapter will convert to a dict
+        own_ctx = provider_contexts.get(provider_id, {})
         process_file_mappings(
             provider_id,
             inst,
-            merged_context,
+            own_ctx,
             accum,
         )
         fallback_paths = process_delete_files(
             inst,
-            merged_context,
+            own_ctx,
             accum.delete_set,
         )
         process_create_only_files(
             inst,
-            merged_context,
+            own_ctx,
             accum.create_only_set,
         )
 
@@ -182,7 +187,7 @@ def _process_phase_two(
 def _run_three_phase(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, object],
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     base_context: dict[str, object] | None,
     context_overrides: dict[str, object] | None,
 ) -> Providers:
@@ -209,7 +214,7 @@ def _run_three_phase(
         canonical_name_to_pid,
     ) = build_provider_metadata(module_cache)
 
-    all_providers_list = [(pid, provider_contexts.get(pid, {})) for pid, _ in module_cache]
+    all_providers_list = [(pid, ctx_to_dict(provider_contexts.get(pid))) for pid, _ in module_cache]
     has_recipient_after = compute_recipient_flags(instances)
     received_inputs = gather_received_inputs(
         module_cache,
@@ -232,7 +237,11 @@ def _run_three_phase(
     # recompute merged_context after finalization
     merged_context = dict(base_context or {})
     for pid, _ in module_cache:
-        merged_context.update(provider_contexts.get(pid, {}))
+        own = provider_contexts.get(pid, {})
+        if isinstance(own, _BaseModel):
+            merged_context.update(own.model_dump())
+        else:
+            merged_context.update(cast('dict[str, object]', own))
 
     if context_overrides:
         apply_context_overrides(merged_context, context_overrides)
@@ -246,7 +255,7 @@ def _run_three_phase(
         delete_set=delete_set,
         history=history,
     )
-    _process_phase_two(module_cache, merged_context, accum)
+    _process_phase_two(module_cache, merged_context, provider_contexts, accum)
 
     return Providers(
         context=merged_context,

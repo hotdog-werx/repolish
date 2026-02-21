@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
+from typing import cast
 
 import pytest
+from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
@@ -163,13 +165,21 @@ def test_create_providers_records_provider_contexts(tmp_path: Path):
 
     providers = create_providers(dirs)
 
-    # provider_contexts should include per-provider dicts keyed by provider id
+    # provider_contexts should include per-provider objects keyed by provider id
     assert isinstance(providers.provider_contexts, dict)
     assert len(providers.provider_contexts) == 2
-    # The first provider's context should contain 'a'; second provider's context should contain 'b'
+    # convert each to dict for assertion
     pids = list(providers.provider_contexts.keys())
-    assert providers.provider_contexts[pids[0]].get('a') == 1
-    assert providers.provider_contexts[pids[1]].get('b') == 2
+    ctx0 = providers.provider_contexts[pids[0]]
+    if isinstance(ctx0, BaseModel):
+        ctx0 = ctx0.model_dump()
+    ctx0 = cast('dict[str, object]', ctx0)
+    assert ctx0.get('a') == 1
+    ctx1 = providers.provider_contexts[pids[1]]
+    if isinstance(ctx1, BaseModel):
+        ctx1 = ctx1.model_dump()
+    ctx1 = cast('dict[str, object]', ctx1)
+    assert ctx1.get('b') == 2
 
 
 def test_three_phase_input_routing_and_finalize(tmp_path: Path):
@@ -235,7 +245,11 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
 
     providers = create_providers([str(p_a), str(p_b)])
     pids = list(providers.provider_contexts.keys())
-    assert providers.provider_contexts[pids[1]].get(
+    ctx1 = providers.provider_contexts[pids[1]]
+    if isinstance(ctx1, BaseModel):
+        ctx1 = ctx1.model_dump()
+    ctx1 = cast('dict[str, object]', ctx1)
+    assert ctx1.get(
         'registered_components',
     ) == ['database']
 

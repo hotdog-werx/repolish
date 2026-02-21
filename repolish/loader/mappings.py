@@ -41,14 +41,14 @@ def _process_mapping_item(
 def process_file_mappings(
     provider_id: str,
     provider: _ProviderBase,
-    merged_context: dict[str, object],
+    context: object,
     accum: Accumulators,
 ) -> None:
     """Process a provider's file mapping contributions and merge.
 
     The provider instance is already available; no module dict is required.
     """
-    fm = provider.create_file_mappings(merged_context)
+    fm = provider.create_file_mappings(context)
     if not isinstance(fm, dict):
         return
 

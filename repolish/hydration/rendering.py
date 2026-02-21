@@ -265,7 +265,12 @@ def _choose_base_ctx_for_mapping(
 
     migrated = providers.provider_migrated.get(source_provider, False)
     if migrated:
-        return providers.provider_contexts.get(source_provider) or merged_ctx
+        ctx = providers.provider_contexts.get(source_provider)
+        if isinstance(ctx, BaseModel):
+            return ctx.model_dump()
+        if isinstance(ctx, dict):
+            return ctx
+        return merged_ctx
 
     # development-only error path; once all providers are migrated this
     # branch will never be hit and the associated message can be removed. we

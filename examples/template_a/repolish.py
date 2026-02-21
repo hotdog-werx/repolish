@@ -26,7 +26,7 @@ class TemplateAProvider(Provider[Ctx, BaseModel]):
 
     def create_file_mappings(
         self,
-        _ctx: dict[str, object] | None = None,
+        context: Ctx,  # noqa: ARG002 - context is not used in this example
     ) -> dict[str, str | TemplateMapping]:
         """Return file mappings for this example.
 

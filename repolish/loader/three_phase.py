@@ -73,11 +73,22 @@ def _normalize_inputs(
     return cast('dict[str, object]', raw)
 
 
+def ctx_to_dict(ctx: object | None) -> dict[str, object]:
+    """Return a plain dict representation for a provider context object.
+
+    The context value may be a ``BaseModel`` (in which case we call
+    ``model_dump()``) or already a dict.  ``None`` becomes an empty dict.
+    """
+    if isinstance(ctx, _BaseModel):
+        return ctx.model_dump()
+    return cast('dict[str, object]', ctx or {})
+
+
 def _retrieve_instance_inputs(
     provider_id: str,
     idx: int,
     inst: _ProviderBase,
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     all_providers_list: list[tuple[str, dict[str, object]]],
 ) -> dict[str, object] | None:
     """Call an instance's ``collect_provider_inputs`` and normalise output."""
@@ -105,7 +116,7 @@ def _retrieve_module_inputs(
     provider_id: str,
     idx: int,
     module_dict: dict,
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     all_providers_list: list[tuple[str, dict[str, object]]],
 ) -> dict[str, object] | None:
     """Invoke a module-level ``collect_provider_inputs`` if present."""
@@ -114,7 +125,7 @@ def _retrieve_module_inputs(
         return None
     try:
         raw = module_collect(
-            provider_contexts.get(provider_id, {}),
+            ctx_to_dict(provider_contexts.get(provider_id)),
             all_providers_list,
             idx,
         )
@@ -131,7 +142,7 @@ def _retrieve_module_inputs(
 def _resolve_target_pid(
     recipient_key: str,
     canonical_name_to_pid: dict[str, str],
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
 ) -> str | None:
     """Translate a recipient key into a provider id, if possible."""
     return canonical_name_to_pid.get(recipient_key) or (recipient_key if recipient_key in provider_contexts else None)
@@ -142,7 +153,7 @@ def _process_inputs_map(
     inputs_map: dict[str, object],
     received_inputs: dict[str, list[object]],
     canonical_name_to_pid: dict[str, str],
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
 ) -> None:
     """Add validated entries from ``inputs_map`` into ``received_inputs``."""
     for recipient_key, inp in inputs_map.items():
@@ -163,7 +174,7 @@ def _process_inputs_map(
 
 @dataclass
 class _GatherState:
-    provider_contexts: dict[str, dict[str, object]]
+    provider_contexts: dict[str, object]
     all_providers_list: list[tuple[str, dict[str, object]]]
     canonical_name_to_pid: dict[str, str]
     has_recipient_after: list[bool]
@@ -215,7 +226,7 @@ def _collect_for_provider(
 def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex step
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     all_providers_list: list[tuple[str, dict[str, object]]],
     canonical_name_to_pid: dict[str, str],
     has_recipient_after: list[bool],
@@ -270,7 +281,7 @@ def _validate_raw_inputs(
 
 def _get_own_model(
     inst: _ProviderBase,
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     provider_id: str,
 ) -> object:
     """Return the provider's context model, falling back to existing context on error."""
@@ -281,28 +292,30 @@ def _get_own_model(
 
 
 def _store_new_context(
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     provider_id: str,
     new_ctx: object,
 ) -> None:
-    """Convert a returned context to dict and store it."""
-    if isinstance(new_ctx, _BaseModel):
-        provider_contexts[provider_id] = cast(
-            'dict[str, object]',
-            new_ctx.model_dump(),
-        )
-    elif isinstance(new_ctx, dict):
-        provider_contexts[provider_id] = cast('dict[str, object]', new_ctx)
-    else:
-        msg = 'finalize_context() must return a dict or Pydantic model'
-        raise TypeError(msg)
+    """Store a returned context value.
+
+    Unlike earlier versions we keep the value exactly as returned (either a
+    ``BaseModel`` or a ``dict``).  The orchestrator will convert to a dict when
+    building the merged context; retaining the original object allows us to
+    pass a typed ``ContextT`` instance to helpers such as
+    ``create_file_mappings()``.
+    """
+    if isinstance(new_ctx, _BaseModel | dict):
+        provider_contexts[provider_id] = new_ctx
+        return
+    msg = 'finalize_context() must return a dict or Pydantic model'
+    raise TypeError(msg)
 
 
 def finalize_provider_contexts(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     received_inputs: dict[str, list[object]],
-    provider_contexts: dict[str, dict[str, object]],
+    provider_contexts: dict[str, object],
     all_providers_list: list[tuple[str, dict[str, object]]],
 ) -> None:
     """Mutate ``provider_contexts`` by running finalize_context on each instance.

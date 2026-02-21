@@ -127,7 +127,7 @@ def _handle_callable_create_ctx(
     provider_id: str,
     create_ctx: _Callable,
     merged: dict[str, Any],
-    provider_map: dict[str, dict[str, Any]],
+    provider_map: dict[str, object],
 ) -> None:
     """Call provider `create_context()` safely and record per-provider map.
 
@@ -173,16 +173,17 @@ def collect_contexts(
 def collect_contexts_with_provider_map(
     module_cache: list[tuple[str, dict]],
     initial: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+) -> tuple[dict[str, Any], dict[str, object]]:
     """Collect merged context and return per-provider contexts.
 
     Returns a tuple (merged_context, provider_contexts) where
-    `provider_contexts` maps provider_id -> the dict returned by that
-    provider's `create_context()` or `context` variable (empty dict when
-    the provider did not supply any context).
+    `provider_contexts` maps provider_id -> the value returned by that
+    provider's `create_context()` or `context` variable (which may be either a
+    dict or a Pydantic model).  An empty dict is stored when the provider did
+    not supply any context.
     """
     merged: dict[str, Any] = dict(initial or {})
-    provider_map: dict[str, dict[str, Any]] = {}
+    provider_map: dict[str, object] = {}
 
     for provider_id, module_dict in module_cache:
         create_ctx = module_dict.get('create_context')
@@ -338,7 +339,7 @@ class ModuleProviderAdapter(_ProviderBase):
     # File helpers: delegate to module-level factories / vars when present
     def create_file_mappings(
         self,
-        _ctx: dict | None = None,
+        context: object,
     ) -> dict[str, str | TemplateMapping]:
         """Return normalized file_mappings for this provider.
 
@@ -353,7 +354,10 @@ class ModuleProviderAdapter(_ProviderBase):
         merged: dict[str, str | TemplateMapping] = {}
 
         # merge each step using helpers for clarity
-        self._merge_base_mappings(merged, _ctx)
+        self._merge_base_mappings(
+            merged,
+            context if isinstance(context, dict) else {},
+        )
         self._merge_create_only_mappings(merged)
         self._merge_delete_mappings(merged)
 

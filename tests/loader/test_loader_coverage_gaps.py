@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pydantic import BaseModel
@@ -69,7 +70,7 @@ def test_process_file_mappings_non_dict_feedback(
     separate test below covers that.
     """
     src = """
-    def create_file_mappings(_ctx):
+    def create_file_mappings(context):
         return None
     """
     # `make_provider` signature accepts a name, but the fixture is untyped
@@ -88,6 +89,43 @@ def test_process_file_mappings_non_dict_feedback(
     )
     _process_mapping_item('foo', 42, 'pid', acc)
     assert acc.merged_file_mappings == {}
+
+
+def test_process_file_mappings_skips_none_values() -> None:
+    """Using the public API, ensure ``None`` mapping entries are ignored.
+
+    This test constructs a minimal provider that returns a mapping containing
+    ``None`` alongside a normal string entry.  The accumulator should only
+    contain the string entry once processed, exercising the ``if v is None``
+    branch of ``_process_mapping_item``.
+    """
+
+    class Minimal(_ProviderBase):
+        def get_provider_name(self) -> str:
+            return 'm'
+
+        def create_context(self) -> dict:
+            return {}
+
+        def create_file_mappings(
+            self,
+            context: object,  # noqa: ARG002 - parameter may be unused
+        ) -> dict[str, str | TemplateMapping]:
+            # include a None value which should be skipped
+            return {  # type: ignore[return-value] - deliberately violates return type for test
+                'a.txt': None,  # pyright: ignore[reportReturnType]
+                'b.txt': 'tmpl',
+            }
+
+    acc2 = Accumulators(
+        merged_anchors={},
+        merged_file_mappings={},
+        create_only_set=set(),
+        delete_set=set(),
+        history={},
+    )
+    process_file_mappings('m', Minimal(), {}, acc2)
+    assert acc2.merged_file_mappings == {'b.txt': 'tmpl'}
 
 
 # this test exercises a defensive branch that only exists for module-style
@@ -117,7 +155,7 @@ def test_process_file_mappings_early_return_for_class_provider() -> None:  # pra
         # entirely at that point.
         def create_file_mappings(
             self,
-            _ctx: dict[str, object] | None = None,
+            context: dict[str, object],  # noqa: ARG002 - needs signature
         ) -> dict[str, str | TemplateMapping]:
             return 'not a dict'  # type: ignore[return-value]
 
@@ -157,7 +195,7 @@ def test_handle_callable_create_ctx_deprecated(
         return None
 
     merged = {}
-    provider_map: dict[str, dict] = {}
+    provider_map: dict[str, object] = {}
     with pytest.warns(DeprecationWarning, match='deprecated'):
         _handle_callable_create_ctx('p', factory, merged, provider_map)
     assert merged == {}
@@ -252,7 +290,7 @@ def test_process_phase_two_skips_missing_instance():
         history={},
     )
     # module_cache entry with no instance
-    _process_phase_two([('p', {})], {}, acc)
+    _process_phase_two([('p', {})], {}, {}, acc)
     # nothing should have changed
     assert acc.merged_anchors == {}
     assert acc.merged_file_mappings == {}
@@ -324,7 +362,7 @@ def test_gather_received_inputs_variants() -> None:
     # provider1 has no recipients after (flag False)
     module_cache = [('p1', {})]
     instances = [None]
-    provider_contexts: dict[str, dict] = {}
+    provider_contexts: dict[str, object] = {}
     all_providers_list = [('p1', {})]
     canonical: dict[str, str] = {}
     has_recipient_after = [False]
@@ -382,8 +420,8 @@ def test_validate_raw_inputs_and_helpers() -> None:
 
     # _store_new_context accepts dict and raises on bad type
     store_ctx: dict[str, dict[str, object]] = {}
-    _store_new_context(store_ctx, 'p', {'x': 1})
-    assert store_ctx['p']['x'] == 1
+    _store_new_context(cast('dict[str, object]', store_ctx), 'p', {'x': 1})
+    assert cast('dict', store_ctx)['p']['x'] == 1
 
     with pytest.raises(TypeError):
         _store_new_context({}, 'p', 123)
@@ -399,14 +437,14 @@ def test_finalize_provider_contexts_edge_cases() -> None:
     empty after the call so refactors can't accidentally start populating it.
     """
     # skip when instance None
-    ctxs: dict[str, dict] = {}
-    finalize_provider_contexts([('p', {})], [None], {}, ctxs, [])
+    ctxs: dict[str, object] = {}
+    finalize_provider_contexts([('p', {})], [None], {}, cast('dict', ctxs), [])
     assert ctxs == {}
 
     # skip when no raw inputs (provider exists but received none)
-    ctxs = {}
+    ctxs: dict[str, object] = {}
     inst = DummyProvider()
-    finalize_provider_contexts([('p', {})], [inst], {}, ctxs, [])
+    finalize_provider_contexts([('p', {})], [inst], {}, cast('dict', ctxs), [])
     assert ctxs == {}
 
 

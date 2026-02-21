@@ -8,7 +8,7 @@ from repolish.loader.types import Action, Decision, FileMode, TemplateMapping
 
 def process_delete_files(
     provider: _ProviderBase,
-    merged_context: dict[str, object],
+    context: object,
     delete_set: set[Path],
 ) -> list[Path]:
     """Process a provider's delete-file contributions.
@@ -23,7 +23,7 @@ def process_delete_files(
     # provider is guaranteed to be a Provider; narrow for types
     inst = cast('_ProviderBase', provider)
 
-    fm = inst.create_file_mappings(merged_context)
+    fm = inst.create_file_mappings(context)
     fallback_paths: list[Path] = []
     if isinstance(fm, dict):
         for k, v in fm.items():

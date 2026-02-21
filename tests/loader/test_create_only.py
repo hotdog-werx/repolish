@@ -18,7 +18,7 @@ def test_extract_create_only_files_from_create_function():
     inst = module_dict['_repolish_provider_instance']
     assert isinstance(inst, _ProviderBase)  # narrow for type checker
     result = []
-    fm = inst.create_file_mappings(None)
+    fm = inst.create_file_mappings({})  # type: ignore[arg-type]
     for k, v in fm.items():
         if isinstance(v, TemplateMapping) and v.file_mode == FileMode.CREATE_ONLY:
             result.append(k)
@@ -40,7 +40,7 @@ def test_extract_create_only_files_from_module_variable():
     inst = module_dict['_repolish_provider_instance']
     assert isinstance(inst, _ProviderBase)
     result = []
-    fm = inst.create_file_mappings(None)
+    fm = inst.create_file_mappings({})  # type: ignore[arg-type]
     for k, v in fm.items():
         if isinstance(v, TemplateMapping) and v.file_mode == FileMode.CREATE_ONLY:
             result.append(k)
@@ -55,7 +55,7 @@ def test_extract_create_only_files_empty_when_missing():
     module_dict = {}
     inject_provider_instance_for_module(module_dict, 'test.provider.co.empty')
     result = []
-    fm = module_dict['_repolish_provider_instance'].create_file_mappings(None)
+    fm = module_dict['_repolish_provider_instance'].create_file_mappings({})
     for k, v in fm.items():
         if isinstance(v, TemplateMapping) and v.file_mode == FileMode.CREATE_ONLY:
             result.append(k)

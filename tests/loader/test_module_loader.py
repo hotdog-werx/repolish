@@ -36,7 +36,7 @@ def test_module_provider_adapter_wraps_module_functions():
 
     # instance methods delegate to originals
     assert cast('_ProviderBase', inst).create_context() == {'x': 1}
-    assert cast('_ProviderBase', inst).create_file_mappings() == {
+    assert cast('_ProviderBase', inst).create_file_mappings({}) == {
         'a.txt': 'tpl',
     }
     assert cast('_ProviderBase', inst).create_anchors() == {'A': 'v'}

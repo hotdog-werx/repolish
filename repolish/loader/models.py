@@ -88,6 +88,10 @@ class TemplateMapping:
     source_template: str | None
     extra_context: object | None = None
     file_mode: FileMode = FileMode.REGULAR
+    # provider alias that originally supplied the template.  This is not
+    # something the provider needs to set; the loader populates it during
+    # merging so we can track provenance of conditional/create-only/delete
+    # mappings across multiple providers.
     source_provider: str | None = None
 
 
@@ -116,7 +120,11 @@ class Providers(BaseModel):
     # provenance mapping: posix path -> list of Decision instances
     delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
     # provider-specific contexts captured during provider evaluation
-    provider_contexts: dict[str, dict[str, object]] = Field(
+    # These values may be either a plain dict or a BaseModel instance; the
+    # orchestrator will convert them to dicts when merging into the global
+    # context.  Keeping the original object lets us pass typed models to
+    # provider helpers such as ``create_file_mappings()``.
+    provider_contexts: dict[str, object] = Field(
         default_factory=dict,
     )
     # per-provider migration flag: providers that have opted into the new
@@ -198,13 +206,15 @@ class Provider(ABC, Generic[ContextT, InputsT]):
 
     def create_file_mappings(
         self,
-        _ctx: dict[str, object] | None = None,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
     ) -> dict[str, str | TemplateMapping]:
         """Optional: return `file_mappings`-style dict for this provider.
 
-        Return a mapping dest_path -> source where `source` is either a
-        `str` (template path) or a `TemplateMapping` instance for structured
-        per-file behaviour. Default: no mappings (empty dict).
+        The merged provider context (a ``ContextT`` instance) is passed when
+        available.  Providing a typed argument instead of a plain ``dict`` makes
+        migration to the new class API cleaner and enables IDE autocomplete.
+        Default implementation ignores the argument and returns an empty
+        mapping.
         """
         return {}
 
