@@ -81,8 +81,10 @@ def test_apply_logs_migrated_and_nonmigrated_context(
     cfg_path.write_text('')
 
     fake_config = SimpleNamespace(
-        providers_order=[],
-        providers={},
+        providers_order=['a'],
+        providers={
+            'a': SimpleNamespace(target_dir=Path('a'), templates_dir=''),
+        },
         directories=[],
         template_overrides={},
         no_cookiecutter=False,
@@ -141,7 +143,9 @@ def test_apply_logs_migrated_and_nonmigrated_context(
     ctx = payload['context']
 
     assert ctx['non_migrated'] == _compute_merged_context(fake_providers)
-    assert ctx['migrated'] == {'a': {'a': 1}}
+    assert ctx['migrated'] == [
+        {'alias': 'a', 'directory': 'a', 'context': {'a': 1}},
+    ]
 
 
 def test_apply_command_handles_missing_provider_and_extra_directory(

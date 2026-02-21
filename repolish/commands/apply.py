@@ -19,6 +19,7 @@ from repolish.cookiecutter import (
 # providers; importing the private function is fine since it lives in the
 # same package and keeps the algorithm in one place.
 from repolish.hydration.rendering import _compute_merged_context
+from repolish.loader.models import Providers
 from repolish.misc import ctx_to_dict
 from repolish.utils import run_post_process
 from repolish.version import __version__
@@ -67,6 +68,81 @@ def _gather_template_directories(
     return template_dirs
 
 
+def _compute_migrated_list(
+    config: RepolishConfig,
+    providers: Providers,
+) -> list[dict[str, object]]:
+    """Return an ordered list of migrated provider contexts.
+
+    Each entry includes the provider alias (if known), the template directory
+    used as the loader provider id, and the context that provider captured.
+    The ordering respects ``config.providers_order`` when provided, and then
+    appends any other migrated providers.
+    """
+    # build quick lookups to avoid nested loops
+    pid_to_alias: dict[str, str] = {}
+    for alias, info in config.providers.items():
+        pid_to_alias[(info.target_dir / info.templates_dir).as_posix()] = alias
+
+    def pid_for_alias(alias: str) -> str | None:
+        return pid_to_alias.get(alias)
+
+    result: list[dict[str, object]] = []
+    seen: set[str] = set()
+
+    # honour explicit ordering first
+    for alias in config.providers_order or []:
+        pid = pid_for_alias(alias)
+        if not pid or not providers.provider_migrated.get(pid):
+            continue
+        result.append(
+            {
+                'alias': alias,
+                'directory': pid,
+                'context': ctx_to_dict(providers.provider_contexts.get(pid)),
+            },
+        )
+        seen.add(pid)
+
+    # then add any migrated providers not yet recorded
+    for pid, migrated in providers.provider_migrated.items():
+        if not migrated or pid in seen:
+            continue
+        alias = pid_to_alias.get(pid)
+        result.append(
+            {
+                'alias': alias,
+                'directory': pid,
+                'context': ctx_to_dict(providers.provider_contexts.get(pid)),
+            },
+        )
+
+    return result
+
+
+def _log_final_providers_event(
+    config: RepolishConfig,
+    providers: Providers,
+    non_migrated_ctx: dict[str, object],
+    migrated_list: list[dict[str, object]],
+) -> None:
+    """Emit the ``final_providers_generated`` logger event.
+
+    Extracts fields from ``config`` and ``providers`` to keep the call site
+    concise.
+    """
+    logger.info(
+        'final_providers_generated',
+        template_directories=[str(d) for d in config.directories],
+        context={'non_migrated': non_migrated_ctx, 'migrated': migrated_list},
+        delete_paths=[p.as_posix() for p in providers.delete_files],
+        delete_history={
+            key: [{'source': d.source, 'action': d.action.value} for d in decisions]
+            for key, decisions in providers.delete_history.items()
+        },
+    )
+
+
 def command(config_path: Path, *, check_only: bool) -> int:
     """Run repolish with the given config and options."""
     # Logging is already configured in the callback
@@ -75,33 +151,16 @@ def command(config_path: Path, *, check_only: bool) -> int:
     logger.info('running_repolish', version=__version__)
 
     config = load_config(config_path)
-
     providers = build_final_providers(config)
 
-    # build a more detailed context payload for the log event.  non-migrated
-    # providers receive the merged context with migrated keys removed; migrated
-    # providers render using their own captured contexts, which we emit under
-    # their alias so the log shows exactly what each new-style provider will
-    # supply.  un-migrated providers are grouped under ``non_migrated``; when
-    # there are none this will be an empty dict.
+    # compute contexts for logging
     non_migrated_ctx = _compute_merged_context(providers)
-
-    migrated_ctxs: dict[str, dict[str, object]] = {}
-    for pid, migrated in providers.provider_migrated.items():
-        if not migrated:
-            continue
-        migrated_ctxs[pid] = ctx_to_dict(providers.provider_contexts.get(pid))
-
-    logger.info(
-        'final_providers_generated',
-        template_directories=[str(d) for d in config.directories],
-        # new structure for context makes it clear what each provider sees
-        context={'non_migrated': non_migrated_ctx, 'migrated': migrated_ctxs},
-        delete_paths=[p.as_posix() for p in providers.delete_files],
-        delete_history={
-            key: [{'source': d.source, 'action': d.action.value} for d in decisions]
-            for key, decisions in providers.delete_history.items()
-        },
+    migrated_list = _compute_migrated_list(config, providers)
+    _log_final_providers_event(
+        config,
+        providers,
+        non_migrated_ctx,
+        migrated_list,
     )
 
     # Prepare staging and template
