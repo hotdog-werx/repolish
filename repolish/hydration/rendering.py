@@ -9,6 +9,7 @@ from jinja2 import (
     Environment,
     StrictUndefined,
     TemplateSyntaxError,
+    UndefinedError,
     select_autoescape,
 )
 from pydantic import BaseModel
@@ -92,22 +93,47 @@ def render_with_jinja(
             copy2(src, dest)
             continue
 
-        try:
-            # Make the merged context available both as top-level variables
-            # and under `cookiecutter` for backward compatibility.
-            rendered_txt = env.from_string(txt).render(
-                **merged_ctx,
-                cookiecutter=merged_ctx,
-            )
-        except TemplateSyntaxError as exc:
-            logger.exception(
-                'template_content_syntax_error',
-                file=str(src),
-                error=str(exc),
-            )
-            raise
-
+        # render file content using helper to centralise error handling
+        rendered_txt = _jinja_render(
+            env,
+            txt,
+            merged_ctx,
+            filename=src,
+        )
         dest.write_text(rendered_txt, encoding='utf-8')
+
+
+def _jinja_render(
+    env: Environment,
+    txt: str,
+    ctx: dict,
+    *,
+    filename: Path,
+) -> str:
+    """Render ``txt`` with ``env`` and ``ctx``.
+
+    Errors during rendering are logged and wrapped with ``filename`` so the
+    caller gets actionable messages. ``ctx`` becomes available both as
+    top-level variables and under the ``cookiecutter`` name for backward
+    compatibility with existing templates.
+    """
+    try:
+        return env.from_string(txt).render(**ctx, cookiecutter=ctx)
+    except TemplateSyntaxError as exc:
+        logger.exception(
+            'template_content_syntax_error',
+            file=str(filename),
+            error=str(exc),
+        )
+        raise
+    except UndefinedError as exc:  # pragma: no cover - exercised by tests
+        logger.exception(
+            'template_content_undefined_error',
+            file=str(filename),
+            error=str(exc),
+        )
+        msg = f'{exc} (while rendering {filename})'
+        raise UndefinedError(msg) from exc
 
 
 def render_with_cookiecutter(
@@ -328,7 +354,26 @@ def _render_single_mapping(
         merged_ctx=merged_ctx,
         providers=providers,
     )
-    rendered = _render_mapping_text(env, txt, base_ctx, mapping.extra_context)
+    # compose context for rendering and delegate
+    render_ctx = {**base_ctx, **_extra_context_to_dict(mapping.extra_context)}
+    try:
+        rendered = _jinja_render(
+            env,
+            txt,
+            render_ctx,
+            filename=template_file,
+        )
+    except UndefinedError as exc:  # pragma: no cover - error path covered by new tests
+        # add details about the template and destination so the user can
+        # easily locate the problematic mapping.
+        logger.exception(
+            'mapping_template_undefined_error',
+            template=str(template_file),
+            dest=dest_path,
+            error=str(exc),
+        )
+        msg = f'{exc} (while rendering mapping {src_template} for {dest_path})'
+        raise UndefinedError(msg) from exc
 
     target = setup_output / str(merged_ctx.get('_repolish_project', 'repolish')) / dest_path
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -359,7 +404,17 @@ def _process_template_mappings(
         'use_provider_context': use_provider_context,
     }
 
+    errors: list[str] = []
+
     for dest_path, source_val in list(providers.file_mappings.items()):
         if not isinstance(source_val, TemplateMapping):
             continue
-        _render_single_mapping(dest_path, source_val, ctx)
+        try:
+            _render_single_mapping(dest_path, source_val, ctx)
+        except Exception as exc:  #  noqa: BLE001 -- catch any rendering-related failure
+            # store the destination and the exception message for later
+            errors.append(f'{dest_path}: {exc}')
+
+    if errors:
+        joined = '\n'.join(errors)
+        raise RuntimeError('errors rendering template mappings:\n' + joined)

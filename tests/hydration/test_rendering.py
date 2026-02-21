@@ -392,7 +392,11 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
 
 
 def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
-    """Missing variables should raise `UndefinedError` with StrictUndefined."""
+    """Missing variables should raise `UndefinedError` with StrictUndefined.
+
+    The raised exception message is enhanced with the path of the template so
+    users know exactly which file failed to render.
+    """
     tpl = tmp_path / 'tpl-missing-var'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     (tpl / 'repolish' / 'README.md.jinja').write_text(
@@ -408,8 +412,13 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     preprocess_templates(setup_input, providers, config, base_dir)
 
     config.no_cookiecutter = True
-    with pytest.raises(UndefinedError):
+    with pytest.raises(UndefinedError) as exc:
         render_template(setup_input, providers, setup_output, config)
+    # message should include the original Jinja error and note which file was
+    # being rendered.
+    msg = str(exc.value)
+    assert 'while rendering' in msg
+    assert 'no_such_var' in msg
 
 
 def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
@@ -452,6 +461,42 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
     config.no_cookiecutter = True
     with pytest.raises(TemplateSyntaxError):
         render_template(setup_input, providers, setup_output, config)
+
+
+# verify that errors raised while rendering individual TemplateMapping entries
+# are collected and presented together to the caller. this guards against a
+# single bad mapping hiding other failures.
+
+
+def test_template_mapping_undefined_errors_are_collected(tmp_path: Path):
+    tpl = tmp_path / 'tpl-maps'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    # template refers to a variable that will never be provided
+    (tpl / 'repolish' / 'a.jinja').write_text(
+        '{{ cookiecutter.a }}\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    providers = Providers(
+        context={'_repolish_project': 'repolish'},
+        file_mappings={
+            'a.txt': TemplateMapping('a', None),
+            'b.txt': TemplateMapping('a', None),
+        },
+    )
+
+    preprocess_templates(setup_input, providers, config, base_dir)
+    config.no_cookiecutter = True
+
+    with pytest.raises(RuntimeError) as exc:
+        render_template(setup_input, providers, setup_output, config)
+    msg = str(exc.value)
+    assert 'a.txt' in msg
+    assert 'b.txt' in msg
 
 
 # --- New unit tests to cover additional branches in rendering.py ---
