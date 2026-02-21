@@ -4,13 +4,12 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config.models import ProviderInfo
-
-from .validation import (
+from repolish.linker.validation import (
     check_copy_validity,
     validate_existing_symlink,
     validate_source_directory,
 )
-from .windows_utils import supports_symlinks
+from repolish.linker.windows_utils import supports_symlinks
 
 logger = get_logger(__name__)
 

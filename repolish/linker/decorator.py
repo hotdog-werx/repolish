@@ -19,8 +19,7 @@ from rich.console import Console
 
 from repolish.config.models import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
-
-from .symlinks import link_resources
+from repolish.linker.symlinks import link_resources
 
 logger = get_logger(__name__)
 

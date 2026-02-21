@@ -1,53 +1,56 @@
-from typing import cast
+from pathlib import Path
 
-from .context import call_factory_with_context
-
-
-def _resolve_file_mappings(
-    module_dict: dict[str, object],
-    merged_context: dict[str, object],
-) -> dict[str, object] | None:
-    """Return the provider's file mappings dict or None.
-
-    Prefer `create_file_mappings()` when present; otherwise fall back to the
-    module-level `file_mappings` variable.
-    """
-    fm_fact = module_dict.get('create_file_mappings')
-    if callable(fm_fact):
-        val = call_factory_with_context(fm_fact, merged_context)
-        return cast('dict[str, object]', val) if isinstance(val, dict) else None
-
-    fm_var = module_dict.get('file_mappings')
-    return cast('dict[str, object]', fm_var) if isinstance(fm_var, dict) else None
+from repolish.loader.models import Provider as _ProviderBase
+from repolish.loader.types import Accumulators, FileMode, TemplateMapping
 
 
-def _is_valid_mapping_value(v: object) -> bool:
-    """Return True for accepted mapping values (str or (str, dict))."""
-    return isinstance(v, str) or (
-        isinstance(v, tuple) and len(v) == 2 and isinstance(v[0], str) and isinstance(v[1], dict)
-    )
+def _process_mapping_item(
+    k: str,
+    v: object,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Process a single mapping entry and mutate the provided accumulators."""
+    if v is None:
+        return
+
+    if isinstance(v, str):
+        accum.merged_file_mappings[k] = v
+        return
+
+    if isinstance(v, TemplateMapping):
+        annotated = TemplateMapping(
+            source_template=v.source_template,
+            extra_context=v.extra_context,
+            file_mode=v.file_mode,
+            source_provider=provider_id,
+        )
+
+        if annotated.file_mode == FileMode.DELETE:
+            accum.delete_set.add(Path(k))
+            accum.merged_file_mappings.pop(k, None)
+            return
+
+        if annotated.file_mode == FileMode.CREATE_ONLY:
+            accum.create_only_set.add(Path(k))
+
+        accum.merged_file_mappings[k] = annotated
+        return
 
 
 def process_file_mappings(
-    module_dict: dict[str, object],
+    provider_id: str,
+    provider: _ProviderBase,
     merged_context: dict[str, object],
-    merged_file_mappings: dict[str, str | tuple[str, dict]],
+    accum: Accumulators,
 ) -> None:
     """Process a provider's file mapping contributions and merge.
 
-    Accepts either a callable `create_file_mappings()` or a module-level
-    `file_mappings` dict. The mapping value may be either:
-      - `str` (existing behavior) -> source path in template output
-      - `tuple[str, dict]` -> (source_template, extra_context)
-    Entries with `None` values are filtered out.
+    The provider instance is already available; no module dict is required.
     """
-    fm = _resolve_file_mappings(module_dict, merged_context)
+    fm = provider.create_file_mappings(merged_context)
     if not isinstance(fm, dict):
         return
 
-    # keep tuple values as-is (they will be rendered later in hydration)
     for k, v in fm.items():
-        if v is None:
-            continue
-        if _is_valid_mapping_value(v):
-            merged_file_mappings[k] = cast('str | tuple[str, dict]', v)
+        _process_mapping_item(k, v, provider_id, accum)

@@ -315,6 +315,44 @@ providers_order:
 See the [Context guide](context.md) for more information on how provider
 ordering affects context merging.
 
+## Template Overrides
+
+The `template_overrides` section gives you per‑file control over which provider
+supplies a template. Instead of always using the last provider defined in
+`providers_order`, you can specify glob patterns that map to a particular
+provider alias. When a file path matches a pattern, the matching provider will
+be used as the source for that file even if a later provider would normally
+override it.
+
+Patterns use standard [fnmatch](https://docs.python.org/3/library/fnmatch.html)
+glob syntax and are evaluated in YAML order (later patterns take precedence).
+The values must reference providers that are defined elsewhere in the
+configuration; an invalid alias will trigger a validation error when the config
+is loaded.
+
+```yaml
+providers_order:
+  - base
+  - db
+  - api
+
+providers:
+  base:
+    cli: base-link
+  db:
+    cli: db-link
+  api:
+    cli: api-link
+
+template_overrides:
+  'README.md': 'base' # keep the README from the base provider
+  'src/db/*': 'db' # use the db provider for anything under src/db
+  '**/*.py': 'api' # API provider wins for all Python files
+```
+
+This feature is particularly useful when you need fine‑grained control over
+template resolution without changing the overall provider order.
+
 ## Configuration Validation
 
 Repolish validates your configuration file when loading. Common validation

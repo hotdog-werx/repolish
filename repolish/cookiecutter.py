@@ -1,10 +1,10 @@
 # Facade module for backward compatibility - imports are re-exported
-from .hydration.application import (
+from repolish.hydration.application import (
     _apply_file_mappings,
     _apply_regular_files,
     apply_generated_output,
 )
-from .hydration.comparison import (
+from repolish.hydration.comparison import (
     _check_file_mappings,
     _check_regular_files,
     _check_single_file_mapping,
@@ -13,10 +13,13 @@ from .hydration.comparison import (
     check_generated_output,
     collect_output_files,
 )
-from .hydration.context import _is_conditional_file, build_final_providers
-from .hydration.display import rich_print_diffs
-from .hydration.rendering import render_template
-from .hydration.staging import prepare_staging, preprocess_templates
+from repolish.hydration.context import (
+    _is_conditional_file,
+    build_final_providers,
+)
+from repolish.hydration.display import rich_print_diffs
+from repolish.hydration.rendering import render_template
+from repolish.hydration.staging import prepare_staging, preprocess_templates
 
 __all__ = [
     '_apply_file_mappings',

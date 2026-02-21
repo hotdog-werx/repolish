@@ -11,7 +11,7 @@ from pydantic import (
     model_validator,
 )
 
-from repolish.exceptions import ProviderConfigError
+from repolish.exceptions import ConfigValidationError, ProviderConfigError
 
 logger = get_logger(__name__)
 
@@ -112,10 +112,27 @@ class RepolishConfigFile(BaseModel):
             'When true, skip cookiecutter and render templates with Jinja2 using the merged provider context (opt-in).'
         ),
     )
+    provider_scoped_template_context: bool = Field(
+        default=False,
+        description=(
+            'Opt-in: when true, render per-mapping `TemplateMapping` entries '
+            "using only the declaring provider's context (prepares for v1; "
+            'breaking when enabled).'
+        ),
+    )
 
     providers_order: list[str] = Field(
         default_factory=list,
         description='Optional: Order in which to process providers. Defaults to providers dict key order from YAML.',
+    )
+    template_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            'Optional mapping of glob-style file patterns to provider aliases. '
+            'Overrides which provider supplies a given file regardless of the '
+            'usual provider order. Keys are POSIX-style file paths, values must '
+            'reference a defined provider alias.'
+        ),
     )
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,
@@ -162,6 +179,22 @@ class RepolishConfigFile(BaseModel):
                 normalized[name] = config
 
         return normalized
+
+    @model_validator(mode='after')
+    def validate_template_overrides(self) -> 'RepolishConfigFile':
+        """Ensure every alias referenced in template_overrides is defined.
+
+        This validator runs after the entire model is built so we can access
+        both the overrides mapping and the providers dict.
+        """
+        if self.template_overrides:
+            unknown = set(self.template_overrides.values()) - set(
+                self.providers.keys(),
+            )
+            if unknown:
+                msg = f'template_overrides references undefined providers: {sorted(unknown)}'
+                raise ConfigValidationError(msg)
+        return self
 
 
 class AllProviders(BaseModel):
@@ -337,6 +370,14 @@ class RepolishConfig(BaseModel):
             'If true, render templates with Jinja2 directly and skip cookiecutter (opt-in experimental feature).'
         ),
     )
+    provider_scoped_template_context: bool = Field(
+        default=False,
+        description=(
+            'When true, render per-mapping `TemplateMapping` entries '
+            "using only the declaring provider's context. Opt-in and may "
+            'break templates that rely on merged context.'
+        ),
+    )
     providers: dict[str, ResolvedProviderInfo] = Field(
         default_factory=dict,
         description='Fully resolved provider information',
@@ -344,4 +385,11 @@ class RepolishConfig(BaseModel):
     providers_order: list[str] = Field(
         default_factory=list,
         description='Order in which to process providers',
+    )
+    template_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            'Mapping of glob patterns to provider aliases after resolution. '
+            'Inherited directly from `RepolishConfigFile.template_overrides`.'
+        ),
     )

@@ -5,6 +5,7 @@ from hotlog import get_logger
 
 from repolish.config import RepolishConfig
 from repolish.loader import Providers
+from repolish.loader.types import TemplateMapping
 from repolish.preprocessors import replace_text, safe_file_read
 
 logger = get_logger(__name__)
@@ -78,11 +79,11 @@ def preprocess_templates(
     """
     anchors_mapping = {**providers.anchors, **config.anchors}
 
-    # Build reverse mapping for conditional files. Support tuple-valued
-    # file_mappings where the value is (source_template, extra_context).
+    # Build reverse mapping for conditional files. Support `TemplateMapping`
+    # entries where `source_template` identifies the source template file.
     source_to_dest: dict[str, str] = {}
     for dest, src in providers.file_mappings.items():
-        key = src[0] if isinstance(src, tuple) and len(src) == 2 else src
+        key = src.source_template if isinstance(src, TemplateMapping) and src.source_template else src
         if isinstance(key, str):
             source_to_dest[key] = dest
 

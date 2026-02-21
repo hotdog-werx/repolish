@@ -4,6 +4,7 @@ from hotlog import get_logger
 
 from repolish.builder import create_cookiecutter_template
 from repolish.config import load_config
+from repolish.config.models import RepolishConfig
 from repolish.cookiecutter import (
     apply_generated_output,
     build_final_providers,
@@ -17,6 +18,47 @@ from repolish.utils import run_post_process
 from repolish.version import __version__
 
 logger = get_logger(__name__)
+
+
+def _create_staged_template(setup_input: Path, config: RepolishConfig) -> None:
+    """Build template directory list from `config` and create staging.
+
+    This mirrors the previous inline logic in `command` but keeps the
+    complexity outside of the top-level function.
+    """
+    template_dirs = _gather_template_directories(config)
+    create_cookiecutter_template(
+        setup_input,
+        template_dirs,
+        template_overrides=config.template_overrides,
+    )
+
+
+def _gather_template_directories(
+    config: RepolishConfig,
+) -> list[Path] | list[tuple[str | None, Path]]:
+    """Return the template directories in the order they should be staged.
+
+    When provider metadata is present this returns a list of ``(alias, Path)``
+    tuples. Otherwise a plain list of ``Path`` objects is returned for legacy
+    compatibility.
+    """
+    if not config.providers_order:
+        return [Path(p) for p in config.directories]
+
+    template_dirs: list[tuple[str | None, Path]] = []
+    for alias in config.providers_order:
+        info = config.providers.get(alias)
+        if info is None:
+            continue
+        path = info.target_dir / info.templates_dir
+        template_dirs.append((alias, path))
+
+    for p in config.directories:
+        if not any(str(p) == str(d) for _, d in template_dirs):
+            template_dirs.append((None, Path(p)))
+
+    return template_dirs
 
 
 def command(config_path: Path, *, check_only: bool) -> int:
@@ -42,10 +84,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
 
     # Prepare staging and template
     base_dir, setup_input, setup_output = prepare_staging(config)
-
-    template_dirs = [Path(p) for p in config.directories]
-
-    create_cookiecutter_template(setup_input, template_dirs)
+    _create_staged_template(setup_input, config)
 
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, config, base_dir)

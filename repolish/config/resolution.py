@@ -3,13 +3,13 @@ from typing import cast
 
 from hotlog import get_logger
 
-from .models import (
+from repolish.config.models import (
     ProviderConfig,
     RepolishConfig,
     RepolishConfigFile,
     ResolvedProviderInfo,
 )
-from .providers import load_provider_info
+from repolish.config.providers import load_provider_info
 
 logger = get_logger(__name__)
 
@@ -40,6 +40,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
 
     return RepolishConfig(
         no_cookiecutter=config.no_cookiecutter,
+        provider_scoped_template_context=config.provider_scoped_template_context,
         config_dir=config_dir,
         directories=directories,
         context=config.context,
@@ -49,6 +50,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
         delete_files=config.delete_files,
         providers=resolved_providers,
         providers_order=config.providers_order,
+        template_overrides=config.template_overrides,
     )
 
 

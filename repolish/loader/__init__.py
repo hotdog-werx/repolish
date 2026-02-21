@@ -5,17 +5,19 @@ free of implementation logic so imports remain cheap and easy to
 reference from the rest of the codebase.
 """
 
-from ._log import logger
-from .deletes import (
+from repolish.loader._log import logger
+from repolish.loader.deletes import (
     normalize_delete_item,
     normalize_delete_items,
 )
-from .orchestrator import create_providers
-from .types import Action, Decision, Providers
+from repolish.loader.models import Provider
+from repolish.loader.orchestrator import create_providers
+from repolish.loader.types import Action, Decision, Providers
 
 __all__ = [
     'Action',
     'Decision',
+    'Provider',
     'Providers',
     'create_providers',
     'logger',

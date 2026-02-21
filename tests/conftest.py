@@ -5,6 +5,22 @@ import pytest
 
 
 @pytest.fixture
+def make_provider(tmp_path: Path):
+    """Return a helper that writes a provider module and returns its path.
+
+    The returned callable has signature ``(src: str, name: str='prov')->str``.
+    """
+
+    def _inner(src: str, name: str = 'prov') -> str:
+        d = tmp_path / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / 'repolish.py').write_text(dedent(src))
+        return str(d)
+
+    return _inner
+
+
+@pytest.fixture
 def temp_repolish_dirs(tmp_path: Path) -> list[str]:
     """Create temporary directories with valid repolish.py files."""
     # Create first directory with repolish.py

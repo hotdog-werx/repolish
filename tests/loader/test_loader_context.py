@@ -1,17 +1,20 @@
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from pytest_mock import MockerFixture
 
-from repolish.loader.context import (
-    _apply_override,
+from repolish.loader.context import _apply_override, apply_context_overrides
+from repolish.loader.module_loader import (
     _collect_context_from_module,
-    apply_context_overrides,
     call_factory_with_context,
     collect_contexts,
-    extract_context_from_module,
+    collect_contexts_with_provider_map,
     extract_from_module_dict,
+    inject_provider_instance_for_module,
 )
+
+if TYPE_CHECKING:
+    from repolish.loader.models import Provider as _ProviderBase
 
 
 def test_call_factory_with_context_zero_one_and_error():
@@ -49,16 +52,30 @@ def test_extract_from_module_dict_callable_exception_propagates():
 def test_extract_context_from_module_various_cases(mocker: MockerFixture):
     # create_context callable
     md1 = cast('dict[str, object]', {'create_context': lambda: {'a': 1}})
-    assert extract_context_from_module(md1) == {'a': 1}
+    inject_provider_instance_for_module(md1, 'test.provider.ctx.func')
+    assert cast(
+        '_ProviderBase',
+        md1['_repolish_provider_instance'],
+    ).create_context() == {'a': 1}
 
     # module-level context
     md2 = cast('dict[str, object]', {'context': {'b': 2}})
-    assert extract_context_from_module(md2) == {'b': 2}
+    inject_provider_instance_for_module(md2, 'test.provider.ctx.var')
+    assert cast(
+        '_ProviderBase',
+        md2['_repolish_provider_instance'],
+    ).create_context() == {'b': 2}
 
-    # missing context triggers warning and returns None
-    mock_logger = mocker.patch('repolish.loader.context.logger')
-    assert extract_context_from_module({}) is None
-    assert mock_logger.warning.call_count >= 1
+    # missing context on an adapter-backed provider returns an empty dict
+    md3 = cast('dict[str, object]', {})
+    inject_provider_instance_for_module(md3, 'test.provider.ctx.none')
+    assert (
+        cast(
+            '_ProviderBase',
+            md3['_repolish_provider_instance'],
+        ).create_context()
+        == {}
+    )
 
 
 def test_collect_contexts_merges_and_passes_merged():
@@ -81,6 +98,25 @@ def test__collect_context_from_module_raises_on_bad_return():
     )
     with pytest.raises(TypeError):
         _collect_context_from_module(md, {})
+
+
+def test_collect_contexts_with_provider_map_warns_on_none_return():
+    """`create_context()` returning None emits a deprecation warning.
+
+    DeprecationWarning but is still treated as an empty context
+    (back-compat).
+    """
+    module_cache = [('prov-none', {'create_context': lambda: None})]
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=r'create_context\(\) returning None is deprecated',
+    ) as record:
+        merged, provider_map = collect_contexts_with_provider_map(module_cache)
+
+    assert merged == {}
+    assert provider_map['prov-none'] == {}
+    assert any('create_context() returning None is deprecated' in str(w.message) for w in record)
 
 
 def test_apply_context_overrides(mocker: MockerFixture):

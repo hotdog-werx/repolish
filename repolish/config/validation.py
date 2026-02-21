@@ -3,13 +3,12 @@
 import warnings
 from pathlib import Path
 
+from repolish.config.models import RepolishConfig, RepolishConfigFile
 from repolish.exceptions import (
     ConfigValidationError,
     DirectoryValidationError,
     ProviderOrderError,
 )
-
-from .models import RepolishConfig, RepolishConfigFile
 
 
 def validate_config_file(config: RepolishConfigFile) -> None:

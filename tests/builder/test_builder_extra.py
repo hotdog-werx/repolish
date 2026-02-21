@@ -64,3 +64,43 @@ def test_jinja_extension_stripped_from_filenames(tmp_path: Path) -> None:
 
     # Regular files should remain unchanged
     assert (project_dir / 'regular.txt').exists()
+
+
+def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
+    """Provider-specific overrides prevent later provider from overwriting a file pinned to an earlier provider."""
+    # provider1 defines a common file and a unique file
+    p1 = tmp_path / 'p1'
+    rep1 = p1 / 'repolish'
+    rep1.mkdir(parents=True)
+    (rep1 / 'common.txt').write_text('from p1')
+    (rep1 / 'unique1.txt').write_text('only p1')
+
+    # provider2 defines the same common file and its own unique file
+    p2 = tmp_path / 'p2'
+    rep2 = p2 / 'repolish'
+    rep2.mkdir(parents=True)
+    (rep2 / 'common.txt').write_text('from p2')
+    (rep2 / 'unique2.txt').write_text('only p2')
+
+    staging = tmp_path / 'staging'
+
+    # without overrides, later provider wins
+    create_cookiecutter_template(
+        staging,
+        [('p1', p1), ('p2', p2)],
+    )
+    project = staging / '{{cookiecutter._repolish_project}}'
+    assert (project / 'common.txt').read_text() == 'from p2'
+
+    # with an override pinning the common file to p1
+    staging2 = tmp_path / 'staging2'
+    create_cookiecutter_template(
+        staging2,
+        [('p1', p1), ('p2', p2)],
+        template_overrides={'common.txt': 'p1'},
+    )
+    project2 = staging2 / '{{cookiecutter._repolish_project}}'
+    assert (project2 / 'common.txt').read_text() == 'from p1'
+    # other files unaffected
+    assert (project2 / 'unique1.txt').read_text() == 'only p1'
+    assert (project2 / 'unique2.txt').read_text() == 'only p2'

@@ -1,17 +1,20 @@
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from repolish.loader.deletes import (
     _apply_raw_delete_items,
     _normalize_delete_iterable,
-    extract_delete_items_from_module,
     normalize_delete_item,
     normalize_delete_items,
     process_delete_files,
 )
+from repolish.loader.module_loader import inject_provider_instance_for_module
 from repolish.loader.types import Action, Decision
+
+if TYPE_CHECKING:
+    from repolish.loader.models import Provider as _ProviderBase
 
 
 def test_normalize_delete_items_type_error():
@@ -29,17 +32,7 @@ def test_normalize_delete_item_and_iterable_filters_falsy():
     assert _normalize_delete_iterable([]) == []
 
 
-def test_extract_delete_items_from_module_with_callable():
-    module_dict = cast(
-        'dict[str, object]',
-        {
-            'create_delete_files': lambda: [Path('x.txt'), 'y/z.txt', ''],
-        },
-    )
-    got = extract_delete_items_from_module(module_dict)
-    assert 'x.txt' in got
-    assert 'y/z.txt' in got
-    assert '' not in got
+# extractor removed; provider API tests migrate to adapter coverage in module_loader tests
 
 
 def test_apply_raw_delete_items_history_and_fallback():
@@ -69,8 +62,13 @@ def test_process_delete_files_callable_none_and_wrong_type():
         'dict[str, object]',
         {'create_delete_files': lambda: None},
     )
+    inject_provider_instance_for_module(
+        module_dict,
+        'test.provider.delete.none',
+    )
+    inst = cast('_ProviderBase', module_dict['_repolish_provider_instance'])
     delete_set = set()
-    fallback = process_delete_files(module_dict, {}, delete_set)
+    fallback = process_delete_files(inst, {}, delete_set)
     assert fallback == []
     assert delete_set == set()
 
@@ -79,8 +77,13 @@ def test_process_delete_files_callable_none_and_wrong_type():
         'dict[str, object]',
         {'create_delete_files': lambda: 'not-a-list'},
     )
+    inject_provider_instance_for_module(module_bad, 'test.provider.delete.bad')
     with pytest.raises(TypeError):
-        process_delete_files(module_bad, {}, set())
+        process_delete_files(
+            cast('_ProviderBase', module_bad['_repolish_provider_instance']),
+            {},
+            set(),
+        )
 
 
 def test_process_delete_files_module_level_list_does_not_add_to_delete_set():
@@ -88,8 +91,13 @@ def test_process_delete_files_module_level_list_does_not_add_to_delete_set():
         'dict[str, object]',
         {'delete_files': [Path('m1.txt'), 'm2.txt']},
     )
+    inject_provider_instance_for_module(
+        module_dict,
+        'test.provider.delete.modulelist',
+    )
+    inst = cast('_ProviderBase', module_dict['_repolish_provider_instance'])
     delete_set = set()
-    fallback = process_delete_files(module_dict, {}, delete_set)
+    fallback = process_delete_files(inst, {}, delete_set)
     # module-level delete_files should not produce fallback (only callable does)
     assert fallback == []
     assert delete_set == set()
@@ -112,12 +120,4 @@ def test_normalize_delete_items_returns_paths():
     assert got == [Path('a.txt'), Path('b/c.txt')]
 
 
-def test_extract_delete_items_from_module_uses_module_level_list():
-    md = cast(
-        'dict[str, object]',
-        {'delete_files': [Path('m1.txt'), 'm2.txt', '']},
-    )
-    got = extract_delete_items_from_module(md)
-    assert 'm1.txt' in got
-    assert 'm2.txt' in got
-    assert '' not in got
+# extractor gone; nothing to test here anymore

@@ -1,12 +1,10 @@
-import json
 import textwrap
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+
+from pytest_mock import MockerFixture
 
 from repolish.commands.apply import command as run_repolish
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def write_file(p: Path, content: str) -> None:
@@ -59,90 +57,91 @@ def make_template_with_unreadable(base: Path, name: str) -> None:
     )
 
 
-def test_apply_flow_with_binary_and_deletion(
+# deprecated test moved to tests/deprecated/commands/test_apply_directories.py
+# (exercise deprecated `directories` config in CLI apply flow)
+
+# deprecated test moved to tests/deprecated/commands/test_apply_directories.py
+# (CLI check-mode test that uses the deprecated `directories` config key)
+
+
+def test_apply_command_handles_missing_provider_and_extra_directory(
     tmp_path: Path,
-    monkeypatch: 'pytest.MonkeyPatch',
+    mocker: MockerFixture,
 ) -> None:
-    templates = tmp_path / 'templates'
-    t1 = templates / 'template_a'
-    make_template_with_binary(templates, 'template_a')
+    """Ensure the `providers_order` logic continues when an alias is missing and still appends any stray directories.
 
-    # create project with nested file that should be deleted
-    project = tmp_path / 'test_repo'
-    project.mkdir(parents=True, exist_ok=True)
-    nested = project / 'path' / 'to'
-    nested.mkdir(parents=True, exist_ok=True)
-    (nested / 'file.txt').write_text('to be deleted')
+    This exercises the two uncovered lines in ``repolish/commands/apply.py``:
+    - skipping an alias when ``config.providers`` lacks the entry (line 54)
+    - appending an extra directory tuple for entries not already in ``template_dirs`` (line 63)
+    """
+    # prepare a dummy config file path (contents unused thanks to mocker.patch)
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
 
-    # create a temp directory inside the project (next to the config) with a
-    # trash file that should be deleted by the provider's delete_files entry
-    temp_dir = project / 'temp'
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    (temp_dir / 'trash.txt').write_text('garbage')
-
-    cfg = project / 'repolish.yaml'
-    cfg.write_text(
-        json.dumps(
-            {
-                'directories': [str(t1.as_posix())],
-                'context': {},
-                'anchors': {},
-                'delete_files': [],
-            },
-        ),
-        encoding='utf-8',
+    # fake resolved configuration object
+    fake_config = SimpleNamespace(
+        providers_order=['missing'],
+        providers={},
+        directories=['/extra/dir'],
+        template_overrides={'foo': 'bar'},
+        no_cookiecutter=False,
+        provider_scoped_template_context=False,
+        context={},
+        context_overrides={},
+        anchors={},
+        post_process=[],
+        delete_files=[],
     )
 
-    monkeypatch.chdir(project)
-    rv = run_repolish(cfg, check_only=False)
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.prepare_staging',
+    ).return_value = (tmp_path, tmp_path / 'in', tmp_path / 'out')
+
+    recorded: dict[str, object] = {}
+
+    # helper stub for template generation
+    def fake_create(
+        staging: Path,
+        template_dirs: list[tuple[str | None, Path]],
+        template_overrides: dict[str, str] | None = None,
+    ) -> None:
+        recorded['template_dirs'] = template_dirs
+        recorded['overrides'] = template_overrides
+
+    mocker.patch(
+        'repolish.commands.apply.create_cookiecutter_template',
+        fake_create,
+    )
+
+    # stub out remainder of the pipeline so command completes successfully
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = SimpleNamespace(
+        context={},
+        delete_files=[],
+        delete_history={},
+        create_only_files=[],
+        file_mappings={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.render_template',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check_generated_output',
+    ).return_value = []
+    mocker.patch(
+        'repolish.commands.apply.apply_generated_output',
+    ).return_value = None
+
+    rv = run_repolish(cfg_path, check_only=False)
     assert rv == 0
 
-    # logo should be copied into the project
-    logo = project / 'logo.png'
-    assert logo.exists()
-    assert logo.read_bytes().startswith(b'\x89PNG')
-
-    # deletion should have removed the nested file under the project
-    assert not (project / 'path' / 'to' / 'file.txt').exists()
-    # and the temp directory under the project should have been removed
-    assert not (project / 'temp').exists()
-
-
-def test_cli_binary_file_check_mode(
-    tmp_path: Path,
-    monkeypatch: 'pytest.MonkeyPatch',
-) -> None:
-    """Test that binary files work correctly in CLI check mode."""
-    templates = tmp_path / 'templates'
-    t1 = templates / 'template_a'
-    make_template_with_binary(templates, 'template_a')
-
-    # create project with existing binary file that should be compared
-    project = tmp_path / 'test_repo'
-    project.mkdir(parents=True, exist_ok=True)
-
-    # Create an existing binary file in the project
-    existing_logo = project / 'logo.png'
-    existing_logo.write_bytes(
-        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02\x00\x00\x00\x02',
-    )
-
-    cfg = project / 'repolish.yaml'
-    cfg.write_text(
-        json.dumps(
-            {
-                'directories': [str(t1.as_posix())],
-                'context': {},
-                'anchors': {},
-                'delete_files': [],
-            },
-        ),
-        encoding='utf-8',
-    )
-
-    # Run check mode - should detect the difference in binary files
-    monkeypatch.chdir(project)
-    rv = run_repolish(cfg, check_only=True)
-
-    # Should return 2 (has diffs)
-    assert rv == 2
+    # verify branch behaviour: missing provider skipped, extra directory appended
+    assert recorded['template_dirs'] == [(None, Path('/extra/dir'))]
+    assert recorded['overrides'] == {'foo': 'bar'}

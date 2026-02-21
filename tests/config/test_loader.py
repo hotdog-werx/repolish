@@ -14,8 +14,7 @@ from repolish.exceptions import (
     ProviderOrderError,
 )
 from repolish.utils import open_utf8
-
-from .conftest import (
+from tests.config.conftest import (
     ProviderSetupFixture,
     TemplateDirFixture,
     YamlConfigFileFixture,
@@ -86,6 +85,18 @@ class InvalidConfigCase:
             error_match='providers_order references undefined providers: undefined',
         ),
         InvalidConfigCase(
+            name='template_overrides_references_undefined_provider',
+            config_data={
+                'providers_order': ['base'],
+                'providers': {
+                    'base': {'directory': './templates'},
+                },
+                'template_overrides': {'README.md': 'undefined'},
+            },
+            error_type=ConfigValidationError,
+            error_match='template_overrides references undefined providers:.*undefined',
+        ),
+        InvalidConfigCase(
             name='unlinked_provider_with_validation',
             config_data={
                 'providers': {
@@ -111,60 +122,16 @@ def test_load_config_validation_failures(
         load_config(config_path)
 
 
-def test_load_config_missing_directory(
-    yaml_config_file: YamlConfigFileFixture,
-    tmp_path: Path,
-):
-    """Test that missing directories are caught during validation."""
-    config_data = {
-        'directories': ['nonexistent/path'],
-    }
-    config_path = yaml_config_file(config_data)
-
-    with pytest.raises(DirectoryValidationError, match='Missing directories'):
-        load_config(config_path)
+# deprecated test moved to tests/deprecated/config/test_loader_directories.py
+# (covers missing-directory validation for the deprecated `directories` config key)
 
 
-def test_load_config_invalid_directory_not_a_directory(
-    yaml_config_file: YamlConfigFileFixture,
-    tmp_path: Path,
-):
-    """Test that files are rejected when directories are expected."""
-    # Create a file instead of a directory
-    file_path = tmp_path / 'not_a_dir'
-    file_path.write_text('content')
-
-    config_data = {
-        'directories': [str(file_path)],
-    }
-    config_path = yaml_config_file(config_data)
-
-    with pytest.raises(
-        DirectoryValidationError,
-        match=r'Invalid directories.*not a directory',
-    ):
-        load_config(config_path)
+# deprecated test moved to tests/deprecated/config/test_loader_directories.py
+# (covers invalid-directory handling for the deprecated `directories` config key)
 
 
-def test_load_config_missing_repolish_structure(
-    yaml_config_file: YamlConfigFileFixture,
-    tmp_path: Path,
-):
-    """Test that directories without repolish.py/repolish/ are rejected."""
-    # Create directory without required structure
-    dir_path = tmp_path / 'incomplete'
-    dir_path.mkdir()
-
-    config_data = {
-        'directories': [str(dir_path)],
-    }
-    config_path = yaml_config_file(config_data)
-
-    with pytest.raises(
-        DirectoryValidationError,
-        match=r'missing repolish.py or repolish/ folder',
-    ):
-        load_config(config_path)
+# deprecated test moved to tests/deprecated/config/test_loader_directories.py
+# (covers missing repolish structure for the deprecated `directories` config key)
 
 
 def test_load_config_missing_symlink_source(
@@ -200,87 +167,16 @@ def test_load_config_missing_symlink_source(
         load_config(config_path)
 
 
-def test_load_config_with_directories_deprecated_warning(
-    yaml_config_file: YamlConfigFileFixture,
-    template_dir: TemplateDirFixture,
-):
-    """Test that using directories field emits deprecation warning."""
-    dir1 = template_dir('test1')
-
-    config_data = {
-        'directories': [str(dir1)],
-    }
-    config_path = yaml_config_file(config_data)
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter('always')
-        config = load_config(config_path)
-
-        # Check our specific deprecation warning was raised
-        deprecation_warnings = [
-            warning
-            for warning in w
-            if issubclass(warning.category, DeprecationWarning)
-            and 'directories' in str(warning.message).lower()
-            and 'v1.0' in str(warning.message)
-        ]
-        assert len(deprecation_warnings) >= 1
-
-    # But it should still work
-    assert len(config.directories) == 1
-    assert config.directories[0] == dir1.resolve()
+# deprecated test moved to tests/deprecated/config/test_loader_directories.py
+# (ensures using the deprecated `directories` field emits the expected warning)
 
 
-def test_load_config_with_absolute_directories(
-    yaml_config_file: YamlConfigFileFixture,
-    template_dir: TemplateDirFixture,
-):
-    """Test loading with absolute directory paths."""
-    dir1 = template_dir('test1')
-    dir2 = template_dir('test2')
-
-    config_data = {
-        'directories': [str(dir1), str(dir2)],
-        'context': {'key': 'value'},
-    }
-    config_path = yaml_config_file(config_data)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', DeprecationWarning)
-        config = load_config(config_path)
-
-    assert len(config.directories) == 2
-    assert config.directories[0] == dir1.resolve()
-    assert config.directories[1] == dir2.resolve()
-    assert config.context == {'key': 'value'}
+# deprecated test moved to tests/deprecated/config/test_loader_directories.py
+# (absolute `directories` paths are still resolved; tested under deprecated suite)
 
 
-def test_load_config_with_relative_directories(
-    tmp_path: Path,
-    template_dir: TemplateDirFixture,
-):
-    """Test that relative directory paths are resolved correctly."""
-    # Create config in a subdirectory
-    config_dir = tmp_path / 'project'
-    config_dir.mkdir()
-
-    # Create template dirs relative to config
-    template_dir('templates/base', subdir='project')
-
-    config_data = {
-        'directories': ['templates/base'],
-    }
-    config_path = config_dir / 'repolish.yaml'
-    with open_utf8(config_path, 'w') as f:
-        yaml.dump(config_data, f)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', DeprecationWarning)
-        config = load_config(config_path)
-
-    assert len(config.directories) == 1
-    expected_path = (config_dir / 'templates/base').resolve()
-    assert config.directories[0] == expected_path
+# deprecated test moved to tests/deprecated/config/test_loader_directories.py
+# (relative `directories` paths resolution moved into deprecated tests)
 
 
 def test_load_config_with_provider_directory(
@@ -322,6 +218,34 @@ def test_load_config_with_provider_directory(
     assert 'base' in config.providers
     assert config.providers['base'].target_dir == provider_dir.resolve()
     assert config.providers['base'].templates_dir == 'templates'
+
+
+def test_load_config_template_overrides_roundtrip(
+    yaml_config_file: YamlConfigFileFixture,
+):
+    """Ensure template_overrides entries survive validation/resolution."""
+    config_data = {
+        'providers_order': ['test'],
+        'providers': {
+            'test': {'directory': './templates'},
+        },
+        'template_overrides': {'README.md': 'test'},
+    }
+    config_path = yaml_config_file(config_data)
+
+    # create the resolved provider directory structure so validation passes
+    cfg_dir = config_path.parent
+    provider_dir = cfg_dir / 'templates'
+    # config resolution will append another ``templates`` segment, so create
+    # ``templates/templates`` and give it a minimal repolish layout
+    real_templates = provider_dir / 'templates'
+    rep = real_templates / 'repolish'
+    rep.mkdir(parents=True)
+    # also touch a dummy repolish.py so validation is happy
+    (real_templates / 'repolish.py').write_text('')
+
+    config = load_config(config_path)
+    assert config.template_overrides == {'README.md': 'test'}
 
 
 def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):

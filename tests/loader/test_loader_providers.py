@@ -116,6 +116,164 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
             assert path_obj not in got_delete
 
 
+def test_create_providers_records_provider_migrated_flag(tmp_path: Path):
+    # Provider 1 sets provider_migrated=True; Provider 2 does not
+    p1 = tmp_path / 'p1'
+    p1.mkdir()
+    (p1 / 'repolish.py').write_text('provider_migrated = True\n')
+
+    p2 = tmp_path / 'p2'
+    p2.mkdir()
+    (p2 / 'repolish.py').write_text('create_file_mappings = {}\n')
+
+    providers = create_providers([str(p1), str(p2)])
+    migrated = providers.provider_migrated
+    assert isinstance(migrated, dict)
+    assert any(migrated.values())
+    assert any(not v for v in migrated.values())
+
+
+def test_create_providers_records_provider_contexts(tmp_path: Path):
+    # Provider A provides {'a': 1}; Provider B depends on merged value and adds 'b'
+    src_a = dedent(
+        """
+        def create_context():
+            return {'a': 1}
+
+        def create_file_mappings():
+            return {'x.txt': 'tmpl'}
+        """,
+    )
+    src_b = dedent(
+        """
+        def create_context(ctx):
+            return {'b': ctx['a'] + 1}
+
+        def create_file_mappings():
+            return {'y.txt': 'tmpl'}
+        """,
+    )
+
+    dirs = []
+    for i, src in enumerate((src_a, src_b)):
+        d = tmp_path / f'prov{i}'
+        d.mkdir()
+        (d / 'repolish.py').write_text(src)
+        dirs.append(str(d))
+
+    providers = create_providers(dirs)
+
+    # provider_contexts should include per-provider dicts keyed by provider id
+    assert isinstance(providers.provider_contexts, dict)
+    assert len(providers.provider_contexts) == 2
+    # The first provider's context should contain 'a'; second provider's context should contain 'b'
+    pids = list(providers.provider_contexts.keys())
+    assert providers.provider_contexts[pids[0]].get('a') == 1
+    assert providers.provider_contexts[pids[1]].get('b') == 2
+
+
+def test_three_phase_input_routing_and_finalize(tmp_path: Path):
+    """Phase 2/3: provider A sends inputs to provider B and B finalizes context."""
+    # Provider A -> sends an input to provider B
+    p_a = tmp_path / 'prov_a'
+    p_a.mkdir()
+    (p_a / 'repolish.py').write_text(
+        dedent(
+            """
+            from pydantic import BaseModel
+            from repolish.loader.models import Provider
+
+            class AContext(BaseModel):
+                val: int = 1
+
+            class AProvider(Provider[AContext, BaseModel]):
+                def get_provider_name(self) -> str:
+                    return 'prov-a'
+
+                def create_context(self) -> AContext:
+                    return AContext()
+
+                def collect_provider_inputs(self, own_context, all_providers, provider_index):
+                    return {'prov-b': {'register_component': 'database'}}
+            """,
+        ),
+    )
+
+    p_b = tmp_path / 'prov_b'
+    p_b.mkdir()
+    (p_b / 'repolish.py').write_text(
+        dedent(
+            """
+            from pydantic import BaseModel
+            from repolish.loader.models import Provider
+
+            class BContext(BaseModel):
+                registered_components: list[str] = []
+
+            class BInputs(BaseModel):
+                register_component: str
+
+            class BProvider(Provider[BContext, BInputs]):
+                def get_provider_name(self) -> str:
+                    return 'prov-b'
+
+                def create_context(self) -> BContext:
+                    return BContext()
+
+                def get_inputs_schema(self):
+                    return BInputs
+
+                def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
+                    own_context.registered_components = (
+                        own_context.registered_components
+                        + [i.register_component for i in received_inputs]
+                    )
+                    return own_context
+            """,
+        ),
+    )
+
+    providers = create_providers([str(p_a), str(p_b)])
+    pids = list(providers.provider_contexts.keys())
+    assert providers.provider_contexts[pids[1]].get(
+        'registered_components',
+    ) == ['database']
+
+
+def test_collect_provider_inputs_skipped_for_end_providers(tmp_path: Path):
+    """Providers at the end with no later recipients should not have collect_provider_inputs() called."""
+    p0 = tmp_path / 'p0'
+    p0.mkdir()
+    (p0 / 'repolish.py').write_text(
+        dedent(
+            """
+            from pydantic import BaseModel
+            from repolish.loader.models import Provider
+
+            class Ctx(BaseModel):
+                pass
+
+            class P0(Provider[Ctx, BaseModel]):
+                def get_provider_name(self) -> str:
+                    return 'p0'
+
+                def create_context(self) -> Ctx:
+                    return Ctx()
+
+                def collect_provider_inputs(self, own_context, all_providers, provider_index):
+                    raise RuntimeError('should not be called')
+            """,
+        ),
+    )
+
+    p1 = tmp_path / 'p1'
+    p1.mkdir()
+    (p1 / 'repolish.py').write_text('\ndef create_context():\n    return {}\n')
+
+    # Should not raise (collect_provider_inputs of p0 must be skipped)
+    create_providers([str(p0), str(p1)])
+
+
 # Additional edge cases expressed with the same ProviderCase dataclass
 @pytest.mark.parametrize(
     'case',
@@ -268,6 +426,43 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
     assert providers.anchors == case.expected_anchors
     got_delete = {Path(p) for p in providers.delete_files}
     assert got_delete == set(case.expected_delete)
+
+
+def test_create_providers_permissive_by_default_allows_missing_mappings(
+    tmp_path: Path,
+):
+    """Missing `create_file_mappings` is accepted by default (backward compat)."""
+    provider_dir = tmp_path / 'provider'
+    provider_dir.mkdir()
+    (provider_dir / 'repolish.py').write_text(
+        dedent(
+            """
+            def create_context():
+                return {'a': 1}
+            """,
+        ),
+    )
+
+    providers = create_providers([str(provider_dir)])
+    assert providers.context == {'a': 1}
+    assert providers.file_mappings == {}
+
+
+def test_create_providers_require_file_mappings_opt_in_raises(tmp_path: Path):
+    """When `require_file_mappings=True`, missing mappings raise (opt-in)."""
+    provider_dir = tmp_path / 'provider'
+    provider_dir.mkdir()
+    (provider_dir / 'repolish.py').write_text(
+        dedent(
+            """
+            def create_context():
+                return {'a': 1}
+            """,
+        ),
+    )
+
+    with pytest.raises(RuntimeError):
+        create_providers([str(provider_dir)], require_file_mappings=True)
 
 
 def test_normalize_delete_items_skips_non_strings():
@@ -509,6 +704,71 @@ def test_validate_provider_no_warnings_for_normal_variables(
         call for call in mock_logger.warning.call_args_list if 'suspicious_provider_variable' in str(call)
     ]
     assert len(warning_calls) == 0, f'Expected no warnings for normal variables, got: {warning_calls}'
+
+
+def test_loader_instantiates_class_based_provider(tmp_path: Path):
+    """Loader should detect and use a Provider subclass exported by module."""
+    provider_dir = tmp_path / 'provider'
+    provider_dir.mkdir()
+
+    (provider_dir / 'repolish.py').write_text(
+        dedent(
+            """
+            from pydantic import BaseModel
+            from repolish.loader.models import Provider
+
+            class Ctx(BaseModel):
+                name: str = 'from-class'
+
+            class MyProvider(Provider[Ctx, BaseModel]):
+                def get_provider_name(self) -> str:
+                    return 'my'
+
+                def create_context(self) -> Ctx:
+                    return Ctx(name='created-by-class')
+            """,
+        ),
+    )
+
+    providers = create_providers([str(provider_dir)])
+    assert providers.context.get('name') == 'created-by-class'
+
+
+def test_validate_provider_emits_migration_suggestion(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
+    """If module-style provider is detected, emit migration suggestion."""
+    provider_dir = tmp_path / 'provider'
+    provider_dir.mkdir()
+
+    mock_logger = mocker.patch('repolish.loader.validation.logger')
+
+    (provider_dir / 'repolish.py').write_text(
+        dedent(
+            """
+            def create_context():
+                return {'a': 1}
+
+            def create_file_mappings():
+                return {'x': 'y'}
+
+            def create_delete_files():
+                return ['old.txt']
+            """,
+        ),
+    )
+
+    create_providers([str(provider_dir)])
+
+    # Should have emitted a provider_migration_suggestion warning
+    warning_calls = [
+        call for call in mock_logger.warning.call_args_list if 'provider_migration_suggestion' in str(call)
+    ]
+    assert len(warning_calls) > 0
+    # Verify suggested methods mention class-style equivalents
+    assert any('create_context' in str(call) for call in warning_calls)
+    assert any('create_file_mappings' in str(call) for call in warning_calls)
 
 
 def test_is_suspicious_variable_returns_false_for_normal_names():

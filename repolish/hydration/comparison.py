@@ -5,9 +5,9 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.hydration.context import _is_conditional_file
+from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.loader import Providers
-
-from .context import _is_conditional_file
 
 logger = get_logger(__name__)
 
@@ -176,6 +176,16 @@ def _check_single_file_mapping(
     return (dest_path, ud)
 
 
+def _should_skip_mapping(
+    dest_path: str,
+    delete_files_set: set[str],
+    create_only_files_set: set[str],
+    base_dir: Path,
+) -> bool:
+    """Return True when the mapping should be skipped from checks."""
+    return dest_path in delete_files_set or (dest_path in create_only_files_set and (base_dir / dest_path).exists())
+
+
 def _check_file_mappings(
     providers: Providers,
     setup_output: Path,
@@ -185,29 +195,25 @@ def _check_file_mappings(
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
-    Args:
-        providers: Providers object with file_mappings, delete_files, and create_only_files.
-        setup_output: Path to the cookiecutter output directory.
-        base_dir: Base directory where the project root is located.
-        preserve: Whether to preserve line endings when comparing files.
-
-    Returns list of (relative_path, message_or_diff).
+    Implementation delegates skip logic and source normalization to helpers
+    so the main loop remains small and easy to follow.
     """
     diffs: list[tuple[str, str]] = []
     delete_files_set = {p.as_posix() for p in providers.delete_files}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     for dest_path, source_path in providers.file_mappings.items():
-        # Skip files marked for deletion (they'll be checked separately)
-        if dest_path in delete_files_set:
+        if _should_skip_mapping(
+            dest_path,
+            delete_files_set,
+            create_only_files_set,
+            base_dir,
+        ):
             continue
 
-        # Skip create-only files that already exist (no diff should be shown)
-        if dest_path in create_only_files_set and (base_dir / dest_path).exists():
+        src = get_source_str_from_mapping(source_path)
+        if not src:
             continue
-
-        # Normalize tuple-valued mappings to the source string for checking
-        src = source_path[0] if isinstance(source_path, tuple) else source_path
 
         result = _check_single_file_mapping(
             dest_path,

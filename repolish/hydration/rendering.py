@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from shutil import copy2
+from typing import cast
 
 from cookiecutter.main import cookiecutter
 from hotlog import get_logger
@@ -10,9 +11,11 @@ from jinja2 import (
     TemplateSyntaxError,
     select_autoescape,
 )
+from pydantic import BaseModel
 
 from repolish.config.models import RepolishConfig
 from repolish.loader import Providers
+from repolish.loader.types import FileMode, TemplateMapping
 
 logger = get_logger(__name__)
 
@@ -141,9 +144,26 @@ def render_template(
 
     # Collect templates that must be skipped during the generic render pass
     # because they will be rendered later with per-mapping extra context.
+    # We expect `TemplateMapping` instances for per-file extra context.
+
     skip_templates = {
-        v[0] for v in providers.file_mappings.values() if isinstance(v, tuple) and v and isinstance(v[0], str)
+        v.source_template
+        for v in providers.file_mappings.values()
+        if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
     }
+
+    # If provider-scoped mapping rendering is requested, enforce that *all*
+    # providers are migrated. This is a strict, opt-in breaking behaviour so
+    # callers must explicitly mark providers as migrated (module-level
+    # `provider_migrated = True`) before enabling the feature.
+    if getattr(config, 'provider_scoped_template_context', False):
+        unmigrated = [p for p, m in providers.provider_migrated.items() if not m]
+        if unmigrated:
+            msg = (
+                'provider_scoped_template_context=True requires all providers to be migrated; '
+                f'unmigrated providers: {unmigrated}'
+            )
+            raise RuntimeError(msg)
 
     if config.no_cookiecutter:
         render_with_jinja(
@@ -153,86 +173,188 @@ def render_template(
             skip_templates=skip_templates,
         )
     else:
-        if skip_templates:  # pragma: no cover -- this section will go away no point on testing
-            msg = 'tuple-valued file_mappings require config.no_cookiecutter=True'
+        if skip_templates:  # pragma: no cover -- cookiecutter path not supported for per-file TemplateMapping
+            msg = 'TemplateMapping entries require config.no_cookiecutter=True'
             raise RuntimeError(msg)
         render_with_cookiecutter(setup_input, merged_ctx, setup_output)
 
-    # Materialize tuple-valued mappings (render template per-mapping using
+    # Materialize TemplateMapping entries (render template per-mapping using
     # merged_ctx + extra_ctx) in a helper to keep `render_template` small.
-    _process_tuple_file_mappings(
+    _process_template_mappings(
         setup_input,
         setup_output,
         providers,
         merged_ctx,
+        use_provider_context=bool(
+            getattr(config, 'provider_scoped_template_context', False),
+        ),
     )
 
 
-def _process_tuple_file_mappings(
+def _load_and_validate_template(
+    template_file: Path,
+    providers: Providers,
+    dest_path: str,
+) -> str | None:
+    """Return the template text or None and remove the mapping on failure."""
+    if not template_file.exists():
+        logger.warning(
+            'file_mapping_template_not_found',
+            template=str(template_file),
+            dest=dest_path,
+        )
+        providers.file_mappings.pop(dest_path, None)
+        return None
+    try:
+        return template_file.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.exception(
+            'file_mapping_template_unreadable',
+            template=str(template_file),
+            error=str(exc),
+        )
+        providers.file_mappings.pop(dest_path, None)
+        return None
+
+
+def _extra_context_to_dict(extra_ctx: object | None) -> dict[str, object]:
+    """Normalize typed or untyped extra-context into a plain dict.
+
+    Accepts Pydantic models or plain dicts; unknown types and None map to
+    an empty dict to preserve rendering stability.
+    """
+    if isinstance(extra_ctx, BaseModel):
+        return cast('dict[str, object]', extra_ctx.model_dump())
+    if isinstance(extra_ctx, dict):
+        # only module style  providers may hit this branch.
+        return cast(
+            'dict[str, object]',
+            extra_ctx,
+        )  # pragma: no cover -- branch to be removed in v1
+    return {}
+
+
+def _render_mapping_text(
+    env: Environment,
+    txt: str,
+    base_ctx: dict,
+    extra_ctx: object,
+) -> str:
+    """Render mapping text with a base context (either merged or provider-scoped) and per-mapping extra context."""
+    extra_ctx_dict = _extra_context_to_dict(extra_ctx)
+    render_ctx = {**base_ctx, **extra_ctx_dict}
+    # Pass merged-style `cookiecutter` namespace for backward compatibility
+    return env.from_string(txt).render(**render_ctx, cookiecutter=base_ctx)
+
+
+def _choose_base_ctx_for_mapping(
+    source_provider: str | None,
+    *,
+    use_provider_context: bool,
+    merged_ctx: dict,
+    providers: Providers,
+) -> dict:
+    """Return the appropriate base context for rendering a mapping.
+
+    - If provider-scoped rendering is disabled, returns merged_ctx.
+    - If enabled and the declaring provider is migrated, returns that provider's
+      captured context. Otherwise raises a RuntimeError.
+    """
+    if not use_provider_context or not source_provider:
+        return merged_ctx
+
+    migrated = providers.provider_migrated.get(source_provider, False)
+    if migrated:
+        return providers.provider_contexts.get(source_provider) or merged_ctx
+
+    # development-only error path; once all providers are migrated this
+    # branch will never be hit and the associated message can be removed. we
+    # mark it ``no cover`` so tests aren't forced to simulate an unmigrated
+    # provider just to satisfy coverage tools.
+    msg = (  # pragma: no cover
+        f'provider {source_provider!r} is not migrated; '
+        'enable provider_migrated=True on the provider before using '
+        'provider_scoped_template_context'
+    )
+    raise RuntimeError(msg)  # pragma: no cover
+
+
+def _render_single_mapping(
+    dest_path: str,
+    mapping: TemplateMapping,
+    ctx: dict,
+) -> None:
+    """Render and materialize a single TemplateMapping entry.
+
+    `ctx` is a small context dict containing: setup_input, setup_output,
+    providers, merged_ctx and use_provider_context. Packing into `ctx`
+    keeps the arg-count low and the function easy to call from the loop.
+    """
+    setup_input: Path = ctx['setup_input']
+    setup_output: Path = ctx['setup_output']
+    providers: Providers = ctx['providers']
+    merged_ctx: dict = ctx['merged_ctx']
+    use_provider_context: bool = ctx['use_provider_context']
+
+    if mapping.file_mode == FileMode.DELETE:
+        providers.file_mappings.pop(dest_path, None)
+        return
+
+    src_template = mapping.source_template
+    if not src_template:
+        providers.file_mappings.pop(dest_path, None)
+        return
+
+    project_root = setup_input / '{{cookiecutter._repolish_project}}'
+    template_file = project_root / src_template
+    txt = _load_and_validate_template(template_file, providers, dest_path)
+    if txt is None:
+        return
+
+    env = Environment(
+        autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
+        undefined=StrictUndefined,
+        keep_trailing_newline=True,
+    )
+
+    base_ctx = _choose_base_ctx_for_mapping(
+        mapping.source_provider,
+        use_provider_context=use_provider_context,
+        merged_ctx=merged_ctx,
+        providers=providers,
+    )
+    rendered = _render_mapping_text(env, txt, base_ctx, mapping.extra_context)
+
+    target = setup_output / str(merged_ctx.get('_repolish_project', 'repolish')) / dest_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(rendered, encoding='utf-8')
+
+    # Normalize mapping so downstream code sees a string source path
+    providers.file_mappings[dest_path] = dest_path
+
+
+def _process_template_mappings(
     setup_input: Path,
     setup_output: Path,
     providers: Providers,
     merged_ctx: dict,
+    *,
+    use_provider_context: bool = False,
 ) -> None:
-    """Render and materialize tuple-valued file_mappings into setup-output.
+    """Render and materialize `TemplateMapping`-valued file_mappings into setup-output.
 
-    Each tuple mapping is of the form (source_template, extra_context). We
-    render the template with merged_ctx updated by extra_context and write
-    the result to the staged `setup-output` under the expected destination
-    path so downstream checks/apply can treat the mapping as a normal file.
+    Implementation delegates per-mapping work to helpers to reduce the
+    overall cognitive complexity of the function.
     """
-    project_root = setup_input / '{{cookiecutter._repolish_project}}'
-    project_name = str(merged_ctx.get('_repolish_project', 'repolish'))
+    ctx = {
+        'setup_input': setup_input,
+        'setup_output': setup_output,
+        'providers': providers,
+        'merged_ctx': merged_ctx,
+        'use_provider_context': use_provider_context,
+    }
 
     for dest_path, source_val in list(providers.file_mappings.items()):
-        if not (isinstance(source_val, tuple) and len(source_val) == 2):
+        if not isinstance(source_val, TemplateMapping):
             continue
-
-        src_template, extra_ctx = source_val
-        template_file = project_root / src_template
-        if not template_file.exists():  # pragma: no cover -- see below
-            # will be caught by earlier existence check in render_with_jinja
-            logger.warning(
-                'file_mapping_template_not_found',
-                template=str(template_file),
-                dest=dest_path,
-            )
-            providers.file_mappings.pop(dest_path, None)
-            continue
-
-        try:
-            txt = template_file.read_text(encoding='utf-8')
-        except (
-            OSError,
-            UnicodeDecodeError,
-        ) as exc:  # pragma: no cover -- see below
-            # will be caught by earlier existence check in render_with_jinja
-            logger.exception(
-                'file_mapping_template_unreadable',
-                template=str(template_file),
-                error=str(exc),
-            )
-            providers.file_mappings.pop(dest_path, None)
-            continue
-
-        env = Environment(
-            autoescape=select_autoescape(
-                ['html', 'xml'],
-                default_for_string=False,
-            ),
-            undefined=StrictUndefined,
-            keep_trailing_newline=True,
-        )
-
-        render_ctx = {**merged_ctx, **(extra_ctx or {})}
-        rendered = env.from_string(txt).render(
-            **render_ctx,
-            cookiecutter=merged_ctx,
-        )
-
-        target = setup_output / project_name / dest_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(rendered, encoding='utf-8')
-
-        # Normalize mapping so downstream code sees a string source path
-        providers.file_mappings[dest_path] = dest_path
+        _render_single_mapping(dest_path, source_val, ctx)

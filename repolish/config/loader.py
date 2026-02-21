@@ -2,9 +2,12 @@ from pathlib import Path
 
 import yaml
 
-from .models import RepolishConfig, RepolishConfigFile
-from .resolution import resolve_config
-from .validation import validate_config_file, validate_resolved_config
+from repolish.config.models import RepolishConfig, RepolishConfigFile
+from repolish.config.resolution import resolve_config
+from repolish.config.validation import (
+    validate_config_file,
+    validate_resolved_config,
+)
 
 
 def load_config_file(yaml_file: Path) -> RepolishConfigFile:

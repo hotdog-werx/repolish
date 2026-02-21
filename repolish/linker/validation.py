@@ -4,8 +4,10 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.exceptions import SymlinkError
-
-from .windows_utils import normalize_windows_path, supports_symlinks
+from repolish.linker.windows_utils import (
+    normalize_windows_path,
+    supports_symlinks,
+)
 
 logger = get_logger(__name__)
 

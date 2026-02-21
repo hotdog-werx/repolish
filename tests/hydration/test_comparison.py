@@ -7,6 +7,36 @@ import pytest
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.display import rich_print_diffs
 from repolish.loader import Providers
+from repolish.loader.types import TemplateMapping
+
+
+def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
+    """Mappings with ``None`` source are ignored by the comparison step.
+
+    This covers the branch in :func:`~repolish.hydration.comparison._check_file_mappings`
+    where the normalized source string is falsey and the entry is skipped. It
+    mirrors the behavioural contract of the application module: providers may
+    cancel a generated file by returning ``None`` in the mapping.
+    """
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish').mkdir(parents=True)
+    # no actual source file is needed for this test
+
+    project_root = tmp_path / 'proj'
+    project_root.mkdir()
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        file_mappings={
+            'dest.txt': TemplateMapping(source_template=None),
+        },
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, project_root)
+    assert diffs == [], 'Mapping with None source should be ignored'
 
 
 def test_check_generated_output_reports_missing_and_diff(

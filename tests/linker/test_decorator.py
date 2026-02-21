@@ -11,8 +11,7 @@ import pytest_mock
 
 from repolish.linker import Symlink
 from repolish.linker.decorator import resource_linker, resource_linker_cli
-
-from .conftest import (
+from tests.linker.conftest import (
     BasicLinkCliFixture,
     MockedPackageDict,
     PackageDictFixture,
