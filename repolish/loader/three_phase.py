@@ -7,6 +7,7 @@ from pydantic import BaseModel as _BaseModel
 
 from repolish.loader._log import logger
 from repolish.loader.models import Provider as _ProviderBase
+from repolish.loader.module_loader import ModuleProviderAdapter
 from repolish.misc import ctx_to_dict
 
 # helpers previously nested inside orchestrator._run_three_phase ------------
@@ -24,10 +25,14 @@ def build_provider_metadata(
     canonical_name_to_pid: dict[str, str] = {}
 
     for _idx, (provider_id, module_dict) in enumerate(module_cache):
-        migrated = module_dict.get('provider_migrated')
-        provider_migrated_map[provider_id] = bool(migrated) if isinstance(migrated, bool) else False
-
         inst = module_dict.get('_repolish_provider_instance')
+        # explicit flag may be any truthy value; adapters should not count as
+        # migrated even though they are instances of ``Provider``.  only real
+        # class-based providers cause automatic migration.
+        is_adapter = isinstance(inst, ModuleProviderAdapter)
+        migrated = bool(module_dict.get('provider_migrated')) or (inst is not None and not is_adapter)
+        provider_migrated_map[provider_id] = migrated
+
         instances.append(inst if isinstance(inst, _ProviderBase) else None)
         if inst:
             try:

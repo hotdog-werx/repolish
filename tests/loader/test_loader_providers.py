@@ -135,6 +135,38 @@ def test_create_providers_records_provider_migrated_flag(tmp_path: Path):
     assert any(not v for v in migrated.values())
 
 
+def test_class_based_provider_is_marked_migrated(tmp_path: Path):
+    """Providers implemented as a subclass should be considered migrated.
+
+    The loader previously required an explicit ``provider_migrated = True``
+    variable; after the change any module that exports a ``Provider``
+    instance will be treated as migrated automatically.  This makes the
+    assumption stated in the apply command docs true and avoids needing to
+    update the boolean in every provider.
+    """
+    p = tmp_path / 'p'
+    p.mkdir()
+    (p / 'repolish.py').write_text(
+        """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+class Ctx(BaseModel):
+    val: int = 42
+
+class P(Provider[Ctx, BaseModel]):
+    def get_provider_name(self) -> str:
+        return 'foo'
+    def create_context(self) -> Ctx:
+        return Ctx()
+""",
+    )
+
+    provider_id = str(p)
+    providers = create_providers([provider_id])
+    assert providers.provider_migrated.get(provider_id) is True
+
+
 def test_create_providers_records_provider_contexts(tmp_path: Path):
     # Provider A provides {'a': 1}; Provider B depends on merged value and adds 'b'
     src_a = dedent(
