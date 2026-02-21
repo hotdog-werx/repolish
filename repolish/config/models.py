@@ -37,7 +37,15 @@ class ProviderSymlink(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    """Configuration for a single provider."""
+    """Configuration for a single provider.
+
+    Users may now specify an optional ``context`` mapping on a per-provider
+    basis; values supplied here are merged into the context produced by the
+    provider itself, giving projects the ability to tweak or override provider
+    defaults without editing the provider code.  This field is intentionally
+    named ``context`` to mirror the top-level configuration key and keep the
+    YAML concise.
+    """
 
     cli: str | None = Field(
         default=None,
@@ -54,6 +62,17 @@ class ProviderConfig(BaseModel):
     symlinks: list[ProviderSymlink] | None = Field(
         default=None,
         description='Symlinks from resources to repo. Use provider defaults with None. Skip symlinks with empty list.',
+    )
+    context: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional overrides to merge into this provider's context after evaluation.",
+    )
+    context_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Dot-notation overrides to apply to this provider's context (opt-in;"
+            ' providers must also be migrated to use).'
+        ),
     )
 
     @model_validator(mode='after')
@@ -303,6 +322,10 @@ class ResolvedProviderInfo(BaseModel):
 
     This combines data from ProviderConfig (YAML) and ProviderInfo (JSON)
     with all paths resolved and validated.
+
+    The ``context`` field mirrors the top-level project ``context`` but is
+    scoped to a single provider; values supplied here are merged into the
+    context captured from the provider during loading.
     """
 
     alias: str = Field(
@@ -322,6 +345,16 @@ class ResolvedProviderInfo(BaseModel):
     symlinks: list[ProviderSymlink] = Field(
         default_factory=list,
         description='Additional symlinks to create from provider resources to repo',
+    )
+    context: dict[str, Any] | None = Field(
+        default=None,
+        description='Provider-specific context overrides from the project configuration.',
+    )
+    context_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            'Provider-scoped dotted-path overrides; applied after `context` and before global context overrides.'
+        ),
     )
 
 

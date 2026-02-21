@@ -2,8 +2,10 @@
 
 from pathlib import Path
 from textwrap import dedent
+from typing import cast
 
 from repolish.config import RepolishConfig
+from repolish.config.models import ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
 
 
@@ -50,3 +52,103 @@ def test_config_level_provenance(tmp_path: Path):
     assert len(b_hist) >= 1
     assert b_hist[-1].source == cfg.config_dir.as_posix()
     assert b_hist[-1].action.value == 'delete'
+
+    # even when using the deprecated ``directories`` key the
+    # Providers object still exposes the new metadata fields so client
+    # code doesn't need special-case logic.  we don't care how many entries
+    # are present (module-style loaders always add a key) but the attributes
+    # themselves must exist and be the expected types.
+    assert isinstance(providers.provider_contexts, dict)
+    assert isinstance(providers.provider_migrated, dict)
+    # there should be at most one provider in this simple scenario
+    assert len(providers.provider_contexts) <= 1
+    assert len(providers.provider_migrated) <= 1
+
+
+def test_per_provider_context_override(tmp_path: Path):
+    """A user config can override the context produced by a single provider.
+
+    The override should affect both the per-provider context map and the
+    flattened context that ends up in ``Providers.context`` so that other
+    providers (and template rendering) see the updated value.
+    """
+    # create a simple provider that returns one key
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        """def create_context():
+    return {'foo': 'orig'}
+""",
+    )
+
+    # we build a minimal ResolvedProviderInfo so that
+    # ``build_final_providers`` can map the alias back to the provider path
+
+    info = ResolvedProviderInfo(
+        alias='p',
+        target_dir=prov,
+        templates_dir='',
+        symlinks=[],
+        context={'foo': 'override'},
+    )
+    cfg = RepolishConfig.model_validate(
+        {
+            'config_dir': tmp_path,
+            'directories': [prov],
+            'context': {},
+            'context_overrides': {},
+            'anchors': {},
+            'post_process': [],
+            'delete_files': [],
+            'providers': {prov.as_posix(): info},
+        },
+    )
+
+    providers = build_final_providers(cfg)
+    pid = prov.as_posix()
+    # the override should be written into providers.provider_contexts
+    ctx = cast('dict', providers.provider_contexts.get(pid, {}))
+    assert ctx.get('foo') == 'override'
+    global_ctx = cast('dict', providers.context)
+    assert global_ctx.get('foo') == 'override'
+
+
+def test_provider_context_overrides_dotted(tmp_path: Path):
+    """Dotted-path overrides on a provider config should patch the captured context."""
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        """def create_context():
+    return {'nested': {'key': 'orig'}}
+""",
+    )
+
+    info = ResolvedProviderInfo(
+        alias='p',
+        target_dir=prov,
+        templates_dir='',
+        symlinks=[],
+        context=None,
+        context_overrides={'nested.key': 'patched', 'new': 123},
+    )
+    cfg = RepolishConfig.model_validate(
+        {
+            'config_dir': tmp_path,
+            'directories': [prov],
+            'context': {},
+            'context_overrides': {},
+            'anchors': {},
+            'post_process': [],
+            'delete_files': [],
+            'providers': {prov.as_posix(): info},
+        },
+    )
+
+    providers = build_final_providers(cfg)
+    pid = prov.as_posix()
+    ctx = cast('dict', providers.provider_contexts.get(pid, {}))
+    assert ctx['nested']['key'] == 'patched'
+    assert ctx['new'] == 123
+    global_ctx = cast('dict', providers.context)
+    assert global_ctx['nested']['key'] == 'patched'
+    assert global_ctx['new'] == 123

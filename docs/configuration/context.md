@@ -190,6 +190,27 @@ of unmigrated providers so you can continue migrating safely.
   provider keys. Use explicit namespacing (for example `provider_name.key`) when
   you expect keys to be overridden accidentally.
 
+- **Provider-specific context** (_new_): instead of a separate top‑level
+  mapping, you now specify an optional `context` mapping directly on each
+  provider configuration entry. These values are merged into the context
+  produced by the provider during loading and then incorporated into the global
+  merged context, giving your project configuration fine‑grained control over
+  individual providers without scattering unrelated settings across the file.
+
+  ```yaml
+  providers:
+    foo:
+      cli: foo-link
+      context:
+        foo_key: overridden
+      context_overrides:
+        'foo_key': 'more-specific' # dotted paths work too
+    bar:
+      directory: ./local-templates
+      context:
+        bar_flag: true
+  ```
+
 ## Context overrides
 
 For fine-grained control over deeply nested context values without duplicating

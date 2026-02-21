@@ -14,6 +14,7 @@ from repolish.config.models import (
     ProviderInfo,
     RepolishConfigFile,
 )
+from repolish.config.resolution import resolve_config
 from repolish.exceptions import ProviderConfigError
 
 
@@ -236,3 +237,40 @@ def test_provider_shorthand_normalization(case: ProviderShorthandCase):
         assert isinstance(provider, ProviderConfig)
         assert provider.cli == expected_cli
         assert provider.directory == case.expected_directory[provider_name]
+
+
+def test_provider_config_context_roundtrip(tmp_path: Path):
+    """ProviderConfig should accept a `context` mapping.
+
+    Resolution should carry it through to the runtime model.
+    """
+    # create a fake provider directory so that resolution will include it
+    prov_dir = tmp_path / 'prov'
+    prov_dir.mkdir()
+
+    raw = RepolishConfigFile(
+        providers={
+            'foo': ProviderConfig(
+                directory=str(prov_dir),
+                context={'a': 1},
+                context_overrides={'a': 2, 'nested.key': 'val'},
+            ),
+        },
+    )
+    # normalization should leave our field intact
+    assert 'foo' in raw.providers
+    assert raw.providers['foo'].context == {'a': 1}
+
+    # resolve to runtime config and ensure context is preserved
+
+    tmpdir = tmp_path / 'cfg'
+    tmpdir.mkdir()
+    raw.config_file = tmpdir / 'repolish.yaml'
+    resolved = resolve_config(raw)
+    assert 'foo' in resolved.providers
+    assert resolved.providers['foo'].context == {'a': 1}
+    # context_overrides should roundtrip as well
+    assert resolved.providers['foo'].context_overrides == {
+        'a': 2,
+        'nested.key': 'val',
+    }

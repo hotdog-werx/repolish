@@ -14,7 +14,6 @@ from repolish.hydration.comparison import (
     collect_output_files,
 )
 from repolish.hydration.context import (
-    _is_conditional_file,
     build_final_providers,
 )
 from repolish.hydration.display import rich_print_diffs
@@ -28,7 +27,6 @@ __all__ = [
     '_check_regular_files',
     '_check_single_file_mapping',
     '_compare_and_prepare_diff',
-    '_is_conditional_file',
     '_preserve_line_endings',
     'apply_generated_output',
     'build_final_providers',

@@ -241,7 +241,7 @@ def render_template(
         providers,
         merged_ctx,
         use_provider_context=bool(
-            getattr(config, 'provider_scoped_template_context', False),
+            config.provider_scoped_template_context,
         ),
     )
 

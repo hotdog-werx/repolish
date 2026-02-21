@@ -156,6 +156,8 @@ def _resolve_single_provider(
             templates_dir=provider_info.templates_dir or provider_config.templates_dir,
             library_name=provider_info.library_name,
             symlinks=symlinks,
+            context=provider_config.context,
+            context_overrides=provider_config.context_overrides or None,
         )
     if provider_config.directory:
         # Use direct directory from config
@@ -168,6 +170,8 @@ def _resolve_single_provider(
             templates_dir=provider_config.templates_dir,
             library_name=None,
             symlinks=symlinks,
+            context=provider_config.context,
+            context_overrides=provider_config.context_overrides or None,
         )
     # Neither info file nor directory config
     logger.warning(

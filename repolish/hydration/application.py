@@ -4,10 +4,10 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.hydration.comparison import collect_output_files
-from repolish.hydration.context import _is_conditional_file
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.loader import Providers
 from repolish.loader.types import TemplateMapping
+from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ def _apply_regular_files(
         rel_str = rel.as_posix()
 
         # Skip conditional files (files with _repolish. prefix anywhere in path)
-        if _is_conditional_file(rel_str):
+        if is_conditional_file(rel_str):
             logger.debug('skipping_repolish_prefix_file', file=rel_str)
             continue
 

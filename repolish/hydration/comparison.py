@@ -5,9 +5,9 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.hydration.context import _is_conditional_file
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.loader import Providers
+from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)
 
@@ -100,7 +100,7 @@ def _check_regular_files(
         rel_str = rel.as_posix()
 
         # Skip conditional files (files with _repolish. prefix anywhere in path)
-        if _is_conditional_file(rel_str):
+        if is_conditional_file(rel_str):
             continue
 
         # Skip files that are mapped sources, marked for deletion, or create-only files that exist
