@@ -38,7 +38,7 @@ def test_render_template_with_no_cookiecutter_renders_jinja(tmp_path: Path):
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
 
-    create_cookiecutter_template(setup_input, [tpl])
+    _, _ = create_cookiecutter_template(setup_input, [tpl])
 
     providers = Providers(
         context={
@@ -79,7 +79,7 @@ def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    _, _ = create_cookiecutter_template(setup_input, [tpl])
 
     providers = Providers(
         context={'package_name': 'acme', '_repolish_project': 'repolish'},
@@ -113,7 +113,7 @@ def test_render_with_file_mappings_generates_multiple_files(
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
 
-    create_cookiecutter_template(setup_input, [tpl])
+    _, _ = create_cookiecutter_template(setup_input, [tpl])
 
     class ItemCtx(BaseModel):
         file_number: int
@@ -161,7 +161,7 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
 
-    create_cookiecutter_template(setup_input, [tpl])
+    _, _ = create_cookiecutter_template(setup_input, [tpl])
 
     providers = Providers(
         context={'_repolish_project': 'repolish'},
@@ -202,7 +202,7 @@ def test_cookiecutter_and_jinja_paths_produce_equivalent_output(tmp_path: Path):
 
     # --- cookiecutter run (default) ---
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    _, _ = create_cookiecutter_template(setup_input, [tpl])
     providers = Providers(
         context={'package_name': 'demo', 'description': 'Demo project'},
     )
@@ -216,7 +216,7 @@ def test_cookiecutter_and_jinja_paths_produce_equivalent_output(tmp_path: Path):
 
     # --- jinja run (opted-out) ---
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    _, _ = create_cookiecutter_template(setup_input, [tpl])
     preprocess_templates(setup_input, providers, config, base_dir)
 
     config.no_cookiecutter = True
@@ -445,6 +445,49 @@ def create_context():
     # rendering should blow up because ``foo`` was stripped from merged_ctx
     with pytest.raises(UndefinedError):
         render_template(setup_input, providers, setup_output, config)
+
+
+def test_generic_templates_get_provider_context_when_scoped(tmp_path: Path):
+    """When provider-scoped rendering is enabled we use the provider's own context.
+
+    Context selection uses the provenance map produced during staging.
+    """
+    # create a migrated provider that supplies a single template
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    rep = prov / 'repolish'
+    rep.mkdir()
+    (rep / 'foo.jinja').write_text('VALUE={{ foo }}\n')
+    # provider module indicating migrated and providing context
+    (prov / 'repolish.py').write_text(
+        """provider_migrated = True
+
+def create_context():
+    return {'foo': 'A'}
+""",
+    )
+
+    providers = create_providers([str(prov)])
+    # force the migration flag and context (loader normally does this)
+    pid = next(iter(providers.provider_contexts.keys()))
+    providers.provider_migrated = {pid: True}
+    providers.provider_contexts = {pid: {'foo': 'A'}}
+
+    # stage the template directory with alias equal to pid so the sources map
+    # records the correct provider identifier
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    _, sources = create_cookiecutter_template(setup_input, [(pid, prov)])
+    providers.template_sources = sources
+
+    preprocess_templates(setup_input, providers, config, base_dir)
+    config.no_cookiecutter = True
+    config.provider_scoped_template_context = True
+
+    render_template(setup_input, providers, setup_output, config)
+    out = setup_output / 'repolish' / 'foo'
+    assert out.exists()
+    assert out.read_text(encoding='utf-8').strip() == 'VALUE=A'
 
 
 def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):

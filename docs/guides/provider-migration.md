@@ -34,7 +34,10 @@ Quick checklist (practical)
 5. Add/adjust unit tests for the provider to assert provider-scoped rendering
    behaviour (see test suggestions below).
 6. In your project config: flip `provider_scoped_template_context: true` and run
-   `poe ci-checks` / CI to detect remaining cross-provider usage.
+   `poe ci-checks` / CI to detect remaining cross-provider usage. The staging
+   step records which provider supplied each template, so once the flag is
+   enabled generic files (not just `TemplateMapping` entries) will render with
+   the owning provider's context when the provider is marked migrated.
 
 Example: before → after (small provider)
 

@@ -44,7 +44,7 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     # Stage the template into setup_input using the builder helper
     staging = tmp_path / '.repolish'
     setup_input = staging / 'setup-input'
-    create_cookiecutter_template(setup_input, [t1])
+    _, _ = create_cookiecutter_template(setup_input, [t1])
 
     # Find the staged secret file and make it unreadable
     staged_secret = setup_input / '{{cookiecutter._repolish_project}}' / 'secret.txt'

@@ -8,7 +8,7 @@ def create_cookiecutter_template(
     template_directories: list[Path] | list[tuple[str | None, Path]],
     *,
     template_overrides: dict[str, str] | None = None,
-) -> Path:
+) -> tuple[Path, dict[str, str]]:
     """Create a cookiecutter template in a staging directory.
 
     This function merges a sequence of provider template directories into a
@@ -44,6 +44,9 @@ def create_cookiecutter_template(
         else:
             entries.append((None, entry))
 
+    # we'll record which provider supplied each file (relative path -> pid)
+    sources: dict[str, str] = {}
+
     if staging_dir.exists():
         shutil.rmtree(staging_dir)
     staging_dir.mkdir(parents=True, exist_ok=True)
@@ -54,8 +57,9 @@ def create_cookiecutter_template(
             staging_dir,
             alias=alias,
             overrides=template_overrides,
+            sources=sources,
         )
-    return staging_dir
+    return staging_dir, sources
 
 
 def _selected_override_alias(
@@ -75,16 +79,29 @@ def _selected_override_alias(
     return selected
 
 
-def _copy_item_to_dest(item: Path, repolish_dir: Path, dest_root: Path) -> None:
+def _copy_item_to_dest(
+    item: Path,
+    repolish_dir: Path,
+    dest_root: Path,
+    *,
+    alias: str | None,
+    sources: dict[str, str],
+) -> None:
     """Copy a single filesystem entry from ``repolish_dir`` to ``dest_root``.
 
     Handles directory creation and strips a trailing ``.jinja`` suffix from
-    destination filenames.
+    destination filenames.  Also records the provider id for the final
+    relative path in ``sources``.
     """
     rel = item.relative_to(repolish_dir)
     if rel.suffix == '.jinja':
         rel = rel.with_suffix('')
     dest = dest_root / rel
+
+    # record provider provenance using the post-stripped path
+    pid = alias if alias is not None else str(repolish_dir.parent)
+    sources[rel.as_posix()] = pid
+
     if item.is_dir():
         dest.mkdir(parents=True, exist_ok=True)
     else:
@@ -98,6 +115,7 @@ def _copy_template_dir(
     *,
     alias: str | None = None,
     overrides: dict[str, str] | None = None,
+    sources: dict[str, str],
 ) -> None:
     """Copy the contents of a template directory into the staging directory.
 
@@ -126,4 +144,10 @@ def _copy_template_dir(
             if selected is not None and selected != alias:
                 continue
 
-        _copy_item_to_dest(item, repolish_dir, dest_root)
+        _copy_item_to_dest(
+            item,
+            repolish_dir,
+            dest_root,
+            alias=alias,
+            sources=sources,
+        )

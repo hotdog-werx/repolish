@@ -12,7 +12,7 @@ def test_create_cookiecutter_template_handles_missing_repolish(
     template.mkdir()
     staging = tmp_path / 'staging'
 
-    staging_path = create_cookiecutter_template(staging, [template])
+    staging_path, _ = create_cookiecutter_template(staging, [template])
     assert staging_path.exists()
     # no repolish project copied
     assert not (staging / '{{cookiecutter._repolish_project}}').exists()
@@ -27,7 +27,7 @@ def test_copy_template_dir_handles_directories(tmp_path: Path) -> None:
     (rep / 'nested.txt').write_text('hello')
 
     staging = tmp_path / 'staging'
-    create_cookiecutter_template(staging, [template])
+    _, _ = create_cookiecutter_template(staging, [template])
 
     copied_dir = staging / '{{cookiecutter._repolish_project}}' / 'subdir'
     assert copied_dir.exists()
@@ -47,7 +47,7 @@ def test_jinja_extension_stripped_from_filenames(tmp_path: Path) -> None:
     (rep / 'regular.txt').write_text('no jinja')
 
     staging = tmp_path / 'staging'
-    create_cookiecutter_template(staging, [template])
+    _, _ = create_cookiecutter_template(staging, [template])
 
     project_dir = staging / '{{cookiecutter._repolish_project}}'
 
@@ -85,7 +85,7 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
     staging = tmp_path / 'staging'
 
     # without overrides, later provider wins
-    create_cookiecutter_template(
+    _, _ = create_cookiecutter_template(
         staging,
         [('p1', p1), ('p2', p2)],
     )
@@ -94,7 +94,7 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
 
     # with an override pinning the common file to p1
     staging2 = tmp_path / 'staging2'
-    create_cookiecutter_template(
+    _, _ = create_cookiecutter_template(
         staging2,
         [('p1', p1), ('p2', p2)],
         template_overrides={'common.txt': 'p1'},

@@ -36,25 +36,34 @@ def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
     return Path(*rendered_parts)
 
 
-def render_with_jinja(
-    setup_input: Path,
-    merged_ctx: dict,
-    setup_output: Path,
-    skip_templates: set[str] | None = None,
-) -> None:
+def render_with_jinja(ctx: dict) -> None:
     """Render staged templates with Jinja2.
 
     The merged context is exposed under the `cookiecutter` namespace so
-    existing templates continue to work unchanged.
+    existing templates continue to work unchanged.  Optionally, when
+    ``config.provider_scoped_template_context`` is true the provider origin map
+    in ``providers.template_sources`` is consulted for each file; if the file
+    is known to have come from a migrated provider, rendering uses that
+    provider's own captured context instead of the merged context.
 
     Args:
-        setup_input: staging `setup-input` path containing the merged template.
-        merged_ctx: merged provider context (available to templates).
-        setup_output: staging `setup-output` path where rendered files are written.
-        skip_templates: optional set of relative template paths (POSIX strings)
-            to skip during the generic rendering pass (used for templates that
-            will be rendered later with additional per-mapping context).
+        ctx: A dict containing the following keys:
+            - `setup_input` (Path): staging `setup-input` path containing the merged template.
+            - `merged_ctx` (dict): merged provider context (available to templates).
+            - `setup_output` (Path): staging `setup-output` path where rendered files are written.
+            - `providers` (Providers): loader-produced `Providers` object for context lookup.
+                        - `config` (RepolishConfig): runtime configuration object
+                            (used for the scoped-context flag).
+                        - `skip_templates` (optional set[str]): relative template paths (POSIX
+                            strings) to skip during the generic rendering pass.
     """
+    setup_input: Path = ctx['setup_input']
+    merged_ctx: dict = ctx['merged_ctx']
+    setup_output: Path = ctx['setup_output']
+    providers: Providers = ctx['providers']
+    config: RepolishConfig = ctx['config']
+    skip_templates: set[str] | None = ctx.get('skip_templates')
+
     template_root = setup_input / '{{cookiecutter._repolish_project}}'
     project_name = str(merged_ctx.get('_repolish_project', 'repolish'))
 
@@ -75,8 +84,16 @@ def render_with_jinja(
             logger.debug('skipping_template_for_later_render', template=rel_str)
             continue
 
+        # pick the appropriate context for this file
+        ctx_to_use = _choose_ctx_for_file(
+            rel_str,
+            merged_ctx,
+            providers,
+            config,
+        )
+
         try:
-            rendered_rel = _render_path_parts(env, rel, merged_ctx)
+            rendered_rel = _render_path_parts(env, rel, ctx_to_use)
         except TemplateSyntaxError as exc:
             logger.exception(
                 'template_path_syntax_error',
@@ -94,14 +111,27 @@ def render_with_jinja(
             copy2(src, dest)
             continue
 
-        # render file content using helper to centralise error handling
-        rendered_txt = _jinja_render(
-            env,
-            txt,
-            merged_ctx,
-            filename=src,
-        )
+        rendered_txt = _jinja_render(env, txt, ctx_to_use, filename=src)
         dest.write_text(rendered_txt, encoding='utf-8')
+
+
+def _choose_ctx_for_file(
+    rel_str: str,
+    merged_ctx: dict,
+    providers: Providers,
+    config: RepolishConfig,
+) -> dict:
+    """Return the context to use when rendering a generic staged file.
+
+    Extracted to reduce complexity of the main rendering function.
+    """
+    if not config.provider_scoped_template_context:
+        return merged_ctx
+
+    pid = providers.template_sources.get(rel_str)
+    if pid and providers.provider_migrated.get(pid):
+        return ctx_to_dict(providers.provider_contexts.get(pid))
+    return merged_ctx
 
 
 def _jinja_render(
@@ -222,10 +252,14 @@ def render_template(
 
     if config.no_cookiecutter:
         render_with_jinja(
-            setup_input,
-            merged_ctx,
-            setup_output,
-            skip_templates=skip_templates,
+            {
+                'setup_input': setup_input,
+                'merged_ctx': merged_ctx,
+                'setup_output': setup_output,
+                'providers': providers,
+                'config': config,
+                'skip_templates': skip_templates,
+            },
         )
     else:
         if skip_templates:  # pragma: no cover -- cookiecutter path not supported for per-file TemplateMapping

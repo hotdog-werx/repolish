@@ -130,6 +130,12 @@ class Providers(BaseModel):
     # per-provider migration flag: providers that have opted into the new
     # provider-scoped template-context behaviour set this to True
     provider_migrated: dict[str, bool] = Field(default_factory=dict)
+    # mapping from a relative template path (POSIX string) to the provider id
+    # that supplied the file when staging.  Populated by the builder so the
+    # renderer can later look up which provider owns a given template and, in
+    # conjunction with ``provider_migrated``, decide whether to render using
+    # the merged context or the provider's own context.
+    template_sources: dict[str, str] = Field(default_factory=dict)
 
 
 class Accumulators(BaseModel):

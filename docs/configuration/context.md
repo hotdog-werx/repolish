@@ -136,6 +136,14 @@ Important rules:
   failing outright. This allows you to migrate providers incrementally; only
   those that set `provider_migrated = True` will be isolated. The original
   strict check has been relaxed to avoid breaking mixed deployments.
+
+- The staging step now records a provenance map for every file copied from
+  provider template directories. When the strict flag is turned on that map is
+  used to determine which provider "owns" a given file, and if the owner is
+  migrated the _provider’s own context_ is used for Jinja rendering of that
+  file. This behaviour applies to both generic files and those produced via
+  `TemplateMapping`, giving migrated providers full control over their templates
+  even after the merge phase.
 - Class-based providers (the `Provider` base class) are the recommended
   migration target; module-style providers must still set
   `provider_migrated = True` once they adopt provider-scoped semantics.

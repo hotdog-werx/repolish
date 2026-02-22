@@ -27,18 +27,33 @@ from repolish.version import __version__
 logger = get_logger(__name__)
 
 
-def _create_staged_template(setup_input: Path, config: RepolishConfig) -> None:
+def _create_staged_template(
+    setup_input: Path,
+    config: RepolishConfig,
+) -> dict[str, str]:
     """Build template directory list from `config` and create staging.
 
     This mirrors the previous inline logic in `command` but keeps the
     complexity outside of the top-level function.
+
+    Returns:
+        A mapping from merged-template-relative-path to the provider id that
+        supplied it.  Tests previously patched ``create_cookiecutter_template``
+        and expected no return value; to keep them working we normalise the
+        result here.
     """
     template_dirs = _gather_template_directories(config)
-    create_cookiecutter_template(
+    result = create_cookiecutter_template(
         setup_input,
         template_dirs,
         template_overrides=config.template_overrides,
     )
+    # result may be either Path (legacy) or (Path, sources) tuple
+    if isinstance(result, tuple) and len(result) == 2:
+        _, sources = result
+    else:
+        sources = {}
+    return sources
 
 
 def _gather_template_directories(
@@ -165,7 +180,9 @@ def command(config_path: Path, *, check_only: bool) -> int:
 
     # Prepare staging and template
     base_dir, setup_input, setup_output = prepare_staging(config)
-    _create_staged_template(setup_input, config)
+    sources = _create_staged_template(setup_input, config)
+    # attach file provenance map so rendering can pick per-file context
+    providers.template_sources = sources
 
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, config, base_dir)
