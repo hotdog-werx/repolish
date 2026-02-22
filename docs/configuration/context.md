@@ -120,11 +120,13 @@ Notes:
 
 ### Provider-scoped template context (strict mode)
 
-New (opt-in) behaviour: when `provider_scoped_template_context: true` is set in
-`repolish.yaml`, `TemplateMapping` entries are rendered using _only_ the context
-produced by the provider that declared the mapping. This strengthens separation
-of concerns and prevents templates from depending on keys supplied by other
-providers.
+The renderer now scopes `TemplateMapping` and generic files to the context of
+their originating provider automatically for any provider marked
+`provider_migrated = True`. The previous configuration flag
+`provider_scoped_template_context` still exists for backwards compatibility and
+defaults to **true**. The only remaining reason to set it to `false` is from
+within the legacy module-adapter implementation, which globally forces merged
+context rendering; regular users can ignore it entirely.
 
 Important rules:
 

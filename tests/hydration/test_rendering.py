@@ -268,12 +268,12 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
 ):
     """Migrated providers are isolated; unmigrated providers no longer inherit migrated keys.
 
-    This proves two things:
-    1. Turning on ``provider_scoped_template_context`` never raises even when
-       some providers are still using the old module adapter (backwards
-       compatibility).
-    2. Templates belonging to unmigrated providers no longer see keys from
-       providers that have already migrated.  those values are stripped from
+    Context isolation is always active for migrated providers; the former
+    ``provider_scoped_template_context`` configuration flag no longer needs to
+    be enabled by users.  This test exercises the same guarantees as before:
+
+    1. Templates belonging to unmigrated providers do not see keys from
+       providers that have already migrated.  Those values are stripped from
        the merged context as soon as a provider is marked ``provider_migrated``.
     """
     tpl = tmp_path / 'tpl-providers'
@@ -330,9 +330,8 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
 
     providers = create_providers([str(prov_a), str(prov_b)])
 
-    # Enable provider-scoped mapping rendering globally
+    # Enable Jinja rendering (scoped context is now automatic)
     config.no_cookiecutter = True
-    config.provider_scoped_template_context = True
 
     # Render: migrated provider's mapping sees only its context; unmigrated
     # provider's mapping does *not* inherit the migrated provider's keys.
@@ -355,6 +354,8 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
     """Per-mapping rendering using only the declaring provider's context must.
 
     still allow templates that reference keys provided by the same provider.
+
+    Scoping happens automatically for migrated providers.
     """
     tpl = tmp_path / 'tpl-owned'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
@@ -388,10 +389,8 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
     providers = create_providers([str(prov)])
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # Enable provider-scoped mappings — should render fine because template only
-    # references keys provided by the same provider.
+    # Enable Jinja rendering (scoped context applies automatically)
     config.no_cookiecutter = True
-    config.provider_scoped_template_context = True
     render_template(setup_input, providers, setup_output, config)
     assert (setup_output / 'repolish' / 'm.txt').read_text(
         encoding='utf-8',
@@ -482,7 +481,9 @@ def create_context():
 
     preprocess_templates(setup_input, providers, config, base_dir)
     config.no_cookiecutter = True
-    config.provider_scoped_template_context = True
+    # the configuration flag is now irrelevant for scoping; set it False to
+    # prove that provider-specific contexts still win.
+    config.provider_scoped_template_context = False
 
     render_template(setup_input, providers, setup_output, config)
     out = setup_output / 'repolish' / 'foo'

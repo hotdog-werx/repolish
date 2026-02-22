@@ -33,11 +33,11 @@ Quick checklist (practical)
    to mark the provider as migrated.
 5. Add/adjust unit tests for the provider to assert provider-scoped rendering
    behaviour (see test suggestions below).
-6. In your project config: flip `provider_scoped_template_context: true` and run
-   `poe ci-checks` / CI to detect remaining cross-provider usage. The staging
-   step records which provider supplied each template, so once the flag is
-   enabled generic files (not just `TemplateMapping` entries) will render with
-   the owning provider's context when the provider is marked migrated.
+6. The configuration flag now defaults to true; you rarely need to touch it in
+   your project config. Run `poe ci-checks` / CI to detect remaining
+   cross-provider usage. The staging step records which provider supplied each
+   template, so migrated providers will render all of their files with their own
+   context automatically.
 
 Example: before → after (small provider)
 
@@ -139,7 +139,8 @@ Practical notes
 - Set `provider_migrated = True` at module level to mark the provider as
   migrated; only migrated providers will have their mappings rendered against
   their own context. Non-migrated providers continue to receive merged context
-  even when `provider_scoped_template_context` is turned on.
+  even if the legacy `provider_scoped_template_context` flag were to be set to
+  false.
 - The class-based API is optional but recommended for larger providers and when
   you want compile/test-time reassurance (Pydantic types give IDE + validation
   benefits).
@@ -170,7 +171,8 @@ Troubleshooting & migration patterns
 
 - Want a smoother rollout for many providers:
   1. Migrate provider code and add `provider_migrated = True` locally.
-  2. Run CI with `provider_scoped_template_context: true` in a feature branch.
+  2. Run CI (the configuration flag is already true by default) in a feature
+     branch.
   3. Fix templates that fail; repeat until the branch is green.
   4. Merge and enable the flag in the mainline once providers are migrated.
 

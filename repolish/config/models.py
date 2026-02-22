@@ -132,12 +132,14 @@ class RepolishConfigFile(BaseModel):
         ),
     )
     provider_scoped_template_context: bool = Field(
-        default=False,
+        default=True,
         description=(
-            'Opt-in: when true, render per-mapping `TemplateMapping` entries '
-            "using only the declaring provider's context (prepares for v1). "
-            'Unmigrated providers still see the full merged context to allow '
-            'incremental migration; enabling is not immediately breaking.'
+            'Legacy flag preserved for backwards compatibility. The default is '
+            'now ``true`` and new class-based providers use their own context '
+            'automatically when migrated.  The only remaining use-case for '
+            'setting this to ``false`` is inside the old module-adapter '
+            'implementation, which globally forces merged-context rendering. '
+            'Most users never need to touch this setting.'
         ),
     )
 
