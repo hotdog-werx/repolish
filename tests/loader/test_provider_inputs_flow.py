@@ -121,8 +121,8 @@ class TCase:
         ),
         TCase(
             name='a_first',
-            order=('provider_a', 'provider_b', 'provider_c'),
-            expected='provider_a',
+            order=('provider_a', 'provider_c', 'provider_b'),
+            expected='provider_c',
         ),
     ],
     ids=lambda c: c.name,
@@ -131,8 +131,10 @@ def test_provider_inputs_order(tmp_path: Path, case: TCase):
     """Integration: verify that providers receive inputs in load order.
 
     Provider A consumes the *first* value targeted at it during the
-    ``finalize_context`` phase.  Depending on the order in which the
-    directories are loaded, earlier senders may or may not be consulted.
+    ``finalize_context`` phase.  In previous versions inputs were only
+    delivered to later providers, making behaviour order-dependent.  With
+    the new distribution logic every provider sees all schema-matching
+    payloads, so the result is now deterministic regardless of load order.
 
     The test is parametrized over two scenarios, and each scenario is
     described by a :class:`TCase` instance.  The `ids` callable uses the

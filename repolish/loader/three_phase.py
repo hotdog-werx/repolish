@@ -113,16 +113,20 @@ def _distribute_payloads(
     sender_idx: int,
     state: _GatherState,
 ) -> None:
-    """Route a provider's outputs to later recipients only.
+    """Route a provider's outputs to every other provider.
 
-    Only providers that appear *after* the sender in
-    ``state.all_providers_list`` are considered.  This preserves the loader's
-    forward-only input flow semantics expected by integration tests.
+    Earlier iterations only delivered payloads to providers appearing after
+    the sender in the load order.  That optimisation confused users and
+    prevented even correctly-typed providers from seeing inputs simply because
+    they were listed earlier.  The loader now distributes every payload to all
+    providers regardless of position; it is the recipient's responsibility to
+    inspect and consume what it cares about.
     """
-    # inspect only the tail of the provider list; avoid validating against
-    # earlier providers to prevent backwards propagation of values.
+    # iterate over the entire provider list rather than slicing.  we still
+    # respect schema filtering so unrelated providers are not burdened with
+    # irrelevant objects, but there is no longer any directional constraint.
     for inp in inputs_list:
-        for pid, _ctx, schema in state.all_providers_list[sender_idx + 1 :]:
+        for pid, _ctx, schema in state.all_providers_list:
             if not schema:
                 continue
             if _schema_matches(schema, inp):
