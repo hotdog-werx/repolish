@@ -166,17 +166,26 @@ def _jinja_render(
     try:
         return env.from_string(txt).render(**ctx, cookiecutter=ctx)
     except TemplateSyntaxError as exc:
+        # syntax errors are usually programmer mistakes; log the template
+        # text and context to make reproduction easier.
         logger.exception(
             'template_content_syntax_error',
             file=str(filename),
             error=str(exc),
+            template=txt,
+            context=ctx,
         )
         raise
     except UndefinedError as exc:  # pragma: no cover - exercised by tests
+        # undefined variables often indicate missing keys. include the
+        # context and template in the log so users can inspect exactly what
+        # was available on the failing platform (e.g. Windows CI).
         logger.exception(
             'template_content_undefined_error',
             file=str(filename),
             error=str(exc),
+            template=txt,
+            context=ctx,
         )
         msg = f'{exc} (while rendering {filename})'
         raise UndefinedError(msg) from exc
