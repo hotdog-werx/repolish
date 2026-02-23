@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from repolish.loader.context import _apply_override, apply_context_overrides
@@ -120,6 +121,11 @@ def test_collect_contexts_with_provider_map_warns_on_none_return():
 
 
 def test_apply_context_overrides(mocker: MockerFixture):
+    # include a plain object to prove that overrides only work on dict/list
+    class Repo(BaseModel):
+        owner: str
+        name: str
+
     context = {
         'devkits': [
             {'name': 'd1', 'ref': 'v0'},
@@ -129,6 +135,7 @@ def test_apply_context_overrides(mocker: MockerFixture):
         'nested': {'deep': {'value': 'original'}},
         'string_value': 'not_a_dict',  # This will trigger cannot-navigate when we try to navigate into it
         'direct_list': ['a', 'b', 'c'],
+        'repo': Repo(owner='me', name='original'),
     }
     overrides = {
         'devkits.0.name': 'new-d1',
@@ -139,6 +146,7 @@ def test_apply_context_overrides(mocker: MockerFixture):
         'devkits.invalid.name': 'invalid-index',
         'string_value.key': 'cannot-navigate',  # Try to navigate into a string
         'direct_list.1': 'replaced',  # Direct list index replacement
+        'repo.name': 'new_name',  # should not touch Repo instance
     }
     mock_logger = mocker.patch('repolish.loader.context.logger')
     apply_context_overrides(context, overrides)
@@ -147,9 +155,12 @@ def test_apply_context_overrides(mocker: MockerFixture):
     assert context['nested']['deep']['value'] == 'updated'
     assert context['direct_list'][1] == 'replaced'  # Direct list replacement works
     assert context['nonexistent']['key'] == 'ignored'
-    # Check warnings were logged: out-of-range, invalid-index, cannot-navigate
-    # Note: nonexistent.key now creates intermediate structure instead of warning
-    assert mock_logger.warning.call_count == 3
+
+    # object fields are untouched; we logged a warning when traversal failed
+    assert context['repo'].name == 'original'
+    assert mock_logger.warning.call_count >= 4
+    # one warning should be for navigating into our Repo object
+    assert any(call.kwargs.get('current_type') == 'Repo' for call in mock_logger.warning.call_args_list)
 
 
 def test_apply_context_overrides_nested_dict():

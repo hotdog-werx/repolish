@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel
@@ -386,15 +386,28 @@ def test_gather_received_inputs_variants() -> None:
 
 
 def test_overrides_affect_inputs(make_provider: Callable[[str, str], str]):
-    """Providers should see config overrides when computing inputs."""
+    """Providers should see config overrides when computing inputs.
+
+    This test exercises the full three-phase workflow and ensures that
+    contexts passed into ``provide_inputs`` and ``finalize_context`` are
+    always Pydantic models.  previous iterations accidentally allowed
+    dictionaries to leak through which broke class-based providers once
+    overrides were applied.
+    """
     sender_src = """
 from pydantic import BaseModel
 from repolish.loader.models import Provider, ProviderEntry
 from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
 
 
+class Repo(BaseModel):
+    owner: str
+    name: str
+
+
 class Ctx(BaseModel):
     foo: str
+    repo: Repo
 
 
 class Sender(Provider[Ctx, Msg]):
@@ -402,15 +415,17 @@ class Sender(Provider[Ctx, Msg]):
         return 'sender'
 
     def create_context(self):
-        return Ctx(foo='original')
+        # include a nested model to exercise dot-notation overrides
+        return Ctx(foo='original', repo=Repo(owner='me', name='init'))
 
     def get_inputs_schema(self):
         return Msg
 
     def provide_inputs(self, own_context, all_providers, provider_index):
-        # loader may pass a dict rather than a model
-        foo_val = own_context['foo'] if isinstance(own_context, dict) else own_context.foo
-        return [Msg(foo=foo_val)]
+        # when the override utility is corrected we will always receive a
+        # real model here; assert to catch regressions.
+        assert not isinstance(own_context, dict)
+        return [Msg(foo=own_context.foo)]
 """
     recv_src = """
 from pydantic import BaseModel
@@ -418,36 +433,81 @@ from repolish.loader.models import Provider, ProviderEntry
 from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
 
 
-class Receiver(Provider[BaseModel, Msg]):
+class RecCtx(BaseModel):
+    got: str | None = None
+
+
+class Receiver(Provider[RecCtx, Msg]):
     def get_provider_name(self):
         return 'receiver'
 
     def create_context(self):
-        return {}
+        return RecCtx()
 
     def get_inputs_schema(self):
         return Msg
 
     def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
+        assert not isinstance(own_context, dict)
         if received_inputs:
-            own_context['got'] = received_inputs[0].foo
+            own_context.got = received_inputs[0].foo
         return own_context
 """
     sdir = make_provider(sender_src, 'sender')
     rdir = make_provider(recv_src, 'receiver')
     providers = create_providers(
         [sdir, rdir],
-        context_overrides={'foo': 'overridden'},
+        context_overrides={
+            'foo': 'overridden',
+            'repo.name': 'new_name',
+        },
     )
-    found = None
-    for ctx in providers.provider_contexts.values():
-        if isinstance(ctx, dict) and 'got' in ctx:
-            found = cast('dict[str, object]', ctx)['got']
-            break
-        if hasattr(ctx, 'got'):
-            found = ctx.got
-            break
-    assert found == 'overridden'
+
+    # final provider context (receiver) should be a model with the overridden value
+    ctx_vals = list(providers.provider_contexts.values())
+    assert ctx_vals
+    final_ctx = ctx_vals[-1]
+    assert not isinstance(final_ctx, dict)
+    # use getattr to avoid mypy thinking this is a dict
+    assert final_ctx.got == 'overridden'  # type: ignore[unresolved-attribute]
+
+    # sender's context also receives the repo override
+    sender_ctx = ctx_vals[0]
+    assert not isinstance(sender_ctx, dict)
+    # cast to Any so type checker stops complaining about dynamic attrs
+    sender_cast = cast('Any', sender_ctx)
+    assert sender_cast.repo.name == 'new_name'
+
+
+def test_invalid_override_preserves_model(
+    make_provider: Callable[[str, str], str],
+):
+    """An override that fails validation should not convert the context to a dict."""
+    src = """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+
+class IntCtx(BaseModel):
+    x: int = 0
+
+
+class P(Provider[IntCtx, BaseModel]):
+    def get_provider_name(self):
+        return 'p'
+
+    def create_context(self):
+        return IntCtx()
+"""
+    pdir = make_provider(src, 'p')
+    providers = create_providers([pdir], context_overrides={'x': 'not-an-int'})
+    ctx = next(iter(providers.provider_contexts.values()))
+    assert isinstance(ctx, BaseModel)
+    # cast to Any so we can access the field without type errors
+
+    ctx_typed = cast('Any', ctx)
+    # original value should remain unchanged
+    assert ctx_typed.x == 0
 
 
 def test_validate_raw_inputs_and_helpers() -> None:

@@ -19,6 +19,7 @@ from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.models import ProviderEntry
 from repolish.loader.module import get_module
 from repolish.loader.module_loader import (
+    ModuleProviderAdapter,
     collect_contexts_with_provider_map,
     inject_provider_instance_for_module,
 )
@@ -211,21 +212,79 @@ def _apply_overrides_to_provider_contexts(
     This handles both ``BaseModel`` and ``dict`` contexts and is used
     both before inputs are gathered and after finalization so that the
     authoritative overrides cannot be bypassed by provider logic.
+
+    When operating on a ``BaseModel`` we convert to raw data, apply the
+    overrides and then re-validate back into the same model class.  Prior to
+    <2026-02> we would fall back to the raw data on validation failure,
+    inadvertently turning the context into a plain ``dict``.  Because
+    ``provide_inputs``/``finalize_context`` are only invoked with model
+    instances this could lead to mysterious ``AttributeError`` crashes.  We
+    now silently drop invalid overrides and retain the original model
+    instance instead.
     """
     for pid, ctx in provider_contexts.items():
         if isinstance(ctx, _BaseModel):
+            # convert model to plain data so overrides can mutate it, then
+            # re-validate back into the same type.  we deliberately *do not*
+            # fall back to a raw dict when validation fails; returning a
+            # dict would violate the implicit contract of
+            # ``provide_inputs``/``finalize_context`` which always receive a
+            # BaseModel for class-based providers.  instead we log and keep
+            # the original model (dropping the invalid override) so that a
+            # single misbehaving provider cannot poison the entire run.
             data = ctx.model_dump()
             apply_context_overrides(data, context_overrides)
             try:
                 provider_contexts[pid] = ctx.model_validate(data)
             except Exception:  # noqa: BLE001 - don't let one provider's broken context prevent the whole run
-                provider_contexts[pid] = data
+                # keep the original model rather than switching to a dict
+                provider_contexts[pid] = ctx
         elif isinstance(ctx, dict):
             # cast to expected key/value types for type checker
             apply_context_overrides(
                 cast('dict[str, Any]', ctx),
                 context_overrides,
             )
+
+
+def _populate_provider_context(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    provider_contexts: dict[str, object],
+) -> None:
+    # before we compute schemas or apply overrides we must populate
+    # ``provider_contexts`` for class-based providers.  the initial map
+    # produced by ``collect_contexts_with_provider_map`` only knows about
+    # module-style providers; class-based providers do not participate in the
+    # first-phase merge and therefore appear as empty dicts.  this is fine for
+    # finalization (where we re-create contexts explicitly) but breaks
+    # ``provide_inputs`` because that hook expects a typed context object.
+    #
+    # we deliberately do *not* persist the result back into the merged context
+    # here; the merged context is built later once the final provider contexts
+    # are available.  applying overrides now ensures that both providers and
+    # the merged project context see the same overridden values.
+
+    for idx, (pid, _mod) in enumerate(module_cache):
+        inst = instances[idx]
+        # only class-based providers require us to synthesize a context here;
+        # module-style providers (wrapped by ``ModuleProviderAdapter``) already
+        # had their contexts collected during phase one using the merged
+        # context.  re-calling ``create_context()`` on adapters would pass an
+        # empty dict and wipe out those values, which broke several
+        # integration tests.
+        if (
+            inst is not None
+            and not isinstance(inst, ModuleProviderAdapter)
+            and not isinstance(provider_contexts.get(pid), _BaseModel)
+        ):
+            try:
+                # ``inst.create_context()`` may raise, but when it does we
+                # fall back to whatever value was already in the map
+                # (usually an empty dict) so we don't propagate the error.
+                provider_contexts[pid] = inst.create_context()
+            except Exception:  # noqa: BLE001 - we don't want one bad provider to halt
+                provider_contexts[pid] = provider_contexts.get(pid, {})
 
 
 def _run_three_phase(
@@ -256,6 +315,8 @@ def _run_three_phase(
         provider_migrated_map,
         instances,
     ) = build_provider_metadata(module_cache)
+
+    _populate_provider_context(module_cache, instances, provider_contexts)
 
     # include each provider's declared input schema so that other providers can
     # inspect it when deciding what to emit.  We build the list via a

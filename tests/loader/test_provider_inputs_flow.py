@@ -1,7 +1,7 @@
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -14,7 +14,7 @@ from repolish.loader.models import (
     get_provider_inputs,
     get_provider_inputs_schema,
 )
-from tests.providers_inputs.shared import InputA
+from tests.providers_inputs.shared import CtxA, InputA
 
 
 def test_provider_input_schema_instantiation() -> None:
@@ -152,17 +152,11 @@ def test_provider_inputs_order(tmp_path: Path, case: TCase):
 
     providers = create_providers([str(d) for d in dirs])
 
-    # locate ProviderA's context and extract its value
-    ctx: object | dict[str, object] | None = None
+    # locate ProviderA's context and verify it's a typed model
+    ctx_obj = None
     for c in providers.provider_contexts.values():
-        if isinstance(c, dict) and 'prov_a_value' in c:
-            ctx = c
+        if isinstance(c, CtxA):
+            ctx_obj = c
             break
-        if hasattr(c, 'prov_a_value'):
-            ctx = c
-            break
-    assert ctx is not None, 'ProviderA context not found'
-    val = cast('dict[str, object]', ctx)['prov_a_value'] if isinstance(ctx, dict) else ctx.prov_a_value
-
-    # verify the extracted value matches the expected result for this case
-    assert val == case.expected
+    assert ctx_obj is not None, 'ProviderA context not found or not a CtxA model'
+    assert ctx_obj.prov_a_value == case.expected
