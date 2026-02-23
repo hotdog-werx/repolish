@@ -412,24 +412,27 @@ def test_validate_raw_inputs_and_helpers() -> None:
 
 
 def test_finalize_provider_contexts_edge_cases() -> None:
-    """Calling finalize_provider_contexts on no-op inputs should be a no-op.
+    """Providers should always have ``finalize_context`` invoked.
 
-    Exercises the early-`continue` paths for missing instance and for empty
-    ``raw_inputs``. These guards are important because the loop in the
-    production code iterates every provider and silently skipping them is the
-    desired behaviour; the test therefore asserts the accumulator remains
-    empty after the call so refactors can't accidentally start populating it.
+    Previously we skipped providers when ``received_inputs`` was empty; this
+    prevented context mutation for providers that don’t emit inputs.  The
+    current behaviour calls the hook unconditionally (aside from missing
+    instances).  The test exercises both paths.
     """
-    # skip when instance None
+    # skip when instance None (no provider to call)
     ctxs: dict[str, object] = {}
     finalize_provider_contexts([('p', {})], [None], {}, cast('dict', ctxs), [])
     assert ctxs == {}
 
-    # skip when no raw inputs (provider exists but received none)
+    # provider with no inputs still has finalize_context executed
+    class Setter(DummyProvider):
+        def finalize_context(self, own, received, allp, idx):
+            return {'called': True}
+
     ctxs: dict[str, object] = {}
-    inst = DummyProvider()
+    inst = Setter()
     finalize_provider_contexts([('p', {})], [inst], {}, cast('dict', ctxs), [])
-    assert ctxs == {}
+    assert ctxs == {'p': {'called': True}}
 
 
 def test_emit_provider_migration_suggestion_no_legacy():

@@ -250,14 +250,16 @@ def _run_three_phase(
         instances,
         provider_contexts,
     )
-    has_recipient_after = compute_recipient_flags(instances)
+    # we no longer attempt to predict receivers; just call all providers
+    # for their outgoing inputs and route them based on schemas.
     received_inputs = gather_received_inputs(
         module_cache,
         instances,
         provider_contexts,
         all_providers_list,
         canonical_name_to_pid,
-        has_recipient_after,
+        # old flag still passed for compatibility but ignored
+        compute_recipient_flags(instances),
     )
 
     # finalize provider contexts based on collected inputs

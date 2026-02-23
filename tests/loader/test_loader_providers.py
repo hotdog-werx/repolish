@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
+import os
+import sys
 from textwrap import dedent
 from typing import cast
 
@@ -288,28 +290,28 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
     ) == ['database']
 
 
-def test_provide_inputs_skipped_for_end_providers(tmp_path: Path):
-    """Providers at the end with no later recipients should not have provide_inputs() called."""
+def test_provide_inputs_called_for_all_providers(tmp_path: Path):
+    """Every provider exposing a `provide_inputs` hook is invoked.
+
+    Use a *module-style* provider so we can inspect its globals afterward and
+    confirm the function ran; class-based providers encapsulate the method
+    inside the instance, which is harder to access from the test.
+    """
     p0 = tmp_path / 'p0'
     p0.mkdir()
     (p0 / 'repolish.py').write_text(
         dedent(
             """
-            from pydantic import BaseModel
-            from repolish.loader.models import Provider
+            # module-style provider
+            called = False
 
-            class Ctx(BaseModel):
-                pass
+            def create_context():
+                return {}
 
-            class P0(Provider[Ctx, BaseModel]):
-                def get_provider_name(self) -> str:
-                    return 'p0'
-
-                def create_context(self) -> Ctx:
-                    return Ctx()
-
-                def provide_inputs(self, own_context, all_providers, provider_index):
-                    raise RuntimeError('should not be called')
+            def provide_inputs(ctx, allp, idx):
+                global called
+                called = True
+                return []
             """,
         ),
     )
@@ -318,9 +320,25 @@ def test_provide_inputs_skipped_for_end_providers(tmp_path: Path):
     p1.mkdir()
     (p1 / 'repolish.py').write_text('\ndef create_context():\n    return {}\n')
 
-    # Should not raise (provide_inputs of p0 must be skipped)
-    create_providers([str(p0), str(p1)])
+    # spy on the adapter method so we can detect the call regardless of
+    # how the provider was imported / named.
+    from repolish.loader.module_loader import ModuleProviderAdapter
 
+    count = 0
+    orig = ModuleProviderAdapter.provide_inputs
+
+    def spy(self, own_context, all_providers, provider_index):
+        nonlocal count
+        count += 1
+        return orig(self, own_context, all_providers, provider_index)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(ModuleProviderAdapter, 'provide_inputs', spy)
+
+    providers = create_providers([str(p0), str(p1)])
+    monkeypatch.undo()
+
+    assert count >= 1, 'provide_inputs was not called on module provider p0'
 
 # Additional edge cases expressed with the same ProviderCase dataclass
 @pytest.mark.parametrize(

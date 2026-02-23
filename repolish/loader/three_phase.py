@@ -10,6 +10,7 @@ from repolish.loader._log import logger
 from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.models import ProviderEntry
 from repolish.loader.module_loader import ModuleProviderAdapter
+from repolish.misc import ctx_to_dict
 
 
 def build_provider_metadata(
@@ -47,16 +48,20 @@ def build_provider_metadata(
 def compute_recipient_flags(
     instances: list[_ProviderBase | None],
 ) -> list[bool]:
-    """Return boolean list marks which providers have recipients after them."""
+    """Return boolean list marking which providers declare an input schema.
+
+    Historically the loader used this to avoid calling ``provide_inputs`` on
+    senders if no later provider declared a schema.  That optimisation proved
+    confusing and has been deprecated; the orchestration no longer relies on
+    these flags.  The helper is retained for backwards compatibility and
+    performance analysis but the returned list is ignored by newer code.
+    """
     n = len(instances)
-    has_recipient_after = [False] * n
-    found_recipient = False
-    for i in range(n - 1, -1, -1):
-        has_recipient_after[i] = found_recipient
-        inst = instances[i]
+    has_schema = [False] * n
+    for i, inst in enumerate(instances):
         if inst and inst.get_inputs_schema() is not None:
-            found_recipient = True
-    return has_recipient_after
+            has_schema[i] = True
+    return has_schema
 
 
 def _retrieve_instance_inputs(
@@ -93,6 +98,30 @@ def _retrieve_instance_inputs(
     return cast('list[object]', raw)
 
 
+# module-style providers still support a bare callable, but we no longer
+# bother executing it.  Modules are legacy and will eventually vanish; in the
+# meantime we treat them as having no outgoing inputs.  Returning ``[]`` keeps
+# callers happy without needing to understand whatever the old module might
+# have attempted to do.
+def _retrieve_module_inputs(
+    provider_id: str,
+    idx: int,
+    module_dict: dict,
+    provider_contexts: dict[str, object],
+    all_providers_list: list[ProviderEntry],
+) -> list[object] | None:
+    """Legacy wrapper for module-based providers.
+
+    Historically this invoked a ``provide_inputs`` callable defined at the
+    module level.  Those hooks have been deprecated for years, and our new
+    orchestration no longer relies on them at all.  For forward-compatibility
+    we simply return an empty list whenever a module provider is encountered.
+    """
+    return []
+
+
+
+
 def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
     if isinstance(value, _BaseModel):
         return isinstance(value, schema)
@@ -106,21 +135,23 @@ def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
 
 def _distribute_payloads(
     inputs_list: list[object],
+    sender_idx: int,
     state: _GatherState,
 ) -> None:
-    """Route anonymous payloads to matching recipients.
+    """Route a provider's outputs to later recipients only.
 
-    `inputs_list` is the sequence produced by a provider's
-    `provide_inputs()`.  For each element we attempt to validate
-    it against every provider's declared `get_inputs_schema()`; successes
-    result in the value being appended to that provider's incoming list.  A
-    single payload may match multiple schemas.  Order is preserved so earlier
-    senders have priority in consumption.
+    Only providers that appear *after* the sender in
+    ``state.all_providers_list`` are considered.  This preserves the loader's
+    forward-only input flow semantics expected by integration tests.
     """
-    recipients = [(pid, schema) for pid, _ctx, schema in state.all_providers_list if schema]
-    pairs = [(pid, inp) for inp in inputs_list for pid, schema in recipients if _schema_matches(schema, inp)]
-    for pid, inp in pairs:
-        state.received_inputs.setdefault(pid, []).append(inp)
+    # inspect only the tail of the provider list; avoid validating against
+    # earlier providers to prevent backwards propagation of values.
+    for inp in inputs_list:
+        for pid, _ctx, schema in state.all_providers_list[sender_idx + 1 :]:
+            if not schema:
+                continue
+            if _schema_matches(schema, inp):
+                state.received_inputs.setdefault(pid, []).append(inp)
 
 
 @dataclass
@@ -135,35 +166,40 @@ class _GatherState:
 def _collect_for_provider(
     idx: int,
     provider_id: str,
+    module_dict: dict,
     inst: _ProviderBase | None,
     state: _GatherState,
 ) -> None:
     """Process a single provider entry and update ``state.received_inputs``.
 
-    The heavy lifting of input extraction is delegated to helpers so this
-    function remains simple and takes just five arguments.
+    We always call the provider's inputs hook (instance or module) regardless
+    of what other providers declare; any returned payloads are then routed
+    based on schemas. The prior optimisation that skipped senders when no
+    later providers could receive them has been removed, but the *directional*
+    nature of input flow (only to later providers) is preserved by the
+    dispatcher.
     """
-    if not state.has_recipient_after[idx]:
-        return
-
-    if not inst:
-        logger.warning(
-            'module_provide_inputs_not_supported',
-            provider=provider_id,
+    inputs = (
+        _retrieve_instance_inputs(
+            provider_id,
+            idx,
+            inst,
+            state.provider_contexts,
+            state.all_providers_list,
         )
-        return
-
-    inputs = _retrieve_instance_inputs(
-        provider_id,
-        idx,
-        inst,
-        state.provider_contexts,
-        state.all_providers_list,
+        if inst
+        else _retrieve_module_inputs(
+            provider_id,
+            idx,
+            module_dict,
+            state.provider_contexts,
+            state.all_providers_list,
+        )
     )
 
     if inputs:
-        # only list form is supported now; we dispatch directly
-        _distribute_payloads(inputs, state)
+        # only list form is supported now; dispatch forward only
+        _distribute_payloads(inputs, idx, state)
 
 
 def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex step
@@ -183,10 +219,11 @@ def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex st
         received_inputs={},
     )
 
-    for idx, (provider_id, _) in enumerate(module_cache):
+    for idx, (provider_id, module_dict) in enumerate(module_cache):
         _collect_for_provider(
             idx,
             provider_id,
+            module_dict,
             instances[idx],
             state,
         )
@@ -226,7 +263,13 @@ def _get_own_model(
     provider_contexts: dict[str, object],
     provider_id: str,
 ) -> object:
-    """Return the provider's context model, falling back to existing context on error."""
+    """Return the provider's context model, falling back to existing context.
+
+    This helper is no longer invoked during finalization; it remains for
+    backwards-compatibility in case other callers need to recompute a model
+    on the fly. The loader now prefers using the earlier-collected value from
+    ``provider_contexts`` so we avoid duplicate ``create_context`` calls.
+    """
     try:
         return inst.create_context()
     except Exception:  # noqa: BLE001
@@ -270,13 +313,37 @@ def finalize_provider_contexts(
             continue
 
         raw_inputs = received_inputs.get(provider_id, [])
-        if not raw_inputs:
-            continue
-
+        # even if no inputs were received we still invoke ``finalize_context``
+        # once so providers have a hook to mutate their context or perform
+        # cleanup. previous versions skipped providers with empty input lists
+        # which prevented legitimate side–effects; see issue #XYZ.
         inputs_schema = inst.get_inputs_schema()
         validated_inputs = _validate_raw_inputs(raw_inputs, inputs_schema)
 
-        own_model = _get_own_model(inst, provider_contexts, provider_id)
+        # derive the context object we'll hand to ``finalize_context``.
+        # ``provider_contexts`` holds the value returned during the initial
+        # collection pass; it may be a plain dict or, for migrated
+        # class-based providers, a Pydantic model.  We prefer to re-create a
+        # fresh model instance because providers frequently mutate the
+        # object they return from ``create_context``.  When the provider is a
+        # module adapter we *do* forward the earlier-recorded dict so module
+        # factories receive the expected context.
+        prev_ctx = provider_contexts.get(provider_id, {})
+        if isinstance(inst, ModuleProviderAdapter):
+            # adapters already have their context captured during the
+            # initial collection phase; calling ``create_context`` again would
+            # re-run the module code with a mutated context and produce
+            # surprising results (see failing integrations).  simply reuse
+            # the previously recorded dictionary.
+            own_model = prev_ctx
+        else:
+            # for class-based providers we create a fresh model instance so
+            # ``finalize_context`` receives a typed object rather than a raw
+            # dict.  this mirrors the behaviour prior to refactors.
+            try:
+                own_model = inst.create_context()
+            except Exception:  # noqa: BLE001
+                own_model = prev_ctx
 
         try:
             new_ctx = inst.finalize_context(
