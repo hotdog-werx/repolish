@@ -13,6 +13,7 @@ from repolish.loader.module_loader import (
     extract_from_module_dict,
     inject_provider_instance_for_module,
 )
+from repolish.loader.orchestrator import _apply_overrides_to_model
 
 if TYPE_CHECKING:
     from repolish.loader.models import Provider as _ProviderBase
@@ -233,3 +234,40 @@ def test_apply_context_overrides_dotted_keys_in_nested_dict():
 
     # Should create nested structure: base.codeguides.base.ref = 'some-ref'
     assert context['base']['codeguides']['base']['ref'] == 'some-ref'
+
+
+def test_apply_overrides_to_model_helper(mocker: MockerFixture):
+    """Helper should return a new model when overrides apply and warn on failure."""
+
+    class M(BaseModel):
+        a: int = 0
+
+    instance = M()
+
+    mock_logger = mocker.patch('repolish.loader.orchestrator.logger')
+
+    # override valid field
+    new = _apply_overrides_to_model(instance, {'a': 5}, provider='pid')
+    assert isinstance(new, M)
+    assert new.a == 5
+    assert mock_logger.warning.call_count == 0
+
+    # override invalid field should log but still produce a model with
+    # identical data (identity isn't guaranteed because we re-validated).
+    mock_logger.reset_mock()
+    out = _apply_overrides_to_model(instance, {'b': 1}, provider='pid')
+    assert isinstance(out, M)
+    assert out.a == instance.a
+    assert mock_logger.warning.call_count == 1
+    assert 'context_override_ignored' in str(
+        mock_logger.warning.call_args[0][0],
+    )
+
+    # override with bad type triggers validation failure
+    mock_logger.reset_mock()
+    out2 = _apply_overrides_to_model(instance, {'a': 'nope'}, provider='pid')
+    assert out2 is instance
+    assert mock_logger.warning.call_count == 1
+    assert 'context_override_validation_failed' in str(
+        mock_logger.warning.call_args[0][0],
+    )

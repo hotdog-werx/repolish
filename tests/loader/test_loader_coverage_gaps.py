@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
@@ -543,7 +544,11 @@ class Receiver(Provider[RecCtx, Msg]):
 def test_invalid_override_preserves_model(
     make_provider: Callable[[str, str], str],
 ):
-    """An override that fails validation should not convert the context to a dict."""
+    """An override that fails validation should not convert the context to a dict.
+
+    The loader logs a warning when an override cannot be applied so that
+    callers know something went wrong (extra field, wrong type, etc.).
+    """
     src = """
 from pydantic import BaseModel
 from repolish.loader.models import Provider
@@ -561,18 +566,115 @@ class P(Provider[IntCtx, BaseModel]):
         return IntCtx()
 """
     pdir = make_provider(src, 'p')
-    providers = create_providers([pdir], context_overrides={'x': 'not-an-int'})
+    # patch the orchestrator logger so we can observe warnings
+
+    mock_logger = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            'repolish.loader.orchestrator.logger',
+            mock_logger,
+        )
+        providers = create_providers(
+            [pdir],
+            context_overrides={'x': 'not-an-int'},
+        )
+        ctx = next(iter(providers.provider_contexts.values()))
+        assert isinstance(ctx, BaseModel)
+        # cast to Any so we can access the field without type errors
+
+        ctx_typed = cast('Any', ctx)
+        # original value should remain unchanged
+        assert ctx_typed.x == 0
+
+        # we should have logged at least one warning about the failed
+        # override; use the message key as an indicator.
+        assert mock_logger.warning.call_count >= 1
+        assert any(
+            'context_override_validation_failed' in str(call.args[0]) for call in mock_logger.warning.call_args_list
+        )
+
+
+def test_override_unknown_field_logs_warning(
+    make_provider: Callable[[str, str], str],
+):
+    """Override targeting fields that don't exist should be ignored and reported via a warning."""
+    src = """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+
+class SimpleCtx(BaseModel):
+    a: int = 1
+
+
+class P(Provider[SimpleCtx, BaseModel]):
+    def get_provider_name(self):
+        return 'p'
+
+    def create_context(self):
+        return SimpleCtx()
+"""
+    pdir = make_provider(src, 'p')
+
+    mock_logger = MagicMock()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            'repolish.loader.orchestrator.logger',
+            mock_logger,
+        )
+        providers = create_providers([pdir], context_overrides={'y': 'value'})
+        ctx = next(iter(providers.provider_contexts.values()))
+        assert isinstance(ctx, BaseModel)
+        ctx_typed = cast('Any', ctx)
+        assert not hasattr(ctx_typed, 'y')
+        assert mock_logger.warning.call_count >= 1
+        # the override added a key that the model doesn't know about; the
+        # validation step will silently drop that key, so we expect a warning
+        # about ignored values rather than a validation error.
+        assert any('context_override_ignored' in str(call.args[0]) for call in mock_logger.warning.call_args_list)
+
+
+def test_override_on_nested_default_model(
+    make_provider: Callable[[str, str], str],
+):
+    """Overrides may populate nested structures that exist only via defaults.
+
+    The loader dumps the BaseModel to a dict, applies the override, then
+    validates back into the model class.  If the model defines nested fields
+    with default instances, the override can target sub-keys even when the
+    dump initially contains only empty values.
+    """
+    src = """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+
+class Inner(BaseModel):
+    x: int = 0
+
+
+class Ctx(BaseModel):
+    inner: Inner = Inner()
+
+
+class P(Provider[Ctx, BaseModel]):
+    def get_provider_name(self):
+        return 'p'
+
+    def create_context(self):
+        return Ctx()
+"""
+    pdir = make_provider(src, 'p')
+    providers = create_providers([pdir], context_overrides={'inner.x': 42})
     ctx = next(iter(providers.provider_contexts.values()))
     assert isinstance(ctx, BaseModel)
-    # cast to Any so we can access the field without type errors
-
     ctx_typed = cast('Any', ctx)
-    # original value should remain unchanged
-    assert ctx_typed.x == 0
+    assert hasattr(ctx_typed, 'inner')
+    assert ctx_typed.inner.x == 42
 
 
 def test_validate_raw_inputs_and_helpers() -> None:
-    # inputs_schema None returns unchanged list
+    # inputs_schema Null returns unchanged list
     assert _validate_raw_inputs([1, 2, 3], None) == [1, 2, 3]
 
     class S(BaseModel):

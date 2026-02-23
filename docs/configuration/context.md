@@ -259,6 +259,20 @@ Overrides are applied after provider contexts are merged but before project
 config takes final precedence. Invalid paths are logged as warnings but do not
 stop processing.
 
+The loader first dumps any `BaseModel` contexts to plain dictionaries, then
+merges the overrides and finally attempts to re-validate the result back into
+the original model class. A deep copy of the dumped dict is used so that
+mutating the temporary structure cannot affect the original model – this ensures
+nested default objects are preserved, and it allows overrides to populate fields
+buried inside defaulted sub‑models.
+
+If an override changes a value that cannot be represented by a provider's
+context model – for example a dotted path that references a key not yet
+introduced or a value that fails a type check – the override is dropped and a
+warning is emitted (`context_override_validation_failed` or
+`context_override_ignored`). The warning makes it easy to spot typos or attempts
+to set keys that are added later during provider finalization.
+
 Supported path formats:
 
 - Simple keys: `'key'`

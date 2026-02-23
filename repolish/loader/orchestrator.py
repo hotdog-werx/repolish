@@ -1,3 +1,4 @@
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import isclass
@@ -5,8 +6,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import BaseModel as _BaseModel
-from pydantic import ValidationError as _ValidationError
 
+from repolish.loader._log import logger
 from repolish.loader.anchors import process_anchors
 from repolish.loader.context import (
     apply_context_overrides,
@@ -205,6 +206,52 @@ def _build_all_providers_list(
     return all_providers_list
 
 
+# helper used by both override-appliers.  extracted to reduce duplication and
+# make the higher-level loops easier to understand.
+def _apply_overrides_to_model(
+    ctx: _BaseModel,
+    overrides: dict[str, object],
+    provider: str | None = None,
+) -> _BaseModel:
+    """Return a new ``BaseModel`` with ``overrides`` applied, or the original.
+
+    The implementation mirrors the complexity that formerly lived inline in the
+    two callers.  We dump the model to a dictionary, deep-copy it (to avoid
+    shared-mutable data issues), mutate the copy via
+    :func:`apply_context_overrides` and then re-validate the result.  If
+    validation raises or silently discards keys the user supplied we log a
+    warning including the provider identifier when available.  The original
+    model instance is returned on failure so the caller need not handle
+    fallback logic.
+
+    ``provider`` is used only for logging context; callers may pass ``None``.
+    """
+    original = ctx.model_dump()
+    data = copy.deepcopy(original)
+    apply_context_overrides(data, overrides)
+    if data == original:
+        return ctx
+
+    try:
+        new_ctx = ctx.model_validate(data)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            'context_override_validation_failed',
+            provider=provider,
+            error=str(exc),
+        )
+        return ctx
+    new_data = new_ctx.model_dump()
+    if new_data != data:
+        dropped = {k for k in data if k not in new_data}
+        logger.warning(
+            'context_override_ignored',
+            provider=provider,
+            ignored_keys=sorted(dropped),
+        )
+    return new_ctx
+
+
 def _apply_overrides_to_provider_contexts(
     provider_contexts: dict[str, object],
     context_overrides: dict[str, object],
@@ -221,26 +268,18 @@ def _apply_overrides_to_provider_contexts(
     inadvertently turning the context into a plain ``dict``.  Because
     ``provide_inputs``/``finalize_context`` are only invoked with model
     instances this could lead to mysterious ``AttributeError`` crashes.  We
-    now silently drop invalid overrides and retain the original model
-    instance instead.
+    now catch validation errors, log a warning, and retain the original
+    model instance instead.  The warning makes it clear when user-supplied
+    overrides could not be applied (for example, the override targets a
+    field that doesn't exist yet or violates the model schema).
     """
     for pid, ctx in provider_contexts.items():
         if isinstance(ctx, _BaseModel):
-            # convert model to plain data so overrides can mutate it, then
-            # re-validate back into the same type.  we deliberately *do not*
-            # fall back to a raw dict when validation fails; returning a
-            # dict would violate the implicit contract of
-            # ``provide_inputs``/``finalize_context`` which always receive a
-            # BaseModel for class-based providers.  instead we log and keep
-            # the original model (dropping the invalid override) so that a
-            # single misbehaving provider cannot poison the entire run.
-            data = ctx.model_dump()
-            apply_context_overrides(data, context_overrides)
-            try:
-                provider_contexts[pid] = ctx.model_validate(data)
-            except Exception:  # noqa: BLE001 - don't let one provider's broken context prevent the whole run
-                # keep the original model rather than switching to a dict
-                provider_contexts[pid] = ctx
+            provider_contexts[pid] = _apply_overrides_to_model(
+                ctx,
+                context_overrides,
+                provider=pid,
+            )
         elif isinstance(ctx, dict):
             # cast to expected key/value types for type checker
             apply_context_overrides(
@@ -256,6 +295,8 @@ def _apply_provider_overrides(
     """Apply per-provider overrides (handles BaseModel and dict contexts).
 
     Extracted helper to reduce duplication in the three-phase workflow.
+    Behaviour mirrors :func:`_apply_overrides_to_provider_contexts` --
+    failures are logged and the original context is preserved.
     """
     if not provider_overrides:
         return
@@ -263,12 +304,11 @@ def _apply_provider_overrides(
     for pid, overrides in provider_overrides.items():
         ctx = provider_contexts.get(pid)
         if isinstance(ctx, _BaseModel):
-            data = ctx.model_dump()
-            apply_context_overrides(data, overrides)
-            try:
-                provider_contexts[pid] = ctx.model_validate(data)
-            except _ValidationError:  # keep original model on failure
-                provider_contexts[pid] = ctx
+            provider_contexts[pid] = _apply_overrides_to_model(
+                ctx,
+                overrides,
+                provider=pid,
+            )
         elif isinstance(ctx, dict):
             apply_context_overrides(cast('dict[str, Any]', ctx), overrides)
 
