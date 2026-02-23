@@ -14,7 +14,8 @@ def test_process_create_only_non_iterable_returns_noop():
     inject_provider_instance_for_module(md, 'test.provider.create_only.none')
     inst = cast('_ProviderBase', md['_repolish_provider_instance'])
     s = set()
-    process_create_only_files(inst, {}, s)
+    fm = inst.create_file_mappings({})
+    process_create_only_files(fm, s)
     assert s == set()
 
     # module-level not iterable
@@ -22,7 +23,8 @@ def test_process_create_only_non_iterable_returns_noop():
     inject_provider_instance_for_module(md2, 'test.provider.create_only.none2')
     inst2 = cast('_ProviderBase', md2['_repolish_provider_instance'])
     s2 = set()
-    process_create_only_files(inst2, {}, s2)
+    fm2 = inst2.create_file_mappings({})
+    process_create_only_files(fm2, s2)
     assert s2 == set()
 
 
@@ -34,6 +36,7 @@ def test_process_create_only_handles_path_items():
     inject_provider_instance_for_module(md, 'test.provider.create_only.items')
     inst = cast('_ProviderBase', md['_repolish_provider_instance'])
     s = set()
-    process_create_only_files(inst, {}, s)
+    fm = inst.create_file_mappings({})
+    process_create_only_files(fm, s)
     assert Path('one.txt') in s
     assert Path('two.txt') in s

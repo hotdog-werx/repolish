@@ -10,7 +10,6 @@ from repolish.loader._log import logger
 from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.models import ProviderEntry
 from repolish.loader.module_loader import ModuleProviderAdapter
-from repolish.misc import ctx_to_dict
 
 
 def build_provider_metadata(
@@ -98,30 +97,6 @@ def _retrieve_instance_inputs(
     return cast('list[object]', raw)
 
 
-# module-style providers still support a bare callable, but we no longer
-# bother executing it.  Modules are legacy and will eventually vanish; in the
-# meantime we treat them as having no outgoing inputs.  Returning ``[]`` keeps
-# callers happy without needing to understand whatever the old module might
-# have attempted to do.
-def _retrieve_module_inputs(
-    provider_id: str,
-    idx: int,
-    module_dict: dict,
-    provider_contexts: dict[str, object],
-    all_providers_list: list[ProviderEntry],
-) -> list[object] | None:
-    """Legacy wrapper for module-based providers.
-
-    Historically this invoked a ``provide_inputs`` callable defined at the
-    module level.  Those hooks have been deprecated for years, and our new
-    orchestration no longer relies on them at all.  For forward-compatibility
-    we simply return an empty list whenever a module provider is encountered.
-    """
-    return []
-
-
-
-
 def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
     if isinstance(value, _BaseModel):
         return isinstance(value, schema)
@@ -166,7 +141,6 @@ class _GatherState:
 def _collect_for_provider(
     idx: int,
     provider_id: str,
-    module_dict: dict,
     inst: _ProviderBase | None,
     state: _GatherState,
 ) -> None:
@@ -188,13 +162,7 @@ def _collect_for_provider(
             state.all_providers_list,
         )
         if inst
-        else _retrieve_module_inputs(
-            provider_id,
-            idx,
-            module_dict,
-            state.provider_contexts,
-            state.all_providers_list,
-        )
+        else []
     )
 
     if inputs:
@@ -219,11 +187,10 @@ def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex st
         received_inputs={},
     )
 
-    for idx, (provider_id, module_dict) in enumerate(module_cache):
+    for idx, (provider_id, _) in enumerate(module_cache):
         _collect_for_provider(
             idx,
             provider_id,
-            module_dict,
             instances[idx],
             state,
         )
@@ -316,7 +283,7 @@ def finalize_provider_contexts(
         # even if no inputs were received we still invoke ``finalize_context``
         # once so providers have a hook to mutate their context or perform
         # cleanup. previous versions skipped providers with empty input lists
-        # which prevented legitimate side–effects; see issue #XYZ.
+        # which prevented legitimate side-effects; see issue #XYZ.
         inputs_schema = inst.get_inputs_schema()
         validated_inputs = _validate_raw_inputs(raw_inputs, inputs_schema)
 

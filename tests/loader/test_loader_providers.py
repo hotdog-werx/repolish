@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 from pathlib import Path
-import os
-import sys
 from textwrap import dedent
 from typing import cast
 
@@ -11,6 +9,7 @@ from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
 from repolish.loader import Providers, create_providers
+from repolish.loader.module_loader import ModuleProviderAdapter
 from repolish.loader.validation import _is_suspicious_variable
 
 
@@ -322,12 +321,10 @@ def test_provide_inputs_called_for_all_providers(tmp_path: Path):
 
     # spy on the adapter method so we can detect the call regardless of
     # how the provider was imported / named.
-    from repolish.loader.module_loader import ModuleProviderAdapter
-
     count = 0
     orig = ModuleProviderAdapter.provide_inputs
 
-    def spy(self, own_context, all_providers, provider_index):
+    def spy(self, own_context, all_providers, provider_index):  # noqa: ANN001, ANN202 - spy for method
         nonlocal count
         count += 1
         return orig(self, own_context, all_providers, provider_index)
@@ -335,10 +332,11 @@ def test_provide_inputs_called_for_all_providers(tmp_path: Path):
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(ModuleProviderAdapter, 'provide_inputs', spy)
 
-    providers = create_providers([str(p0), str(p1)])
+    _ = create_providers([str(p0), str(p1)])
     monkeypatch.undo()
 
     assert count >= 1, 'provide_inputs was not called on module provider p0'
+
 
 # Additional edge cases expressed with the same ProviderCase dataclass
 @pytest.mark.parametrize(

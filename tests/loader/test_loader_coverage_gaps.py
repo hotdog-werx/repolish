@@ -6,11 +6,13 @@ import pytest
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
+from repolish import ProviderEntry
 from repolish.loader import create_providers
 from repolish.loader.mappings import (
     _process_mapping_item,
     process_file_mappings,
 )
+from repolish.loader.models import BaseContext
 from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.module_loader import (
     ModuleProviderAdapter,
@@ -122,7 +124,8 @@ def test_process_file_mappings_skips_none_values() -> None:
         delete_set=set(),
         history={},
     )
-    process_file_mappings('m', Minimal(), {}, acc2)
+    fm = Minimal().create_file_mappings({})
+    process_file_mappings('m', fm, acc2)
     assert acc2.merged_file_mappings == {'b.txt': 'tmpl'}
 
 
@@ -166,7 +169,8 @@ def test_process_file_mappings_early_return_for_class_provider() -> None:  # pra
         delete_set=set(),
         history={},
     )
-    process_file_mappings('bad', inst, {}, acc)
+    fm_bad = inst.create_file_mappings({})
+    process_file_mappings('bad', fm_bad, acc)
     assert acc.merged_file_mappings == {}
 
 
@@ -415,7 +419,7 @@ def test_finalize_provider_contexts_edge_cases() -> None:
     """Providers should always have ``finalize_context`` invoked.
 
     Previously we skipped providers when ``received_inputs`` was empty; this
-    prevented context mutation for providers that don’t emit inputs.  The
+    prevented context mutation for providers that don't emit inputs.  The
     current behaviour calls the hook unconditionally (aside from missing
     instances).  The test exercises both paths.
     """
@@ -426,8 +430,14 @@ def test_finalize_provider_contexts_edge_cases() -> None:
 
     # provider with no inputs still has finalize_context executed
     class Setter(DummyProvider):
-        def finalize_context(self, own, received, allp, idx):
-            return {'called': True}
+        def finalize_context(
+            self,
+            own_context: BaseContext,  # noqa: ARG002 - parameter may be unused
+            received_inputs: list[BaseModel],  # noqa: ARG002 - parameter may be unused
+            all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
+            provider_index: int,  # noqa: ARG002 - parameter may be unused
+        ) -> BaseContext:
+            return cast('BaseContext', {'called': True})
 
     ctxs: dict[str, object] = {}
     inst = Setter()

@@ -2,35 +2,31 @@ from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import cast
 
-from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.types import Action, Decision, FileMode, TemplateMapping
 
 
 def process_delete_files(
-    provider: _ProviderBase,
-    context: object,
+    mappings: dict[str, str | TemplateMapping] | object,
     delete_set: set[Path],
 ) -> list[Path]:
-    """Process a provider's delete-file contributions.
+    """Process a provider's delete-file contributions from precomputed mapping.
 
-    The loader now operates on a *Provider instance* directly. The caller is
-    responsible for obtaining the instance (e.g. from a module dict). This
-    function extracts any ``FileMode.DELETE`` entries from
-    ``provider.create_file_mappings()`` and returns a list of the corresponding
-    paths. The returned list is used by the caller for the raw-delete
-    fallback history; callers that do not need it can ignore the return value.
+    ``mappings`` is normally the return value of
+    ``provider.create_file_mappings()``.  This helper scans it for
+    ``FileMode.DELETE`` items and adds the corresponding paths to
+    ``delete_set``.  A list of those paths is also returned for callers that
+    need fallback history.
     """
-    # provider is guaranteed to be a Provider; narrow for types
-    inst = cast('_ProviderBase', provider)
-
-    fm = inst.create_file_mappings(context)
     fallback_paths: list[Path] = []
-    if isinstance(fm, dict):
-        for k, v in fm.items():
-            if isinstance(v, TemplateMapping) and v.file_mode == FileMode.DELETE:
-                p = Path(*PurePosixPath(k).parts)
-                delete_set.add(p)
-                fallback_paths.append(p)
+    if not isinstance(mappings, dict):
+        return fallback_paths
+
+    for k, v in mappings.items():
+        if isinstance(v, TemplateMapping) and v.file_mode == FileMode.DELETE:
+            key = cast('str', k)
+            p = Path(*PurePosixPath(key).parts)
+            delete_set.add(p)
+            fallback_paths.append(p)
     return fallback_paths
 
 

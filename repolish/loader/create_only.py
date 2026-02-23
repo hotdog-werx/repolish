@@ -1,30 +1,25 @@
 from pathlib import Path, PurePosixPath
 from typing import cast
 
-from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.types import FileMode, TemplateMapping
 
 
 def process_create_only_files(
-    provider: _ProviderBase,
-    context: object,
+    mappings: dict[str, str | TemplateMapping] | object,
     create_only_set: set[Path],
 ) -> None:
-    """Process provider `create_only` contributions and add to set.
+    """Process provider `create_only` contributions from precomputed mapping.
 
-    Accepts a *Provider* instance. Extracts any
-    ``FileMode.CREATE_ONLY`` entries from ``provider.create_file_mappings()``
-    and adds the destination paths to ``create_only_set``.
+    ``mappings`` should come from ``provider.create_file_mappings()``.  Any
+    entries annotated with ``FileMode.CREATE_ONLY`` are added to
+    ``create_only_set``.
     """
-    inst = cast('_ProviderBase', provider)
+    if not isinstance(mappings, dict):
+        return
 
-    fm = inst.create_file_mappings(context)
-    if not isinstance(fm, dict):
-        # Not covering since this can only happen with the modules adapter.
-        # which is being removed in v1. once that adapter is removed, this branch can
-        # be deleted entirely.
-        return  # pragma: no cover - defensive check for unexpected return type
-
-    for k, v in fm.items():
+    for k, v in mappings.items():
         if isinstance(v, TemplateMapping) and v.file_mode == FileMode.CREATE_ONLY:
-            create_only_set.add(Path(*PurePosixPath(k).parts))
+            # ``mappings`` is a ``dict`` but not generically typed at runtime;
+            # cast the key to ``str`` so the path constructor is happy.
+            key = cast('str', k)
+            create_only_set.add(Path(*PurePosixPath(key).parts))

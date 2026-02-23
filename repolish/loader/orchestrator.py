@@ -153,25 +153,15 @@ def _process_phase_two(
         inst = cast('_ProviderBase', inst)
 
         process_anchors(inst, merged_context, accum.merged_anchors)
-        # pass the provider's own context when invoking the helper; for
-        # module-style adapters the adapter will convert to a dict
+        # compute file mappings once per provider and forward the result to the
+        # helpers.  this avoids three separate calls to
+        # ``inst.create_file_mappings()`` and decouples the helpers from the
+        # provider API (making future adapter removal easier).
         own_ctx = provider_contexts.get(provider_id, {})
-        process_file_mappings(
-            provider_id,
-            inst,
-            own_ctx,
-            accum,
-        )
-        fallback_paths = process_delete_files(
-            inst,
-            own_ctx,
-            accum.delete_set,
-        )
-        process_create_only_files(
-            inst,
-            own_ctx,
-            accum.create_only_set,
-        )
+        fm = inst.create_file_mappings(own_ctx)
+        process_file_mappings(provider_id, fm, accum)
+        fallback_paths = process_delete_files(fm, accum.delete_set)
+        process_create_only_files(fm, accum.create_only_set)
 
         # Raw delete history application (module-level raw delete_files)
         raw_items = module_dict.get('delete_files') or []
