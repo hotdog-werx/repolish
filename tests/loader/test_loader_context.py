@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pytest_mock import MockerFixture
 
 from repolish.loader.context import _apply_override, apply_context_overrides
@@ -250,6 +250,23 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
     new = _apply_overrides_to_model(instance, {'a': 5}, provider='pid')
     assert isinstance(new, M)
     assert new.a == 5
+    assert mock_logger.warning.call_count == 0
+
+    # if the model transforms the value during validation but does not drop
+    # the key we also should not warn (previous implementation would log
+    # ignored_keys=[]). this simulates more complex Pydantic behaviour.
+    class N(BaseModel):
+        a: int = 0
+
+        @field_validator('a', mode='after')
+        def bump(cls, v: int) -> int:  # noqa: N805
+            return v + 10
+
+    ninst = N()
+    mock_logger.reset_mock()
+    nout = _apply_overrides_to_model(ninst, {'a': 1}, provider='pid')
+    assert isinstance(nout, N)
+    assert nout.a == 11  # validator applied
     assert mock_logger.warning.call_count == 0
 
     # override invalid field should log but still produce a model with

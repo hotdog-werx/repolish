@@ -244,11 +244,15 @@ def _apply_overrides_to_model(
     new_data = new_ctx.model_dump()
     if new_data != data:
         dropped = {k for k in data if k not in new_data}
-        logger.warning(
-            'context_override_ignored',
-            provider=provider,
-            ignored_keys=sorted(dropped),
-        )
+        if dropped:
+            # only warn when actual keys were removed; modifications of
+            # existing values (including those performed by validators) are
+            # expected and should not emit a misleading warning.
+            logger.warning(
+                'context_override_ignored',
+                provider=provider,
+                ignored_keys=sorted(dropped),
+            )
     return new_ctx
 
 

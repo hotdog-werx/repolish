@@ -1,5 +1,6 @@
 from pathlib import Path
 from textwrap import dedent
+from unittest.mock import patch
 
 import pytest
 from jinja2 import TemplateSyntaxError, UndefinedError
@@ -517,13 +518,20 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     preprocess_templates(setup_input, providers, config, base_dir)
 
     config.no_cookiecutter = True
-    with pytest.raises(UndefinedError) as exc:
+    # patch logger so we can introspect which context was used during failure
+    with patch('repolish.hydration.rendering.logger') as mock_logger, pytest.raises(UndefinedError) as exc:
         render_template(setup_input, providers, setup_output, config)
     # message should include the original Jinja error and note which file was
     # being rendered.
     msg = str(exc.value)
     assert 'while rendering' in msg
     assert 'no_such_var' in msg
+
+    # ensure our patched logger was invoked with the failing context
+    assert mock_logger.exception.called
+    call = mock_logger.exception.call_args
+    assert 'context' in call.kwargs
+    assert isinstance(call.kwargs['context'], dict)
 
 
 def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
