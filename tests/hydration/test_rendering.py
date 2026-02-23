@@ -132,8 +132,11 @@ def test_render_with_file_mappings_generates_multiple_files(
     config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
 
+    prefix = '_repolish.'
     for i in (1, 2, 3):
-        out = setup_output / 'repolish' / f'file-{i}.txt'
+        # output files are written with a prefix so skip the prefix when
+        # checking existence/content.
+        out = setup_output / 'repolish' / f'{prefix}file-{i}.txt'
         assert out.exists()
         assert out.read_text(encoding='utf-8').strip() == f'FILE #{i}'
 
@@ -182,10 +185,11 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
     config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
 
-    assert (setup_output / 'repolish' / 'file-typed-1.txt').read_text(
+    prefix = '_repolish.'
+    assert (setup_output / 'repolish' / f'{prefix}file-typed-1.txt').read_text(
         encoding='utf-8',
     ).strip() == 'FILE #10'
-    assert (setup_output / 'repolish' / 'file-typed-2.txt').read_text(
+    assert (setup_output / 'repolish' / f'{prefix}file-typed-2.txt').read_text(
         encoding='utf-8',
     ).strip() == 'FILE #20'
 
@@ -392,7 +396,8 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
     # Enable Jinja rendering (scoped context applies automatically)
     config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
-    assert (setup_output / 'repolish' / 'm.txt').read_text(
+    prefix = '_repolish.'
+    assert (setup_output / 'repolish' / f'{prefix}m.txt').read_text(
         encoding='utf-8',
     ).strip() == 'X=VAL'
 
@@ -659,8 +664,9 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
 
     assert 'will_delete.txt' not in providers.file_mappings
     assert 'none_src.txt' not in providers.file_mappings
-    # good mapping should be rendered and normalized
-    assert (setup_output / 'repolish' / 'good.txt').exists()
+    # good mapping should be rendered with the prefix but normalization
+    # still reports the unprefixed destination path.
+    assert (setup_output / 'repolish' / '_repolish.good.txt').exists()
     assert providers.file_mappings['good.txt'] == 'good.txt'
 
 

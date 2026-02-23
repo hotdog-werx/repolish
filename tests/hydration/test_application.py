@@ -81,13 +81,17 @@ def test_apply_skips_file_when_exists(tmp_path: Path):
 
 
 def test_apply_file_mapping_copy(tmp_path: Path):
-    """A TemplateMapping source is copied to the project root."""
+    """A TemplateMapping source is copied to the project root.
+
+    The mapping source file is expected to be prefixed in the staging area;
+    the application step should strip the prefix when copying.
+    """
     setup_output = tmp_path / 'setup-output'
     repolish_dir = setup_output / 'repolish'
     repolish_dir.mkdir(parents=True)
 
-    # create the source file that will be mapped
-    (repolish_dir / 'template.txt').write_text('mapped content')
+    # create the source file that will be mapped (prefixed)
+    (repolish_dir / '_repolish.template.txt').write_text('mapped content')
 
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
@@ -108,6 +112,36 @@ def test_apply_file_mapping_copy(tmp_path: Path):
     out_file = base_dir / 'dest.txt'
     assert out_file.exists()
     assert out_file.read_text() == 'mapped content'
+
+
+def test_apply_file_mapping_copy_without_prefix(tmp_path: Path):
+    """Legacy (unprefixed) mapping output is still handled correctly."""
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+
+    # create an unprefixed source file
+    (repolish_dir / 'template.txt').write_text('old mapped')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        file_mappings={
+            'dest2.txt': TemplateMapping(source_template='template.txt'),
+        },
+        delete_history={},
+        create_only_files=[],
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    out_file = base_dir / 'dest2.txt'
+    assert out_file.exists()
+    assert out_file.read_text() == 'old mapped'
 
 
 def test_mapping_without_source_logs_warning(

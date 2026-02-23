@@ -116,6 +116,32 @@ def test_unified_diff_format_has_proper_newlines(tmp_path: Path) -> None:
     assert hunk_line_idx == to_line_idx + 1
 
 
+def test_check_generated_output_handles_prefixed_mapping(
+    tmp_path: Path,
+) -> None:
+    """Mapping prefixed files should be compared using unprefixed destination name."""
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish').mkdir(parents=True)
+    # create a prefixed mapping output
+    (setup_output / 'repolish' / '_repolish.foo.txt').write_text('mapped')
+
+    project_root = tmp_path / 'proj'
+    project_root.mkdir()
+    (project_root / 'foo.txt').write_text('other')
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        delete_history={},
+        file_mappings={'foo.txt': 'foo.txt'},
+    )
+
+    diffs = check_generated_output(setup_output, providers, project_root)
+    # diff should refer to the dest path without prefix
+    assert any(p == 'foo.txt' for p, _ in diffs), diffs
+
+
 def test_line_ending_ignored_by_default(tmp_path: Path) -> None:
     """Test that line-ending-only differences (LF vs CRLF) are ignored by default."""
     setup_output = tmp_path / 'setup-output'

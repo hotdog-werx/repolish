@@ -39,9 +39,11 @@ def ctx_keys(ctx_obj: object | None) -> list[str]:
 def is_conditional_file(path_str: str) -> bool:
     """Check if a file's name starts with the _repolish. prefix.
 
-    Conditional files are those with filenames starting with '_repolish.'
-    regardless of where they are in the directory structure (e.g.,
-    '_repolish.config.yml' or '.github/workflows/_repolish.ci.yml').
+    This prefix is used both for conditional template files and for
+    temporary mapping outputs written during hydration.  By treating any
+    filename beginning with `_repolish.` as special we automatically skip
+    such files during regular rendering and application steps, and they are
+    easy to spot when inspecting the staging directory.
 
     Args:
         path_str: POSIX-style relative path

@@ -147,7 +147,16 @@ def _check_single_file_mapping(
 
     Returns (dest_path, message_or_diff) tuple if there's a diff, None if same.
     """
-    source_file = setup_output / 'repolish' / source_path
+    # mapping outputs are written with a filename prefix so they don't
+    # interfere with regular template files. look for the prefixed variant
+    # first but fall back to the unprefixed name for backwards compatibility.
+    prefix = '_repolish.'
+    candidate = setup_output / 'repolish' / source_path
+    if not candidate.exists():
+        cand_path = Path(source_path)
+        prefixed = setup_output / 'repolish' / cand_path.parent / (prefix + cand_path.name)
+        candidate = prefixed
+    source_file = candidate
     if not source_file.exists():
         return (dest_path, f'MAPPING_SOURCE_MISSING: {source_path}')
 

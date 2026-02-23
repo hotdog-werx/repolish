@@ -406,11 +406,22 @@ def _render_single_mapping(
         msg = f'{exc} (while rendering mapping {src_template} for {dest_path})'
         raise UndefinedError(msg) from exc
 
-    target = setup_output / str(merged_ctx.get('_repolish_project', 'repolish')) / dest_path
+    # when materializing a mapping we don't want the generated file to
+    # appear with the bare destination name. prefixing the *filename* itself
+    # with ``_repolish.`` lets us easily identify mapping outputs in the
+    # staging area (for debugging) and keeps the regular rendering logic from
+    # treating them as normal template files. the prefix is stripped when the
+    # mapping is applied to the project tree.
+    prefix = '_repolish.'
+    orig = Path(dest_path)
+    prefixed_name = prefix + orig.name
+    target = setup_output / str(merged_ctx.get('_repolish_project', 'repolish')) / orig.parent / prefixed_name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(rendered, encoding='utf-8')
 
-    # Normalize mapping so downstream code sees a string source path
+    # Normalize mapping so downstream code still thinks the source is the
+    # unprefixed destination path; the helpers in comparison/application will
+    # look for the prefixed file when they need it.
     providers.file_mappings[dest_path] = dest_path
 
 

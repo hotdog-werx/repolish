@@ -66,14 +66,23 @@ def _copy_mapping_file(
     create_only_files_set: set[str],
 ) -> None:
     """Copy the resolved source string into the destination path (handles logging)."""
+    # mapping sources are materialized with a filename prefix; attempt to
+    # load the prefixed file first and fall back to the original name if the
+    # prefix isn't present (compatibility with older runs).
+    prefix = '_repolish.'
     source_file = setup_output / 'repolish' / source_str
     if not source_file.exists():
-        logger.warning(
-            'file_mapping_source_not_found',
-            source=source_str,
-            dest=dest_path,
-        )
-        return
+        cand = Path(source_str)
+        prefixed = setup_output / 'repolish' / cand.parent / (prefix + cand.name)
+        if prefixed.exists():
+            source_file = prefixed
+        else:
+            logger.warning(
+                'file_mapping_source_not_found',
+                source=source_str,
+                dest=dest_path,
+            )
+            return
 
     dest_file = base_dir / dest_path
     # Respect create-only semantics
