@@ -202,6 +202,32 @@ def _build_all_providers_list(
     return all_providers_list
 
 
+def _apply_overrides_to_provider_contexts(
+    provider_contexts: dict[str, object],
+    context_overrides: dict[str, object],
+) -> None:
+    """Apply configuration overrides to each provider's context.
+
+    This handles both ``BaseModel`` and ``dict`` contexts and is used
+    both before inputs are gathered and after finalization so that the
+    authoritative overrides cannot be bypassed by provider logic.
+    """
+    for pid, ctx in provider_contexts.items():
+        if isinstance(ctx, _BaseModel):
+            data = ctx.model_dump()
+            apply_context_overrides(data, context_overrides)
+            try:
+                provider_contexts[pid] = ctx.model_validate(data)
+            except Exception:  # noqa: BLE001 - don't let one provider's broken context prevent the whole run
+                provider_contexts[pid] = data
+        elif isinstance(ctx, dict):
+            # cast to expected key/value types for type checker
+            apply_context_overrides(
+                cast('dict[str, Any]', ctx),
+                context_overrides,
+            )
+
+
 def _run_three_phase(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, object],
@@ -229,7 +255,6 @@ def _run_three_phase(
     (
         provider_migrated_map,
         instances,
-        canonical_name_to_pid,
     ) = build_provider_metadata(module_cache)
 
     # include each provider's declared input schema so that other providers can
@@ -240,6 +265,13 @@ def _run_three_phase(
         instances,
         provider_contexts,
     )
+    # apply overrides before input gathering
+    if context_overrides:
+        _apply_overrides_to_provider_contexts(
+            provider_contexts,
+            context_overrides,
+        )
+
     # we no longer attempt to predict receivers; just call all providers
     # for their outgoing inputs and route them based on schemas.
     received_inputs = gather_received_inputs(
@@ -247,7 +279,6 @@ def _run_three_phase(
         instances,
         provider_contexts,
         all_providers_list,
-        canonical_name_to_pid,
         # old flag still passed for compatibility but ignored
         compute_recipient_flags(instances),
     )
@@ -260,6 +291,13 @@ def _run_three_phase(
         provider_contexts,
         all_providers_list,
     )
+
+    # re-apply overrides after finalization
+    if context_overrides:
+        _apply_overrides_to_provider_contexts(
+            provider_contexts,
+            context_overrides,
+        )
 
     # recompute merged_context after finalization
     merged_context = dict(base_context or {})

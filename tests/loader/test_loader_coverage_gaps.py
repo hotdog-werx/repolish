@@ -42,6 +42,11 @@ from repolish.loader.validation import _emit_provider_migration_suggestion
 from repolish.misc import ctx_keys, ctx_to_dict
 
 
+# shared message class used by generated provider modules
+class SharedMsg(BaseModel):
+    foo: str
+
+
 # ---- helpers and minimal provider implementations ------------------------
 class DummyProvider(_ProviderBase):
     """Simplest concrete provider used in helpers."""
@@ -312,8 +317,7 @@ def test_build_provider_metadata_handles_bad_name():
             return {}
 
     module_cache = [('p', {'_repolish_provider_instance': BadName()})]
-    _mig, _insts, canon = build_provider_metadata(module_cache)
-    assert canon == {}
+    _mig, _insts = build_provider_metadata(module_cache)
 
 
 def test_ctx_to_dict_behaves_consistently():
@@ -352,7 +356,6 @@ def test_gather_received_inputs_variants() -> None:
     provider_contexts: dict[str, object] = {}
     # new API requires a third element (schema) even if None
     all_providers_list = [('p1', {}, None)]
-    canonical: dict[str, str] = {}
     has_recipient_after = [False]
     # calling gather_received_inputs directly
     got = gather_received_inputs(
@@ -360,7 +363,6 @@ def test_gather_received_inputs_variants() -> None:
         instances,
         provider_contexts,
         all_providers_list,
-        canonical,
         has_recipient_after,
     )
     assert got == {}
@@ -377,11 +379,75 @@ def test_gather_received_inputs_variants() -> None:
         instances,
         provider_contexts,
         all_providers_list,
-        canonical,
         has_recipient_after,
     )
     # unresolved recipient dropped, so result remains empty
     assert got == {}
+
+
+def test_overrides_affect_inputs(make_provider: Callable[[str, str], str]):
+    """Providers should see config overrides when computing inputs."""
+    sender_src = """
+from pydantic import BaseModel
+from repolish.loader.models import Provider, ProviderEntry
+from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
+
+
+class Ctx(BaseModel):
+    foo: str
+
+
+class Sender(Provider[Ctx, Msg]):
+    def get_provider_name(self):
+        return 'sender'
+
+    def create_context(self):
+        return Ctx(foo='original')
+
+    def get_inputs_schema(self):
+        return Msg
+
+    def provide_inputs(self, own_context, all_providers, provider_index):
+        # loader may pass a dict rather than a model
+        foo_val = own_context['foo'] if isinstance(own_context, dict) else own_context.foo
+        return [Msg(foo=foo_val)]
+"""
+    recv_src = """
+from pydantic import BaseModel
+from repolish.loader.models import Provider, ProviderEntry
+from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
+
+
+class Receiver(Provider[BaseModel, Msg]):
+    def get_provider_name(self):
+        return 'receiver'
+
+    def create_context(self):
+        return {}
+
+    def get_inputs_schema(self):
+        return Msg
+
+    def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
+        if received_inputs:
+            own_context['got'] = received_inputs[0].foo
+        return own_context
+"""
+    sdir = make_provider(sender_src, 'sender')
+    rdir = make_provider(recv_src, 'receiver')
+    providers = create_providers(
+        [sdir, rdir],
+        context_overrides={'foo': 'overridden'},
+    )
+    found = None
+    for ctx in providers.provider_contexts.values():
+        if isinstance(ctx, dict) and 'got' in ctx:
+            found = cast('dict[str, object]', ctx)['got']
+            break
+        if hasattr(ctx, 'got'):
+            found = ctx.got
+            break
+    assert found == 'overridden'
 
 
 def test_validate_raw_inputs_and_helpers() -> None:

@@ -14,14 +14,16 @@ from repolish.loader.module_loader import ModuleProviderAdapter
 
 def build_provider_metadata(
     module_cache: list[tuple[str, dict]],
-) -> tuple[dict[str, bool], list[_ProviderBase | None], dict[str, str]]:
-    """Compute migration flags, provider instances, and canonical names.
+) -> tuple[dict[str, bool], list[_ProviderBase | None]]:
+    """Compute migration flags and provider instances.
 
-    Returns a tuple: (migrated_map, instances, canonical_name_to_pid).
+    Historically this helper also returned a ``canonical_name_to_pid`` map
+    used for explicit name-based routing.  that mechanism has been removed,
+    so the helper now returns only the two values still needed by the loader.
+    The map is no longer constructed at all.
     """
     provider_migrated_map: dict[str, bool] = {}
     instances: list[_ProviderBase | None] = []
-    canonical_name_to_pid: dict[str, str] = {}
 
     for _idx, (provider_id, module_dict) in enumerate(module_cache):
         inst = module_dict.get('_repolish_provider_instance')
@@ -33,15 +35,8 @@ def build_provider_metadata(
         provider_migrated_map[provider_id] = migrated
 
         instances.append(inst if isinstance(inst, _ProviderBase) else None)
-        if inst:
-            try:
-                name = inst.get_provider_name()
-            except Exception:  # noqa: BLE001 -- provider code should not be able to break loading
-                name = None
-            if isinstance(name, str) and name:
-                canonical_name_to_pid[name] = provider_id
 
-    return provider_migrated_map, instances, canonical_name_to_pid
+    return provider_migrated_map, instances
 
 
 def compute_recipient_flags(
@@ -76,12 +71,12 @@ def _retrieve_instance_inputs(
     receive a warning from the class shim above, so the loader itself doesn't
     need to duplicate that logic.
     """
+    # prefer the previously collected context object which already
+    # includes any configuration overrides.  creating a fresh context here
+    # would bypass those overrides and lead to stale values during the
+    # `provide_inputs` call.
+    own_model = provider_contexts.get(provider_id, {})
     try:
-        try:
-            own_model = inst.create_context()
-        except Exception:  # noqa: BLE001
-            own_model = provider_contexts.get(provider_id, {})
-        # the new public API
         raw = inst.provide_inputs(
             own_model,
             all_providers_list,
@@ -110,7 +105,6 @@ def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
 
 def _distribute_payloads(
     inputs_list: list[object],
-    sender_idx: int,
     state: _GatherState,
 ) -> None:
     """Route a provider's outputs to every other provider.
@@ -137,7 +131,6 @@ def _distribute_payloads(
 class _GatherState:
     provider_contexts: dict[str, object]
     all_providers_list: list[ProviderEntry]
-    canonical_name_to_pid: dict[str, str]
     has_recipient_after: list[bool]
     received_inputs: dict[str, list[object]]
 
@@ -171,22 +164,20 @@ def _collect_for_provider(
 
     if inputs:
         # only list form is supported now; dispatch forward only
-        _distribute_payloads(inputs, idx, state)
+        _distribute_payloads(inputs, state)
 
 
-def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex step
+def gather_received_inputs(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, object],
     all_providers_list: list[ProviderEntry],
-    canonical_name_to_pid: dict[str, str],
     has_recipient_after: list[bool],
 ) -> dict[str, list[object]]:
     """Collect provider inputs and organize them by recipient provider id."""
     state = _GatherState(
         provider_contexts=provider_contexts,
         all_providers_list=all_providers_list,
-        canonical_name_to_pid=canonical_name_to_pid,
         has_recipient_after=has_recipient_after,
         received_inputs={},
     )
