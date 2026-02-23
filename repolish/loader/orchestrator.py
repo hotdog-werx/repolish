@@ -1,9 +1,11 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from inspect import isclass
 from pathlib import Path
 from typing import Any, cast
 
 from pydantic import BaseModel as _BaseModel
+from pydantic import ValidationError as _ValidationError
 
 from repolish.loader.anchors import process_anchors
 from repolish.loader.context import (
@@ -247,6 +249,65 @@ def _apply_overrides_to_provider_contexts(
             )
 
 
+def _apply_provider_overrides(
+    provider_contexts: dict[str, object],
+    provider_overrides: dict[str, dict[str, object]] | None,
+) -> None:
+    """Apply per-provider overrides (handles BaseModel and dict contexts).
+
+    Extracted helper to reduce duplication in the three-phase workflow.
+    """
+    if not provider_overrides:
+        return
+
+    for pid, overrides in provider_overrides.items():
+        ctx = provider_contexts.get(pid)
+        if isinstance(ctx, _BaseModel):
+            data = ctx.model_dump()
+            apply_context_overrides(data, overrides)
+            try:
+                provider_contexts[pid] = ctx.model_validate(data)
+            except _ValidationError:  # keep original model on failure
+                provider_contexts[pid] = ctx
+        elif isinstance(ctx, dict):
+            apply_context_overrides(cast('dict[str, Any]', ctx), overrides)
+
+
+@dataclass(frozen=True)
+class RunThreePhaseContext:
+    """Typed container for optional runtime parameters used by the three-phase provider runner."""
+
+    base_context: dict[str, object] | None = None
+    context_overrides: dict[str, object] | None = None
+    provider_overrides: dict[str, dict[str, object]] | None = None
+
+
+def _recompute_merged_context(
+    module_cache: list[tuple[str, dict]],
+    provider_contexts: dict[str, object],
+    base_context: dict[str, object] | None,
+    context_overrides: dict[str, object] | None,
+) -> dict[str, object]:
+    """Rebuild merged_context after provider finalization.
+
+    Extracted to lower the complexity of the main runner.
+    """
+    merged_context = dict(base_context or {})
+    for pid, _ in module_cache:
+        own = provider_contexts.get(pid, {})
+        if isinstance(own, _BaseModel):
+            merged_context.update(own.model_dump())
+        else:
+            merged_context.update(cast('dict[str, object]', own))
+
+    if context_overrides:
+        apply_context_overrides(merged_context, context_overrides)
+    if base_context:
+        merged_context.update(base_context)
+
+    return merged_context
+
+
 def _populate_provider_context(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
@@ -291,16 +352,14 @@ def _run_three_phase(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, object],
     provider_contexts: dict[str, object],
-    base_context: dict[str, object] | None,
-    context_overrides: dict[str, object] | None,
+    options: RunThreePhaseContext | None = None,
 ) -> Providers:
     """Execute phase-2/3 logic and return final Providers object.
 
-    This helper encapsulates the complex provider-input collection,
-    finalization, context recomputation and override application that was
-    previously implemented inline in :func:`create_providers`.  Metadata maps
-    such as ``provider_migrated_map`` are constructed via helpers imported from
-    ``three_phase``.
+    The original implementation accepted multiple separate arguments and had
+    accumulated complexity.  Bundling optional parameters into ``options``
+    and extracting helpers reduces the function's signature and cognitive
+    complexity while preserving behaviour.
     """
     # initialize accumulators that were previously defined at the top of
     # ``create_providers``.
@@ -318,6 +377,15 @@ def _run_three_phase(
 
     _populate_provider_context(module_cache, instances, provider_contexts)
 
+    base_context = None if options is None else options.base_context
+    context_overrides = None if options is None else options.context_overrides
+    provider_overrides = None if options is None else options.provider_overrides
+
+    # apply any per-provider overrides now that each provider has a concrete
+    # context object.  this ensures `provide_inputs` sees the patched values
+    # even though the loader API only accepts global overrides.
+    _apply_provider_overrides(provider_contexts, provider_overrides)
+
     # include each provider's declared input schema so that other providers can
     # inspect it when deciding what to emit.  We build the list via a
     # dedicated helper to keep this function's complexity low.
@@ -326,6 +394,7 @@ def _run_three_phase(
         instances,
         provider_contexts,
     )
+
     # apply overrides before input gathering
     if context_overrides:
         _apply_overrides_to_provider_contexts(
@@ -353,26 +422,24 @@ def _run_three_phase(
         all_providers_list,
     )
 
-    # re-apply overrides after finalization
+    # re-apply global overrides after finalization
     if context_overrides:
         _apply_overrides_to_provider_contexts(
             provider_contexts,
             context_overrides,
         )
 
-    # recompute merged_context after finalization
-    merged_context = dict(base_context or {})
-    for pid, _ in module_cache:
-        own = provider_contexts.get(pid, {})
-        if isinstance(own, _BaseModel):
-            merged_context.update(own.model_dump())
-        else:
-            merged_context.update(cast('dict[str, object]', own))
+    # and likewise re-apply per-provider overrides so the contexts exposed
+    # in the returned `Providers` object include any project-supplied values.
+    _apply_provider_overrides(provider_contexts, provider_overrides)
 
-    if context_overrides:
-        apply_context_overrides(merged_context, context_overrides)
-    if base_context:
-        merged_context.update(base_context)
+    # recompute merged_context after finalization
+    merged_context = _recompute_merged_context(
+        module_cache,
+        provider_contexts,
+        base_context,
+        context_overrides,
+    )
 
     accum = Accumulators(
         merged_anchors=merged_anchors,
@@ -400,6 +467,7 @@ def create_providers(
     base_context: dict[str, object] | None = None,
     context_overrides: dict[str, object] | None = None,
     *,
+    provider_overrides: dict[str, dict[str, object]] | None = None,
     require_file_mappings: bool = False,
 ) -> Providers:
     """Load all template providers and merge their contributions.
@@ -441,6 +509,9 @@ def create_providers(
         module_cache,
         merged_context,
         provider_contexts,
-        base_context,
-        context_overrides,
+        RunThreePhaseContext(
+            base_context=base_context,
+            context_overrides=context_overrides,
+            provider_overrides=provider_overrides,
+        ),
     )

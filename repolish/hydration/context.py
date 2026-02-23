@@ -107,10 +107,29 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     - Applies config.delete_files entries (with '!' negation) on top of
       provider decisions and records provenance Decisions for config entries
     """
+    # construct per-provider override map that will be applied "early"
+    # inside the loader.  this ensures provider hooks see project-supplied
+    # values before they execute, matching the behaviour of the real
+    # application.  ``create_providers`` will merge these into the
+    # ``provider_contexts`` map before gathering inputs.
+    # provider IDs used by the loader are just the directory path passed
+    # to ``create_providers``; this is effectively ``info.target_dir``.
+    provider_overrides: dict[str, dict[str, object]] = {}
+    for info in config.providers.values():
+        pid = info.target_dir.as_posix()
+        merged: dict[str, object] = {}
+        if info.context:
+            merged.update(ctx_to_dict(info.context))
+        if info.context_overrides:
+            merged.update(info.context_overrides)
+        if merged:
+            provider_overrides[pid] = merged
+
     providers = create_providers(
         [str(d) for d in config.directories],
         base_context=config.context,
         context_overrides=config.context_overrides,
+        provider_overrides=provider_overrides,
     )
 
     alias_to_pid = _build_alias_to_pid(config)

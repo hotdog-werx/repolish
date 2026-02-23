@@ -7,6 +7,9 @@ from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from repolish import ProviderEntry
+from repolish.config import RepolishConfig
+from repolish.config.models import ResolvedProviderInfo
+from repolish.hydration.context import build_final_providers
 from repolish.loader import create_providers
 from repolish.loader.mappings import (
     _process_mapping_item,
@@ -385,7 +388,10 @@ def test_gather_received_inputs_variants() -> None:
     assert got == {}
 
 
-def test_overrides_affect_inputs(make_provider: Callable[[str, str], str]):
+def test_overrides_affect_inputs(
+    tmp_path: Path,
+    make_provider: Callable[[str, str], str],
+):
     """Providers should see config overrides when computing inputs.
 
     This test exercises the full three-phase workflow and ensures that
@@ -455,28 +461,65 @@ class Receiver(Provider[RecCtx, Msg]):
 """
     sdir = make_provider(sender_src, 'sender')
     rdir = make_provider(recv_src, 'receiver')
-    providers = create_providers(
-        [sdir, rdir],
-        context_overrides={
-            'foo': 'overridden',
-            'repo.name': 'new_name',
+    # the real application path goes through `build_final_providers`
+    # which wraps `create_providers` and then merges any project-level
+    # provider config/overrides.  using that helper gives us confidence that
+    # `provide_inputs` will see the updated context (previously the test
+    # exercised `create_providers` directly which hid a bug).
+    # global `context_overrides` argument is deprecated and isn't where
+    # provider code actually looks; overrides live on the per-provider
+    # configuration (cf. ``ResolvedProviderInfo.context_overrides``).  the
+    # previous test variant accidentally passed them globally which hid a
+    # bug in real-world invocations.
+    cfg = RepolishConfig(
+        config_dir=tmp_path,
+        directories=[Path(sdir), Path(rdir)],
+        context={},
+        anchors={},
+        providers={
+            'sender': ResolvedProviderInfo(
+                alias='sender',
+                target_dir=Path(sdir),
+                templates_dir='templates',
+                context=None,
+                context_overrides={
+                    'foo': 'overridden',
+                    'repo.name': 'new_name',
+                },
+            ),
+            'receiver': ResolvedProviderInfo(
+                alias='receiver',
+                target_dir=Path(rdir),
+                templates_dir='templates',
+            ),
         },
     )
+    # add provider definitions with scoped overrides
+    providers = build_final_providers(cfg)
 
-    # final provider context (receiver) should be a model with the overridden value
-    ctx_vals = list(providers.provider_contexts.values())
-    assert ctx_vals
-    final_ctx = ctx_vals[-1]
-    assert not isinstance(final_ctx, dict)
-    # use getattr to avoid mypy thinking this is a dict
-    assert final_ctx.got == 'overridden'  # type: ignore[unresolved-attribute]
+    # receiver's context after finalization should include the 'got' key
+    # with the value produced by Sender.provide_inputs, which proves that
+    # Sender saw the override before emitting inputs.
+    # fetch by explicit provider path rather than relying on dict order
+    recv_pid = str(Path(rdir).as_posix())
+    send_pid = str(Path(sdir).as_posix())
 
-    # sender's context also receives the repo override
-    sender_ctx = ctx_vals[0]
-    assert not isinstance(sender_ctx, dict)
-    # cast to Any so type checker stops complaining about dynamic attrs
-    sender_cast = cast('Any', sender_ctx)
-    assert sender_cast.repo.name == 'new_name'
+    receiver_ctx = providers.provider_contexts.get(recv_pid, {})
+    # contexts may be BaseModel instances or plain dicts depending on merge
+    if isinstance(receiver_ctx, BaseModel):
+        rc = cast('Any', receiver_ctx)
+        assert rc.got == 'overridden'
+    else:
+        rc2 = cast('dict', receiver_ctx)
+        assert rc2.get('got') == 'overridden'
+
+    sender_ctx = providers.provider_contexts.get(send_pid, {})
+    if isinstance(sender_ctx, BaseModel):
+        sc = cast('Any', sender_ctx)
+        assert sc.repo.name == 'new_name'
+    else:
+        sc2 = cast('dict', sender_ctx)
+        assert sc2.get('repo', {}).get('name') == 'new_name'
 
 
 def test_invalid_override_preserves_model(
