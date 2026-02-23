@@ -216,8 +216,22 @@ def render_with_cookiecutter(
 def _compute_merged_context(providers: Providers) -> dict[str, object]:
     """Return a merged provider context with migrated keys removed.
 
-    Extracted to keep the function small and easier to test.
+    Extracted to keep the function small and easier to test.  Logging here is
+    intentionally verbose because mis-merged contexts have been a recurring
+    source of cross-platform confusion; the Windows CI in particular has
+    produced cases where provider context appeared completely missing.  The
+    debug output shows the original providers.context, the per-provider
+    contexts, and the migration flags so that you can trace how the final
+    dictionary was derived.
     """
+    # debug dump of incoming state
+    logger.debug(
+        'compute_merged_context_start',
+        base_context=providers.context,
+        provider_contexts={pid: ctx_to_dict(ctx) for pid, ctx in providers.provider_contexts.items()},
+        provider_migrated=providers.provider_migrated,
+    )
+
     merged = dict(providers.context)
     for pid, migrated in providers.provider_migrated.items():
         if not migrated:
@@ -227,6 +241,7 @@ def _compute_merged_context(providers: Providers) -> dict[str, object]:
             merged.pop(k, None)
 
     merged.setdefault('_repolish_project', 'repolish')
+    logger.debug('compute_merged_context_result', merged_ctx=merged)
     return merged
 
 
@@ -252,6 +267,10 @@ def render_template(
 ) -> None:
     """Dispatch rendering to Jinja or cookiecutter based on runtime config."""
     merged_ctx = _compute_merged_context(providers)
+    # log the full merged context for diagnostic purposes (e.g. windows CI
+    # runs where context appears truncated).  this log does not expose
+    # sensitive data since context is already available to template authors.
+    logger.debug('computed_merged_context', merged_ctx=merged_ctx)
     skip_templates = _collect_skip_templates(providers)
 
     # provider-scoped context changes the base context per-mapping.  when

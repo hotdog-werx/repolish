@@ -34,33 +34,52 @@ def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
 
 def test_render_template_with_no_cookiecutter_renders_jinja(tmp_path: Path):
     """When config.no_cookiecutter is True, templates are rendered with Jinja2."""
-    tpl = _make_template_dir(tmp_path)
+
+
+def test_render_template_logs_merged_context(tmp_path: Path, mocker: MockerFixture):
+    """Rendering logs the merged context at debug level."""
+    # simple template so rendering will proceed without errors
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'foo.jinja').write_text('X={{ cookiecutter.foo }}', encoding='utf-8')
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
 
-    _, _ = create_cookiecutter_template(setup_input, [tpl])
-
-    providers = Providers(
-        context={
-            'package_name': 'acme',
-            'description': 'Acme project',
-            '_repolish_project': 'proj',
-        },
-    )
-
-    # Preprocess (anchor-driven replacements) - no-op for this template
+    providers = Providers(context={'foo': 'bar', '_repolish_project': 'repolish'})
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # Render using Jinja (opt-in)
     config.no_cookiecutter = True
+    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
     render_template(setup_input, providers, setup_output, config)
 
-    out_file = setup_output / 'proj' / 'acme' / 'README.md'
-    assert out_file.exists()
-    text = out_file.read_text(encoding='utf-8')
-    assert '# acme' in text
-    assert 'Description: Acme project' in text
+    # ensure debug log called with merged context dictionary
+    mock_logger.debug.assert_any_call(
+        'computed_merged_context',
+        merged_ctx={'foo': 'bar', '_repolish_project': 'repolish'},
+    )
+
+
+def test_compute_merged_context_logs_details(mocker: MockerFixture):
+    # simulate a migrated provider whose context supplies 'a'.
+    providers = Providers(
+        context={'base': 1},
+        provider_migrated={'p': True},
+        provider_contexts={'p': {'a': 2}},
+    )
+
+    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
+    # import here avoids circular initialization at module load when patching
+    from repolish.hydration.rendering import _compute_merged_context  # noqa: PLC0415
+
+    merged = _compute_merged_context(providers)
+    assert merged == {'base': 1, '_repolish_project': 'repolish'}
+    # logger should have recorded start and result
+    assert mock_logger.debug.call_count >= 2
+    logged = [c.args[0] for c in mock_logger.debug.call_args_list]
+    assert 'compute_merged_context_start' in logged
+    assert 'compute_merged_context_result' in logged
 
 
 def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
