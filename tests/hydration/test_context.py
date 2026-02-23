@@ -113,6 +113,57 @@ def test_per_provider_context_override(tmp_path: Path):
     assert global_ctx.get('foo') == 'override'
 
 
+def test_per_provider_context_override_with_templates_dir(tmp_path: Path):
+    """Overrides still work when the provider uses a non-empty templates_dir.
+
+    Previously we constructed provider IDs from ``target_dir`` alone, which
+    mismatched the directories passed to the loader when ``templates_dir`` was
+    non-empty.  This regression meant real applications would never apply the
+    override even though the unit tests (which used ``templates_dir=''``) had
+    passed.
+    """
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    sub = prov / 'templates'
+    sub.mkdir()
+    # when templates_dir is non-empty the provider module lives under the
+    # templates directory just like the real linking code uses (see
+    # tests/deprecated/conftest.py for reference)
+    (sub / 'repolish.py').write_text(
+        """def create_context():
+    return {'foo': 'orig'}
+""",
+    )
+
+    info = ResolvedProviderInfo(
+        alias='p',
+        target_dir=prov,
+        templates_dir='templates',
+        symlinks=[],
+        context={'foo': 'override'},
+    )
+    # when resolving, directories list will contain prov/templates
+    cfg = RepolishConfig.model_validate(
+        {
+            'config_dir': tmp_path,
+            'directories': [sub],
+            'context': {},
+            'context_overrides': {},
+            'anchors': {},
+            'post_process': [],
+            'delete_files': [],
+            'providers': {prov.as_posix(): info},
+        },
+    )
+
+    providers = build_final_providers(cfg)
+    pid = sub.as_posix()
+    ctx = cast('dict', providers.provider_contexts.get(pid, {}))
+    assert ctx.get('foo') == 'override'
+    global_ctx = cast('dict', providers.context)
+    assert global_ctx.get('foo') == 'override'
+
+
 def test_provider_context_overrides_dotted(tmp_path: Path):
     """Dotted-path overrides on a provider config should patch the captured context."""
     prov = tmp_path / 'prov'

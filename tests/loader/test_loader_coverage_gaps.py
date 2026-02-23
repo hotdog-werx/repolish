@@ -461,6 +461,18 @@ class Receiver(Provider[RecCtx, Msg]):
 """
     sdir = make_provider(sender_src, 'sender')
     rdir = make_provider(recv_src, 'receiver')
+    # move the generated provider modules into a ``templates`` subdirectory so
+    # they match the behaviour of a linked provider with non-empty
+    # ``templates_dir``.  ``build_final_providers`` will later resolve the
+    # directories to ``<target>/templates``.
+    for d in (sdir, rdir):
+        sub = Path(d) / 'templates'
+        sub.mkdir(exist_ok=True)
+        # move original repolish module into subdir
+        orig = Path(d) / 'repolish.py'
+        if orig.exists():
+            orig.rename(sub / 'repolish.py')
+
     # the real application path goes through `build_final_providers`
     # which wraps `create_providers` and then merges any project-level
     # provider config/overrides.  using that helper gives us confidence that
@@ -471,9 +483,15 @@ class Receiver(Provider[RecCtx, Msg]):
     # configuration (cf. ``ResolvedProviderInfo.context_overrides``).  the
     # previous test variant accidentally passed them globally which hid a
     # bug in real-world invocations.
+    # when Repolish resolves provider directories it appends
+    # ``templates_dir``; make our manually constructed config behave the
+    # same way so the test mirrors real usage.
+    sdir_sub = Path(sdir) / 'templates'
+    rdir_sub = Path(rdir) / 'templates'
+
     cfg = RepolishConfig(
         config_dir=tmp_path,
-        directories=[Path(sdir), Path(rdir)],
+        directories=[sdir_sub, rdir_sub],
         context={},
         anchors={},
         providers={
@@ -501,8 +519,8 @@ class Receiver(Provider[RecCtx, Msg]):
     # with the value produced by Sender.provide_inputs, which proves that
     # Sender saw the override before emitting inputs.
     # fetch by explicit provider path rather than relying on dict order
-    recv_pid = str(Path(rdir).as_posix())
-    send_pid = str(Path(sdir).as_posix())
+    recv_pid = str(rdir_sub.as_posix())
+    send_pid = str(sdir_sub.as_posix())
 
     receiver_ctx = providers.provider_contexts.get(recv_pid, {})
     # contexts may be BaseModel instances or plain dicts depending on merge
