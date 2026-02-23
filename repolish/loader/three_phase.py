@@ -10,7 +10,6 @@ from repolish.loader._log import logger
 from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.models import ProviderEntry
 from repolish.loader.module_loader import ModuleProviderAdapter
-from repolish.misc import ctx_to_dict
 
 
 def build_provider_metadata(
@@ -60,30 +59,6 @@ def compute_recipient_flags(
     return has_recipient_after
 
 
-# helpers used by gather_received_inputs ----------------------------------
-
-
-def _normalize_inputs(
-    provider_id: str,
-    raw: object | None,
-) -> list[object] | None:
-    """Ensure ``provide_inputs`` returns a list of payloads.
-
-    Only the new list-based API is supported; anything else is considered a
-    user error and is logged.  This simplification lets providers emit values
-    without knowing recipient names and enables schema-based routing.
-    """
-    if raw is None:
-        return None
-    if isinstance(raw, list):
-        return cast('list[object]', raw)
-    logger.warning(
-        'provide_inputs_must_return_list',
-        provider=provider_id,
-    )
-    return None
-
-
 def _retrieve_instance_inputs(
     provider_id: str,
     idx: int,
@@ -115,43 +90,7 @@ def _retrieve_instance_inputs(
             provider_index=idx,
         )
         raise
-    return _normalize_inputs(provider_id, raw)
-
-
-def _retrieve_module_inputs(
-    provider_id: str,
-    idx: int,
-    module_dict: dict,
-    provider_contexts: dict[str, object],
-    all_providers_list: list[ProviderEntry],
-) -> list[object] | None:
-    """Invoke the module-level inputs hook if present."""
-    module_collect = module_dict.get('provide_inputs')
-    if not callable(module_collect):
-        return None
-    try:
-        raw = module_collect(
-            ctx_to_dict(provider_contexts.get(provider_id)),
-            all_providers_list,
-            idx,
-        )
-    except Exception:
-        logger.exception(
-            'provider_inputs_failed',
-            provider=provider_id,
-            provider_index=idx,
-        )
-        raise
-    return _normalize_inputs(provider_id, raw)
-
-
-def _resolve_target_pid(
-    recipient_key: str,
-    canonical_name_to_pid: dict[str, str],
-    provider_contexts: dict[str, object],
-) -> str | None:
-    """Translate a recipient key into a provider id, if possible."""
-    return canonical_name_to_pid.get(recipient_key) or (recipient_key if recipient_key in provider_contexts else None)
+    return cast('list[object]', raw)
 
 
 def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
@@ -196,7 +135,6 @@ class _GatherState:
 def _collect_for_provider(
     idx: int,
     provider_id: str,
-    module_dict: dict,
     inst: _ProviderBase | None,
     state: _GatherState,
 ) -> None:
@@ -208,22 +146,19 @@ def _collect_for_provider(
     if not state.has_recipient_after[idx]:
         return
 
-    inputs = (
-        _retrieve_instance_inputs(
-            provider_id,
-            idx,
-            inst,
-            state.provider_contexts,
-            state.all_providers_list,
+    if not inst:
+        logger.warning(
+            'module_provide_inputs_not_supported',
+            provider=provider_id,
         )
-        if inst
-        else _retrieve_module_inputs(
-            provider_id,
-            idx,
-            module_dict,
-            state.provider_contexts,
-            state.all_providers_list,
-        )
+        return
+
+    inputs = _retrieve_instance_inputs(
+        provider_id,
+        idx,
+        inst,
+        state.provider_contexts,
+        state.all_providers_list,
     )
 
     if inputs:
@@ -248,11 +183,10 @@ def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex st
         received_inputs={},
     )
 
-    for idx, (provider_id, module_dict) in enumerate(module_cache):
+    for idx, (provider_id, _) in enumerate(module_cache):
         _collect_for_provider(
             idx,
             provider_id,
-            module_dict,
             instances[idx],
             state,
         )

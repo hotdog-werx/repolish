@@ -16,7 +16,6 @@ from repolish.loader.models import (
 )
 from repolish.loader.three_phase import (
     _retrieve_instance_inputs,
-    _retrieve_module_inputs,
     _validate_raw_inputs,
     finalize_provider_contexts,
 )
@@ -44,20 +43,6 @@ def test_retrieve_instance_inputs_raises_on_collect_error() -> None:
     pc = {'p': {'foo': 'bar'}}
     with pytest.raises(RuntimeError):
         _retrieve_instance_inputs('p', 0, BadInst(), pc, [])
-
-
-def test_retrieve_module_inputs_raises() -> None:
-    def bad(ctx: dict, allp: list, idx: int) -> None:
-        raise RuntimeError
-
-    with pytest.raises(RuntimeError):
-        _retrieve_module_inputs(
-            'p',
-            0,
-            {'provide_inputs': bad},
-            {},
-            [],
-        )
 
 
 def test_validate_raw_inputs_wrong_model() -> None:

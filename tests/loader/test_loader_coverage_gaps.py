@@ -26,8 +26,6 @@ from repolish.loader.orchestrator import (
 )
 from repolish.loader.three_phase import (
     _get_own_model,
-    _normalize_inputs,
-    _retrieve_module_inputs,
     _store_new_context,
     _validate_raw_inputs,
     build_provider_metadata,
@@ -314,13 +312,6 @@ def test_build_provider_metadata_handles_bad_name():
     assert canon == {}
 
 
-def test_normalize_inputs_various():
-    # raw None
-    assert _normalize_inputs('p', None) is None
-    # raw non-list triggers warning and returns None
-    assert _normalize_inputs('p', 'hello') is None
-
-
 def test_ctx_to_dict_behaves_consistently():
     class M(BaseModel):
         x: int
@@ -347,37 +338,6 @@ def test_ctx_keys_helper():
     # None and other types give empty list
     assert ctx_keys(None) == []
     assert ctx_keys(123) == []
-
-
-@pytest.mark.parametrize(
-    ('module_dict', 'expect'),
-    [
-        ({}, None),
-        ({'provide_inputs': lambda _c, _a, _i: [1, 2]}, [1, 2]),
-    ],
-)
-def test_retrieve_module_inputs_behaviors(
-    module_dict: dict,
-    expect: list | None,
-) -> None:
-    if expect is None:
-        assert _retrieve_module_inputs('p', 0, module_dict, {}, []) is None
-    else:
-        assert _retrieve_module_inputs('p', 0, module_dict, {}, []) == expect
-
-
-def test_retrieve_module_inputs_raises() -> None:
-    def bad(ctx: dict, allp: list, idx: int) -> None:
-        raise RuntimeError
-
-    with pytest.raises(RuntimeError):
-        _retrieve_module_inputs(
-            'p',
-            0,
-            {'provide_inputs': bad},
-            {},
-            [],
-        )
 
 
 def test_gather_received_inputs_variants() -> None:

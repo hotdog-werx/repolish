@@ -203,6 +203,7 @@ def _build_all_providers_list(
             try:
                 schema = inst.get_inputs_schema()
             except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
+                # TODO: consider logging this error so providers can diagnose their broken schema
                 schema = None
         # schema may be None if the provider does not accept inputs
         all_providers_list.append(
