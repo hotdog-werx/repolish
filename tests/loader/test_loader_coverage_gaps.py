@@ -27,7 +27,6 @@ from repolish.loader.orchestrator import (
 from repolish.loader.three_phase import (
     _get_own_model,
     _normalize_inputs,
-    _process_inputs_map,
     _retrieve_module_inputs,
     _store_new_context,
     _validate_raw_inputs,
@@ -40,7 +39,7 @@ from repolish.loader.types import (
     TemplateMapping,
 )
 from repolish.loader.validation import _emit_provider_migration_suggestion
-from repolish.misc import ctx_to_dict
+from repolish.misc import ctx_keys, ctx_to_dict
 
 
 # ---- helpers and minimal provider implementations ------------------------
@@ -222,7 +221,8 @@ def test_module_provider_adapter_basic_behavior():
     adapter = ModuleProviderAdapter(module_dict, 'pid')
 
     # no original callables: methods should exercise fallbacks
-    assert adapter.collect_provider_inputs({}, [], 0) == {}
+    assert adapter.provide_inputs({}, [], 0) == []
+
     ctx = {'foo': 'bar'}
     assert adapter.finalize_context(ctx, [], [], 0) is ctx
     assert adapter.get_inputs_schema() is None
@@ -317,7 +317,7 @@ def test_build_provider_metadata_handles_bad_name():
 def test_normalize_inputs_various():
     # raw None
     assert _normalize_inputs('p', None) is None
-    # raw non-dict triggers warning and returns None
+    # raw non-list triggers warning and returns None
     assert _normalize_inputs('p', 'hello') is None
 
 
@@ -335,16 +335,30 @@ def test_ctx_to_dict_behaves_consistently():
     assert ctx_to_dict(123) == {}
 
 
+def test_ctx_keys_helper():
+    class M(BaseModel):
+        x: int
+        y: str = 'z'
+
+    # BaseModel -> list of keys
+    assert set(ctx_keys(M(x=5))) == {'x', 'y'}
+    # dict behaves as dict keys
+    assert ctx_keys({'foo': 1, 'bar': 2}) == ['foo', 'bar']
+    # None and other types give empty list
+    assert ctx_keys(None) == []
+    assert ctx_keys(123) == []
+
+
 @pytest.mark.parametrize(
     ('module_dict', 'expect'),
     [
         ({}, None),
-        ({'collect_provider_inputs': lambda _c, _a, _i: {'x': 1}}, {'x': 1}),
+        ({'provide_inputs': lambda _c, _a, _i: [1, 2]}, [1, 2]),
     ],
 )
 def test_retrieve_module_inputs_behaviors(
     module_dict: dict,
-    expect: dict | None,
+    expect: list | None,
 ) -> None:
     if expect is None:
         assert _retrieve_module_inputs('p', 0, module_dict, {}, []) is None
@@ -360,16 +374,10 @@ def test_retrieve_module_inputs_raises() -> None:
         _retrieve_module_inputs(
             'p',
             0,
-            {'collect_provider_inputs': bad},
+            {'provide_inputs': bad},
             {},
             [],
         )
-
-
-def test_process_inputs_map_unresolved():
-    received: dict[str, list[object]] = {}
-    _process_inputs_map('p', {'unknown': 1}, received, {}, {})
-    assert received == {}
 
 
 def test_gather_received_inputs_variants() -> None:
@@ -378,7 +386,8 @@ def test_gather_received_inputs_variants() -> None:
     module_cache = [('p1', {})]
     instances = [None]
     provider_contexts: dict[str, object] = {}
-    all_providers_list = [('p1', {})]
+    # new API requires a third element (schema) even if None
+    all_providers_list = [('p1', {}, None)]
     canonical: dict[str, str] = {}
     has_recipient_after = [False]
     # calling gather_received_inputs directly
@@ -395,10 +404,10 @@ def test_gather_received_inputs_variants() -> None:
     # now provider with recipient after and a collect function
     has_recipient_after = [True]
 
-    def send(ctx: dict, allp: list, idx: int) -> dict:
-        return {'pX': {'foo': 1}}
+    def send(ctx: dict, allp: list, idx: int) -> list:
+        return [{'foo': 1}]
 
-    module_cache = [('p2', {'collect_provider_inputs': send})]
+    module_cache = [('p2', {'provide_inputs': send})]
     got = gather_received_inputs(
         module_cache,
         instances,

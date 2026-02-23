@@ -13,7 +13,7 @@ def test_module_provider_adapter_wraps_module_functions():
         'create_context': lambda: {'x': 1},
         'create_file_mappings': lambda _=None: {'a.txt': 'tpl'},
         'create_anchors': lambda _=None: {'A': 'v'},
-        'collect_provider_inputs': lambda _a, _b, _c: {
+        'provide_inputs': lambda _a, _b, _c: {
             'mod-b': {'register': 'db'},
         },
         'finalize_context': lambda own, _b, _c, _d: {
@@ -41,7 +41,7 @@ def test_module_provider_adapter_wraps_module_functions():
     }
     assert cast('_ProviderBase', inst).create_anchors() == {'A': 'v'}
 
-    inputs = cast('_ProviderBase', inst).collect_provider_inputs({}, [], 0)
+    inputs = cast('_ProviderBase', inst).provide_inputs({}, [], 0)
     assert inputs == {'mod-b': {'register': 'db'}}
 
     # finalize_context delegates

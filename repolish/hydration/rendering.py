@@ -2,7 +2,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy2
-from typing import cast
 
 from cookiecutter.main import cookiecutter
 from hotlog import get_logger
@@ -18,9 +17,30 @@ from pydantic import BaseModel
 from repolish.config.models import RepolishConfig
 from repolish.loader import Providers
 from repolish.loader.types import FileMode, TemplateMapping
-from repolish.misc import ctx_to_dict
+from repolish.misc import ctx_keys, ctx_to_dict
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class RenderContext:
+    """Container for arguments needed by template rendering.
+
+    The class groups together paths, contexts, providers, and configuration
+    so that callers can pass a single object instead of a long argument list.
+    Consumers access attributes rather than dictionary keys, which improves
+    type checking, IDE completion, and avoids silent typos.  This is much
+    cleaner than a plain ``dict`` when multiple related values travel through
+    several helper functions.
+    """
+
+    setup_input: Path
+    merged_ctx: dict
+    setup_output: Path
+    providers: Providers
+    config: RepolishConfig
+    skip_templates: set[str] | None = None
+    use_provider_context: bool = False
 
 
 def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
@@ -35,22 +55,6 @@ def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
         rendered = tpl.render(**ctx, cookiecutter=ctx)
         rendered_parts.append(rendered)
     return Path(*rendered_parts)
-
-
-@dataclass
-class RenderContext:
-    """Structured container for parameters passed to ``render_with_jinja``.
-
-    Using a dataclass instead of a bare dict improves readability and makes
-    the interface self-documenting, avoiding guesswork about required keys.
-    """
-
-    setup_input: Path
-    merged_ctx: dict
-    setup_output: Path
-    providers: Providers
-    config: RepolishConfig
-    skip_templates: set[str] | None = None
 
 
 def render_with_jinja(ctx: RenderContext) -> None:
@@ -205,20 +209,12 @@ def _compute_merged_context(providers: Providers) -> dict[str, object]:
 
     Extracted to keep the function small and easier to test.
     """
-
-    def _iter_context_keys(ctx_obj: object | None) -> list[str]:
-        if isinstance(ctx_obj, BaseModel):
-            return cast('list[str]', list(ctx_obj.model_dump().keys()))
-        if isinstance(ctx_obj, dict):
-            return cast('list[str]', list(ctx_obj.keys()))
-        return []
-
     merged = dict(providers.context)
     for pid, migrated in providers.provider_migrated.items():
         if not migrated:
             continue
         ctx_obj = providers.provider_contexts.get(pid)
-        for k in _iter_context_keys(ctx_obj):
+        for k in ctx_keys(ctx_obj):
             merged.pop(k, None)
 
     merged.setdefault('_repolish_project', 'repolish')
@@ -261,17 +257,20 @@ def render_template(
     # (previously we raised an error if any providers were unmigrated; that
     # strictness proved too aggressive for mixed deployments.)
 
+    # build a RenderContext once; the same object will later drive both
+    # the Jinja pass and the mapping pass.  ``use_provider_context`` is
+    # toggled for the second phase.
+    render_ctx = RenderContext(
+        setup_input=setup_input,
+        merged_ctx=merged_ctx,
+        setup_output=setup_output,
+        providers=providers,
+        config=config,
+        skip_templates=skip_templates,
+    )
+
     if config.no_cookiecutter:
-        render_with_jinja(
-            RenderContext(
-                setup_input=setup_input,
-                merged_ctx=merged_ctx,
-                setup_output=setup_output,
-                providers=providers,
-                config=config,
-                skip_templates=skip_templates,
-            ),
-        )
+        render_with_jinja(render_ctx)
     else:
         if skip_templates:  # pragma: no cover -- cookiecutter path not supported for per-file TemplateMapping
             msg = 'TemplateMapping entries require config.no_cookiecutter=True'
@@ -279,18 +278,11 @@ def render_template(
         render_with_cookiecutter(setup_input, merged_ctx, setup_output)
 
     # Materialize TemplateMapping entries (render template per-mapping using
-    # merged_ctx + extra_ctx) in a helper to keep `render_template` small.
-    # provider context is always considered for mappings; unmigrated
-    # providers will simply fall back to the merged context.  the legacy
-    # ``provider_scoped_template_context`` flag is ignored here (its only
-    # consumer was external testing and the module adapter).
-    _process_template_mappings(
-        setup_input,
-        setup_output,
-        providers,
-        merged_ctx,
-        use_provider_context=True,
-    )
+    # merged_ctx + extra_ctx).  we reuse ``render_ctx`` but switch on the
+    # provider-context flag; this mirrors the previous behaviour where a
+    # temporary dict was created solely for the mapping helpers.
+    render_ctx.use_provider_context = True
+    _process_template_mappings(render_ctx)
 
 
 def _load_and_validate_template(
@@ -317,19 +309,6 @@ def _load_and_validate_template(
         )
         providers.file_mappings.pop(dest_path, None)
         return None
-
-
-def _render_mapping_text(
-    env: Environment,
-    txt: str,
-    base_ctx: dict,
-    extra_ctx: object,
-) -> str:
-    """Render mapping text with a base context (either merged or provider-scoped) and per-mapping extra context."""
-    extra_ctx_dict = ctx_to_dict(extra_ctx)
-    render_ctx = {**base_ctx, **extra_ctx_dict}
-    # Pass merged-style `cookiecutter` namespace for backward compatibility
-    return env.from_string(txt).render(**render_ctx, cookiecutter=base_ctx)
 
 
 def _choose_base_ctx_for_mapping(
@@ -365,19 +344,19 @@ def _choose_base_ctx_for_mapping(
 def _render_single_mapping(
     dest_path: str,
     mapping: TemplateMapping,
-    ctx: dict,
+    ctx: RenderContext,
 ) -> None:
     """Render and materialize a single TemplateMapping entry.
 
-    `ctx` is a small context dict containing: setup_input, setup_output,
-    providers, merged_ctx and use_provider_context. Packing into `ctx`
-    keeps the arg-count low and the function easy to call from the loop.
+    ``ctx`` is a :class:`RenderContext` instance.  Previously we passed a
+    raw dict containing the same five values; using the dataclass improves
+    type checking and reduces boilerplate unpacking.
     """
-    setup_input: Path = ctx['setup_input']
-    setup_output: Path = ctx['setup_output']
-    providers: Providers = ctx['providers']
-    merged_ctx: dict = ctx['merged_ctx']
-    use_provider_context: bool = ctx['use_provider_context']
+    setup_input: Path = ctx.setup_input
+    setup_output: Path = ctx.setup_output
+    providers: Providers = ctx.providers
+    merged_ctx: dict = ctx.merged_ctx
+    use_provider_context: bool = ctx.use_provider_context
 
     if mapping.file_mode == FileMode.DELETE:
         providers.file_mappings.pop(dest_path, None)
@@ -436,29 +415,17 @@ def _render_single_mapping(
 
 
 def _process_template_mappings(
-    setup_input: Path,
-    setup_output: Path,
-    providers: Providers,
-    merged_ctx: dict,
-    *,
-    use_provider_context: bool = False,
+    ctx: RenderContext,
 ) -> None:
     """Render and materialize `TemplateMapping`-valued file_mappings into setup-output.
 
-    Implementation delegates per-mapping work to helpers to reduce the
-    overall cognitive complexity of the function.
+    ``ctx`` is expected to have ``merged_ctx`` and ``use_provider_context``
+    filled appropriately.  Passing a dataclass avoids the untyped dictionary
+    seen previously.
     """
-    ctx = {
-        'setup_input': setup_input,
-        'setup_output': setup_output,
-        'providers': providers,
-        'merged_ctx': merged_ctx,
-        'use_provider_context': use_provider_context,
-    }
-
     errors: list[str] = []
 
-    for dest_path, source_val in list(providers.file_mappings.items()):
+    for dest_path, source_val in list(ctx.providers.file_mappings.items()):
         if not isinstance(source_val, TemplateMapping):
             continue
         try:

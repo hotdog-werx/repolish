@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import BaseModel as _BaseModel
 
 from repolish.loader.models import Provider as _ProviderBase
+from repolish.loader.models import ProviderEntry
 from repolish.loader.types import FileMode, TemplateMapping
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -33,14 +34,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
     # aliases for legacy signatures
     CollectInputsSig = _Callable[
-        [dict[str, object], list[tuple[str, object]], int],
-        dict[str, object],
+        [dict[str, object], list[ProviderEntry], int],
+        list[dict[str, object]],
     ]
     FinalizeSig = _Callable[
         [
             dict[str, object],
             list[object],
-            list[tuple[str, object]],
+            list[ProviderEntry],
             int,
         ],
         object,
@@ -238,9 +239,10 @@ class ModuleProviderAdapter(_ProviderBase):
         # narrow types for original callables so later calls are typed
         # original callable might be anything; cast to our alias to satisfy
         # the type checker. runtime behaviour is unchanged.
-        self._orig_collect_inputs: CollectInputsSig | None = cast(
+        # new preferred hook name, with legacy fallback
+        self._orig_provide_inputs: CollectInputsSig | None = cast(
             'CollectInputsSig | None',
-            module_dict.get('collect_provider_inputs'),
+            module_dict.get('provide_inputs'),
         )
         self._orig_finalize: FinalizeSig | None = cast(
             'FinalizeSig | None',
@@ -291,41 +293,44 @@ class ModuleProviderAdapter(_ProviderBase):
             return cast('dict[str, object]', self._orig_context_var)
         return {}
 
-    def collect_provider_inputs(
+    def provide_inputs(
         self,
-        _own_context: dict[str, object],
-        _all_providers: list[tuple[str, object]],
-        _provider_index: int,
-    ) -> dict[str, object]:
+        own_context: dict[str, object],
+        all_providers: list[ProviderEntry],
+        provider_index: int,
+    ) -> list[_BaseModel]:
         """Return a dict of inputs forwarded from module implementation."""
-        if callable(self._orig_collect_inputs):
+        if callable(self._orig_provide_inputs):
             # original callable signature unknown; trust caller to use correct args
-            return self._orig_collect_inputs(
-                _own_context,
-                _all_providers,
-                _provider_index,
+            return cast(
+                'list[_BaseModel]',
+                self._orig_provide_inputs(
+                    own_context,
+                    all_providers,
+                    provider_index,
+                ),
             )
-        return {}
+        return []
 
     def finalize_context(
         self,
-        _own_context: dict[str, object],
-        _received_inputs: list[object],
-        _all_providers: list[tuple[str, object]],
-        _provider_index: int,
+        own_context: dict[str, object],
+        received_inputs: list[object],
+        all_providers: list[ProviderEntry],
+        provider_index: int,
     ) -> dict[str, object]:
         """Invoke the provider finalize_context hook when available."""
         if callable(self._orig_finalize):
             return cast(
                 'dict[str, object]',
                 self._orig_finalize(
-                    _own_context,
-                    _received_inputs,
-                    _all_providers,
-                    _provider_index,
+                    own_context,
+                    received_inputs,
+                    all_providers,
+                    provider_index,
                 ),
             )
-        return _own_context
+        return own_context
 
     def get_inputs_schema(self) -> type | None:
         """Return a pydantic model class that validates inputs, if provided."""

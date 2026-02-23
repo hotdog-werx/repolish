@@ -40,7 +40,20 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
-# --- moved from `loader/types.py` -------------------------------------------------
+
+class BaseContext(BaseModel):
+    """Minimal, empty context type for providers.
+
+    Providers almost always define their own context model, but when no
+    fields are needed this class can be used as a lightweight default.  It
+    avoids the awkward requirement that `BaseModel` itself cannot be
+    instantiated and keeps callers from having to import Pydantic directly -
+    you can `from repolish import BaseContext`.
+
+    Historically many tests and examples simply used `BaseModel` for this
+    purpose, which triggered errors and confusion.  `BaseContext` is the
+    safer, idiomatic alternative.
+    """
 
 
 class Action(str, Enum):
@@ -80,7 +93,7 @@ class TemplateMapping:
 
     Fields:
       - source_template: relative path to the template under the merged template
-        tree. May be ``None`` for `FileMode.DELETE` mappings.
+        tree. May be 'None' for `FileMode.DELETE` mappings.
       - extra_context: optional typed context (Pydantic models allowed).
       - file_mode: optional behavior hint for the destination path.
     """
@@ -123,7 +136,7 @@ class Providers(BaseModel):
     # These values may be either a plain dict or a BaseModel instance; the
     # orchestrator will convert them to dicts when merging into the global
     # context.  Keeping the original object lets us pass typed models to
-    # provider helpers such as ``create_file_mappings()``.
+    # provider helpers such as 'create_file_mappings()'.
     provider_contexts: dict[str, object] = Field(
         default_factory=dict,
     )
@@ -133,7 +146,7 @@ class Providers(BaseModel):
     # mapping from a relative template path (POSIX string) to the provider id
     # that supplied the file when staging.  Populated by the builder so the
     # renderer can later look up which provider owns a given template and, in
-    # conjunction with ``provider_migrated``, decide whether to render using
+    # conjunction with 'provider_migrated', decide whether to render using
     # the merged context or the provider's own context.
     template_sources: dict[str, str] = Field(default_factory=dict)
 
@@ -156,10 +169,18 @@ class Accumulators(BaseModel):
 # --- end moved types ------------------------------------------------------------
 
 ContextT = TypeVar('ContextT', bound=BaseModel)
-InputsT = TypeVar('InputsT', bound=BaseModel)
+InputT = TypeVar('InputT', bound=BaseModel)
 
 
-class Provider(ABC, Generic[ContextT, InputsT]):
+# 'ProviderEntry' is the tuple type passed to provider hooks such as
+# 'provide_inputs' and 'finalize_context'.  the three elements
+# are **provider_id** (normally its directory path), the merged context
+# dict for that provider, and the inputs schema returned by
+# 'get_inputs_schema()' ('None' when the provider does not accept inputs).
+ProviderEntry = tuple[str, dict[str, object], type[BaseModel] | None]
+
+
+class Provider(ABC, Generic[ContextT, InputT]):
     """Abstract base class for class-based providers.
 
     Subclass this when implementing a new provider. Only `get_provider_name`
@@ -176,35 +197,66 @@ class Provider(ABC, Generic[ContextT, InputsT]):
     def create_context(self) -> ContextT:
         """Create and return this provider's context model."""
 
-    def collect_provider_inputs(
+    def provide_inputs(
         self,
-        _own_context: ContextT,
-        _all_providers: list[tuple[str, Any]],
-        _provider_index: int,
-    ) -> dict[str, Any]:
-        """Optionally return inputs to send to other providers.
+        own_context: ContextT,  # noqa: ARG002 - parameter may be unused
+        all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
+        provider_index: int,  # noqa: ARG002 - parameter may be unused
+    ) -> list[BaseModel]:
+        """Return payload objects that should be sent to other providers.
 
-        Default: no inputs (empty dict).
+        The loader calls this hook when it needs outbound data from a
+        provider. The implementation should return a sequence of
+        `BaseModel` instances; returning raw mappings is only supported
+        for legacy module-style providers and will be removed in v1.
+        The orchestration layer routes each item based on the receiving
+        provider's input schema (provided via `get_inputs_schema`).
+        Subclasses should override this method to supply whatever
+        information is relevant to downstream providers.
+
+        The default implementation returns an empty list.
         """
-        return {}
+        return []
 
     def finalize_context(
         self,
-        _own_context: ContextT,
-        _received_inputs: list[InputsT],
-        _all_providers: list[tuple[str, Any]],
-        _provider_index: int,
+        own_context: ContextT,
+        received_inputs: list[InputT],  # noqa: ARG002 - parameter may be unused
+        all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
+        provider_index: int,  # noqa: ARG002 - parameter may be unused
     ) -> ContextT:
         """Optionally apply inputs received from other providers.
 
+        Parameters are:
+        - 'own_context': the context object produced by 'create_context()'
+          before any inputs are merged.
+        - 'received_inputs': list of payloads delivered by other providers
+          whose 'get_inputs_schema()' matched the values.
+        - 'all_providers': snapshot of every provider the loader knows about.
+          each item is a tuple '(provider_id, context_dict, inputs_schema)';
+          this lets a provider inspect other contexts or schemas if it needs to
+          make context-dependent decisions.  the argument is optional and most
+          providers can ignore it entirely.
+        - 'provider_index': the position of this provider in the load order.
+
         Default: return the unmodified `own_context`.
         """
-        return _own_context
+        return own_context
 
-    def get_inputs_schema(self) -> type[InputsT] | None:
-        """Return the Pydantic model type accepted as inputs by this provider.
+    def get_inputs_schema(self) -> type[InputT] | None:
+        """Return the Pydantic model class for this provider's *input* type.
 
-        Default: `None` meaning this provider does not accept inputs.
+        - If non-'None', other providers may create instances of this class
+          and return them from `provide_inputs()` using this
+          provider's name as the key.
+        - If 'None' (the default) this provider is not eligible to receive
+          inputs; calls to `provide_inputs()` may still supply
+          values for other recipients.
+
+        This method is primarily used by the loader/orchestrator to perform
+        optional runtime validation and to expose the schema for tooling
+        (e.g. CLI help).  Providers that override `provide_inputs`
+        should usually also override this method so the contract is explicit.
         """
         return None
 
@@ -216,8 +268,8 @@ class Provider(ABC, Generic[ContextT, InputsT]):
     ) -> dict[str, str | TemplateMapping]:
         """Optional: return `file_mappings`-style dict for this provider.
 
-        The merged provider context (a ``ContextT`` instance) is passed when
-        available.  Providing a typed argument instead of a plain ``dict`` makes
+        The merged provider context (a 'ContextT' instance) is passed when
+        available.  Providing a typed argument instead of a plain 'dict' makes
         migration to the new class API cleaner and enables IDE autocomplete.
         Default implementation ignores the argument and returns an empty
         mapping.
@@ -234,3 +286,42 @@ class Provider(ABC, Generic[ContextT, InputsT]):
         context argument to make decisions based on the merged context.
         """
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Utility functions for provider inputs
+# ---------------------------------------------------------------------------
+
+
+def get_provider_inputs_schema(
+    provider_cls: type[Provider[Any, Any]],
+    providers: list[Provider[Any, Any]],
+) -> type[BaseModel] | None:
+    """Return the inputs schema class for any instance of 'provider_cls'.
+
+    This helper walks the *instances* list and uses 'isinstance' to find
+    a matching provider; if one is found its 'get_inputs_schema' result is
+    returned.  'None' means either no matching provider was loaded or the
+    provider declares no inputs.
+    """
+    for p in providers:
+        if isinstance(p, provider_cls):
+            return p.get_inputs_schema()
+    return None
+
+
+def get_provider_inputs(
+    provider_cls: type[Provider[Any, Any]],
+    providers: list[Provider[Any, Any]],
+) -> BaseModel | None:
+    """Return a new inputs instance for 'provider_cls' or 'None'.
+
+    This mirrors :func:`get_provider_inputs_schema` but also instantiates the
+    class.  'provider_cls' must be a provider class and not a string alias.
+    If no matching provider is loaded or the provider declares no inputs,
+    'None' is returned.
+    """
+    schema = get_provider_inputs_schema(provider_cls, providers)
+    if schema is None:
+        return None
+    return schema()

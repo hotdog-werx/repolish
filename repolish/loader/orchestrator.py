@@ -16,6 +16,7 @@ from repolish.loader.deletes import (
 )
 from repolish.loader.mappings import process_file_mappings
 from repolish.loader.models import Provider as _ProviderBase
+from repolish.loader.models import ProviderEntry
 from repolish.loader.module import get_module
 from repolish.loader.module_loader import (
     collect_contexts_with_provider_map,
@@ -184,6 +185,32 @@ def _process_phase_two(
         )
 
 
+def _build_all_providers_list(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    provider_contexts: dict[str, object],
+) -> list[ProviderEntry]:
+    """Return the `all_providers_list` used for input routing.
+
+    Pulling this logic into a helper reduces the complexity of the
+    surrounding function and keeps the iteration simple to read.
+    """
+    all_providers_list: list[ProviderEntry] = []
+    for idx, (pid, _mod) in enumerate(module_cache):
+        schema = None
+        inst = instances[idx]
+        if inst is not None:
+            try:
+                schema = inst.get_inputs_schema()
+            except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
+                schema = None
+        # schema may be None if the provider does not accept inputs
+        all_providers_list.append(
+            (pid, ctx_to_dict(provider_contexts.get(pid)), schema),
+        )
+    return all_providers_list
+
+
 def _run_three_phase(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, object],
@@ -214,7 +241,14 @@ def _run_three_phase(
         canonical_name_to_pid,
     ) = build_provider_metadata(module_cache)
 
-    all_providers_list = [(pid, ctx_to_dict(provider_contexts.get(pid))) for pid, _ in module_cache]
+    # include each provider's declared input schema so that other providers can
+    # inspect it when deciding what to emit.  We build the list via a
+    # dedicated helper to keep this function's complexity low.
+    all_providers_list: list[ProviderEntry] = _build_all_providers_list(
+        module_cache,
+        instances,
+        provider_contexts,
+    )
     has_recipient_after = compute_recipient_flags(instances)
     received_inputs = gather_received_inputs(
         module_cache,

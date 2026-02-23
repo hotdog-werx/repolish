@@ -6,11 +6,13 @@ from pydantic import BaseModel
 
 from repolish.hydration.rendering import _load_and_validate_template
 from repolish.loader.models import (
-    Provider as _ProviderBase,
-)
-from repolish.loader.models import (
+    BaseContext,
+    ProviderEntry,
     Providers,
     TemplateMapping,
+)
+from repolish.loader.models import (
+    Provider as _ProviderBase,
 )
 from repolish.loader.three_phase import (
     _retrieve_instance_inputs,
@@ -20,19 +22,21 @@ from repolish.loader.three_phase import (
 )
 
 
-class BadInst(_ProviderBase):
+class BadInst(_ProviderBase[BaseContext, BaseModel]):
     def get_provider_name(self) -> str:
         return 'i'
 
-    def create_context(self) -> BaseModel:
+    def create_context(self) -> BaseContext:
         raise ValueError
 
-    def collect_provider_inputs(
+    # implement the *new* hook; the old alias is provided by the base
+    # class and will warn if invoked.
+    def provide_inputs(
         self,
-        _own_context: BaseModel,
-        _all_providers: list[tuple[str, object]],
-        _provider_index: int,
-    ) -> dict[str, object]:
+        own_context: BaseContext,  # noqa: ARG002 - method signature must match base
+        all_providers: list[ProviderEntry],  # noqa: ARG002 - method signature must match base
+        provider_index: int,  # noqa: ARG002 - method signature must match base
+    ) -> list[BaseModel]:
         raise RuntimeError
 
 
@@ -50,7 +54,7 @@ def test_retrieve_module_inputs_raises() -> None:
         _retrieve_module_inputs(
             'p',
             0,
-            {'collect_provider_inputs': bad},
+            {'provide_inputs': bad},
             {},
             [],
         )
@@ -72,14 +76,14 @@ def test_finalize_provider_contexts_error_path() -> None:
         def get_provider_name(self) -> str:
             return 'f'
 
-        def create_context(self) -> BaseModel:
-            return BaseModel()
+        def create_context(self) -> BaseContext:
+            return BaseContext()
 
-        def finalize_context(
+        def finalize_context(  # type: ignore[override]
             self,
             _own_context: BaseModel,
             _received_inputs: list[object],
-            _all_providers: list[tuple[str, object]],
+            _all_providers: list[tuple[str, object, type[BaseModel] | None]],
             _provider_index: int,
         ) -> BaseModel:
             raise RuntimeError

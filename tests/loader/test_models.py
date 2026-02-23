@@ -32,7 +32,8 @@ def test_minimal_provider_defaults_and_behavior():
     assert ctx.v == 42
 
     # optional methods have sensible defaults
-    assert p.collect_provider_inputs(ctx, [], 0) == {}
+    assert p.provide_inputs(ctx, [], 0) == []
+
     assert p.finalize_context(ctx, [], [], 0) == ctx
     assert p.get_inputs_schema() is None
 

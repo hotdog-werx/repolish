@@ -235,8 +235,10 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
                 def create_context(self) -> AContext:
                     return AContext()
 
-                def collect_provider_inputs(self, own_context, all_providers, provider_index):
-                    return {'prov-b': {'register_component': 'database'}}
+                def provide_inputs(self, own_context, all_providers, provider_index):
+                    # emit a simple dict; the loader will validate it against B's
+                    # input schema during distribution
+                    return [{'register_component': 'database'}]
             """,
         ),
     )
@@ -286,8 +288,8 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
     ) == ['database']
 
 
-def test_collect_provider_inputs_skipped_for_end_providers(tmp_path: Path):
-    """Providers at the end with no later recipients should not have collect_provider_inputs() called."""
+def test_provide_inputs_skipped_for_end_providers(tmp_path: Path):
+    """Providers at the end with no later recipients should not have provide_inputs() called."""
     p0 = tmp_path / 'p0'
     p0.mkdir()
     (p0 / 'repolish.py').write_text(
@@ -306,7 +308,7 @@ def test_collect_provider_inputs_skipped_for_end_providers(tmp_path: Path):
                 def create_context(self) -> Ctx:
                     return Ctx()
 
-                def collect_provider_inputs(self, own_context, all_providers, provider_index):
+                def provide_inputs(self, own_context, all_providers, provider_index):
                     raise RuntimeError('should not be called')
             """,
         ),
@@ -316,7 +318,7 @@ def test_collect_provider_inputs_skipped_for_end_providers(tmp_path: Path):
     p1.mkdir()
     (p1 / 'repolish.py').write_text('\ndef create_context():\n    return {}\n')
 
-    # Should not raise (collect_provider_inputs of p0 must be skipped)
+    # Should not raise (provide_inputs of p0 must be skipped)
     create_providers([str(p0), str(p1)])
 
 

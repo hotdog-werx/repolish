@@ -20,6 +20,22 @@ def ctx_to_dict(ctx: object | None) -> dict[str, object]:
     return {}
 
 
+def ctx_keys(ctx_obj: object | None) -> list[str]:
+    """Return the keys of a provider-style context object.
+
+    Behaves similarly to :func:`ctx_to_dict` but only returns the top-level
+    keys rather than the full mapping.  ``BaseModel`` instances are converted
+    to dicts via ``model_dump``.  ``None`` or unsupported types yield an
+    empty list.  This helper is handy when iterating or filtering context
+    values without materializing a full dictionary.
+    """
+    if isinstance(ctx_obj, BaseModel):
+        return cast('list[str]', list(ctx_obj.model_dump().keys()))
+    if isinstance(ctx_obj, dict):
+        return cast('list[str]', list(ctx_obj.keys()))
+    return []
+
+
 def is_conditional_file(path_str: str) -> bool:
     """Check if a file's name starts with the _repolish. prefix.
 

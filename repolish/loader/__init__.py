@@ -10,12 +10,13 @@ from repolish.loader.deletes import (
     normalize_delete_item,
     normalize_delete_items,
 )
-from repolish.loader.models import Provider
+from repolish.loader.models import BaseContext, Provider
 from repolish.loader.orchestrator import create_providers
 from repolish.loader.types import Action, Decision, Providers
 
 __all__ = [
     'Action',
+    'BaseContext',
     'Decision',
     'Provider',
     'Providers',

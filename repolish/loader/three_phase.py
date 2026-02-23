@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from typing import cast
 
 from pydantic import BaseModel as _BaseModel
+from pydantic_core import ValidationError
 
 from repolish.loader._log import logger
 from repolish.loader.models import Provider as _ProviderBase
+from repolish.loader.models import ProviderEntry
 from repolish.loader.module_loader import ModuleProviderAdapter
 from repolish.misc import ctx_to_dict
-
-# helpers previously nested inside orchestrator._run_three_phase ------------
 
 
 def build_provider_metadata(
@@ -66,17 +66,22 @@ def compute_recipient_flags(
 def _normalize_inputs(
     provider_id: str,
     raw: object | None,
-) -> dict[str, object] | None:
-    """Validate and cast a provider-generated value to a dict, logging on error."""
+) -> list[object] | None:
+    """Ensure ``provide_inputs`` returns a list of payloads.
+
+    Only the new list-based API is supported; anything else is considered a
+    user error and is logged.  This simplification lets providers emit values
+    without knowing recipient names and enables schema-based routing.
+    """
     if raw is None:
         return None
-    if not isinstance(raw, dict):
-        logger.warning(
-            'collect_provider_inputs_must_return_dict',
-            provider=provider_id,
-        )
-        return None
-    return cast('dict[str, object]', raw)
+    if isinstance(raw, list):
+        return cast('list[object]', raw)
+    logger.warning(
+        'provide_inputs_must_return_list',
+        provider=provider_id,
+    )
+    return None
 
 
 def _retrieve_instance_inputs(
@@ -84,24 +89,30 @@ def _retrieve_instance_inputs(
     idx: int,
     inst: _ProviderBase,
     provider_contexts: dict[str, object],
-    all_providers_list: list[tuple[str, dict[str, object]]],
-) -> dict[str, object] | None:
-    """Call an instance's ``collect_provider_inputs`` and normalise output."""
+    all_providers_list: list[ProviderEntry],
+) -> list[object] | None:
+    """Call an instance's `provide_inputs` (or deprecated `collect_*`).
+
+    We still support the old method name when defined; providers using it
+    receive a warning from the class shim above, so the loader itself doesn't
+    need to duplicate that logic.
+    """
     try:
         try:
             own_model = inst.create_context()
         except Exception:  # noqa: BLE001
             own_model = provider_contexts.get(provider_id, {})
-        raw = inst.collect_provider_inputs(
+        # the new public API
+        raw = inst.provide_inputs(
             own_model,
             all_providers_list,
             idx,
         )
     except Exception:
         logger.exception(
-            'collect_provider_inputs_failed',
+            'provider_inputs_failed',
             provider=provider_id,
-            index=idx,
+            provider_index=idx,
         )
         raise
     return _normalize_inputs(provider_id, raw)
@@ -112,10 +123,10 @@ def _retrieve_module_inputs(
     idx: int,
     module_dict: dict,
     provider_contexts: dict[str, object],
-    all_providers_list: list[tuple[str, dict[str, object]]],
-) -> dict[str, object] | None:
-    """Invoke a module-level ``collect_provider_inputs`` if present."""
-    module_collect = module_dict.get('collect_provider_inputs')
+    all_providers_list: list[ProviderEntry],
+) -> list[object] | None:
+    """Invoke the module-level inputs hook if present."""
+    module_collect = module_dict.get('provide_inputs')
     if not callable(module_collect):
         return None
     try:
@@ -126,9 +137,9 @@ def _retrieve_module_inputs(
         )
     except Exception:
         logger.exception(
-            'collect_provider_inputs_failed',
+            'provider_inputs_failed',
             provider=provider_id,
-            index=idx,
+            provider_index=idx,
         )
         raise
     return _normalize_inputs(provider_id, raw)
@@ -143,34 +154,40 @@ def _resolve_target_pid(
     return canonical_name_to_pid.get(recipient_key) or (recipient_key if recipient_key in provider_contexts else None)
 
 
-def _process_inputs_map(
-    provider_id: str,
-    inputs_map: dict[str, object],
-    received_inputs: dict[str, list[object]],
-    canonical_name_to_pid: dict[str, str],
-    provider_contexts: dict[str, object],
+def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
+    if isinstance(value, _BaseModel):
+        return isinstance(value, schema)
+    try:
+        schema.model_validate(value)
+    except ValidationError:
+        return False
+    else:
+        return True
+
+
+def _distribute_payloads(
+    inputs_list: list[object],
+    state: _GatherState,
 ) -> None:
-    """Add validated entries from ``inputs_map`` into ``received_inputs``."""
-    for recipient_key, inp in inputs_map.items():
-        target_pid = _resolve_target_pid(
-            recipient_key,
-            canonical_name_to_pid,
-            provider_contexts,
-        )
-        if not target_pid:
-            logger.warning(
-                'collect_provider_inputs_unresolved_recipient',
-                sender=provider_id,
-                recipient=recipient_key,
-            )
-            continue
-        received_inputs.setdefault(target_pid, []).append(inp)
+    """Route anonymous payloads to matching recipients.
+
+    `inputs_list` is the sequence produced by a provider's
+    `provide_inputs()`.  For each element we attempt to validate
+    it against every provider's declared `get_inputs_schema()`; successes
+    result in the value being appended to that provider's incoming list.  A
+    single payload may match multiple schemas.  Order is preserved so earlier
+    senders have priority in consumption.
+    """
+    recipients = [(pid, schema) for pid, _ctx, schema in state.all_providers_list if schema]
+    pairs = [(pid, inp) for inp in inputs_list for pid, schema in recipients if _schema_matches(schema, inp)]
+    for pid, inp in pairs:
+        state.received_inputs.setdefault(pid, []).append(inp)
 
 
 @dataclass
 class _GatherState:
     provider_contexts: dict[str, object]
-    all_providers_list: list[tuple[str, dict[str, object]]]
+    all_providers_list: list[ProviderEntry]
     canonical_name_to_pid: dict[str, str]
     has_recipient_after: list[bool]
     received_inputs: dict[str, list[object]]
@@ -191,38 +208,34 @@ def _collect_for_provider(
     if not state.has_recipient_after[idx]:
         return
 
-    if inst:
-        inputs_map = _retrieve_instance_inputs(
+    inputs = (
+        _retrieve_instance_inputs(
             provider_id,
             idx,
             inst,
             state.provider_contexts,
             state.all_providers_list,
         )
-    else:
-        inputs_map = _retrieve_module_inputs(
+        if inst
+        else _retrieve_module_inputs(
             provider_id,
             idx,
             module_dict,
             state.provider_contexts,
             state.all_providers_list,
         )
+    )
 
-    if inputs_map:
-        _process_inputs_map(
-            provider_id,
-            inputs_map,
-            state.received_inputs,
-            state.canonical_name_to_pid,
-            state.provider_contexts,
-        )
+    if inputs:
+        # only list form is supported now; we dispatch directly
+        _distribute_payloads(inputs, state)
 
 
 def gather_received_inputs(  # noqa: PLR0913 -- helper function for a complex step
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, object],
-    all_providers_list: list[tuple[str, dict[str, object]]],
+    all_providers_list: list[ProviderEntry],
     canonical_name_to_pid: dict[str, str],
     has_recipient_after: list[bool],
 ) -> dict[str, list[object]]:
@@ -311,7 +324,7 @@ def finalize_provider_contexts(
     instances: list[_ProviderBase | None],
     received_inputs: dict[str, list[object]],
     provider_contexts: dict[str, object],
-    all_providers_list: list[tuple[str, dict[str, object]]],
+    all_providers_list: list[tuple[str, dict[str, object], type[_BaseModel] | None]],
 ) -> None:
     """Mutate ``provider_contexts`` by running finalize_context on each instance.
 

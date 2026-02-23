@@ -1,0 +1,166 @@
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, cast
+
+import pytest
+from pydantic import BaseModel
+
+from repolish.loader import create_providers
+from repolish.loader.models import (
+    BaseContext,
+    Provider,
+    ProviderEntry,
+    get_provider_inputs,
+    get_provider_inputs_schema,
+)
+from tests.providers_inputs.shared import InputA
+
+
+def test_provider_input_schema_instantiation() -> None:
+    """Helpers correctly locate the schema and instantiate a blank input."""
+
+    class SomeInputs(BaseModel):
+        foo: str = 'x'
+
+    class SomeProvider(Provider[BaseContext, SomeInputs]):
+        def get_provider_name(self) -> str:
+            return 'some'
+
+        def create_context(self) -> BaseContext:
+            return BaseContext()
+
+        def get_inputs_schema(self) -> type[SomeInputs]:
+            return SomeInputs
+
+    provs: list[Provider[Any, Any]] = [SomeProvider()]
+
+    assert get_provider_inputs_schema(SomeProvider, provs) is SomeInputs
+    inst = get_provider_inputs(SomeProvider, provs)
+    assert isinstance(inst, SomeInputs)
+    assert inst.foo == 'x'
+
+    # unknown provider class returns None
+    class Other(Provider[BaseContext, BaseModel]):
+        def get_provider_name(self) -> str:
+            return 'other'
+
+        def create_context(self) -> BaseContext:
+            return BaseContext()
+
+    assert get_provider_inputs_schema(Other, provs) is None
+    assert get_provider_inputs(Other, provs) is None
+
+    # when multiple providers exist we can still lookup the one with inputs
+    class A2(SomeProvider):
+        pass
+
+    provs.append(A2())
+    assert get_provider_inputs_schema(A2, provs) is SomeInputs
+
+
+def test_provider_inputs_module_filtering() -> None:
+    """Providers may inspect other providers' input schemas before emitting."""
+
+    class Dummy(BaseContext):
+        pass
+
+    # the generic argument (InputA) only describes the type Btest expects to
+    # receive; it does not constrain what the method returns. the loader will
+    # match emitted values to recipients' schemas.
+    class Btest(Provider[Dummy, InputA]):
+        def get_provider_name(self) -> str:
+            return 'btest'
+
+        def create_context(self) -> Dummy:
+            return Dummy()
+
+        def get_inputs_schema(self) -> type[InputA]:
+            return InputA
+
+        def provide_inputs(
+            self,
+            own_context: Dummy,  # noqa: ARG002 - method signature must match base
+            all_providers: list[ProviderEntry],
+            provider_index: int,  # noqa: ARG002 - method signature must match base
+        ) -> list[BaseModel]:
+            # inspect schemas rather than names
+            for _pid, _ctx, schema in all_providers:
+                if schema is InputA:
+                    return [InputA(prob_a_input='x')]
+            return []
+
+    b_inst = Btest()
+    # if A not in list, no inputs
+    assert b_inst.provide_inputs(Dummy(), [], 0) == []
+
+    # if A present, returns list
+    assert b_inst.provide_inputs(
+        Dummy(),
+        [('a', {}, InputA)],
+        0,
+    ) == [
+        InputA(prob_a_input='x'),
+    ]
+
+
+@dataclass
+class TCase:
+    name: str
+    order: tuple[str, ...]
+    expected: str
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        TCase(
+            name='b_first',
+            order=('provider_b', 'provider_c', 'provider_a'),
+            expected='provider_b',
+        ),
+        TCase(
+            name='a_first',
+            order=('provider_a', 'provider_b', 'provider_c'),
+            expected='provider_a',
+        ),
+    ],
+    ids=lambda c: c.name,
+)
+def test_provider_inputs_order(tmp_path: Path, case: TCase):
+    """Integration: verify that providers receive inputs in load order.
+
+    Provider A consumes the *first* value targeted at it during the
+    ``finalize_context`` phase.  Depending on the order in which the
+    directories are loaded, earlier senders may or may not be consulted.
+
+    The test is parametrized over two scenarios, and each scenario is
+    described by a :class:`TCase` instance.  The `ids` callable uses the
+    `name` field to generate readable test IDs.
+    """
+    base_set = Path(__file__).parent.parent / 'providers_inputs'
+
+    # copy provider directories into tmp_path in the given order
+    dirs: list[str] = []
+    for name in case.order:
+        src = base_set / name
+        dest = tmp_path / name
+        shutil.copytree(src, dest)
+        dirs.append(str(dest))
+
+    providers = create_providers([str(d) for d in dirs])
+
+    # locate ProviderA's context and extract its value
+    ctx: object | dict[str, object] | None = None
+    for c in providers.provider_contexts.values():
+        if isinstance(c, dict) and 'prov_a_value' in c:
+            ctx = c
+            break
+        if hasattr(c, 'prov_a_value'):
+            ctx = c
+            break
+    assert ctx is not None, 'ProviderA context not found'
+    val = cast('dict[str, object]', ctx)['prov_a_value'] if isinstance(ctx, dict) else ctx.prov_a_value
+
+    # verify the extracted value matches the expected result for this case
+    assert val == case.expected

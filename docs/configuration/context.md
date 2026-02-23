@@ -25,17 +25,30 @@ accepts one parameter, the loader will pass the merged context dict.
 
 New providers may be implemented as classes by subclassing
 `repolish.loader.models.Provider`. Only `get_provider_name()` and
-`create_context()` are required; other hooks like `collect_provider_inputs()`
-and `finalize_context()` are optional and have sensible defaults so module-style
+`create_context()` are required; other hooks such as `provide_inputs()` and
+`finalize_context()` are optional and have sensible defaults so module-style
 providers remain supported.
+
+The `Provider` class is generic in two parameters: the first describes the
+context model produced by `create_context()`, and the second is the **input
+schema** this provider will accept when other providers send messages. You must
+supply both type arguments when subclassing; if your provider does not receive
+any inputs it's customary to use `BaseModel` (or another trivial `BaseModel`
+subclass) as the placeholder. The generic does _not_ constrain what your own
+`provide_inputs()` implementation may return; that hook can emit arbitrary
+`BaseModel` instances and (for legacy module adapters) plain dicts, and the
+loader will route them based on recipient schemas.
 
 Example:
 
 ```py
 from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish.loader.models import Provider, BaseContext
 
-class MyCtx(BaseModel):
+# use BaseContext when you don't need any fields – it saves you from importing
+# pydantic everywhere and avoids the "BaseModel cannot be instantiated"
+# error that occurs if you try to return `BaseModel()` directly.
+class MyCtx(BaseContext):
     feature_flag: bool = False
 
 class MyProvider(Provider[MyCtx, BaseModel]):
