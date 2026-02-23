@@ -107,6 +107,12 @@ def render_with_jinja(ctx: RenderContext) -> None:
 
         # pick the appropriate context for this file
         ctx_to_use = _choose_ctx_for_file(rel_str, ctx)
+        logger.debug(
+            'rendering_file',
+            file=str(src),
+            context=ctx_to_use,
+            provider=ctx.providers.template_sources.get(rel_str),
+        )
 
         try:
             rendered_rel = _render_path_parts(env, rel, ctx_to_use)
@@ -144,7 +150,14 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
     # if they really need merged contexts globally.  upstream callers and
     # tests no longer need to set the flag just to enable scoping.
     pid = ctx.providers.template_sources.get(rel_str)
-    if pid and ctx.providers.provider_migrated.get(pid):
+    migrated = ctx.providers.provider_migrated.get(pid or '')
+    logger.debug(
+        'choose_context_for_file',
+        rel=rel_str,
+        pid=pid,
+        migrated=migrated,
+    )
+    if pid and migrated:
         return ctx_to_dict(ctx.providers.provider_contexts.get(pid))
     return ctx.merged_ctx
 

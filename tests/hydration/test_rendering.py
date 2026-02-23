@@ -36,18 +36,26 @@ def test_render_template_with_no_cookiecutter_renders_jinja(tmp_path: Path):
     """When config.no_cookiecutter is True, templates are rendered with Jinja2."""
 
 
-def test_render_template_logs_merged_context(tmp_path: Path, mocker: MockerFixture):
+def test_render_template_logs_merged_context(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
     """Rendering logs the merged context at debug level."""
     # simple template so rendering will proceed without errors
     tpl = tmp_path / 'tpl'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
-    (tpl / 'repolish' / 'foo.jinja').write_text('X={{ cookiecutter.foo }}', encoding='utf-8')
+    (tpl / 'repolish' / 'foo.jinja').write_text(
+        'X={{ cookiecutter.foo }}',
+        encoding='utf-8',
+    )
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
     create_cookiecutter_template(setup_input, [tpl])
 
-    providers = Providers(context={'foo': 'bar', '_repolish_project': 'repolish'})
+    providers = Providers(
+        context={'foo': 'bar', '_repolish_project': 'repolish'},
+    )
     preprocess_templates(setup_input, providers, config, base_dir)
 
     config.no_cookiecutter = True
@@ -80,6 +88,38 @@ def test_compute_merged_context_logs_details(mocker: MockerFixture):
     logged = [c.args[0] for c in mock_logger.debug.call_args_list]
     assert 'compute_merged_context_start' in logged
     assert 'compute_merged_context_result' in logged
+
+
+def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
+    """Choosing context for a path emits debug information."""
+    # prepare a provider that is marked migrated and has its own context
+    providers = Providers(
+        context={'base': 1},
+        provider_contexts={'p': {'a': 2}},
+        provider_migrated={'p': True},
+        template_sources={'tpl.txt': 'p'},
+    )
+
+    from repolish.hydration.rendering import RenderContext, _choose_ctx_for_file
+
+    config = RepolishConfig(config_dir=tmp_path)
+    render_ctx = RenderContext(
+        setup_input=tmp_path,
+        merged_ctx={'base': 1},
+        setup_output=tmp_path,
+        providers=providers,
+        config=config,
+    )
+
+    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
+    result = _choose_ctx_for_file('tpl.txt', render_ctx)
+    assert result == {'a': 2}
+    mock_logger.debug.assert_any_call(
+        'choose_context_for_file',
+        rel='tpl.txt',
+        pid='p',
+        migrated=True,
+    )
 
 
 def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
@@ -538,7 +578,10 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
 
     config.no_cookiecutter = True
     # patch logger so we can introspect which context was used during failure
-    with patch('repolish.hydration.rendering.logger') as mock_logger, pytest.raises(UndefinedError) as exc:
+    with (
+        patch('repolish.hydration.rendering.logger') as mock_logger,
+        pytest.raises(UndefinedError) as exc,
+    ):
         render_template(setup_input, providers, setup_output, config)
     # message should include the original Jinja error and note which file was
     # being rendered.
