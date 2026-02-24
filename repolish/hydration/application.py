@@ -5,8 +5,7 @@ from hotlog import get_logger
 
 from repolish.hydration.comparison import collect_output_files
 from repolish.hydration.misc import get_source_str_from_mapping
-from repolish.loader import Providers
-from repolish.loader.types import TemplateMapping
+from repolish.loader import Providers, TemplateMapping
 from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)

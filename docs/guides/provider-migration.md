@@ -57,7 +57,7 @@ After (migrated, provider-scoped):
 
 ```py
 # repolish.py (migrated)
-from repolish.loader.types import TemplateMapping
+from repolish import TemplateMapping
 provider_migrated = True
 
 from pydantic import BaseModel
@@ -84,8 +84,7 @@ work).
 ```py
 # repolish.py (class-based final form)
 from pydantic import BaseModel
-from repolish.loader.models import Provider
-from repolish.loader.types import TemplateMapping, FileMode
+from repolish.loader import Provider, TemplateMapping, FileMode
 
 # mark provider migrated for strict provider-scoped mode
 provider_migrated = True

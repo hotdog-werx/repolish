@@ -6,8 +6,7 @@ import pytest
 
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.display import rich_print_diffs
-from repolish.loader import Providers
-from repolish.loader.types import TemplateMapping
+from repolish.loader import Providers, TemplateMapping
 
 
 def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:

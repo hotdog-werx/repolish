@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, cast
 
-from repolish.loader import module_loader
-from repolish.loader.types import FileMode, TemplateMapping
+from repolish.loader import FileMode, TemplateMapping, module_loader
 
 if TYPE_CHECKING:
     from repolish.loader.models import Provider as _ProviderBase

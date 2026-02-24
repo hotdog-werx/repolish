@@ -15,8 +15,7 @@ from jinja2 import (
 from pydantic import BaseModel
 
 from repolish.config.models import RepolishConfig
-from repolish.loader import Providers
-from repolish.loader.types import FileMode, TemplateMapping
+from repolish.loader import FileMode, Providers, TemplateMapping
 from repolish.misc import ctx_keys, ctx_to_dict
 
 logger = get_logger(__name__)

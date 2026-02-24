@@ -22,9 +22,14 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel as _BaseModel
 
-from repolish.loader.models import Provider as _ProviderBase
-from repolish.loader.models import ProviderEntry
-from repolish.loader.types import FileMode, TemplateMapping
+from repolish.loader import (
+    FileMode,
+    ProviderEntry,
+    TemplateMapping,
+)
+from repolish.loader import (
+    Provider as _ProviderBase,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Callable

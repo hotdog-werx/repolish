@@ -1,7 +1,7 @@
 from pathlib import Path, PurePosixPath
 from typing import cast
 
-from repolish.loader.types import FileMode, TemplateMapping
+from repolish.loader import FileMode, TemplateMapping
 
 
 def process_create_only_files(

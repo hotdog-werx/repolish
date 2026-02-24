@@ -11,7 +11,11 @@ from repolish import ProviderEntry
 from repolish.config import RepolishConfig
 from repolish.config.models import ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
-from repolish.loader import create_providers
+from repolish.loader import (
+    Accumulators,
+    TemplateMapping,
+    create_providers,
+)
 from repolish.loader.mappings import (
     _process_mapping_item,
     process_file_mappings,
@@ -37,10 +41,6 @@ from repolish.loader.three_phase import (
     build_provider_metadata,
     finalize_provider_contexts,
     gather_received_inputs,
-)
-from repolish.loader.types import (
-    Accumulators,
-    TemplateMapping,
 )
 from repolish.loader.validation import _emit_provider_migration_suggestion
 from repolish.misc import ctx_keys, ctx_to_dict

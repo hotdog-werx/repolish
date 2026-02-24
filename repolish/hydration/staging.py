@@ -4,8 +4,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.loader import Providers
-from repolish.loader.types import TemplateMapping
+from repolish.loader import Providers, TemplateMapping
 from repolish.preprocessors import replace_text, safe_file_read
 
 logger = get_logger(__name__)

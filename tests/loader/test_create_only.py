@@ -1,9 +1,9 @@
 """Tests for create_only_files extraction functionality."""
 
 # extractor removed; tests exercise provider API directly
-from repolish.loader.models import Provider as _ProviderBase
+from repolish.loader import FileMode, TemplateMapping
+from repolish.loader import Provider as _ProviderBase
 from repolish.loader.module_loader import inject_provider_instance_for_module
-from repolish.loader.types import FileMode, TemplateMapping
 
 
 def test_extract_create_only_files_from_create_function():

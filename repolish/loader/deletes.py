@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import cast
 
-from repolish.loader.types import Action, Decision, FileMode, TemplateMapping
+from repolish.loader.models import Action, Decision, FileMode, TemplateMapping
 
 
 def process_delete_files(

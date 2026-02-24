@@ -15,8 +15,12 @@ from repolish.hydration.rendering import (
     render_template,
 )
 from repolish.hydration.staging import prepare_staging, preprocess_templates
-from repolish.loader import create_providers
-from repolish.loader.types import FileMode, Providers, TemplateMapping
+from repolish.loader import (
+    FileMode,
+    Providers,
+    TemplateMapping,
+    create_providers,
+)
 
 
 def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
@@ -406,7 +410,7 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     (prov_a / 'repolish.py').write_text(
         dedent(
             """
-            from repolish.loader.types import TemplateMapping
+            from repolish import TemplateMapping
             provider_migrated = True
 
             def create_context():
@@ -424,7 +428,7 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     (prov_b / 'repolish.py').write_text(
         dedent(
             """
-            from repolish.loader.types import TemplateMapping
+            from repolish import TemplateMapping
 
             def create_context():
                 return {'b_key': 'B'}
@@ -481,7 +485,7 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
     (prov / 'repolish.py').write_text(
         dedent(
             """
-            from repolish.loader.types import TemplateMapping
+            from repolish import TemplateMapping
             provider_migrated = True
 
             def create_context():

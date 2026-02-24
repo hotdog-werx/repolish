@@ -3,8 +3,7 @@ from textwrap import dedent
 
 from pydantic import BaseModel
 
-from repolish.loader import create_providers
-from repolish.loader.types import FileMode, TemplateMapping
+from repolish.loader import FileMode, TemplateMapping, create_providers
 
 
 def test_file_mappings_receive_merged_context(tmp_path: Path):
@@ -40,7 +39,7 @@ def test_create_file_mappings_accepts_pydantic_extra_context(tmp_path: Path):
     src = dedent(
         """
         from pydantic import BaseModel
-        from repolish.loader.types import TemplateMapping
+        from repolish import TemplateMapping
 
         class ItemCtx(BaseModel):
             file_number: int
@@ -70,7 +69,7 @@ def test_template_mapping_file_mode_create_only_includes_in_create_only(
 ):
     src = dedent(
         """
-        from repolish.loader.types import TemplateMapping, FileMode
+        from repolish import TemplateMapping, FileMode
 
         def create_file_mappings():
             return {'a.txt': TemplateMapping('template.jinja', None, FileMode.CREATE_ONLY)}
@@ -93,7 +92,7 @@ def test_template_mapping_file_mode_create_only_includes_in_create_only(
 def test_template_mapping_file_mode_delete_marks_for_deletion(tmp_path: Path):
     src = dedent(
         """
-        from repolish.loader.types import TemplateMapping, FileMode
+        from repolish import TemplateMapping, FileMode
 
         def create_file_mappings():
             return {'old.txt': TemplateMapping(None, None, FileMode.DELETE)}

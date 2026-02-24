@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from repolish.loader import Action, Decision
 from repolish.loader.deletes import (
     _apply_raw_delete_items,
     _normalize_delete_iterable,
@@ -11,7 +12,6 @@ from repolish.loader.deletes import (
     process_delete_files,
 )
 from repolish.loader.module_loader import inject_provider_instance_for_module
-from repolish.loader.types import Action, Decision
 
 if TYPE_CHECKING:
     from repolish.loader.models import Provider as _ProviderBase

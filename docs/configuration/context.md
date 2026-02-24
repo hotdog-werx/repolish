@@ -102,7 +102,7 @@ Example (provider `repolish.py`):
 
 ```py
 from pydantic import BaseModel
-from repolish.loader.types import TemplateMapping
+from repolish import TemplateMapping
 
 class ModuleCtx(BaseModel):
     module: str
@@ -178,7 +178,7 @@ Example provider (migrated):
 
 ```py
 # repolish.py (provider)
-from repolish.loader.types import TemplateMapping
+from repolish import TemplateMapping
 provider_migrated = True
 
 def create_context():

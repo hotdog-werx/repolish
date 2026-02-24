@@ -7,6 +7,14 @@ from typing import Any, cast
 
 from pydantic import BaseModel as _BaseModel
 
+from repolish.loader import (
+    Accumulators,
+    Decision,
+    ProviderEntry,
+    Providers,
+    TemplateMapping,
+)
+from repolish.loader import Provider as _ProviderBase
 from repolish.loader._log import logger
 from repolish.loader.anchors import process_anchors
 from repolish.loader.context import (
@@ -18,8 +26,6 @@ from repolish.loader.deletes import (
     process_delete_files,
 )
 from repolish.loader.mappings import process_file_mappings
-from repolish.loader.models import Provider as _ProviderBase
-from repolish.loader.models import ProviderEntry
 from repolish.loader.module import get_module
 from repolish.loader.module_loader import (
     ModuleProviderAdapter,
@@ -31,12 +37,6 @@ from repolish.loader.three_phase import (
     compute_recipient_flags,
     finalize_provider_contexts,
     gather_received_inputs,
-)
-from repolish.loader.types import (
-    Accumulators,
-    Decision,
-    Providers,
-    TemplateMapping,
 )
 from repolish.loader.validation import _validate_provider_module
 from repolish.misc import ctx_to_dict

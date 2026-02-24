@@ -4,10 +4,8 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel
 
+from repolish.loader import TemplateMapping
 from repolish.loader.module_loader import inject_provider_instance_for_module
-
-# extractor removed; tests interact with provider.create_file_mappings()
-from repolish.loader.types import TemplateMapping
 
 if TYPE_CHECKING:
     from repolish.loader.models import Provider as _ProviderBase

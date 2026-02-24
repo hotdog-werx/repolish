@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import cast
 
-from repolish.loader.types import Accumulators, FileMode, TemplateMapping
+from repolish.loader import Accumulators, FileMode, TemplateMapping
 
 
 def _process_mapping_item(
