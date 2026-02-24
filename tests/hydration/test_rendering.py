@@ -9,7 +9,11 @@ from pytest_mock import MockerFixture
 
 from repolish.builder import create_cookiecutter_template
 from repolish.config.models import RepolishConfig
-from repolish.hydration.rendering import render_template
+from repolish.hydration.rendering import (
+    RenderContext,
+    _choose_ctx_for_file,
+    render_template,
+)
 from repolish.hydration.staging import prepare_staging, preprocess_templates
 from repolish.loader import create_providers
 from repolish.loader.types import FileMode, Providers, TemplateMapping
@@ -100,8 +104,6 @@ def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
         template_sources={'tpl.txt': 'p'},
     )
 
-    from repolish.hydration.rendering import RenderContext, _choose_ctx_for_file
-
     config = RepolishConfig(config_dir=tmp_path)
     render_ctx = RenderContext(
         setup_input=tmp_path,
@@ -118,6 +120,47 @@ def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
         'choose_context_for_file',
         rel='tpl.txt',
         pid='p',
+        normalized_pid='p',
+        migrated=True,
+    )
+
+
+def test_choose_ctx_for_file_normalizes_windows_pid(
+    mocker: MockerFixture,
+    tmp_path: Path,
+):
+    """A mismatched Windows-style provider id should still resolve."""
+    # Use a provider id that would normally be converted from a
+    # Windows-style path with backslashes.  after normalisation it should
+    # appear as 'P/subdir' which is the key we store in the migrated map.
+    providers = Providers(
+        context={'base': 1},
+        provider_contexts={'P/subdir': {'x': 9}},
+        # loader will use posix style
+        provider_migrated={'P/subdir': True},
+        # template_sources comes from builder; simulate backslash pid
+        template_sources={'f.txt': 'P\\subdir'},
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    render_ctx = RenderContext(
+        setup_input=tmp_path,
+        merged_ctx={'base': 1},
+        setup_output=tmp_path,
+        providers=providers,
+        config=config,
+    )
+
+    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
+    result = _choose_ctx_for_file('f.txt', render_ctx)
+    # normalization should strip the backslash component and succeed
+    assert result == {'x': 9}
+    # debug log should record both original and normalized pid
+    mock_logger.debug.assert_any_call(
+        'choose_context_for_file',
+        rel='f.txt',
+        pid='P\\subdir',
+        normalized_pid='P/subdir',
         migrated=True,
     )
 

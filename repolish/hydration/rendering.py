@@ -150,15 +150,29 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
     # if they really need merged contexts globally.  upstream callers and
     # tests no longer need to set the flag just to enable scoping.
     pid = ctx.providers.template_sources.get(rel_str)
-    migrated = ctx.providers.provider_migrated.get(pid or '')
+    # provider_ids are expected to be POSIX-formatted, but earlier versions of
+    # the code sometimes exposed raw Windows paths (backslashes).  normalise
+    # before consulting the migration map so lookups succeed even if upstream
+    # producers were inconsistent.  ``get`` defaults to False to avoid the
+    # mysterious ``null`` value in the logs that triggered this investigation.
+    if pid:
+        clean = pid.replace('\\', '/')
+        norm_pid = Path(clean).as_posix()
+    else:
+        norm_pid = None
+    # ``provider_migrated`` is keyed by str; do not attempt to look up using
+    # ``None`` which would confuse the type checker.  using a ternary keeps the
+    # expression short while still satisfying type checkers.
+    migrated = ctx.providers.provider_migrated.get(norm_pid, False) if norm_pid is not None else False
     logger.debug(
         'choose_context_for_file',
         rel=rel_str,
         pid=pid,
+        normalized_pid=norm_pid,
         migrated=migrated,
     )
-    if pid and migrated:
-        return ctx_to_dict(ctx.providers.provider_contexts.get(pid))
+    if norm_pid and migrated:
+        return ctx_to_dict(ctx.providers.provider_contexts.get(norm_pid))
     return ctx.merged_ctx
 
 

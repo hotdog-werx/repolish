@@ -100,6 +100,13 @@ def _copy_item_to_dest(
 
     # record provider provenance using the post-stripped path
     pid = alias if alias is not None else str(repolish_dir.parent)
+    # normalise provider id to POSIX style (forward slashes) so it matches the
+    # value used by the loader, which calls ``Path(directory).as_posix()``.
+    # On Windows ``str(Path)`` returns backslashes, and some providers may
+    # still supply literal backslashes in aliases.  converting here ensures
+    # the string uses forward slashes regardless of platform.
+    pid = pid.replace('\\', '/')
+    pid = Path(pid).as_posix()
     sources[rel.as_posix()] = pid
 
     if item.is_dir():
