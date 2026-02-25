@@ -6,7 +6,7 @@ from pytest_mock import MockerFixture
 
 from repolish.commands.apply import command as run_repolish
 from repolish.hydration.rendering import _compute_merged_context
-from repolish.loader.models import Providers
+from repolish.loader import Providers
 
 
 def write_file(p: Path, content: str) -> None:

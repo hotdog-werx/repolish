@@ -3,8 +3,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.builder import create_cookiecutter_template
-from repolish.config import load_config
-from repolish.config.models import RepolishConfig
+from repolish.config import RepolishConfig, load_config
 from repolish.cookiecutter import (
     apply_generated_output,
     build_final_providers,

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config.models import ProviderConfig, ProviderInfo
+from repolish.config import ProviderConfig, ProviderInfo
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
 

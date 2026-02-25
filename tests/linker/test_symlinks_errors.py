@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from repolish.config.models import ProviderInfo
+from repolish.config import ProviderInfo
 from repolish.exceptions import SymlinkError
 from repolish.linker.symlinks import create_additional_link, link_resources
 

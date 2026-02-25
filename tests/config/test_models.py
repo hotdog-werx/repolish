@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from repolish.config.models import (
+from repolish.config import (
     AllProviders,
     ProviderConfig,
     ProviderInfo,

@@ -5,7 +5,7 @@ import pytest
 import pytest_mock
 from pytest_mock import MockerFixture
 
-from repolish.config.models import ProviderInfo
+from repolish.config import ProviderInfo
 from repolish.linker.symlinks import (
     create_additional_link,
     link_resources,

@@ -7,7 +7,7 @@ from typing import Any, Protocol, TypedDict
 import pytest
 import pytest_mock
 
-from repolish.config.models import ProviderInfo
+from repolish.config import ProviderInfo
 from repolish.linker.decorator import resource_linker
 
 

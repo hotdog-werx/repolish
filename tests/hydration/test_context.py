@@ -4,8 +4,7 @@ from pathlib import Path
 from textwrap import dedent
 from typing import cast
 
-from repolish.config import RepolishConfig
-from repolish.config.models import ResolvedProviderInfo
+from repolish.config import RepolishConfig, ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
 
 

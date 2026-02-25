@@ -5,6 +5,7 @@ from repolish.config.models import (
     ProviderInfo,
     ProviderSymlink,
     RepolishConfig,
+    RepolishConfigFile,
     ResolvedProviderInfo,
 )
 from repolish.config.providers import get_provider_info_path
@@ -15,6 +16,7 @@ __all__ = [
     'ProviderInfo',
     'ProviderSymlink',
     'RepolishConfig',
+    'RepolishConfigFile',
     'ResolvedProviderInfo',
     'get_provider_info_path',
     'load_config',

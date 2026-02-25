@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from repolish.builder import create_cookiecutter_template
-from repolish.config.models import RepolishConfig
+from repolish.config import RepolishConfig
 from repolish.hydration.rendering import (
     RenderContext,
     _choose_ctx_for_file,

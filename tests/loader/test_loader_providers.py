@@ -224,7 +224,7 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
         dedent(
             """
             from pydantic import BaseModel
-            from repolish.loader.models import Provider
+            from repolish.loader import Provider
 
             class AContext(BaseModel):
                 val: int = 1

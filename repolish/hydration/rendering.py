@@ -14,7 +14,7 @@ from jinja2 import (
 )
 from pydantic import BaseModel
 
-from repolish.config.models import RepolishConfig
+from repolish.config import RepolishConfig
 from repolish.loader import FileMode, Providers, TemplateMapping
 from repolish.misc import ctx_keys, ctx_to_dict
 

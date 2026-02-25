@@ -17,7 +17,7 @@ from hotlog import (
 )
 from rich.console import Console
 
-from repolish.config.models import ProviderInfo, ProviderSymlink
+from repolish.config import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
 

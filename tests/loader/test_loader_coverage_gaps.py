@@ -8,20 +8,19 @@ from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from repolish import ProviderEntry
-from repolish.config import RepolishConfig
-from repolish.config.models import ResolvedProviderInfo
+from repolish.config import RepolishConfig, ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
 from repolish.loader import (
     Accumulators,
+    BaseContext,
     TemplateMapping,
     create_providers,
 )
+from repolish.loader import Provider as _ProviderBase
 from repolish.loader.mappings import (
     _process_mapping_item,
     process_file_mappings,
 )
-from repolish.loader.models import BaseContext
-from repolish.loader.models import Provider as _ProviderBase
 from repolish.loader.module_loader import (
     ModuleProviderAdapter,
     # helpers called indirectly in tests
@@ -600,7 +599,7 @@ def test_override_unknown_field_logs_warning(
     """Override targeting fields that don't exist should be ignored and reported via a warning."""
     src = """
 from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish.loader import Provider
 
 
 class SimpleCtx(BaseModel):

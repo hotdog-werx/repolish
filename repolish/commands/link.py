@@ -2,8 +2,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config import load_config_file
-from repolish.config.models import RepolishConfigFile
+from repolish.config import RepolishConfigFile, load_config_file
 from repolish.linker import process_provider
 
 logger = get_logger(__name__)
