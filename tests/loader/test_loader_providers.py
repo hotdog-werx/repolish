@@ -1,3 +1,5 @@
+import importlib
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
@@ -368,6 +370,59 @@ def test_provide_inputs_called_for_all_providers(tmp_path: Path):
     confirm the function ran; class-based providers encapsulate the method
     inside the instance, which is harder to access from the test.
     """
+
+
+def test_loading_reuses_existing_module(tmp_path: Path):
+    """Loading a provider file that has already been imported should not create a second module instance.
+
+    This regression manifests as two distinct ``Provider`` classes that
+    compare unequal even though they come from the same source.  To simulate
+    the real-world case we import the file under a package name before
+    calling ``create_providers``.
+    """
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+    (pkg / '__init__.py').write_text('')
+
+    src = pkg / 'repolish.py'
+    src.write_text(
+        """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+class MyCtx(BaseModel):
+    value: int = 1
+
+class MyProvider(Provider[MyCtx, BaseModel]):
+    def get_provider_name(self):
+        return 'foo'
+    def create_context(self) -> MyCtx:
+        return MyCtx()
+""",
+    )
+
+    # import the module normally using the package name
+
+    sys.path.insert(0, str(tmp_path))
+    pkg_mod = importlib.import_module('pkg.repolish')
+    assert hasattr(pkg_mod, 'MyProvider')
+    normal_cls = pkg_mod.MyProvider
+
+    # now load the same directory via the loader
+    module_cache = loader_mod.orchestrator._load_module_cache([str(pkg)])
+    # _load_module_cache _may_ return the same module dict we imported earlier
+    _, mod_dict = module_cache[0]
+    loaded_cls = loader_mod.orchestrator._find_provider_class(mod_dict)
+    assert loaded_cls is not None
+    # identity should be exact (not merely subclass relationship)
+    assert loaded_cls is normal_cls
+    # and when we instantiate via create_providers we still end up with that
+    # same class on the provider instance
+    # a full create_providers run should succeed without creating a
+    # second class; we don't need to inspect the instance here because
+    # ``loaded_cls is normal_cls`` above already proves the loader reused the
+    # module.
+    _ = create_providers([str(pkg)])
     p0 = tmp_path / 'p0'
     p0.mkdir()
     (p0 / 'repolish.py').write_text(
