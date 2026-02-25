@@ -53,6 +53,31 @@ def _try_imported_module(abs_path: Path, name: str) -> dict[str, object] | None:
     return None
 
 
+def _load_module_from_path(
+    module_path: str,
+    import_name: str | None,
+) -> dict[str, object]:
+    """Load a module by executing its file and optionally register it.
+
+    This is the "fallback" path used when the provider cannot be imported by
+    a guessed name or has not yet been executed.  The module will be created
+    under a synthetic name based on the file path to avoid conflicts.
+    If ``import_name`` is provided and not already present in ``sys.modules``
+    the newly loaded module will be inserted there as well so future
+    ``import_module`` calls resolve to the same object.
+    """
+    mod_name = 'repolish_module_' + ''.join(c if c.isalnum() or c == '_' else '_' for c in module_path)
+    spec = spec_from_file_location(mod_name, module_path)
+    if not spec or not spec.loader:  # pragma: no cover
+        msg = f'Cannot load module from path: {module_path}'
+        raise ImportError(msg)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if import_name and import_name not in sys.modules:
+        sys.modules[import_name] = module
+    return module.__dict__
+
+
 def get_module(module_path: str) -> dict[str, object]:
     """Dynamically import a module from a given path.
 
@@ -86,12 +111,7 @@ def get_module(module_path: str) -> dict[str, object]:
         if result is not None:
             return result
 
-    # fallback to spec load
-    mod_name = 'repolish_module_' + ''.join(c if c.isalnum() or c == '_' else '_' for c in module_path)
-    spec = spec_from_file_location(mod_name, module_path)
-    if not spec or not spec.loader:  # pragma: no cover
-        msg = f'Cannot load module from path: {module_path}'
-        raise ImportError(msg)
-    module = module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.__dict__
+    # fallback to spec-based loading (handles uninstalled or temporary
+    # providers).  ``_load_module_from_path`` encapsulates the mechanics
+    # and also registers the module under ``import_name`` if provided.
+    return _load_module_from_path(module_path, import_name)
