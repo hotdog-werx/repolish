@@ -3,6 +3,34 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 
+def _guess_import_name(module_path: str) -> str | None:
+    """Infer a dotted module name for a provider file, if possible.
+
+    Iterate ``sys.path`` entries looking for one that contains the given
+    file.  When the file lives inside a package hierarchy we build the
+    dotted name from the relative path and ensure each parent directory is a
+    proper package (has ``__init__.py``).  The first valid candidate is
+    returned; otherwise ``None`` indicates the path isn't importable via a
+    normal package name.
+    """
+    path = Path(module_path).resolve()
+    if path.suffix != '.py':
+        return None
+
+    for entry in sys.path:
+        base = Path(entry).resolve()
+        try:
+            rel = path.relative_to(base)
+        except ValueError:  # not under this sys.path entry
+            continue
+
+        parts = rel.with_suffix('').parts
+        parents = (base / p for p in parts[:-1])
+        if all((parent / '__init__.py').exists() for parent in parents):
+            return '.'.join(parts)
+    return None
+
+
 def get_module(module_path: str) -> dict[str, object]:
     """Dynamically import a module from a given path.
 
@@ -18,7 +46,10 @@ def get_module(module_path: str) -> dict[str, object]:
     already-loaded module's globals.
 
     When no existing module is found we fall back to the previous behaviour
-    of loading the file under a sanitized name derived from its path.
+    of loading the file under a sanitized name derived from its path.  If
+    the module appears to belong to an importable package we also register
+    it under that inferred name so later ``importlib.import_module`` calls
+    will resolve to the same object instead of reloading the file again.
     """
     # If the module has been imported earlier (under any name) reuse it.
     # We match on absolute file path because ``__file__`` may be either
@@ -40,4 +71,10 @@ def get_module(module_path: str) -> dict[str, object]:
         raise ImportError(msg)
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
+    # Attempt to register under a canonical import name when possible so
+    # later ``import_module`` calls will hit the same object.  This is a
+    # no-op if the name cannot be inferred or is already present.
+    import_name = _guess_import_name(module_path)
+    if import_name and import_name not in sys.modules:
+        sys.modules[import_name] = module
     return module.__dict__

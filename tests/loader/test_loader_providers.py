@@ -11,6 +11,7 @@ from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
 from repolish.loader import Providers, create_providers
+from repolish.loader import module as module_mod
 from repolish.loader.module_loader import ModuleProviderAdapter
 from repolish.loader.validation import _is_suspicious_variable
 
@@ -423,6 +424,53 @@ class MyProvider(Provider[MyCtx, BaseModel]):
     # ``loaded_cls is normal_cls`` above already proves the loader reused the
     # module.
     _ = create_providers([str(pkg)])
+
+
+def test_loader_registers_importable_name(tmp_path: Path):
+    """After loading a provider path the module becomes importable by name.
+
+    Clear any pre-existing ``pkg`` entries so the package created for this
+    test is the one actually loaded; earlier tests may have left a module
+    loaded under the same name.
+
+    When the provider lives inside an installable package we expect the
+    loader to register the module under its dotted import path so that a
+    later ``importlib.import_module`` returns the same object instead of
+    re-executing the file.
+    """
+    # cleanup imported modules (sys already imported at top of file)
+    sys.modules.pop('pkg.repolish', None)
+    sys.modules.pop('pkg', None)
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+    (pkg / '__init__.py').write_text('')
+    src = pkg / 'repolish.py'
+    src.write_text(
+        """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+class Ctx(BaseModel):
+    pass
+
+class P(Provider[Ctx, BaseModel]):
+    def get_provider_name(self):
+        return 'foo'
+    def create_context(self) -> Ctx:
+        return Ctx()
+""",
+    )
+
+    # imports handled at module level; sys.path modification next
+    sys.path.insert(0, str(tmp_path))
+    # load provider using the public API; this should register the importable name
+    create_providers([str(pkg)])
+    # now import by canonical path
+    mod = importlib.import_module('pkg.repolish')
+    assert mod.__file__ == str(src)
+    # confirm the module dictionary returned from our helper matches
+    module_dict = module_mod.get_module(str(src))
+    assert mod.__dict__ is module_dict
     p0 = tmp_path / 'p0'
     p0.mkdir()
     (p0 / 'repolish.py').write_text(
