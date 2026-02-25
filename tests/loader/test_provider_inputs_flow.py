@@ -11,13 +11,14 @@ from repolish.loader.models import (
     BaseContext,
     Provider,
     ProviderEntry,
+    get_provider_context,
     get_provider_inputs,
     get_provider_inputs_schema,
 )
 from tests.providers_inputs.shared import CtxA, InputA
 
 
-def test_provider_input_schema_instantiation() -> None:
+def test_provider_input_schema_instantiation() -> None:  # noqa: C901
     """Helpers correctly locate the schema and instantiate a blank input."""
 
     class SomeInputs(BaseModel):
@@ -58,6 +59,75 @@ def test_provider_input_schema_instantiation() -> None:
     provs.append(A2())
     assert get_provider_inputs_schema(A2, provs) is SomeInputs
 
+    # continue assertions originally part of this test
+    assert get_provider_inputs_schema(SomeProvider, provs) is SomeInputs
+    inst = get_provider_inputs(SomeProvider, provs)
+    assert isinstance(inst, SomeInputs)
+    assert inst.foo == 'x'
+
+    # unknown provider class returns None
+    class Other(Provider[BaseContext, BaseModel]):
+        def get_provider_name(self) -> str:
+            return 'other'
+
+        def create_context(self) -> BaseContext:
+            return BaseContext()
+
+    assert get_provider_inputs_schema(Other, provs) is None
+    assert get_provider_inputs(Other, provs) is None
+
+    # when multiple providers exist we can still lookup the one with inputs
+    class A2(SomeProvider):
+        pass
+
+    provs.append(A2())
+    assert get_provider_inputs_schema(A2, provs) is SomeInputs
+
+
+def test_get_provider_context_lookup() -> None:
+    """Utility returns context matching name, alias or provider class."""
+
+    class Ctx(BaseModel):
+        value: int = 42
+
+    class Prov1(Provider[Ctx, BaseModel]):
+        def get_provider_name(self) -> str:
+            return 'prov1'
+
+        def create_context(self) -> Ctx:
+            return Ctx()
+
+    class Prov2(Provider[BaseContext, BaseModel]):
+        def get_provider_name(self) -> str:
+            return 'prov2'
+
+        def create_context(self) -> BaseContext:
+            return BaseContext()
+
+    entries: list[ProviderEntry] = [
+        ProviderEntry(
+            provider_id='p1',
+            name='prov1',
+            alias='alias1',
+            inst_type=Prov1,
+            context=Ctx(),
+        ),
+        ProviderEntry(
+            provider_id='p2',
+            name='prov2',
+            alias='alias2',
+            inst_type=Prov2,
+            context=BaseContext(),
+        ),
+    ]
+
+    # lookup by class
+    ctx = get_provider_context(Prov1, entries)
+    assert isinstance(ctx, Ctx)
+
+    # missing returns None
+    assert get_provider_context(Provider, entries) is None
+
 
 def test_provider_inputs_module_filtering() -> None:
     """Providers may inspect other providers' input schemas before emitting."""
@@ -84,9 +154,12 @@ def test_provider_inputs_module_filtering() -> None:
             all_providers: list[ProviderEntry],
             provider_index: int,  # noqa: ARG002 - method signature must match base
         ) -> list[BaseModel]:
-            # inspect schemas rather than names
-            for _pid, _ctx, schema in all_providers:
-                if schema is InputA:
+            # inspect schemas rather than names; access via attributes for
+            # clarity. previously callers unpacked a 3-tuple; the new
+            # ``ProviderEntry`` class requires attribute access but the intent
+            # is clearer.
+            for entry in all_providers:
+                if entry.input_type is InputA:
                     return [InputA(prob_a_input='x')]
             return []
 
@@ -97,7 +170,15 @@ def test_provider_inputs_module_filtering() -> None:
     # if A present, returns list
     assert b_inst.provide_inputs(
         Dummy(),
-        [('a', {}, InputA)],
+        [
+            ProviderEntry(
+                provider_id='a',
+                name=None,
+                alias='a',
+                context={},
+                input_type=InputA,
+            ),
+        ],
         0,
     ) == [
         InputA(prob_a_input='x'),

@@ -357,8 +357,18 @@ def test_gather_received_inputs_variants() -> None:
     module_cache = [('p1', {})]
     instances = [None]
     provider_contexts: dict[str, object] = {}
-    # new API requires a third element (schema) even if None
-    all_providers_list = [('p1', {}, None)]
+    # new API now uses ProviderEntry rather than a raw tuple.  we can
+    # construct a minimal entry; context is a plain dict and no schema is
+    # declared.
+    all_providers_list = [
+        ProviderEntry(
+            provider_id='p1',
+            name=None,
+            alias='p1',
+            context={},
+            input_type=None,
+        ),
+    ]
     has_recipient_after = [False]
     # calling gather_received_inputs directly
     got = gather_received_inputs(

@@ -21,7 +21,7 @@ class ProviderB(Provider[BaseContext, BaseModel]):
         provider_index: int,  # noqa: ARG002 - method signature must match base
     ) -> list[BaseModel]:
         # only send an InputA if some provider declares that schema
-        for _pid, _ctx, schema in all_providers:
-            if schema is InputA:
+        for entry in all_providers:
+            if entry.input_type is InputA:
                 return [InputA(prob_a_input='provider_b')]
         return []

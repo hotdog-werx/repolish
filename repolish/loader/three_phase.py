@@ -120,11 +120,14 @@ def _distribute_payloads(
     # respect schema filtering so unrelated providers are not burdened with
     # irrelevant objects, but there is no longer any directional constraint.
     for inp in inputs_list:
-        for pid, _ctx, schema in state.all_providers_list:
+        for entry in state.all_providers_list:
+            schema = entry.input_type
             if not schema:
                 continue
             if _schema_matches(schema, inp):
-                state.received_inputs.setdefault(pid, []).append(inp)
+                state.received_inputs.setdefault(entry.provider_id, []).append(
+                    inp,
+                )
 
 
 @dataclass
@@ -263,7 +266,7 @@ def finalize_provider_contexts(
     instances: list[_ProviderBase | None],
     received_inputs: dict[str, list[object]],
     provider_contexts: dict[str, object],
-    all_providers_list: list[tuple[str, dict[str, object], type[_BaseModel] | None]],
+    all_providers_list: list[ProviderEntry],
 ) -> None:
     """Mutate ``provider_contexts`` by running finalize_context on each instance.
 

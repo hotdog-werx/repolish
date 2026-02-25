@@ -20,6 +20,7 @@ from repolish.loader.models import (
     ProviderEntry,
     Providers,
     TemplateMapping,
+    get_provider_context,
 )
 from repolish.loader.orchestrator import create_providers
 
@@ -34,6 +35,7 @@ __all__ = [
     'Providers',
     'TemplateMapping',
     'create_providers',
+    'get_provider_context',
     'logger',
     'normalize_delete_item',
     'normalize_delete_items',

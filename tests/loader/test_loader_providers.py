@@ -96,7 +96,7 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
         (d / 'repolish.py').write_text(src)
         dirs.append(str(d))
 
-    providers: Providers = create_providers(dirs)
+    providers: Providers = create_providers(dirs)  # type: ignore[arg-type]
 
     assert providers.context == case.expected_context
     assert providers.anchors == case.expected_anchors
@@ -117,6 +117,41 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
             assert path_obj in got_delete
         else:
             assert path_obj not in got_delete
+
+
+def test_config_alias_passed_through(tmp_path: Path):
+    """Providers loaded via (alias, path) pairs see their config alias."""
+    # create a simple provider module that asserts the alias in finalize_context
+    prov = tmp_path / 'simple'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        """from pydantic import BaseModel
+from repolish.loader.models import Provider, ProviderEntry
+from repolish import BaseContext
+
+class Ctx(BaseModel):
+    pass
+
+class Checker(Provider[Ctx, BaseModel]):
+    def get_provider_name(self):
+        return 'pname'
+
+    def create_context(self):
+        return Ctx()
+
+    def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
+        entry = all_providers[provider_index]
+        # alias should equal the configuration key we passed
+        assert entry.alias == 'myalias'
+        return own_context
+""",
+    )
+    # call using tuple syntax with alias
+    providers = create_providers([('myalias', str(prov))])
+    # sanity: creating providers completed without error (alias assertion occurs
+    # inside the provider itself).  the provider_contexts map may still use
+    # provider IDs as keys.
+    assert providers.provider_contexts is not None
 
 
 def test_create_providers_records_provider_migrated_flag(tmp_path: Path):
@@ -481,10 +516,10 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
 
     if case.name in raises:
         with pytest.raises(Exception):  # noqa: B017, PT011 - broad exception to verify fail-fast
-            create_providers(dirs)
+            create_providers(dirs)  # type: ignore[arg-type]
         return
 
-    providers = create_providers(dirs)
+    providers = create_providers(dirs)  # type: ignore[arg-type]
 
     assert providers.context == case.expected_context
     assert providers.anchors == case.expected_anchors

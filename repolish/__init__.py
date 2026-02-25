@@ -4,6 +4,7 @@ from .loader.models import (
     Provider,
     ProviderEntry,
     TemplateMapping,
+    get_provider_context,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     'Provider',
     'ProviderEntry',
     'TemplateMapping',
+    'get_provider_context',
 ]

@@ -39,7 +39,6 @@ from repolish.loader.three_phase import (
     gather_received_inputs,
 )
 from repolish.loader.validation import _validate_provider_module
-from repolish.misc import ctx_to_dict
 
 
 def _find_provider_class(
@@ -183,6 +182,8 @@ def _build_all_providers_list(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, object],
+    *,
+    alias_map: dict[str, str] | None = None,
 ) -> list[ProviderEntry]:
     """Return the `all_providers_list` used for input routing.
 
@@ -193,15 +194,52 @@ def _build_all_providers_list(
     for idx, (pid, _mod) in enumerate(module_cache):
         schema = None
         inst = instances[idx]
+        name: str | None = None
+        alias: str | None = None
+        inst_type: type[Any] | None = None
+        ctx_obj = provider_contexts.get(pid)
+        ctx_type: type[_BaseModel] | None = None
+
         if inst is not None:
             try:
                 schema = inst.get_inputs_schema()
             except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
                 # DO LATER: consider logging this error so providers can diagnose their broken schema
                 schema = None
-        # schema may be None if the provider does not accept inputs
+            # ``name`` is the provider's own name; ``alias`` is the
+            # configuration key (here we mirror provider_id since that's what
+            # create_providers passes).
+            try:
+                name = inst.get_provider_name()
+            except Exception:  # noqa: BLE001 - avoid failing the build on a broken provider
+                name = None
+            alias = pid
+            inst_type = type(inst)
+        else:
+            # fallback when no instance was created (should be rare)
+            name = None
+            alias = pid
+            inst_type = None
+
+        # if context object is a BaseModel we remember its class
+        if isinstance(ctx_obj, _BaseModel):
+            ctx_type = type(ctx_obj)
+
+        # if an alias map was provided, prefer it over the default
+        # value we computed earlier.
+        if alias_map is not None and pid in alias_map:
+            alias = alias_map[pid]
+
         all_providers_list.append(
-            (pid, ctx_to_dict(provider_contexts.get(pid)), schema),
+            ProviderEntry(
+                provider_id=pid,
+                name=name,
+                alias=alias,
+                inst_type=inst_type,
+                context=ctx_obj or {},
+                context_type=ctx_type,
+                input_type=schema,
+            ),
         )
     return all_providers_list
 
@@ -324,6 +362,7 @@ class RunThreePhaseContext:
     base_context: dict[str, object] | None = None
     context_overrides: dict[str, object] | None = None
     provider_overrides: dict[str, dict[str, object]] | None = None
+    alias_map: dict[str, str] | None = None  # provider_id -> config alias
 
 
 def _recompute_merged_context(
@@ -437,6 +476,7 @@ def _run_three_phase(
         module_cache,
         instances,
         provider_contexts,
+        alias_map=options.alias_map if options is not None else None,
     )
 
     # apply overrides before input gathering
@@ -507,7 +547,7 @@ def _run_three_phase(
 
 
 def create_providers(
-    directories: list[str],
+    directories: list[str | tuple[str, str]],
     base_context: dict[str, object] | None = None,
     context_overrides: dict[str, object] | None = None,
     *,
@@ -535,10 +575,23 @@ def create_providers(
     # we re-apply `base_context` afterwards so project config wins as the
     # final override.
     merged_context: dict[str, object] = dict(base_context or {})
+    # Normalize input directories and build an alias map for configuration
+    normalized_dirs: list[str] = []
+    alias_map: dict[str, str] = {}
+
+    for entry in directories:
+        if isinstance(entry, (list, tuple)) and len(entry) == 2:
+            alias, path = entry
+            path_str = Path(path).as_posix()
+            normalized_dirs.append(path_str)
+            alias_map[path_str] = alias
+        else:
+            path_str = Path(entry).as_posix()
+            normalized_dirs.append(path_str)
     # other accumulators are handled by Accumulators object below
 
     module_cache = _load_module_cache(
-        directories,
+        normalized_dirs,
         require_file_mappings=require_file_mappings,
     )
     # Collect provider contexts (also capture per-provider contexts)
@@ -557,5 +610,6 @@ def create_providers(
             base_context=base_context,
             context_overrides=context_overrides,
             provider_overrides=provider_overrides,
+            alias_map=alias_map,
         ),
     )
