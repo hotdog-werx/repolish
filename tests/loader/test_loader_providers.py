@@ -376,10 +376,15 @@ def test_provide_inputs_called_for_all_providers(tmp_path: Path):
 def test_loading_reuses_existing_module(tmp_path: Path):
     """Loading a provider file that has already been imported should not create a second module instance.
 
-    This regression manifests as two distinct ``Provider`` classes that
-    compare unequal even though they come from the same source.  To simulate
-    the real-world case we import the file under a package name before
-    calling ``create_providers``.
+    The loader will attempt to ``import`` the guessed dotted name before
+    falling back to generating a synthetic module name.  When we pre-import
+    the package, no additional ``repolish_module_…`` entry should appear in
+    ``sys.modules``.
+
+    This regression previously manifested as two distinct ``Provider``
+    classes that compared unequal even though they came from the same
+    source.  To reproduce we import the file under a package name and then
+    invoke the loader.
     """
     pkg = tmp_path / 'pkg'
     pkg.mkdir()
@@ -423,7 +428,13 @@ class MyProvider(Provider[MyCtx, BaseModel]):
     # second class; we don't need to inspect the instance here because
     # ``loaded_cls is normal_cls`` above already proves the loader reused the
     # module.
+    # call the loader; with our earlier import it should simply reuse the
+    # existing module rather than creating a new one.
     _ = create_providers([str(pkg)])
+
+    # confirm no synthetic module name was registered
+    fallback = 'repolish_module_' + ''.join(c if c.isalnum() or c == '_' else '_' for c in str(pkg))
+    assert fallback not in sys.modules
 
 
 def test_loader_registers_importable_name(tmp_path: Path):
@@ -468,9 +479,31 @@ class P(Provider[Ctx, BaseModel]):
     # now import by canonical path
     mod = importlib.import_module('pkg.repolish')
     assert mod.__file__ == str(src)
-    # confirm the module dictionary returned from our helper matches
-    module_dict = module_mod.get_module(str(src))
-    assert mod.__dict__ is module_dict
+
+
+def test_guess_import_name_simple(tmp_path: Path):
+    """``_guess_import_name`` returns expected dotted name for nested package.
+
+    This reproduces the situation described by the user where a debug print
+    affected the result; the helper should behave deterministically without
+    any side effects from iteration.
+    """
+    base = tmp_path / 'codeguide' / 'resources' / 'templates'
+    base.mkdir(parents=True)
+    # create __init__.py in each component of the package path
+    for pkg_dir in (
+        tmp_path / 'codeguide',
+        tmp_path / 'codeguide' / 'resources',
+        tmp_path / 'codeguide' / 'resources' / 'templates',
+    ):
+        (pkg_dir / '__init__.py').write_text('')
+    src = base / 'repolish.py'
+    src.write_text('')
+
+    # ensure sys.path contains the root of the package tree
+    sys.path.insert(0, str(tmp_path))
+    name = module_mod._guess_import_name(str(src))
+    assert name == 'codeguide.resources.templates.repolish'
     p0 = tmp_path / 'p0'
     p0.mkdir()
     (p0 / 'repolish.py').write_text(

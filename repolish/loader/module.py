@@ -25,9 +25,31 @@ def _guess_import_name(module_path: str) -> str | None:
             continue
 
         parts = rel.with_suffix('').parts
-        parents = (base / p for p in parts[:-1])
-        if all((parent / '__init__.py').exists() for parent in parents):
-            return '.'.join(parts)
+        # once we know the file lives below a sys.path entry we consider the
+        # dotted name to be the joined relative components.  this is the only
+        # information the loader actually needs; verifying the existence of
+        # ``__init__.py`` files proved fragile in practice and could yield
+        # incorrect results when the package root wasn't chosen as expected.
+        return '.'.join(parts)
+    return None
+
+
+def _try_imported_module(abs_path: Path, name: str) -> dict[str, object] | None:
+    """Return namespace for ``name`` if it already points at ``abs_path``.
+
+    This helper encapsulates the import-attempt logic so ``get_module`` can
+    remain within ruff's complexity budget.  ``None`` means either the name
+    couldn't be imported or it resolved to a different file.
+    """
+    try:
+        imported = __import__(name, fromlist=['*'])
+    except ImportError:
+        return None
+    file_attr = getattr(imported, '__file__', None)
+    if file_attr is None:
+        return None
+    if Path(file_attr).resolve() == abs_path:
+        return imported.__dict__
     return None
 
 
@@ -51,19 +73,20 @@ def get_module(module_path: str) -> dict[str, object]:
     it under that inferred name so later ``importlib.import_module`` calls
     will resolve to the same object instead of reloading the file again.
     """
-    # If the module has been imported earlier (under any name) reuse it.
-    # We match on absolute file path because ``__file__`` may be either
-    # absolute or relative depending on how the import happened.
     abs_path = Path(module_path).resolve()
+    # existing module by path
     for mod in list(sys.modules.values()):
         file_path = getattr(mod, '__file__', None)
         if file_path and Path(file_path).resolve() == abs_path:
-            # found existing module - use its namespace directly
             return mod.__dict__
 
-    # Otherwise dynamically create a new module with a unique but stable
-    # name derived from the path.  This is identical to the previous
-    # implementation.
+    import_name = _guess_import_name(module_path)
+    if import_name:
+        result = _try_imported_module(abs_path, import_name)
+        if result is not None:
+            return result
+
+    # fallback to spec load
     mod_name = 'repolish_module_' + ''.join(c if c.isalnum() or c == '_' else '_' for c in module_path)
     spec = spec_from_file_location(mod_name, module_path)
     if not spec or not spec.loader:  # pragma: no cover
@@ -71,10 +94,4 @@ def get_module(module_path: str) -> dict[str, object]:
         raise ImportError(msg)
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
-    # Attempt to register under a canonical import name when possible so
-    # later ``import_module`` calls will hit the same object.  This is a
-    # no-op if the name cannot be inferred or is already present.
-    import_name = _guess_import_name(module_path)
-    if import_name and import_name not in sys.modules:
-        sys.modules[import_name] = module
     return module.__dict__
