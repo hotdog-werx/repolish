@@ -177,8 +177,8 @@ def test_create_providers_records_provider_migrated_flag(tmp_path: Path):
 def test_class_based_provider_is_marked_migrated(tmp_path: Path):
     """Providers implemented as a subclass should be considered migrated.
 
-    The loader previously required an explicit ``provider_migrated = True``
-    variable; after the change any module that exports a ``Provider``
+    The loader previously required an explicit `provider_migrated = True`
+    variable; after the change any module that exports a `Provider`
     instance will be treated as migrated automatically.  This makes the
     assumption stated in the apply command docs true and avoids needing to
     update the boolean in every provider.
@@ -207,12 +207,12 @@ class P(Provider[Ctx, BaseModel]):
 
 
 def test_error_when_module_exports_multiple_provider_classes(tmp_path: Path):
-    """A single ``repolish.py`` may not declare more than one Provider subclass.
+    """A single `repolish.py` may not declare more than one Provider subclass.
 
     Historically the loader silently picked the first class it found, which
     led to confusing behaviour when a file accidentally imported a provider
     for reuse.  Now the loader detects the mistake early and raises a
-    ``RuntimeError``.
+    `RuntimeError`.
     """
     p = tmp_path / 'prov'
     p.mkdir()
@@ -376,12 +376,12 @@ def test_provide_inputs_called_for_all_providers(tmp_path: Path):
 def test_loading_reuses_existing_module(tmp_path: Path):
     """Loading a provider file that has already been imported should not create a second module instance.
 
-    The loader will attempt to ``import`` the guessed dotted name before
+    The loader will attempt to `import` the guessed dotted name before
     falling back to generating a synthetic module name.  When we pre-import
-    the package, no additional ``repolish_module_…`` entry should appear in
-    ``sys.modules``.
+    the package, no additional `repolish_module_…` entry should appear in
+    `sys.modules`.
 
-    This regression previously manifested as two distinct ``Provider``
+    This regression previously manifested as two distinct `Provider`
     classes that compared unequal even though they came from the same
     source.  To reproduce we import the file under a package name and then
     invoke the loader.
@@ -426,7 +426,7 @@ class MyProvider(Provider[MyCtx, BaseModel]):
     # same class on the provider instance
     # a full create_providers run should succeed without creating a
     # second class; we don't need to inspect the instance here because
-    # ``loaded_cls is normal_cls`` above already proves the loader reused the
+    # `loaded_cls is normal_cls` above already proves the loader reused the
     # module.
     # call the loader; with our earlier import it should simply reuse the
     # existing module rather than creating a new one.
@@ -440,13 +440,13 @@ class MyProvider(Provider[MyCtx, BaseModel]):
 def test_loader_registers_importable_name(tmp_path: Path):
     """After loading a provider path the module becomes importable by name.
 
-    Clear any pre-existing ``pkg`` entries so the package created for this
+    Clear any pre-existing `pkg` entries so the package created for this
     test is the one actually loaded; earlier tests may have left a module
     loaded under the same name.
 
     When the provider lives inside an installable package we expect the
     loader to register the module under its dotted import path so that a
-    later ``importlib.import_module`` returns the same object instead of
+    later `importlib.import_module` returns the same object instead of
     re-executing the file.
     """
     # cleanup imported modules (sys already imported at top of file)
@@ -482,7 +482,7 @@ class P(Provider[Ctx, BaseModel]):
 
 
 def test_guess_import_name_simple(tmp_path: Path):
-    """``_guess_import_name`` returns expected dotted name for nested package.
+    """`_guess_import_name` returns expected dotted name for nested package.
 
     This reproduces the situation described by the user where a debug print
     affected the result; the helper should behave deterministically without

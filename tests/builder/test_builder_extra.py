@@ -109,9 +109,9 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
 def test_template_sources_are_posix_ids(tmp_path: Path) -> None:
     """Returned sources map should normalise provider IDs to forward slashes.
 
-    On Windows the fallback behaviour previously returned raw ``str(Path)``
+    On Windows the fallback behaviour previously returned raw `str(Path)`
     values which contain backslashes.  When those values were later used as
-    keys against the loader's provider maps the lookup failed and ``None``
+    keys against the loader's provider maps the lookup failed and `None`
     migrated flags were logged.  Normalising here avoids that mismatch.
     """
     p = tmp_path / 'prov'

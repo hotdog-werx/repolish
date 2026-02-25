@@ -11,10 +11,10 @@ def process_delete_files(
 ) -> list[Path]:
     """Process a provider's delete-file contributions from precomputed mapping.
 
-    ``mappings`` is normally the return value of
-    ``provider.create_file_mappings()``.  This helper scans it for
-    ``FileMode.DELETE`` items and adds the corresponding paths to
-    ``delete_set``.  A list of those paths is also returned for callers that
+    `mappings` is normally the return value of
+    `provider.create_file_mappings()`.  This helper scans it for
+    `FileMode.DELETE` items and adds the corresponding paths to
+    `delete_set`.  A list of those paths is also returned for callers that
     need fallback history.
     """
     fallback_paths: list[Path] = []

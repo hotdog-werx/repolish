@@ -10,7 +10,7 @@ def process_anchors(
 ) -> None:
     """Resolve anchors for a provider and merge into `merged_anchors`.
 
-    `provider` must be a ``Provider`` instance (e.g. ``ModuleProviderAdapter``).
+    `provider` must be a `Provider` instance (e.g. `ModuleProviderAdapter`).
     """
     inst = cast('_ProviderBase', provider)
 

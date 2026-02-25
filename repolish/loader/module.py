@@ -6,11 +6,11 @@ from pathlib import Path
 def _guess_import_name(module_path: str) -> str | None:
     """Infer a dotted module name for a provider file, if possible.
 
-    Iterate ``sys.path`` entries looking for one that contains the given
+    Iterate `sys.path` entries looking for one that contains the given
     file.  When the file lives inside a package hierarchy we build the
     dotted name from the relative path and ensure each parent directory is a
-    proper package (has ``__init__.py``).  The first valid candidate is
-    returned; otherwise ``None`` indicates the path isn't importable via a
+    proper package (has `__init__.py`).  The first valid candidate is
+    returned; otherwise `None` indicates the path isn't importable via a
     normal package name.
     """
     path = Path(module_path).resolve()
@@ -28,17 +28,17 @@ def _guess_import_name(module_path: str) -> str | None:
         # once we know the file lives below a sys.path entry we consider the
         # dotted name to be the joined relative components.  this is the only
         # information the loader actually needs; verifying the existence of
-        # ``__init__.py`` files proved fragile in practice and could yield
+        # `__init__.py` files proved fragile in practice and could yield
         # incorrect results when the package root wasn't chosen as expected.
         return '.'.join(parts)
     return None
 
 
 def _try_imported_module(abs_path: Path, name: str) -> dict[str, object] | None:
-    """Return namespace for ``name`` if it already points at ``abs_path``.
+    """Return namespace for `name` if it already points at `abs_path`.
 
-    This helper encapsulates the import-attempt logic so ``get_module`` can
-    remain within ruff's complexity budget.  ``None`` means either the name
+    This helper encapsulates the import-attempt logic so `get_module` can
+    remain within ruff's complexity budget.  `None` means either the name
     couldn't be imported or it resolved to a different file.
     """
     try:
@@ -62,9 +62,9 @@ def _load_module_from_path(
     This is the "fallback" path used when the provider cannot be imported by
     a guessed name or has not yet been executed.  The module will be created
     under a synthetic name based on the file path to avoid conflicts.
-    If ``import_name`` is provided and not already present in ``sys.modules``
+    If `import_name` is provided and not already present in `sys.modules`
     the newly loaded module will be inserted there as well so future
-    ``import_module`` calls resolve to the same object.
+    `import_module` calls resolve to the same object.
     """
     mod_name = 'repolish_module_' + ''.join(c if c.isalnum() or c == '_' else '_' for c in module_path)
     spec = spec_from_file_location(mod_name, module_path)
@@ -86,16 +86,16 @@ def get_module(module_path: str) -> dict[str, object]:
     classic "class equals itself but with different identity" problem that
     occurs when the same source file is executed multiple times under
     different module names.  In particular, consumers often import a
-    provider via its canonical package name (e.g. ``package.repolish``) and
+    provider via its canonical package name (e.g. `package.repolish`) and
     then the loader would later re-execute the file as
-    ``repolish_module_…``; the two resulting classes were incompatible. By
-    checking ``sys.modules`` we detect such duplicates and simply return the
+    `repolish_module_…`; the two resulting classes were incompatible. By
+    checking `sys.modules` we detect such duplicates and simply return the
     already-loaded module's globals.
 
     When no existing module is found we fall back to the previous behaviour
     of loading the file under a sanitized name derived from its path.  If
     the module appears to belong to an importable package we also register
-    it under that inferred name so later ``importlib.import_module`` calls
+    it under that inferred name so later `importlib.import_module` calls
     will resolve to the same object instead of reloading the file again.
     """
     abs_path = Path(module_path).resolve()
@@ -112,6 +112,6 @@ def get_module(module_path: str) -> dict[str, object]:
             return result
 
     # fallback to spec-based loading (handles uninstalled or temporary
-    # providers).  ``_load_module_from_path`` encapsulates the mechanics
-    # and also registers the module under ``import_name`` if provided.
+    # providers).  `_load_module_from_path` encapsulates the mechanics
+    # and also registers the module under `import_name` if provided.
     return _load_module_from_path(module_path, import_name)

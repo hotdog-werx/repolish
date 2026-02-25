@@ -236,8 +236,8 @@ def test_load_config_template_overrides_roundtrip(
     # create the resolved provider directory structure so validation passes
     cfg_dir = config_path.parent
     provider_dir = cfg_dir / 'templates'
-    # config resolution will append another ``templates`` segment, so create
-    # ``templates/templates`` and give it a minimal repolish layout
+    # config resolution will append another `templates` segment, so create
+    # `templates/templates` and give it a minimal repolish layout
     real_templates = provider_dir / 'templates'
     rep = real_templates / 'repolish'
     rep.mkdir(parents=True)

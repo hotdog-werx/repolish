@@ -172,21 +172,21 @@ ContextT = TypeVar('ContextT', bound=BaseModel)
 InputT = TypeVar('InputT', bound=BaseModel)
 
 
-# ``ProviderEntry`` is the object passed to provider hooks such as
-# ``provide_inputs`` and ``finalize_context``.  it carries richer metadata
+# `ProviderEntry` is the object passed to provider hooks such as
+# `provide_inputs` and `finalize_context`.  it carries richer metadata
 # than the former 3-tuple and uses concise names:
 #
-# ``provider_id`` (str) - unique loader-assigned identifier
-# ``name`` (str|None) - canonical name returned by
+# `provider_id` (str) - unique loader-assigned identifier
+# `name` (str|None) - canonical name returned by
 #     :meth:`Provider.get_provider_name`
-# ``alias`` (str|None) - name under which the provider was registered in the
+# `alias` (str|None) - name under which the provider was registered in the
 #     configuration; usually a directory name or config key
-# ``inst_type`` (type|None) - concrete type of the provider instance
-# ``context`` (object) - raw context value, usually a ``BaseModel`` or dict
-# ``context_type`` (type|None) - class of ``context`` when it is a
-#     ``BaseModel``
-# ``input_type`` (type|None) - schema returned by
-#     :meth:`Provider.get_inputs_schema` (``None`` for providers without inputs)
+# `inst_type` (type|None) - concrete type of the provider instance
+# `context` (object) - raw context value, usually a `BaseModel` or dict
+# `context_type` (type|None) - class of `context` when it is a
+#     `BaseModel`
+# `input_type` (type|None) - schema returned by
+#     :meth:`Provider.get_inputs_schema` (`None` for providers without inputs)
 #
 # Only the first and last fields are commonly used; the others exist for
 # introspection and tooling.  tuple-like compatibility helpers were removed
@@ -194,7 +194,7 @@ InputT = TypeVar('InputT', bound=BaseModel)
 class ProviderEntry(BaseModel):
     """Metadata for a provider exposed during orchestration.
 
-    ``ProviderEntry`` replaces the legacy 3-tuple representation.  Fields are
+    `ProviderEntry` replaces the legacy 3-tuple representation.  Fields are
     intentionally named to make their purpose obvious and are short enough to
     be convenient when used in provider hooks.
 
@@ -204,39 +204,39 @@ class ProviderEntry(BaseModel):
         unique identifier (usually the filesystem path) assigned by the loader.
     name:
         canonical name returned by :meth:`Provider.get_provider_name`
-        (``None`` if the provider instance could not be created).
+        (`None` if the provider instance could not be created).
     alias:
         configuration alias (the key/name used in the repolish.yaml or the
-        directory name).  this may differ from ``name`` when providers
+        directory name).  this may differ from `name` when providers
         override their own internal name.
     inst_type:
-        the concrete ``type`` of the provider instance, if any.  this allows
+        the concrete `type` of the provider instance, if any.  this allows
         consumers to dispatch based on implementation class rather than string
         names.
     context:
-        raw context object.  this is typed as ``object`` to support the
+        raw context object.  this is typed as `object` to support the
         legacy module adapter; after v1 when the adapter is removed this will
-        be tightened to ``BaseModel``.
+        be tightened to `BaseModel`.
         raw context object produced or stored for this provider.
     context_type:
-        if ``context`` is a :class:`pydantic.BaseModel`, this is its class
-        object; otherwise ``None``.
+        if `context` is a :class:`pydantic.BaseModel`, this is its class
+        object; otherwise `None`.
     input_type:
         the schema returned by :meth:`Provider.get_inputs_schema`, equivalent
-        to the third element of the old tuple.  ``None`` for providers that do
+        to the third element of the old tuple.  `None` for providers that do
         not accept inputs.
     """
 
     provider_id: str
     # canonical provider name returned by :meth:`Provider.get_provider_name`
-    # (formerly called ``alias``).  this is the "/real" name of the
+    # (formerly called `alias`).  this is the "/real" name of the
     # provider implementation and may differ from the key used in project
     # configuration.
     name: str | None = None
     # alias as specified in the project configuration file.  for
-    # providers created via ``create_providers`` this will typically equal
+    # providers created via `create_providers` this will typically equal
     # the directory name or the config key; in many cases it is identical to
-    # ``provider_id`` but having a separate field makes intent clear.
+    # `provider_id` but having a separate field makes intent clear.
     alias: str | None = None
     inst_type: type[Any] | None = None
     context: object = Field(default_factory=dict)
@@ -278,8 +278,8 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Subclasses should override this method to supply whatever
         information is relevant to downstream providers.
 
-        ``all_providers`` is a list of :class:`ProviderEntry` instances; only
-        the ``input_type``/``alias`` attributes are useful
+        `all_providers` is a list of :class:`ProviderEntry` instances; only
+        the `input_type`/`alias` attributes are useful
         for most providers.
 
         The default implementation returns an empty list.
@@ -302,7 +302,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
           whose 'get_inputs_schema()' matched the values.
         - 'all_providers': snapshot of every provider the loader knows about.
           each item is a :class:`ProviderEntry` object; providers can inspect
-          attributes such as ``alias`` or ``input_type`` if
+          attributes such as `alias` or `input_type` if
           they need to make context-dependent decisions.  the argument is
           optional and most providers can ignore it entirely.
         - 'provider_index': the position of this provider in the load order.
@@ -403,11 +403,11 @@ def get_provider_context(
     identifier: type[Provider[T, Any]],
     providers: list[ProviderEntry],
 ) -> T | None:
-    """Return the raw context object for a provider matching ``identifier``.
+    """Return the raw context object for a provider matching `identifier`.
 
-    ``identifier`` must be a provider class (or subclass thereof). The
-    function searches ``providers`` for the first entry whose ``inst_type``
-    is a subclass of ``identifier`` and returns its ``context`` value.
+    `identifier` must be a provider class (or subclass thereof). The
+    function searches `providers` for the first entry whose `inst_type`
+    is a subclass of `identifier` and returns its `context` value.
     """
     # disallow the bare Provider base class; it would match everything
     if identifier is Provider:

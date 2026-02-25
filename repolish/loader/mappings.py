@@ -46,9 +46,9 @@ def process_file_mappings(
     """Merge a precomputed mapping dictionary into the accumulators.
 
     Previously this helper accepted a :class:`Provider` instance and a
-    context object, calling ``provider.create_file_mappings()`` internally.
+    context object, calling `provider.create_file_mappings()` internally.
     The extra indirection forced callers to invoke that method multiple times
-    when they only needed its result.  By switching to a simple ``mappings``
+    when they only needed its result.  By switching to a simple `mappings`
     argument we avoid redundant calls and make the helper easier to test and
     future-proof against removal of the module adapter.
     """
@@ -58,6 +58,6 @@ def process_file_mappings(
         return
 
     # narrow the view to a str-keyed dict for the type checker; at runtime
-    # the cast is a no-op because we already know ``mappings`` is a dict.
+    # the cast is a no-op because we already know `mappings` is a dict.
     for k, v in cast('dict[str, object]', mappings).items():
         _process_mapping_item(k, v, provider_id, accum)

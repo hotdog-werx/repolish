@@ -15,7 +15,7 @@ def create_cookiecutter_template(
     single staging template. If the same file exists in multiple directories,
     the later entry wins (i.e. last provider overrides earlier ones).
 
-    When ``template_overrides`` is provided the merging behaviour is altered
+    When `template_overrides` is provided the merging behaviour is altered
     on a per-file basis. The mapping keys are shell-style glob patterns
     (matching the relative POSIX path within the template), and values are
     provider aliases. When a file path matches a pattern and the associated
@@ -26,8 +26,8 @@ def create_cookiecutter_template(
     Args:
         staging_dir: Path to the staging directory to create the templates.
         template_directories: Sequence of either Path objects or
-            ``(alias, Path)`` tuples.  When a tuple is provided the alias is
-            used to evaluate ``template_overrides``; plain Path entries ignore
+            `(alias, Path)` tuples.  When a tuple is provided the alias is
+            used to evaluate `template_overrides`; plain Path entries ignore
             any overrides.
         template_overrides: Optional mapping of glob patterns to provider
             aliases controlling per-file override behaviour.
@@ -66,7 +66,7 @@ def _selected_override_alias(
     rel_path: str,
     overrides: dict[str, str] | None,
 ) -> str | None:
-    """Return the alias selected by ``overrides`` for ``rel_path``.
+    """Return the alias selected by `overrides` for `rel_path`.
 
     The last matching pattern wins (consistent with previous behaviour).
     """
@@ -87,11 +87,11 @@ def _copy_item_to_dest(
     alias: str | None,
     sources: dict[str, str],
 ) -> None:
-    """Copy a single filesystem entry from ``repolish_dir`` to ``dest_root``.
+    """Copy a single filesystem entry from `repolish_dir` to `dest_root`.
 
-    Handles directory creation and strips a trailing ``.jinja`` suffix from
+    Handles directory creation and strips a trailing `.jinja` suffix from
     destination filenames.  Also records the provider id for the final
-    relative path in ``sources``.
+    relative path in `sources`.
     """
     rel = item.relative_to(repolish_dir)
     if rel.suffix == '.jinja':
@@ -101,8 +101,8 @@ def _copy_item_to_dest(
     # record provider provenance using the post-stripped path
     pid = alias if alias is not None else str(repolish_dir.parent)
     # normalise provider id to POSIX style (forward slashes) so it matches the
-    # value used by the loader, which calls ``Path(directory).as_posix()``.
-    # On Windows ``str(Path)`` returns backslashes, and some providers may
+    # value used by the loader, which calls `Path(directory).as_posix()`.
+    # On Windows `str(Path)` returns backslashes, and some providers may
     # still supply literal backslashes in aliases.  converting here ensures
     # the string uses forward slashes regardless of platform.
     pid = pid.replace('\\', '/')
@@ -130,9 +130,9 @@ def _copy_template_dir(
     the project layout files. These will be copied over to the staging dir under
     the special folder `{{cookiecutter._repolish_project}}`.
 
-    When ``overrides`` is provided and ``alias`` is not None, files whose
+    When `overrides` is provided and `alias` is not None, files whose
     relative path matches a pattern in the overrides mapping *and* whose
-    override alias differs from ``alias`` will be skipped.  This prevents later
+    override alias differs from `alias` will be skipped.  This prevents later
     providers from overwriting a file that has been pinned to an earlier
     provider.
     """

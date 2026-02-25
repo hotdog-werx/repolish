@@ -10,12 +10,12 @@ from repolish.loader import Providers, TemplateMapping
 
 
 def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
-    """Mappings with ``None`` source are ignored by the comparison step.
+    """Mappings with `None` source are ignored by the comparison step.
 
     This covers the branch in :func:`~repolish.hydration.comparison._check_file_mappings`
     where the normalized source string is falsey and the entry is skipped. It
     mirrors the behavioural contract of the application module: providers may
-    cancel a generated file by returning ``None`` in the mapping.
+    cancel a generated file by returning `None` in the mapping.
     """
     setup_output = tmp_path / 'out'
     (setup_output / 'repolish').mkdir(parents=True)

@@ -73,9 +73,9 @@ def test_apply_logs_migrated_and_nonmigrated_context(
     """`final_providers_generated` event should break the context down.
 
     The logged payload must include:
-      * ``non_migrated`` - the merged context used by unmigrated providers (keys
+      * `non_migrated` - the merged context used by unmigrated providers (keys
         from migrated providers removed)
-      * ``migrated`` - a dict mapping provider names to their own contexts
+      * `migrated` - a dict mapping provider names to their own contexts
     """
     cfg_path = tmp_path / 'repolish.yaml'
     cfg_path.write_text('')
@@ -154,9 +154,9 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
 ) -> None:
     """Ensure the `providers_order` logic continues when an alias is missing and still appends any stray directories.
 
-    This exercises the two uncovered lines in ``repolish/commands/apply.py``:
-    - skipping an alias when ``config.providers`` lacks the entry (line 54)
-    - appending an extra directory tuple for entries not already in ``template_dirs`` (line 63)
+    This exercises the two uncovered lines in `repolish/commands/apply.py`:
+    - skipping an alias when `config.providers` lacks the entry (line 54)
+    - appending an extra directory tuple for entries not already in `template_dirs` (line 63)
     """
     # prepare a dummy config file path (contents unused thanks to mocker.patch)
     cfg_path = tmp_path / 'repolish.yaml'

@@ -52,7 +52,7 @@ def test_config_level_provenance(tmp_path: Path):
     assert b_hist[-1].source == cfg.config_dir.as_posix()
     assert b_hist[-1].action.value == 'delete'
 
-    # even when using the deprecated ``directories`` key the
+    # even when using the deprecated `directories` key the
     # Providers object still exposes the new metadata fields so client
     # code doesn't need special-case logic.  we don't care how many entries
     # are present (module-style loaders always add a key) but the attributes
@@ -68,7 +68,7 @@ def test_per_provider_context_override(tmp_path: Path):
     """A user config can override the context produced by a single provider.
 
     The override should affect both the per-provider context map and the
-    flattened context that ends up in ``Providers.context`` so that other
+    flattened context that ends up in `Providers.context` so that other
     providers (and template rendering) see the updated value.
     """
     # create a simple provider that returns one key
@@ -81,7 +81,7 @@ def test_per_provider_context_override(tmp_path: Path):
     )
 
     # we build a minimal ResolvedProviderInfo so that
-    # ``build_final_providers`` can map the alias back to the provider path
+    # `build_final_providers` can map the alias back to the provider path
 
     info = ResolvedProviderInfo(
         alias='p',
@@ -115,10 +115,10 @@ def test_per_provider_context_override(tmp_path: Path):
 def test_per_provider_context_override_with_templates_dir(tmp_path: Path):
     """Overrides still work when the provider uses a non-empty templates_dir.
 
-    Previously we constructed provider IDs from ``target_dir`` alone, which
-    mismatched the directories passed to the loader when ``templates_dir`` was
+    Previously we constructed provider IDs from `target_dir` alone, which
+    mismatched the directories passed to the loader when `templates_dir` was
     non-empty.  This regression meant real applications would never apply the
-    override even though the unit tests (which used ``templates_dir=''``) had
+    override even though the unit tests (which used `templates_dir=''`) had
     passed.
     """
     prov = tmp_path / 'prov'

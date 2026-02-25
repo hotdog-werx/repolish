@@ -164,9 +164,9 @@ def test_cli_provider_order_with_overrides(
     """Provider order and template_overrides should influence staging.
 
     We create two simple provider templates (p1 and p2) both defining
-    ``foo.txt`` with different content.  The configuration pins ``foo.txt``
-    to ``p1`` using ``template_overrides`` even though ``p2`` comes later in
-    ``providers_order``.  After running the CLI the file copied into the
+    `foo.txt` with different content.  The configuration pins `foo.txt`
+    to `p1` using `template_overrides` even though `p2` comes later in
+    `providers_order`.  After running the CLI the file copied into the
     working directory should reflect the override.
     """
     # provider 1

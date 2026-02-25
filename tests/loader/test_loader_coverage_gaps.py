@@ -74,7 +74,7 @@ def test_process_file_mappings_non_dict_feedback(
 
     This test primarily exercises the adapter path and the helper that
     ignores non-`TemplateMapping` values (the integer case).  It does *not*
-    hit the early-return branch in ``repolish/loader/mappings.py``; a
+    hit the early-return branch in `repolish/loader/mappings.py`; a
     separate test below covers that.
     """
     src = """
@@ -100,12 +100,12 @@ def test_process_file_mappings_non_dict_feedback(
 
 
 def test_process_file_mappings_skips_none_values() -> None:
-    """Using the public API, ensure ``None`` mapping entries are ignored.
+    """Using the public API, ensure `None` mapping entries are ignored.
 
     This test constructs a minimal provider that returns a mapping containing
-    ``None`` alongside a normal string entry.  The accumulator should only
-    contain the string entry once processed, exercising the ``if v is None``
-    branch of ``_process_mapping_item``.
+    `None` alongside a normal string entry.  The accumulator should only
+    contain the string entry once processed, exercising the `if v is None`
+    branch of `_process_mapping_item`.
     """
 
     class Minimal(_ProviderBase):
@@ -405,7 +405,7 @@ def test_overrides_affect_inputs(
     """Providers should see config overrides when computing inputs.
 
     This test exercises the full three-phase workflow and ensures that
-    contexts passed into ``provide_inputs`` and ``finalize_context`` are
+    contexts passed into `provide_inputs` and `finalize_context` are
     always Pydantic models.  previous iterations accidentally allowed
     dictionaries to leak through which broke class-based providers once
     overrides were applied.
@@ -471,10 +471,10 @@ class Receiver(Provider[RecCtx, Msg]):
 """
     sdir = make_provider(sender_src, 'sender')
     rdir = make_provider(recv_src, 'receiver')
-    # move the generated provider modules into a ``templates`` subdirectory so
+    # move the generated provider modules into a `templates` subdirectory so
     # they match the behaviour of a linked provider with non-empty
-    # ``templates_dir``.  ``build_final_providers`` will later resolve the
-    # directories to ``<target>/templates``.
+    # `templates_dir`.  `build_final_providers` will later resolve the
+    # directories to `<target>/templates`.
     for d in (sdir, rdir):
         sub = Path(d) / 'templates'
         sub.mkdir(exist_ok=True)
@@ -490,11 +490,11 @@ class Receiver(Provider[RecCtx, Msg]):
     # exercised `create_providers` directly which hid a bug).
     # global `context_overrides` argument is deprecated and isn't where
     # provider code actually looks; overrides live on the per-provider
-    # configuration (cf. ``ResolvedProviderInfo.context_overrides``).  the
+    # configuration (cf. `ResolvedProviderInfo.context_overrides`).  the
     # previous test variant accidentally passed them globally which hid a
     # bug in real-world invocations.
     # when Repolish resolves provider directories it appends
-    # ``templates_dir``; make our manually constructed config behave the
+    # `templates_dir`; make our manually constructed config behave the
     # same way so the test mirrors real usage.
     sdir_sub = Path(sdir) / 'templates'
     rdir_sub = Path(rdir) / 'templates'
@@ -714,9 +714,9 @@ def test_validate_raw_inputs_and_helpers() -> None:
 
 
 def test_finalize_provider_contexts_edge_cases() -> None:
-    """Providers should always have ``finalize_context`` invoked.
+    """Providers should always have `finalize_context` invoked.
 
-    Previously we skipped providers when ``received_inputs`` was empty; this
+    Previously we skipped providers when `received_inputs` was empty; this
     prevented context mutation for providers that don't emit inputs.  The
     current behaviour calls the hook unconditionally (aside from missing
     instances).  The test exercises both paths.

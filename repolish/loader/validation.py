@@ -75,7 +75,7 @@ def _emit_provider_migration_suggestion(
 ) -> None:
     """Emit a migration suggestion if the module looks like a module-style provider.
 
-    When ``provider_id`` is provided it will be included in the log record so
+    When `provider_id` is provided it will be included in the log record so
     users can identify which provider triggered the warning.  The function is
     idempotent and returns quietly if no legacy symbols are present.
     """
@@ -155,7 +155,7 @@ def _validate_provider_module(
 
     By default the loader is permissive for module-style providers and will
     accept a provider that does not declare `create_file_mappings` (backward
-    compatibility). Set ``require_file_mappings=True`` (opt-in) to enforce
+    compatibility). Set `require_file_mappings=True` (opt-in) to enforce
     the presence of `create_file_mappings`/`file_mappings` and raise a
     RuntimeError for missing mappings.
     """

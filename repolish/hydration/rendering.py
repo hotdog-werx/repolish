@@ -29,7 +29,7 @@ class RenderContext:
     so that callers can pass a single object instead of a long argument list.
     Consumers access attributes rather than dictionary keys, which improves
     type checking, IDE completion, and avoids silent typos.  This is much
-    cleaner than a plain ``dict`` when multiple related values travel through
+    cleaner than a plain `dict` when multiple related values travel through
     several helper functions.
     """
 
@@ -64,23 +64,23 @@ def render_with_jinja(ctx: RenderContext) -> None:
     traced back to a migrated provider (the provenance map is recorded during
     staging), rendering uses that provider's own captured context instead of
     the merged context.  The former configuration flag
-    ``provider_scoped_template_context`` is now always effectively enabled and
+    `provider_scoped_template_context` is now always effectively enabled and
     only exists for legacy module adapters that need to override this behaviour.
 
     Args:
-        ctx: A ``RenderContext`` instance containing all material needed for
+        ctx: A `RenderContext` instance containing all material needed for
             rendering.  Fields are documented on the class itself and include
             paths, the merged context dict, the provider collection, and a
-            reference to the overall configuration.  ``skip_templates`` is
+            reference to the overall configuration.  `skip_templates` is
             optional and mirrors the previous behaviour.
     """
-    # ``RenderContext`` provides attribute access instead of dictionary
+    # `RenderContext` provides attribute access instead of dictionary
     # lookups, which avoids key typos and improves autocomplete support in
     # editors.
     setup_input = ctx.setup_input
     merged_ctx = ctx.merged_ctx
     setup_output = ctx.setup_output
-    # ``providers`` and ``config`` are available on ``ctx`` and only used
+    # `providers` and `config` are available on `ctx` and only used
     # indirectly via helpers; no need to create local variables here.
     skip_templates = ctx.skip_templates
 
@@ -143,7 +143,7 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
     """
     # Always attempt to honor a migrated provider's own context; the
     # previous implementation gated this behaviour behind the
-    # ``provider_scoped_template_context`` configuration flag.  that flag is
+    # `provider_scoped_template_context` configuration flag.  that flag is
     # now *always* effectively true (default changed to True in the config
     # model) and exists only for legacy module adapters which can override it
     # if they really need merged contexts globally.  upstream callers and
@@ -152,15 +152,15 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
     # provider_ids are expected to be POSIX-formatted, but earlier versions of
     # the code sometimes exposed raw Windows paths (backslashes).  normalise
     # before consulting the migration map so lookups succeed even if upstream
-    # producers were inconsistent.  ``get`` defaults to False to avoid the
-    # mysterious ``null`` value in the logs that triggered this investigation.
+    # producers were inconsistent.  `get` defaults to False to avoid the
+    # mysterious `null` value in the logs that triggered this investigation.
     if pid:
         clean = pid.replace('\\', '/')
         norm_pid = Path(clean).as_posix()
     else:
         norm_pid = None
-    # ``provider_migrated`` is keyed by str; do not attempt to look up using
-    # ``None`` which would confuse the type checker.  using a ternary keeps the
+    # `provider_migrated` is keyed by str; do not attempt to look up using
+    # `None` which would confuse the type checker.  using a ternary keeps the
     # expression short while still satisfying type checkers.
     migrated = ctx.providers.provider_migrated.get(norm_pid, False) if norm_pid is not None else False
     logger.debug(
@@ -182,11 +182,11 @@ def _jinja_render(
     *,
     filename: Path,
 ) -> str:
-    """Render ``txt`` with ``env`` and ``ctx``.
+    """Render `txt` with `env` and `ctx`.
 
-    Errors during rendering are logged and wrapped with ``filename`` so the
-    caller gets actionable messages. ``ctx`` becomes available both as
-    top-level variables and under the ``cookiecutter`` name for backward
+    Errors during rendering are logged and wrapped with `filename` so the
+    caller gets actionable messages. `ctx` becomes available both as
+    top-level variables and under the `cookiecutter` name for backward
     compatibility with existing templates.
     """
     try:
@@ -274,7 +274,7 @@ def _compute_merged_context(providers: Providers) -> dict[str, object]:
 def _collect_skip_templates(providers: Providers) -> set[str]:
     """Identify templates that are rendered later with per-mapping context.
 
-    ``TemplateMapping`` entries are processed after the generic render pass,
+    `TemplateMapping` entries are processed after the generic render pass,
     so we skip them during the initial walk to avoid rendering the same file
     twice.
     """
@@ -303,16 +303,16 @@ def render_template(
     # the feature is enabled we still allow unmigrated (module-adapter)
     # providers to operate using the merged context for compatibility.  this
     # behaviour allows users to migrate incrementally: class-based providers
-    # may opt into the new model by setting ``provider_migrated=True`` while
+    # may opt into the new model by setting `provider_migrated=True` while
     # legacy modules continue to receive a full merged context.  the
-    # per-provider logic in ``_choose_base_ctx_for_mapping`` takes care of the
+    # per-provider logic in `_choose_base_ctx_for_mapping` takes care of the
     # fallback, so no global validation is required here.
     #
     # (previously we raised an error if any providers were unmigrated; that
     # strictness proved too aggressive for mixed deployments.)
 
     # build a RenderContext once; the same object will later drive both
-    # the Jinja pass and the mapping pass.  ``use_provider_context`` is
+    # the Jinja pass and the mapping pass.  `use_provider_context` is
     # toggled for the second phase.
     render_ctx = RenderContext(
         setup_input=setup_input,
@@ -332,7 +332,7 @@ def render_template(
         render_with_cookiecutter(setup_input, merged_ctx, setup_output)
 
     # Materialize TemplateMapping entries (render template per-mapping using
-    # merged_ctx + extra_ctx).  we reuse ``render_ctx`` but switch on the
+    # merged_ctx + extra_ctx).  we reuse `render_ctx` but switch on the
     # provider-context flag; this mirrors the previous behaviour where a
     # temporary dict was created solely for the mapping helpers.
     render_ctx.use_provider_context = True
@@ -402,7 +402,7 @@ def _render_single_mapping(
 ) -> None:
     """Render and materialize a single TemplateMapping entry.
 
-    ``ctx`` is a :class:`RenderContext` instance.  Previously we passed a
+    `ctx` is a :class:`RenderContext` instance.  Previously we passed a
     raw dict containing the same five values; using the dataclass improves
     type checking and reduces boilerplate unpacking.
     """
@@ -462,7 +462,7 @@ def _render_single_mapping(
 
     # when materializing a mapping we don't want the generated file to
     # appear with the bare destination name. prefixing the *filename* itself
-    # with ``_repolish.`` lets us easily identify mapping outputs in the
+    # with `_repolish.` lets us easily identify mapping outputs in the
     # staging area (for debugging) and keeps the regular rendering logic from
     # treating them as normal template files. the prefix is stripped when the
     # mapping is applied to the project tree.
@@ -484,7 +484,7 @@ def _process_template_mappings(
 ) -> None:
     """Render and materialize `TemplateMapping`-valued file_mappings into setup-output.
 
-    ``ctx`` is expected to have ``merged_ctx`` and ``use_provider_context``
+    `ctx` is expected to have `merged_ctx` and `use_provider_context`
     filled appropriately.  Passing a dataclass avoids the untyped dictionary
     seen previously.
     """

@@ -44,14 +44,14 @@ from repolish.loader.validation import _validate_provider_module
 def _find_provider_class(
     module_dict: dict[str, object],
 ) -> type[_ProviderBase] | None:
-    """Return the single Provider subclass exported in ``module_dict``.
+    """Return the single Provider subclass exported in `module_dict`.
 
-    If the module exports no subclasses ``None`` is returned.  The loader
+    If the module exports no subclasses `None` is returned.  The loader
     historically picked the *first* subclass it encountered, but this hid
     user errors where a file accidentally defined multiple providers (e.g.
     importing another provider class into the same module).  The caller
-    (``_maybe_instantiate_provider``) expects at most one class; if there are
-    multiple we raise a ``RuntimeError`` so the problem is detected right
+    (`_maybe_instantiate_provider`) expects at most one class; if there are
+    multiple we raise a `RuntimeError` so the problem is detected right
     away.
 
     Keeping the detection logic isolated makes the behaviour easy to test
@@ -90,7 +90,7 @@ def _inject_provider_instance(
     module_dict: dict[str, object],
     inst: _ProviderBase,
 ) -> None:
-    """Mutate ``module_dict`` to expose instance-backed factories."""
+    """Mutate `module_dict` to expose instance-backed factories."""
     # Keep a reference for diagnostics / tests
     module_dict['_repolish_provider_instance'] = inst
 
@@ -129,7 +129,7 @@ def _load_module_cache(
 
     Returns a list of (provider_id, module_dict) tuples.
 
-    The ``require_file_mappings`` flag is propagated to the validator so
+    The `require_file_mappings` flag is propagated to the validator so
     callers can opt into strict enforcement of the file-mappings contract.
     """
     cache: list[tuple[str, dict]] = []
@@ -174,7 +174,7 @@ def _process_phase_two(
         process_anchors(inst, merged_context, accum.merged_anchors)
         # compute file mappings once per provider and forward the result to the
         # helpers.  this avoids three separate calls to
-        # ``inst.create_file_mappings()`` and decouples the helpers from the
+        # `inst.create_file_mappings()` and decouples the helpers from the
         # provider API (making future adapter removal easier).
         own_ctx = provider_contexts.get(provider_id, {})
         fm = inst.create_file_mappings(own_ctx)
@@ -222,7 +222,7 @@ def _build_all_providers_list(
             except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
                 # DO LATER: consider logging this error so providers can diagnose their broken schema
                 schema = None
-            # ``name`` is the provider's own name; ``alias`` is the
+            # `name` is the provider's own name; `alias` is the
             # configuration key (here we mirror provider_id since that's what
             # create_providers passes).
             try:
@@ -267,7 +267,7 @@ def _apply_overrides_to_model(
     overrides: dict[str, object],
     provider: str | None = None,
 ) -> _BaseModel:
-    """Return a new ``BaseModel`` with ``overrides`` applied, or the original.
+    """Return a new `BaseModel` with `overrides` applied, or the original.
 
     The implementation mirrors the complexity that formerly lived inline in the
     two callers.  We dump the model to a dictionary, deep-copy it (to avoid
@@ -278,7 +278,7 @@ def _apply_overrides_to_model(
     model instance is returned on failure so the caller need not handle
     fallback logic.
 
-    ``provider`` is used only for logging context; callers may pass ``None``.
+    `provider` is used only for logging context; callers may pass `None`.
     """
     original = ctx.model_dump()
     data = copy.deepcopy(original)
@@ -316,16 +316,16 @@ def _apply_overrides_to_provider_contexts(
 ) -> None:
     """Apply configuration overrides to each provider's context.
 
-    This handles both ``BaseModel`` and ``dict`` contexts and is used
+    This handles both `BaseModel` and `dict` contexts and is used
     both before inputs are gathered and after finalization so that the
     authoritative overrides cannot be bypassed by provider logic.
 
-    When operating on a ``BaseModel`` we convert to raw data, apply the
+    When operating on a `BaseModel` we convert to raw data, apply the
     overrides and then re-validate back into the same model class.  Prior to
     <2026-02> we would fall back to the raw data on validation failure,
-    inadvertently turning the context into a plain ``dict``.  Because
-    ``provide_inputs``/``finalize_context`` are only invoked with model
-    instances this could lead to mysterious ``AttributeError`` crashes.  We
+    inadvertently turning the context into a plain `dict`.  Because
+    `provide_inputs`/`finalize_context` are only invoked with model
+    instances this could lead to mysterious `AttributeError` crashes.  We
     now catch validation errors, log a warning, and retain the original
     model instance instead.  The warning makes it clear when user-supplied
     overrides could not be applied (for example, the override targets a
@@ -413,12 +413,12 @@ def _populate_provider_context(
     provider_contexts: dict[str, object],
 ) -> None:
     # before we compute schemas or apply overrides we must populate
-    # ``provider_contexts`` for class-based providers.  the initial map
-    # produced by ``collect_contexts_with_provider_map`` only knows about
+    # `provider_contexts` for class-based providers.  the initial map
+    # produced by `collect_contexts_with_provider_map` only knows about
     # module-style providers; class-based providers do not participate in the
     # first-phase merge and therefore appear as empty dicts.  this is fine for
     # finalization (where we re-create contexts explicitly) but breaks
-    # ``provide_inputs`` because that hook expects a typed context object.
+    # `provide_inputs` because that hook expects a typed context object.
     #
     # we deliberately do *not* persist the result back into the merged context
     # here; the merged context is built later once the final provider contexts
@@ -428,9 +428,9 @@ def _populate_provider_context(
     for idx, (pid, _mod) in enumerate(module_cache):
         inst = instances[idx]
         # only class-based providers require us to synthesize a context here;
-        # module-style providers (wrapped by ``ModuleProviderAdapter``) already
+        # module-style providers (wrapped by `ModuleProviderAdapter`) already
         # had their contexts collected during phase one using the merged
-        # context.  re-calling ``create_context()`` on adapters would pass an
+        # context.  re-calling `create_context()` on adapters would pass an
         # empty dict and wipe out those values, which broke several
         # integration tests.
         if (
@@ -439,7 +439,7 @@ def _populate_provider_context(
             and not isinstance(provider_contexts.get(pid), _BaseModel)
         ):
             try:
-                # ``inst.create_context()`` may raise, but when it does we
+                # `inst.create_context()` may raise, but when it does we
                 # fall back to whatever value was already in the map
                 # (usually an empty dict) so we don't propagate the error.
                 provider_contexts[pid] = inst.create_context()
@@ -456,12 +456,12 @@ def _run_three_phase(
     """Execute phase-2/3 logic and return final Providers object.
 
     The original implementation accepted multiple separate arguments and had
-    accumulated complexity.  Bundling optional parameters into ``options``
+    accumulated complexity.  Bundling optional parameters into `options`
     and extracting helpers reduces the function's signature and cognitive
     complexity while preserving behaviour.
     """
     # initialize accumulators that were previously defined at the top of
-    # ``create_providers``.
+    # `create_providers`.
     merged_anchors: dict[str, str] = {}
     merged_file_mappings: dict[str, str | TemplateMapping] = {}
     create_only_set: set[Path] = set()

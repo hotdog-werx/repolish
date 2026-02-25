@@ -380,12 +380,12 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     """Migrated providers are isolated; unmigrated providers no longer inherit migrated keys.
 
     Context isolation is always active for migrated providers; the former
-    ``provider_scoped_template_context`` configuration flag no longer needs to
+    `provider_scoped_template_context` configuration flag no longer needs to
     be enabled by users.  This test exercises the same guarantees as before:
 
     1. Templates belonging to unmigrated providers do not see keys from
        providers that have already migrated.  Those values are stripped from
-       the merged context as soon as a provider is marked ``provider_migrated``.
+       the merged context as soon as a provider is marked `provider_migrated`.
     """
     tpl = tmp_path / 'tpl-providers'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
@@ -455,7 +455,7 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     # B's template references `a_key` (owned by migrated provider A) - since
     # A's context is removed from the merged context the render should fail.
     # the failure happens when rendering mappings, so the error is wrapped in a
-    # RuntimeError by ``_process_template_mappings``.
+    # RuntimeError by `_process_template_mappings`.
     with pytest.raises(RuntimeError) as exc:
         render_template(setup_input, providers, setup_output, config)
     assert 'a_key' in str(exc.value)
@@ -516,12 +516,12 @@ def test_render_context_excludes_migrated_providers(tmp_path: Path):
     the merged context, as demonstrated by a failing render.
 
     This behaviour is independent of the
-    ``provider_scoped_template_context`` flag; merging occurs once per
-    ``render_template`` invocation and always omits migrated contexts.
+    `provider_scoped_template_context` flag; merging occurs once per
+    `render_template` invocation and always omits migrated contexts.
     """
     tpl = tmp_path / 'tpl-mig'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
-    # single template that references ``foo``
+    # single template that references `foo`
     (tpl / 'repolish' / 'out.jinja').write_text(
         'VALUE={{ foo }}\n',
         encoding='utf-8',
@@ -531,7 +531,7 @@ def test_render_context_excludes_migrated_providers(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     create_cookiecutter_template(setup_input, [tpl])
 
-    # provider A is migrated and supplies ``foo``; provider B is unmigrated
+    # provider A is migrated and supplies `foo`; provider B is unmigrated
     p_a = tmp_path / 'pa'
     p_a.mkdir()
     (p_a / 'repolish.py').write_text(
@@ -553,7 +553,7 @@ def create_context():
     preprocess_templates(setup_input, providers, config, base_dir)
     config.no_cookiecutter = True
 
-    # rendering should blow up because ``foo`` was stripped from merged_ctx
+    # rendering should blow up because `foo` was stripped from merged_ctx
     with pytest.raises(UndefinedError):
         render_template(setup_input, providers, setup_output, config)
 

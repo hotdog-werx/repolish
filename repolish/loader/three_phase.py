@@ -17,7 +17,7 @@ def build_provider_metadata(
 ) -> tuple[dict[str, bool], list[_ProviderBase | None]]:
     """Compute migration flags and provider instances.
 
-    Historically this helper also returned a ``canonical_name_to_pid`` map
+    Historically this helper also returned a `canonical_name_to_pid` map
     used for explicit name-based routing.  that mechanism has been removed,
     so the helper now returns only the two values still needed by the loader.
     The map is no longer constructed at all.
@@ -28,7 +28,7 @@ def build_provider_metadata(
     for _idx, (provider_id, module_dict) in enumerate(module_cache):
         inst = module_dict.get('_repolish_provider_instance')
         # explicit flag may be any truthy value; adapters should not count as
-        # migrated even though they are instances of ``Provider``.  only real
+        # migrated even though they are instances of `Provider`.  only real
         # class-based providers cause automatic migration.
         is_adapter = isinstance(inst, ModuleProviderAdapter)
         migrated = bool(module_dict.get('provider_migrated')) or (inst is not None and not is_adapter)
@@ -44,7 +44,7 @@ def compute_recipient_flags(
 ) -> list[bool]:
     """Return boolean list marking which providers declare an input schema.
 
-    Historically the loader used this to avoid calling ``provide_inputs`` on
+    Historically the loader used this to avoid calling `provide_inputs` on
     senders if no later provider declared a schema.  That optimisation proved
     confusing and has been deprecated; the orchestration no longer relies on
     these flags.  The helper is retained for backwards compatibility and
@@ -144,7 +144,7 @@ def _collect_for_provider(
     inst: _ProviderBase | None,
     state: _GatherState,
 ) -> None:
-    """Process a single provider entry and update ``state.received_inputs``.
+    """Process a single provider entry and update `state.received_inputs`.
 
     We always call the provider's inputs hook (instance or module) regardless
     of what other providers declare; any returned payloads are then routed
@@ -216,7 +216,7 @@ def _validate_raw_inputs(
                 validated.append(inputs_schema.model_validate(v.model_dump()))
         else:
             # dicts and any other payload type are handled identically; the
-            # ``isinstance(v, dict)`` branch was originally more explicit but
+            # `isinstance(v, dict)` branch was originally more explicit but
             # did not change the outcome. keeping a single catch-all makes the
             # logic easier to follow and removes a redundant check.
             validated.append(inputs_schema.model_validate(v))
@@ -233,7 +233,7 @@ def _get_own_model(
     This helper is no longer invoked during finalization; it remains for
     backwards-compatibility in case other callers need to recompute a model
     on the fly. The loader now prefers using the earlier-collected value from
-    ``provider_contexts`` so we avoid duplicate ``create_context`` calls.
+    `provider_contexts` so we avoid duplicate `create_context` calls.
     """
     try:
         return inst.create_context()
@@ -249,10 +249,10 @@ def _store_new_context(
     """Store a returned context value.
 
     Unlike earlier versions we keep the value exactly as returned (either a
-    ``BaseModel`` or a ``dict``).  The orchestrator will convert to a dict when
+    `BaseModel` or a `dict`).  The orchestrator will convert to a dict when
     building the merged context; retaining the original object allows us to
-    pass a typed ``ContextT`` instance to helpers such as
-    ``create_file_mappings()``.
+    pass a typed `ContextT` instance to helpers such as
+    `create_file_mappings()`.
     """
     if isinstance(new_ctx, _BaseModel | dict):
         provider_contexts[provider_id] = new_ctx
@@ -268,7 +268,7 @@ def finalize_provider_contexts(
     provider_contexts: dict[str, object],
     all_providers_list: list[ProviderEntry],
 ) -> None:
-    """Mutate ``provider_contexts`` by running finalize_context on each instance.
+    """Mutate `provider_contexts` by running finalize_context on each instance.
 
     This handles schema validation and model/dict conversion.
     """
@@ -278,32 +278,32 @@ def finalize_provider_contexts(
             continue
 
         raw_inputs = received_inputs.get(provider_id, [])
-        # even if no inputs were received we still invoke ``finalize_context``
+        # even if no inputs were received we still invoke `finalize_context`
         # once so providers have a hook to mutate their context or perform
         # cleanup. previous versions skipped providers with empty input lists
         # which prevented legitimate side-effects; see issue #XYZ.
         inputs_schema = inst.get_inputs_schema()
         validated_inputs = _validate_raw_inputs(raw_inputs, inputs_schema)
 
-        # derive the context object we'll hand to ``finalize_context``.
-        # ``provider_contexts`` holds the value returned during the initial
+        # derive the context object we'll hand to `finalize_context`.
+        # `provider_contexts` holds the value returned during the initial
         # collection pass; it may be a plain dict or, for migrated
         # class-based providers, a Pydantic model.  We prefer to re-create a
         # fresh model instance because providers frequently mutate the
-        # object they return from ``create_context``.  When the provider is a
+        # object they return from `create_context`.  When the provider is a
         # module adapter we *do* forward the earlier-recorded dict so module
         # factories receive the expected context.
         prev_ctx = provider_contexts.get(provider_id, {})
         if isinstance(inst, ModuleProviderAdapter):
             # adapters already have their context captured during the
-            # initial collection phase; calling ``create_context`` again would
+            # initial collection phase; calling `create_context` again would
             # re-run the module code with a mutated context and produce
             # surprising results (see failing integrations).  simply reuse
             # the previously recorded dictionary.
             own_model = prev_ctx
         else:
             # for class-based providers we create a fresh model instance so
-            # ``finalize_context`` receives a typed object rather than a raw
+            # `finalize_context` receives a typed object rather than a raw
             # dict.  this mirrors the behaviour prior to refactors.
             try:
                 own_model = inst.create_context()

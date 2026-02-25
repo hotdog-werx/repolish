@@ -156,7 +156,7 @@ def test_provider_inputs_module_filtering() -> None:
         ) -> list[BaseModel]:
             # inspect schemas rather than names; access via attributes for
             # clarity. previously callers unpacked a 3-tuple; the new
-            # ``ProviderEntry`` class requires attribute access but the intent
+            # `ProviderEntry` class requires attribute access but the intent
             # is clearer.
             for entry in all_providers:
                 if entry.input_type is InputA:
@@ -212,7 +212,7 @@ def test_provider_inputs_order(tmp_path: Path, case: TCase):
     """Integration: verify that providers receive inputs in load order.
 
     Provider A consumes the *first* value targeted at it during the
-    ``finalize_context`` phase.  In previous versions inputs were only
+    `finalize_context` phase.  In previous versions inputs were only
     delivered to later providers, making behaviour order-dependent.  With
     the new distribution logic every provider sees all schema-matching
     payloads, so the result is now deterministic regardless of load order.

@@ -138,7 +138,7 @@ def _handle_callable_create_ctx(
     """Call provider `create_context()` safely and record per-provider map.
 
     Emit a DeprecationWarning when a provider's `create_context()` returns
-    ``None`` to preserve the historical behaviour and tests.
+    `None` to preserve the historical behaviour and tests.
     """
     val = call_factory_with_context(create_ctx, merged)
     if val is not None and not isinstance(val, dict):
@@ -268,7 +268,7 @@ class ModuleProviderAdapter(_ProviderBase):
         self._orig_provider_name = module_dict.get('provider_name')
 
     def get_provider_name(self) -> str:
-        """Return the provider name, falling back to ``provider_id`` if unset."""
+        """Return the provider name, falling back to `provider_id` if unset."""
         name = self._orig_provider_name
         if isinstance(name, str) and name:
             return name
@@ -285,8 +285,8 @@ class ModuleProviderAdapter(_ProviderBase):
         with module-style factories that accept 0 or 1 args).
         """
         if callable(self._orig_create_context):
-            # ``call_factory_with_context`` returns ``object``; callers expect a
-            # ``dict[str, object]`` so we cast here to satisfy the type checker.
+            # `call_factory_with_context` returns `object`; callers expect a
+            # `dict[str, object]` so we cast here to satisfy the type checker.
             return cast(
                 'dict[str, object]',
                 call_factory_with_context(

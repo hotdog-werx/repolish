@@ -37,7 +37,7 @@ def _create_staged_template(
 
     Returns:
         A mapping from merged-template-relative-path to the provider id that
-        supplied it.  Tests previously patched ``create_cookiecutter_template``
+        supplied it.  Tests previously patched `create_cookiecutter_template`
         and expected no return value; to keep them working we normalise the
         result here.
     """
@@ -60,8 +60,8 @@ def _gather_template_directories(
 ) -> list[Path] | list[tuple[str | None, Path]]:
     """Return the template directories in the order they should be staged.
 
-    When provider metadata is present this returns a list of ``(alias, Path)``
-    tuples. Otherwise a plain list of ``Path`` objects is returned for legacy
+    When provider metadata is present this returns a list of `(alias, Path)`
+    tuples. Otherwise a plain list of `Path` objects is returned for legacy
     compatibility.
     """
     if not config.providers_order:
@@ -90,7 +90,7 @@ def _compute_migrated_list(
 
     Each entry includes the provider alias (if known), the template directory
     used as the loader provider id, and the context that provider captured.
-    The ordering respects ``config.providers_order`` when provided, and then
+    The ordering respects `config.providers_order` when provided, and then
     appends any other migrated providers.
     """
     # build quick lookups to avoid nested loops
@@ -140,9 +140,9 @@ def _log_final_providers_event(
     non_migrated_ctx: dict[str, object],
     migrated_list: list[dict[str, object]],
 ) -> None:
-    """Emit the ``final_providers_generated`` logger event.
+    """Emit the `final_providers_generated` logger event.
 
-    Extracts fields from ``config`` and ``providers`` to keep the call site
+    Extracts fields from `config` and `providers` to keep the call site
     concise.
     """
     logger.info(

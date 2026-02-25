@@ -100,7 +100,7 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     """Build the final Providers object by merging provider contributions.
 
     - Loads providers from config.directories
-    - Applies per-provider context overrides defined in ``config.providers[alias].context``
+    - Applies per-provider context overrides defined in `config.providers[alias].context`
       before merging, giving project config fine-grained control over each
       provider's values.
     - Merges config.context over provider.context
@@ -110,22 +110,22 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     # construct per-provider override map that will be applied "early"
     # inside the loader.  this ensures provider hooks see project-supplied
     # values before they execute, matching the behaviour of the real
-    # application.  ``create_providers`` will merge these into the
-    # ``provider_contexts`` map before gathering inputs.
+    # application.  `create_providers` will merge these into the
+    # `provider_contexts` map before gathering inputs.
     # provider IDs used by the loader are just the directory path passed
-    # to ``create_providers``; this is effectively ``info.target_dir``.
+    # to `create_providers`; this is effectively `info.target_dir`.
     # build a small alias->provider-id map that mirrors the one used when
     # resolving directories from providers.  when a provider specifies a
-    # non-empty ``templates_dir`` the loader will receive a path that includes
+    # non-empty `templates_dir` the loader will receive a path that includes
     # that suffix, so the override key must match or the configuration will be
-    # ignored.  ``_build_alias_to_pid`` already performs this computation, so
+    # ignored.  `_build_alias_to_pid` already performs this computation, so
     # reuse it here rather than repeating the logic.
     alias_to_pid = _build_alias_to_pid(config)
 
     provider_overrides: dict[str, dict[str, object]] = {}
     for alias, info in config.providers.items():
-        # prefer the canonical id from ``alias_to_pid``; fall back to the raw
-        # ``target_dir`` if something went wrong (shouldn't happen for a
+        # prefer the canonical id from `alias_to_pid`; fall back to the raw
+        # `target_dir` if something went wrong (shouldn't happen for a
         # resolved config, but defensive code is cheap).
         pid = alias_to_pid.get(alias, info.target_dir.as_posix())
 

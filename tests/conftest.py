@@ -8,7 +8,7 @@ import pytest
 def make_provider(tmp_path: Path):
     """Return a helper that writes a provider module and returns its path.
 
-    The returned callable has signature ``(src: str, name: str='prov')->str``.
+    The returned callable has signature `(src: str, name: str='prov')->str`.
     """
 
     def _inner(src: str, name: str = 'prov') -> str:
