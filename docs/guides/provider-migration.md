@@ -126,7 +126,9 @@ How the loader recognizes the class
 - The loader imports the provider module (`repolish.py`) into a `module_dict`.
 - It scans exported values and uses `inspect.isclass()` +
   `issubclass(..., Provider)` to find any `Provider` subclasses (see
-  `repolish.loader.orchestrator._find_provider_class`).
+  `repolish.loader.orchestrator._find_provider_class`).  Only one subclass
+  may be defined per module; if more are found the loader raises a
+  ``RuntimeError`` immediately so the mistake can be fixed.
 - If found, the loader instantiates the class and _injects_ instance-backed
   callables into the module dict (e.g. `create_context`, `create_file_mappings`,
   `create_anchors`) so the rest of the loader works exactly the same as with

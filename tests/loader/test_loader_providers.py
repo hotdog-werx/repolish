@@ -203,6 +203,43 @@ class P(Provider[Ctx, BaseModel]):
     assert providers.provider_migrated.get(provider_id) is True
 
 
+def test_error_when_module_exports_multiple_provider_classes(tmp_path: Path):
+    """A single ``repolish.py`` may not declare more than one Provider subclass.
+
+    Historically the loader silently picked the first class it found, which
+    led to confusing behaviour when a file accidentally imported a provider
+    for reuse.  Now the loader detects the mistake early and raises a
+    ``RuntimeError``.
+    """
+    p = tmp_path / 'prov'
+    p.mkdir()
+    (p / 'repolish.py').write_text(
+        """
+from pydantic import BaseModel
+from repolish.loader.models import Provider
+
+class Ctx(BaseModel):
+    pass
+
+class One(Provider[Ctx, BaseModel]):
+    def get_provider_name(self) -> str:
+        return 'one'
+    def create_context(self) -> Ctx:
+        return Ctx()
+
+class Two(Provider[Ctx, BaseModel]):
+    def get_provider_name(self) -> str:
+        return 'two'
+    def create_context(self) -> Ctx:
+        return Ctx()
+""",
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        create_providers([str(p)])
+    assert 'multiple Provider subclasses' in str(excinfo.value)
+
+
 def test_create_providers_records_provider_contexts(tmp_path: Path):
     # Provider A provides {'a': 1}; Provider B depends on merged value and adds 'b'
     src_a = dedent(

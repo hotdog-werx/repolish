@@ -44,15 +44,31 @@ from repolish.loader.validation import _validate_provider_module
 def _find_provider_class(
     module_dict: dict[str, object],
 ) -> type[_ProviderBase] | None:
-    """Return the first Provider subclass exported in ``module_dict``.
+    """Return the single Provider subclass exported in ``module_dict``.
 
-    Keeps the detection logic isolated for easier testing and lower
-    per-function complexity.
+    If the module exports no subclasses ``None`` is returned.  The loader
+    historically picked the *first* subclass it encountered, but this hid
+    user errors where a file accidentally defined multiple providers (e.g.
+    importing another provider class into the same module).  The caller
+    (``_maybe_instantiate_provider``) expects at most one class; if there are
+    multiple we raise a ``RuntimeError`` so the problem is detected right
+    away.
+
+    Keeping the detection logic isolated makes the behaviour easy to test
+    and keeps the surrounding code simple.
     """
-    for val in module_dict.values():
-        if isclass(val) and issubclass(val, _ProviderBase) and val is not _ProviderBase:
-            return val
-    return None
+    providers: list[type[_ProviderBase]] = [
+        val
+        for val in module_dict.values()
+        if isclass(val) and issubclass(val, _ProviderBase) and val is not _ProviderBase
+    ]
+    if not providers:
+        return None
+    if len(providers) > 1:
+        names = ', '.join(cls.__name__ for cls in providers)
+        msg = f'provider module exports multiple Provider subclasses ({names}); only one class may be defined per file'
+        raise RuntimeError(msg)
+    return providers[0]
 
 
 def _create_context_wrapper_for(
