@@ -4,14 +4,26 @@ from pathlib import Path
 
 
 def _guess_import_name(module_path: str) -> str | None:
-    """Infer a dotted module name for a provider file, if possible.
+    """Return an importable dotted module name for the given file path.
 
-    Iterate `sys.path` entries looking for one that contains the given
-    file.  When the file lives inside a package hierarchy we build the
-    dotted name from the relative path and ensure each parent directory is a
-    proper package (has `__init__.py`).  The first valid candidate is
-    returned; otherwise `None` indicates the path isn't importable via a
-    normal package name.
+    Search entries in `sys.path` for a base that contains `module_path`.
+    When the file resides under a `sys.path` entry, the dotted module name is
+    constructed from the relative path by removing the `.py` suffix and
+    joining path components with dots (for example,
+    `/.../pkg/sub/module.py` -> `pkg.sub.module`).
+
+    Args:
+        module_path: Path to a Python source file.
+
+    Returns:
+        A dotted module name if the file appears under any `sys.path` entry;
+        otherwise `None`. This is a best-effort guess used to prefer
+        importing a module by name instead of executing its file directly.
+
+    Notes:
+        The function does not verify package metadata (for example,
+        `__init__.py` presence). Callers should treat the result as a
+        suggested import name, not a guarantee of successful import.
     """
     path = Path(module_path).resolve()
     if path.suffix != '.py':
@@ -25,50 +37,73 @@ def _guess_import_name(module_path: str) -> str | None:
             continue
 
         parts = rel.with_suffix('').parts
-        # once we know the file lives below a sys.path entry we consider the
-        # dotted name to be the joined relative components.  this is the only
-        # information the loader actually needs; verifying the existence of
-        # `__init__.py` files proved fragile in practice and could yield
-        # incorrect results when the package root wasn't chosen as expected.
+        # File is under a sys.path entry — use the relative parts as the
+        # dotted import name (e.g. pkg.sub.module).
         return '.'.join(parts)
     return None
 
 
 def _try_imported_module(abs_path: Path, name: str) -> dict[str, object] | None:
-    """Return namespace for `name` if it already points at `abs_path`.
+    """Return the imported module namespace if `name` resolves to `abs_path`.
 
-    This helper encapsulates the import-attempt logic so `get_module` can
-    remain within ruff's complexity budget.  `None` means either the name
-    couldn't be imported or it resolved to a different file.
+    Attempt to import the dotted module name `name`. If the import succeeds
+    and the imported module's `__file__` resolved path equals `abs_path`,
+    return the module's globals dictionary (the same object as
+    `module.__dict__`). If the name cannot be imported or it resolves to
+    a different file, return `None`.
+
+    Args:
+        abs_path: The expected absolute path to the module source file.
+        name: Dotted import name to attempt (for example, `package.module`).
+
+    Returns:
+        The module globals mapping when the imported module originates from
+        `abs_path`, otherwise `None`.
+
+    Notes:
+        Importing a module executes its top-level code and may have
+        side-effects; this function is a best-effort check used to avoid
+        re-executing the same source file under a different module name.
     """
     try:
         imported = __import__(name, fromlist=['*'])
     except ImportError:
         return None
     file_attr = getattr(imported, '__file__', None)
-    if file_attr is None:
-        return None
-    if Path(file_attr).resolve() == abs_path:
-        return imported.__dict__
-    return None
+    return imported.__dict__ if file_attr and Path(file_attr).resolve() == abs_path else None
 
 
 def _load_module_from_path(
     module_path: str,
     import_name: str | None,
 ) -> dict[str, object]:
-    """Load a module by executing its file and optionally register it.
+    """Execute a Python file as a module and return its globals mapping.
 
-    This is the "fallback" path used when the provider cannot be imported by
-    a guessed name or has not yet been executed.  The module will be created
-    under a synthetic name based on the file path to avoid conflicts.
-    If `import_name` is provided and not already present in `sys.modules`
-    the newly loaded module will be inserted there as well so future
-    `import_module` calls resolve to the same object.
+    This function loads the source at `module_path` under a synthetic
+    module name (derived from the path) and executes it. If `import_name`
+    is provided and not already present in `sys.modules`, the loaded module
+    is also inserted under `import_name` so future imports resolve to the
+    same module object.
+
+    Args:
+        module_path: Path to the Python file to execute.
+        import_name: Optional dotted name to register the loaded module under.
+
+    Returns:
+        The module globals mapping (equivalent to `module.__dict__`).
+
+    Raises:
+        ImportError: If the module cannot be loaded from the given path.
+
+    Notes:
+        Executing a module runs its top-level code; callers should be aware
+        of potential side-effects. This is intended as a fallback for
+        uninstalled or temporary provider files.
     """
-    mod_name = 'repolish_module_' + ''.join(c if c.isalnum() or c == '_' else '_' for c in module_path)
+    safe_name = ''.join(c if c.isalnum() or c == '_' else '_' for c in module_path)
+    mod_name = f'repolish_module_{safe_name}'
     spec = spec_from_file_location(mod_name, module_path)
-    if not spec or not spec.loader:  # pragma: no cover
+    if not spec or not spec.loader:
         msg = f'Cannot load module from path: {module_path}'
         raise ImportError(msg)
     module = module_from_spec(spec)
@@ -79,26 +114,25 @@ def _load_module_from_path(
 
 
 def get_module(module_path: str) -> dict[str, object]:
-    """Dynamically import a module from a given path.
+    """Load a module from `module_path` and return its globals mapping.
 
-    The loader prefers re-using an existing module object when one has
-    already been imported from the same file path.  This avoids the
-    classic "class equals itself but with different identity" problem that
-    occurs when the same source file is executed multiple times under
-    different module names.  In particular, consumers often import a
-    provider via its canonical package name (e.g. `package.repolish`) and
-    then the loader would later re-execute the file as
-    `repolish_module_…`; the two resulting classes were incompatible. By
-    checking `sys.modules` we detect such duplicates and simply return the
-    already-loaded module's globals.
+    Prefer an already-loaded module that originates from the same file
+    path, or import the module by a guessed dotted name. If neither
+    succeeds, execute the source file under a synthetic module name and
+    return the resulting module globals.
 
-    When no existing module is found we fall back to the previous behaviour
-    of loading the file under a sanitized name derived from its path.  If
-    the module appears to belong to an importable package we also register
-    it under that inferred name so later `importlib.import_module` calls
-    will resolve to the same object instead of reloading the file again.
+    Args:
+        module_path: Path to the Python source file to load.
+
+    Returns:
+        The module globals mapping for the module loaded from `module_path`.
+
+    Notes:
+        Executing a file runs its top-level code; a synthetic module name
+        is used for fallback loading to avoid import name conflicts.
     """
     abs_path = Path(module_path).resolve()
+
     # existing module by path
     for mod in list(sys.modules.values()):
         file_path = getattr(mod, '__file__', None)

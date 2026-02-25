@@ -11,9 +11,8 @@ from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
 from repolish.loader import Providers, create_providers
-from repolish.loader import module as module_mod
-from repolish.loader.module_loader import ModuleProviderAdapter
 from repolish.loader.validation import _is_suspicious_variable
+from tests.support import write_module
 
 
 @dataclass
@@ -373,7 +372,7 @@ def test_provide_inputs_called_for_all_providers(tmp_path: Path):
     """
 
 
-def test_loading_reuses_existing_module(tmp_path: Path):
+def test_loading_reuses_existing_module(tmp_path: Path, mocker: MockerFixture):
     """Loading a provider file that has already been imported should not create a second module instance.
 
     The loader will attempt to `import` the guessed dotted name before
@@ -385,13 +384,14 @@ def test_loading_reuses_existing_module(tmp_path: Path):
     classes that compared unequal even though they came from the same
     source.  To reproduce we import the file under a package name and then
     invoke the loader.
+
+    `sys.path` is patched so that the original value is restored when the
+    test finishes.
     """
     pkg = tmp_path / 'pkg'
-    pkg.mkdir()
-    (pkg / '__init__.py').write_text('')
-
     src = pkg / 'repolish.py'
-    src.write_text(
+    write_module(
+        src,
         """
 from pydantic import BaseModel
 from repolish.loader.models import Provider
@@ -405,11 +405,13 @@ class MyProvider(Provider[MyCtx, BaseModel]):
     def create_context(self) -> MyCtx:
         return MyCtx()
 """,
+        root=tmp_path,
     )
 
     # import the module normally using the package name
 
-    sys.path.insert(0, str(tmp_path))
+    new_path = [str(tmp_path)] + [p for p in sys.path if p != str(tmp_path)]
+    mocker.patch.object(sys, 'path', new=new_path)
     pkg_mod = importlib.import_module('pkg.repolish')
     assert hasattr(pkg_mod, 'MyProvider')
     normal_cls = pkg_mod.MyProvider
@@ -437,7 +439,10 @@ class MyProvider(Provider[MyCtx, BaseModel]):
     assert fallback not in sys.modules
 
 
-def test_loader_registers_importable_name(tmp_path: Path):
+def test_loader_registers_importable_name(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
     """After loading a provider path the module becomes importable by name.
 
     Clear any pre-existing `pkg` entries so the package created for this
@@ -453,10 +458,9 @@ def test_loader_registers_importable_name(tmp_path: Path):
     sys.modules.pop('pkg.repolish', None)
     sys.modules.pop('pkg', None)
     pkg = tmp_path / 'pkg'
-    pkg.mkdir()
-    (pkg / '__init__.py').write_text('')
     src = pkg / 'repolish.py'
-    src.write_text(
+    write_module(
+        src,
         """
 from pydantic import BaseModel
 from repolish.loader.models import Provider
@@ -470,80 +474,17 @@ class P(Provider[Ctx, BaseModel]):
     def create_context(self) -> Ctx:
         return Ctx()
 """,
+        root=tmp_path,
     )
 
-    # imports handled at module level; sys.path modification next
-    sys.path.insert(0, str(tmp_path))
+    # imports handled at module level; insert our tmp_path under test control
+    new_path = [str(tmp_path)] + [p for p in sys.path if p != str(tmp_path)]
+    mocker.patch.object(sys, 'path', new=new_path)
     # load provider using the public API; this should register the importable name
     create_providers([str(pkg)])
     # now import by canonical path
     mod = importlib.import_module('pkg.repolish')
     assert mod.__file__ == str(src)
-
-
-def test_guess_import_name_simple(tmp_path: Path):
-    """`_guess_import_name` returns expected dotted name for nested package.
-
-    This reproduces the situation described by the user where a debug print
-    affected the result; the helper should behave deterministically without
-    any side effects from iteration.
-    """
-    base = tmp_path / 'codeguide' / 'resources' / 'templates'
-    base.mkdir(parents=True)
-    # create __init__.py in each component of the package path
-    for pkg_dir in (
-        tmp_path / 'codeguide',
-        tmp_path / 'codeguide' / 'resources',
-        tmp_path / 'codeguide' / 'resources' / 'templates',
-    ):
-        (pkg_dir / '__init__.py').write_text('')
-    src = base / 'repolish.py'
-    src.write_text('')
-
-    # ensure sys.path contains the root of the package tree
-    sys.path.insert(0, str(tmp_path))
-    name = module_mod._guess_import_name(str(src))
-    assert name == 'codeguide.resources.templates.repolish'
-    p0 = tmp_path / 'p0'
-    p0.mkdir()
-    (p0 / 'repolish.py').write_text(
-        dedent(
-            """
-            # module-style provider
-            called = False
-
-            def create_context():
-                return {}
-
-            def provide_inputs(ctx, allp, idx):
-                global called
-                called = True
-                return []
-            """,
-        ),
-    )
-
-    p1 = tmp_path / 'p1'
-    p1.mkdir()
-    (p1 / 'repolish.py').write_text('\ndef create_context():\n    return {}\n')
-
-    # spy on the adapter method so we can detect the call regardless of
-    # how the provider was imported / named.
-    count = 0
-    orig = ModuleProviderAdapter.provide_inputs
-
-    def spy(self, own_context, all_providers, provider_index):  # noqa: ANN001, ANN202 - spy for method
-        nonlocal count
-        count += 1
-        return orig(self, own_context, all_providers, provider_index)
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(ModuleProviderAdapter, 'provide_inputs', spy)
-
-    _ = create_providers([str(p0), str(p1)])
-    monkeypatch.undo()
-
-    assert count >= 1, 'provide_inputs was not called on module provider p0'
 
 
 # Additional edge cases expressed with the same ProviderCase dataclass

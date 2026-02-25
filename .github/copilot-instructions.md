@@ -4,6 +4,10 @@
 - Break logic into small, focused helpers (`_choose_ctx_for_file`, etc.).
 - Keep helpers private (underscore prefix) unless they are intended for reuse
   across modules.
+- Use `mocker: MockerFixture` from pytest_mock to patch dependencies in tests.
+- Use `mock.patch` instead of monkeypatch.setattr for patching in tests.
+- Use `monkeypatch.chdir` to change the working directory in tests, not
+  os.chdir.
 - Do not test helpers directly; test the public functions that use them.
 - Markdown must be plain MkDocs‑compatible; single backticks only, no Sphinx
   double-backticks or directives.
