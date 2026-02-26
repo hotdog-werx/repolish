@@ -7,8 +7,12 @@ from pydantic import BaseModel as _BaseModel
 from pydantic_core import ValidationError
 
 from repolish.loader._log import logger
+from repolish.loader.models import (
+    GlobalContext,
+    ProviderEntry,
+    get_global_context,
+)
 from repolish.loader.models import Provider as _ProviderBase
-from repolish.loader.models import ProviderEntry
 from repolish.loader.module_loader import ModuleProviderAdapter
 
 
@@ -261,6 +265,60 @@ def _store_new_context(
     raise TypeError(msg)
 
 
+def _prepare_own_model(
+    inst: _ProviderBase,
+    provider_contexts: dict[str, object],
+    provider_id: str,
+) -> object:
+    """Return the context object to pass to `finalize_context`.
+
+    Encapsulates adapter handling, create_context fallback, and global
+    namespace injection.
+    """
+    prev_ctx = provider_contexts.get(provider_id, {})
+    if isinstance(inst, ModuleProviderAdapter):
+        return prev_ctx
+
+    try:
+        own_model = inst.create_context()
+    except Exception:  # noqa: BLE001
+        own_model = prev_ctx
+
+    if isinstance(own_model, _BaseModel) and hasattr(own_model, 'repolish'):
+        glob = get_global_context().model_dump()
+        if glob:
+            if isinstance(glob, dict):
+                glob = GlobalContext(**glob)
+            own_model = own_model.model_copy(update={'repolish': glob})
+
+    return own_model
+
+
+def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
+    inst: _ProviderBase,
+    own_model: object,
+    validated_inputs: list[object],
+    all_providers_list: list[ProviderEntry],
+    idx: int,
+    provider_id: str,
+) -> object:
+    """Call `finalize_context` with consistent logging on failure."""
+    try:
+        return inst.finalize_context(
+            own_model,
+            validated_inputs,
+            all_providers_list,
+            idx,
+        )
+    except Exception:
+        logger.exception(
+            'finalize_context_failed',
+            provider=provider_id,
+            index=idx,
+        )
+        raise
+
+
 def finalize_provider_contexts(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
@@ -278,51 +336,18 @@ def finalize_provider_contexts(
             continue
 
         raw_inputs = received_inputs.get(provider_id, [])
-        # even if no inputs were received we still invoke `finalize_context`
-        # once so providers have a hook to mutate their context or perform
-        # cleanup. previous versions skipped providers with empty input lists
-        # which prevented legitimate side-effects; see issue #XYZ.
         inputs_schema = inst.get_inputs_schema()
         validated_inputs = _validate_raw_inputs(raw_inputs, inputs_schema)
 
-        # derive the context object we'll hand to `finalize_context`.
-        # `provider_contexts` holds the value returned during the initial
-        # collection pass; it may be a plain dict or, for migrated
-        # class-based providers, a Pydantic model.  We prefer to re-create a
-        # fresh model instance because providers frequently mutate the
-        # object they return from `create_context`.  When the provider is a
-        # module adapter we *do* forward the earlier-recorded dict so module
-        # factories receive the expected context.
-        prev_ctx = provider_contexts.get(provider_id, {})
-        if isinstance(inst, ModuleProviderAdapter):
-            # adapters already have their context captured during the
-            # initial collection phase; calling `create_context` again would
-            # re-run the module code with a mutated context and produce
-            # surprising results (see failing integrations).  simply reuse
-            # the previously recorded dictionary.
-            own_model = prev_ctx
-        else:
-            # for class-based providers we create a fresh model instance so
-            # `finalize_context` receives a typed object rather than a raw
-            # dict.  this mirrors the behaviour prior to refactors.
-            try:
-                own_model = inst.create_context()
-            except Exception:  # noqa: BLE001
-                own_model = prev_ctx
+        own_model = _prepare_own_model(inst, provider_contexts, provider_id)
 
-        try:
-            new_ctx = inst.finalize_context(
-                own_model,
-                validated_inputs,
-                all_providers_list,
-                idx,
-            )
-        except Exception:
-            logger.exception(
-                'finalize_context_failed',
-                provider=provider_id,
-                index=idx,
-            )
-            raise
+        new_ctx = _invoke_finalize(
+            inst,
+            own_model,
+            validated_inputs,
+            all_providers_list,
+            idx,
+            provider_id,
+        )
 
         _store_new_context(provider_contexts, provider_id, new_ctx)

@@ -45,7 +45,7 @@ def make_template(
     repolish_py.write_text(
         textwrap.dedent("""\
         def create_context():
-            return {'repo_name': 'test_repo'}
+            return {'repo': {'name': 'test_repo'}}
 
         def create_delete_files():
             return ['test_repo/file_c']

@@ -5,9 +5,10 @@ from repolish import (
     Provider,
     TemplateMapping,
 )  # re-exported for simple API
+from repolish.loader.models import BaseContext
 
 
-class Ctx(BaseModel):
+class Ctx(BaseContext):
     """Example provider context for the `template_a` example."""
 
     package_name: str = 'my-project'

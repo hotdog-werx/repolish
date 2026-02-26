@@ -1,11 +1,11 @@
 from pydantic import BaseModel
 
-from repolish.loader.models import Provider, ProviderEntry
+from repolish.loader.models import BaseContext, Provider, ProviderEntry
 from tests.providers_inputs.shared import InputA
 
 
 # ProviderC does not itself accept inputs
-class CtxC(BaseModel):
+class CtxC(BaseContext):
     pass
 
 

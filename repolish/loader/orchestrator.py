@@ -26,6 +26,7 @@ from repolish.loader.deletes import (
     process_delete_files,
 )
 from repolish.loader.mappings import process_file_mappings
+from repolish.loader.models import GlobalContext, get_global_context
 from repolish.loader.module import get_module
 from repolish.loader.module_loader import (
     ModuleProviderAdapter,
@@ -78,9 +79,15 @@ def _create_context_wrapper_for(
 
     def _wrapper(_ctx: dict | None = None) -> dict | None:
         val = inst.create_context()
-        # Accept pydantic models or dicts
+        # Accept pydantic models or dicts.  for models we intentionally
+        # drop the ``repolish`` field because the provider should never
+        # override the global namespace (it will be injected later by the
+        # loader); leaving the key present would otherwise wipe out the
+        # values seeded by ``base_context``.
         if isinstance(val, _BaseModel):
-            return val.model_dump()
+            data = val.model_dump()
+            data.pop('repolish', None)
+            return data
         return val
 
     return _wrapper
@@ -407,10 +414,57 @@ def _recompute_merged_context(
     return merged_context
 
 
+def _synthesize_provider_context_for_pid(
+    inst: _ProviderBase | None,
+    pid: str,
+    provider_contexts: dict[str, object],
+    merged_context: dict[str, object],
+) -> None:
+    """Ensure `provider_contexts[pid]` contains a typed context for class-based providers.
+
+    Call `create_context`, fall back to existing value on error, and
+    inject the global `repolish` namespace into returned BaseModel
+    instances when appropriate.
+    """
+    if inst is None or isinstance(inst, ModuleProviderAdapter) or isinstance(provider_contexts.get(pid), _BaseModel):
+        return
+
+    try:
+        ctx = inst.create_context()
+    except Exception:  # noqa: BLE001 - don't let one provider stop the run
+        ctx = provider_contexts.get(pid, {})
+
+    if isinstance(ctx, _BaseModel) and hasattr(ctx, 'repolish'):
+        glob = merged_context.get('repolish')
+        if glob:
+            if isinstance(glob, dict):
+                glob = GlobalContext(**cast('dict[str, object]', glob))  # type: ignore[arg-type]
+            ctx = ctx.model_copy(update={'repolish': glob})
+
+    provider_contexts[pid] = ctx
+
+
+def _ensure_repolish_in_dict_contexts(
+    provider_contexts: dict[str, object],
+    merged_context: dict[str, object],
+) -> None:
+    """Ensure every dict-valued provider context contains the global namespace."""
+    if merged_context.get('repolish') is None:
+        return
+    for pid, val in list(provider_contexts.items()):
+        if isinstance(val, dict) and 'repolish' not in val:
+            val['repolish'] = cast(
+                'dict[str, object]',
+                merged_context['repolish'],
+            )  # type: ignore[assignment]
+            provider_contexts[pid] = val
+
+
 def _populate_provider_context(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, object],
+    merged_context: dict[str, object],
 ) -> None:
     # before we compute schemas or apply overrides we must populate
     # `provider_contexts` for class-based providers.  the initial map
@@ -425,26 +479,16 @@ def _populate_provider_context(
     # are available.  applying overrides now ensures that both providers and
     # the merged project context see the same overridden values.
 
+    # Top-level helpers avoid inner functions and lower cognitive load.
     for idx, (pid, _mod) in enumerate(module_cache):
-        inst = instances[idx]
-        # only class-based providers require us to synthesize a context here;
-        # module-style providers (wrapped by `ModuleProviderAdapter`) already
-        # had their contexts collected during phase one using the merged
-        # context.  re-calling `create_context()` on adapters would pass an
-        # empty dict and wipe out those values, which broke several
-        # integration tests.
-        if (
-            inst is not None
-            and not isinstance(inst, ModuleProviderAdapter)
-            and not isinstance(provider_contexts.get(pid), _BaseModel)
-        ):
-            try:
-                # `inst.create_context()` may raise, but when it does we
-                # fall back to whatever value was already in the map
-                # (usually an empty dict) so we don't propagate the error.
-                provider_contexts[pid] = inst.create_context()
-            except Exception:  # noqa: BLE001 - we don't want one bad provider to halt
-                provider_contexts[pid] = provider_contexts.get(pid, {})
+        _synthesize_provider_context_for_pid(
+            instances[idx],
+            pid,
+            provider_contexts,
+            merged_context,
+        )
+
+    _ensure_repolish_in_dict_contexts(provider_contexts, merged_context)
 
 
 def _run_three_phase(
@@ -474,7 +518,12 @@ def _run_three_phase(
         instances,
     ) = build_provider_metadata(module_cache)
 
-    _populate_provider_context(module_cache, instances, provider_contexts)
+    _populate_provider_context(
+        module_cache,
+        instances,
+        provider_contexts,
+        merged_context,
+    )
 
     base_context = None if options is None else options.base_context
     context_overrides = None if options is None else options.context_overrides
@@ -590,7 +639,15 @@ def create_providers(
     # calls. Providers may modify the merged context during collection, but
     # we re-apply `base_context` afterwards so project config wins as the
     # final override.
-    merged_context: dict[str, object] = dict(base_context or {})
+    # compute a global namespace and mix it with whatever base context the
+    # caller provided. the project-level ``base_context`` always wins so
+    # consumers can override the inferred values if necessary (tests and the
+    # CLI rely on this behaviour).
+    # wrap in a namespace so consumers access values via ``ctx['repolish']``
+    global_ctx = {'repolish': get_global_context().model_dump()}
+    merged_context: dict[str, object] = {}
+    merged_context.update(global_ctx)
+    merged_context.update(base_context or {})
     # Normalize input directories and build an alias map for configuration
     normalized_dirs: list[str] = []
     alias_map: dict[str, str] = {}
@@ -618,12 +675,20 @@ def create_providers(
 
     # hand off the remainder of the workflow to a helper that encapsulates
     # the three-phase input/finalization logic plus related metadata tracking.
+    # ``_run_three_phase`` will recompute the merged context using the
+    # ``base_context`` stored in the options struct; ensure it includes the
+    # global namespace as well so the final returned ``Providers`` object
+    # reflects the same values we seeded above.
+    base_concrete: dict[str, object] = {}
+    base_concrete.update(global_ctx)
+    base_concrete.update(base_context or {})
+
     return _run_three_phase(
         module_cache,
         merged_context,
         provider_contexts,
         RunThreePhaseContext(
-            base_context=base_context,
+            base_context=base_concrete,
             context_overrides=context_overrides,
             provider_overrides=provider_overrides,
             alias_map=alias_map,

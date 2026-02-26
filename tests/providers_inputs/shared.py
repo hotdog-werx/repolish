@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 
+from repolish.loader.models import BaseContext
 
-class CtxA(BaseModel):
+
+class CtxA(BaseContext):
     prov_a_value: str = 'provider_a'
 
 

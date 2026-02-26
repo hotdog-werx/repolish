@@ -63,6 +63,10 @@ def test_config_level_provenance(tmp_path: Path):
     assert len(providers.provider_contexts) <= 1
     assert len(providers.provider_migrated) <= 1
 
+    # global context is always present regardless of configuration
+    assert 'repolish' in providers.context
+    assert isinstance(providers.context['repolish'], dict)
+
 
 def test_per_provider_context_override(tmp_path: Path):
     """A user config can override the context produced by a single provider.

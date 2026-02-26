@@ -45,7 +45,7 @@ key = "value"
     repolish_py.write_text(
         textwrap.dedent("""\
 def create_context():
-    return {'repo_name': 'test_repo'}
+    return {'repo': {'name': 'test_repo'}}
 
 def create_delete_files():
     return ['test_repo/file_c']
@@ -75,7 +75,7 @@ def test_integration_cli(
             {
                 'directories': [str((t1).as_posix()), str((t2).as_posix())],
                 'context': {},
-                'context_overrides': {'repo_name': 'overridden_repo_name'},
+                'context_overrides': {'repo': {'name': 'overridden_repo_name'}},
                 'anchors': {},
                 'delete_files': [],
             },
@@ -148,7 +148,7 @@ def test_integration_regex_preserves_custom_block(
     (tpl / 'repolish.py').write_text(
         textwrap.dedent("""\
 def create_context():
-    return {'repo_name': 'repolish'}
+    return {'repo': {'name': 'repolish'}}
 
 def create_file_mappings():
     return {

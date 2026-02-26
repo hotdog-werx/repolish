@@ -6,20 +6,30 @@ from pydantic import BaseModel
 from repolish.loader import FileMode, TemplateMapping, create_providers
 
 
-def test_file_mappings_receive_merged_context(tmp_path: Path):
+def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # noqa: ANN001
     """A provider may use the merged context when creating file mappings.
 
     This test creates a provider that sets `readme_ext` via `create_context`
     and a `create_file_mappings` factory that builds the destination name
     using that value. The loader should call the factory with the merged
-    context so the resulting mapping reflects the configured extension.
+    context so the resulting mapping reflects the configured extension.  We
+    also verify that the automatically injected ``repolish`` namespace is
+    present in the context passed to the mapping factory.
     """
+    # ensure global context is predictable
+    monkeypatch.setattr(
+        'repolish.providers.git.get_owner_repo',
+        lambda: ('owner', 'repo'),
+    )
+
     src = dedent(
         """
         def create_context():
             return {'readme_ext': 'txt'}
 
         def create_file_mappings(ctx):
+            # global context should be available as a nested dict
+            assert ctx['repolish']['repo']['owner'] == 'owner'
             ext = ctx.get('readme_ext', 'md')
             return {f'README.{ext}': 'README_template'}
         """,

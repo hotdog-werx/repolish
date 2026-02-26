@@ -13,6 +13,21 @@ so templates and providers can adapt to configuration.
   from providers in the order they are listed and merges them.
 - After collection, the loader re-applies project config as a final overlay so
   project-level values take precedence when resolving conflicts.
+- A small **global context** is seeded automatically and merged in before any
+  provider values. It is always available under the top-level `repolish` key and
+  currently contains
+
+  - a nested `repo` object with the GitHub repository information (`owner` and
+    `name`) inferred from the `origin` remote, and
+  - a `year` field containing the current calendar year (useful for license
+    headers and similar boilerplate).
+
+  Project configuration may override any of these values via the usual
+  `context`/`context_overrides` mechanism. Historically the repo fields were
+  flattened as `repo_owner`/`repo_name`; the loader still exposes read-only
+  proxies for backwards compatibility but new code should use
+  `ctx.repolish.repo.owner` and `ctx.repolish.repo.name`.
+
 - Finally, the loader calls provider factory functions (e.g.
   `create_file_mappings`, `create_anchors`, `create_delete_files`) with the
   merged context.
@@ -48,6 +63,12 @@ from repolish.loader.models import Provider, BaseContext
 # use BaseContext when you don't need any fields – it saves you from importing
 # pydantic everywhere and avoids the "BaseModel cannot be instantiated"
 # error that occurs if you try to return `BaseModel()` directly.
+#
+# Additionally, `BaseContext` defines a `repolish` attribute that will
+# always be populated with the global context (currently the repository
+# owner/name inferred from the git remote).  this means even trivial
+# contexts can access ``ctx.repolish`` without needing to define the field
+# themselves.
 class MyCtx(BaseContext):
     feature_flag: bool = False
 

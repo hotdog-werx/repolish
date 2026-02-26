@@ -29,7 +29,7 @@ def make_template_with_unreadable(base: Path, name: str) -> None:
     rep.write_text(
         textwrap.dedent("""\
     def create_context():
-        return {'repo_name': 'test_repo'}
+        return {'repo': {'name': 'test_repo'}}
     """),
     )
 

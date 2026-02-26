@@ -147,7 +147,7 @@ def test_safe_file_read_directory(tmp_path: Path):
         ReplaceTextTestCase(
             id='pyproject_keep_version',
             template=dedent("""\
-                name: {{cookiecutter.repo_owner}}
+                name: {{cookiecutter.repo.owner}}
                 ## repolish-regex[keep-version]: ^version:\\s*(.+)$
                 version: 0.0.0
             """),

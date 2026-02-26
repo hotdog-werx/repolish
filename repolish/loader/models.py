@@ -32,6 +32,7 @@ Notes:
 
 from __future__ import annotations
 
+import datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -39,6 +40,74 @@ from pathlib import Path  # noqa: TC003 - used in Providers model with pydantic
 from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel, Field
+
+
+class GithubRepo(BaseModel):
+    """Model representing a GitHub repository identifier.
+
+    Historically the global context exposed ``repo_owner`` and
+    ``repo_name`` as two separate fields.  They have been consolidated into a
+    single nested object here to make the structure easier to work with in
+    templates and to allow additional repository metadata in the future.
+    """
+
+    owner: str = 'UnknownOwner'
+    name: str = 'UnknownRepo'
+
+
+class GlobalContext(BaseModel):
+    """Globally-available values injected into every provider context.
+
+    By default the loader only populates the GitHub repository information
+    (read from the ``origin`` remote).  Additional keys may be added in
+    future releases.  The value is exposed to templates as ``repolish`` (see
+    :mod:`docs.configuration.context` for details) and the typed field is
+    available to class-based providers that inherit from :class:`BaseContext`.
+
+    ``GlobalContext`` is intentionally trivial so consumer code can import
+    it directly when typing provider contexts; providers that don't declare
+    a subclass of :class:`~repolish.loader.models.BaseContext` simply ignore
+    it.
+    """
+
+    repo: GithubRepo = Field(default_factory=GithubRepo)
+    # `year` is intentionally coarse-grained; it's useful for license
+    # headers and other boilerplate that should not require manual updates
+    # when the calendar rolls over.  The value is computed when the model is
+    # instantiated so repeated loader runs within the same year remain
+    # consistent yet automatically advance at New Year's.
+    year: int = Field(
+        default_factory=lambda: datetime.datetime.now(
+            datetime.UTC,
+        ).year,
+    )
+
+
+def get_global_context() -> GlobalContext:
+    """Return a model populated from the current repository settings.
+
+    The implementation is intentionally forgiving; any failure to extract
+    information (for example when not running inside a git repository) is
+    swallowed and the returned object will simply have default values.  The
+    loader calls this during startup and merges the resulting dict into the
+    initial *base context* so the ``repolish`` namespace is available to all
+    providers and templates.
+    """
+    # imported locally to avoid a circular dependency when the loader tests
+    # import the helper without needing the providers package.
+    from repolish.providers import git  # noqa: PLC0415 - local import avoids circular
+
+    try:
+        owner, name = git.get_owner_repo()
+    except Exception:  # pragma: no cover - best-effort only  # noqa: BLE001
+        owner = name = 'Unknown'
+    # explicitly compute the year here as well; this mirrors the default
+    # factory and ensures callers that bypass the default still receive a
+    # sensible value.
+    return GlobalContext(
+        repo=GithubRepo(owner=owner, name=name),
+        year=datetime.datetime.now(datetime.UTC).year,
+    )
 
 
 class BaseContext(BaseModel):
@@ -54,6 +123,8 @@ class BaseContext(BaseModel):
     purpose, which triggered errors and confusion.  `BaseContext` is the
     safer, idiomatic alternative.
     """
+
+    repolish: GlobalContext = Field(default_factory=GlobalContext)
 
 
 class Action(str, Enum):
@@ -168,7 +239,13 @@ class Accumulators(BaseModel):
 
 # --- end moved types ------------------------------------------------------------
 
-ContextT = TypeVar('ContextT', bound=BaseModel)
+# Type variable for provider context models.  We intentionally
+# bind this to :class:`BaseContext` so that type checkers will flag
+# any provider whose ``create_context`` returns a plain ``BaseModel``.
+# The global namespace is stored in ``GlobalContext`` and is only
+# available when the context inherits from ``BaseContext``; binding the
+# type variable prevents accidental omission.
+ContextT = TypeVar('ContextT', bound=BaseContext)
 InputT = TypeVar('InputT', bound=BaseModel)
 
 
@@ -259,7 +336,14 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
     @abstractmethod
     def create_context(self) -> ContextT:
-        """Create and return this provider's context model."""
+        """Create and return this provider's context model.
+
+        The returned model *must* inherit from :class:`BaseContext`.
+        This ensures the loader can merge the global ``repolish`` data into
+        the object; providers returning a plain ``BaseModel`` will lose that
+        information and will trigger a type-checking error under stricter
+        tooling.
+        """
 
     def provide_inputs(
         self,
@@ -396,7 +480,10 @@ def get_provider_inputs(
 
 
 # typing helpers for get_provider_context
-T = TypeVar('T', bound=BaseModel)
+# `T` represents the *context* type returned by a provider entry.  it
+# must inherit from `BaseContext` so callers can safely access the
+# ``repolish`` attribute on the result.
+T = TypeVar('T', bound=BaseContext)
 
 
 def get_provider_context(

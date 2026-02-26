@@ -34,7 +34,7 @@ def make_template_with_binary(base: Path, name: str) -> None:
     rep.write_text(
         textwrap.dedent("""\
     def create_context():
-        return {'repo_name': 'test_repo'}
+        return {'repo': {'name': 'test_repo'}}
 
     def create_delete_files():
         # Use a POSIX-style nested path to ensure path normalization works
@@ -54,7 +54,7 @@ def make_template_with_unreadable(base: Path, name: str) -> None:
     rep.write_text(
         textwrap.dedent("""\
     def create_context():
-        return {'repo_name': 'test_repo'}
+        return {'repo': {'name': 'test_repo'}}
     """),
     )
 

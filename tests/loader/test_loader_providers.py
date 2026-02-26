@@ -1,9 +1,10 @@
+import datetime
 import importlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from pydantic import BaseModel
@@ -11,6 +12,9 @@ from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
 from repolish.loader import Providers, create_providers
+
+if TYPE_CHECKING:
+    from repolish.loader.models import BaseContext
 from repolish.loader.validation import _is_suspicious_variable
 from tests.support import write_module
 
@@ -100,7 +104,11 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
 
     providers: Providers = create_providers(dirs)  # type: ignore[arg-type]
 
-    assert providers.context == case.expected_context
+    # the merged context now always contains a ``repolish`` key; tests were
+    # written assuming it didn't exist so strip it before comparing.
+    ctx = dict(providers.context)
+    ctx.pop('repolish', None)
+    assert ctx == case.expected_context
     assert providers.anchors == case.expected_anchors
 
     # delete_files should be a list of Path objects (relative paths from provider)
@@ -171,6 +179,89 @@ def test_create_providers_records_provider_migrated_flag(tmp_path: Path):
     assert isinstance(migrated, dict)
     assert any(migrated.values())
     assert any(not v for v in migrated.values())
+
+
+def test_global_context_appears_in_merged_and_provider_dicts(
+    tmp_path: Path,
+    monkeypatch,  # noqa: ANN001
+):
+    """The global ``repolish`` namespace is seeded and propagated.
+
+    Both the final merged context and each provider's own context (dict or
+    model) should contain the inferred repository owner/name under a
+    ``repolish`` key.  Providers may override the value by returning their own
+    key or via project configuration.
+    """
+    monkeypatch.setattr(
+        'repolish.providers.git.get_owner_repo',
+        lambda: ('foo', 'bar'),
+    )
+
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    # no explicit context; loader should still provide repolish globals
+    (prov / 'repolish.py').write_text('')
+
+    providers = create_providers([str(prov)])
+    # merged context should include our fake values; other keys (e.g. `year`)
+    # may also be present and are fine.
+    merged = cast('dict[str, object]', providers.context.get('repolish', {}))
+    assert merged.get('repo') == {'owner': 'foo', 'name': 'bar'}
+    assert merged.get('year') == datetime.datetime.now(datetime.UTC).year
+    # and the provider-specific context dict should have them too
+    pid = next(iter(providers.provider_contexts.keys()))
+    ctx_val = cast('dict[str, object]', providers.provider_contexts[pid])
+    prov_ctx = cast('dict[str, object]', ctx_val['repolish'])
+    assert prov_ctx.get('repo') == {'owner': 'foo', 'name': 'bar'}
+    # provider contexts may or may not include the year key depending on
+    # when they were constructed; we don't require it.
+
+
+def test_global_context_in_class_based_provider(
+    tmp_path: Path,
+    monkeypatch,  # noqa: ANN001
+):
+    """Class-based providers receive a typed `repolish` field.
+
+    When ``create_context()`` returns a subclass of :class:`BaseContext` the
+    loader should populate the ``repolish`` attribute with the global data.
+    """
+    monkeypatch.setattr(
+        'repolish.providers.git.get_owner_repo',
+        lambda: ('x', 'y'),
+    )
+
+    prov = tmp_path / 'cp'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        """from pydantic import BaseModel
+from repolish import BaseContext
+from repolish.loader.models import Provider
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseModel]):
+    def get_provider_name(self):
+        return 'p'
+    def create_context(self):
+        return Ctx()
+""",
+    )
+
+    providers = create_providers([str(prov)])
+    # merged context should still contain the global namespace; we only
+    # check that the repo info is correct and the year key exists.
+    merged = cast('dict[str, object]', providers.context.get('repolish', {}))
+    assert merged.get('repo') == {'owner': 'x', 'name': 'y'}
+    assert merged.get('year') == datetime.datetime.now(datetime.UTC).year
+
+    pid = next(iter(providers.provider_contexts.keys()))
+
+    ctx = cast('BaseContext', providers.provider_contexts[pid])
+    assert hasattr(ctx, 'repolish')
+    assert ctx.repolish.repo.owner == 'x'
+    assert ctx.repolish.repo.name == 'y'
 
 
 def test_class_based_provider_is_marked_migrated(tmp_path: Path):
@@ -635,7 +726,9 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
 
     providers = create_providers(dirs)  # type: ignore[arg-type]
 
-    assert providers.context == case.expected_context
+    ctx = dict(providers.context)
+    ctx.pop('repolish', None)
+    assert ctx == case.expected_context
     assert providers.anchors == case.expected_anchors
     got_delete = {Path(p) for p in providers.delete_files}
     assert got_delete == set(case.expected_delete)
@@ -657,7 +750,9 @@ def test_create_providers_permissive_by_default_allows_missing_mappings(
     )
 
     providers = create_providers([str(provider_dir)])
-    assert providers.context == {'a': 1}
+    ctx = dict(providers.context)
+    ctx.pop('repolish', None)
+    assert ctx == {'a': 1}
     assert providers.file_mappings == {}
 
 

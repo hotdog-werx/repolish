@@ -87,7 +87,7 @@ def test_provider_input_schema_instantiation() -> None:  # noqa: C901
 def test_get_provider_context_lookup() -> None:
     """Utility returns context matching name, alias or provider class."""
 
-    class Ctx(BaseModel):
+    class Ctx(BaseContext):
         value: int = 42
 
     class Prov1(Provider[Ctx, BaseModel]):

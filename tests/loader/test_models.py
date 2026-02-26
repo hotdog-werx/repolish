@@ -1,10 +1,12 @@
+import datetime
+
 import pytest
 from pydantic import BaseModel
 
-from repolish.loader.models import Provider
+from repolish.loader.models import BaseContext, Provider
 
 
-class _TContext(BaseModel):
+class _TContext(BaseContext):
     v: int = 1
 
 
@@ -51,3 +53,19 @@ def test_provider_can_override_optional_methods():
 
     p = OptProvider()
     assert p.get_inputs_schema() is _TInputs
+
+
+def test_basecontext_includes_repolish_field():
+    from repolish.loader.models import BaseContext, GlobalContext  # noqa: PLC0415 - testing import
+
+    bc = BaseContext()
+    assert hasattr(bc, 'repolish')
+    assert isinstance(bc.repolish, GlobalContext)
+    # default fields may be populated based on the git repository
+    # where the tests run; we simply ensure the nested attributes exist and
+    # that the legacy accessors mirror them.
+    assert hasattr(bc.repolish.repo, 'owner')
+    assert hasattr(bc.repolish.repo, 'name')
+    # year should reflect the current calendar year; using datetime here
+    # keeps the test stable regardless of when it's executed.
+    assert bc.repolish.year == datetime.datetime.now(datetime.UTC).year
