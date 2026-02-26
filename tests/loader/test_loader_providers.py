@@ -129,6 +129,85 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
             assert path_obj not in got_delete
 
 
+def test_multiple_provider_classes_with_all(tmp_path: Path):
+    """A module may import other Provider subclasses but export only one.
+
+    When ``__all__`` names a single provider class we should ignore any
+    additional subclasses present in the module.  this allows helper
+    providers to be imported at top-level without triggering the "multiple
+    providers" error.
+    """
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        dedent(
+            """
+        from repolish.loader.models import Provider, ProviderEntry
+
+        class A(Provider):
+            def get_provider_name(self):
+                return 'A'
+
+            def create_context(self):
+                return {'which': 'A'}
+
+        class B(Provider):
+            def get_provider_name(self):
+                return 'B'
+
+            def create_context(self):
+                return {'which': 'B'}
+
+        __all__ = ['A']
+        """,
+        ),
+    )
+
+    providers = create_providers([str(prov)])  # should succeed using A
+    ctx = dict(providers.context)
+    ctx.pop('repolish', None)
+    assert ctx == {'which': 'A'}
+
+
+def test_multiple_providers_all_conflict(tmp_path: Path):
+    """Exporting more than one provider via ``__all__`` remains an error.
+
+    The raised message should mention ``__all__`` so users know how to fix
+    the problem.
+    """
+    prov = tmp_path / 'prov2'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        dedent(
+            """
+        from repolish.loader.models import Provider, ProviderEntry
+
+        class A(Provider):
+            def get_provider_name(self):
+                return 'A'
+
+            def create_context(self):
+                return {'which': 'A'}
+
+        class B(Provider):
+            def get_provider_name(self):
+                return 'B'
+
+            def create_context(self):
+                return {'which': 'B'}
+
+        __all__ = ['A', 'B']
+        """,
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        create_providers([str(prov)])
+    msg = str(exc.value)
+    assert '__all__' in msg
+    assert 'multiple Provider subclasses' in msg
+
+
 def test_config_alias_passed_through(tmp_path: Path):
     """Providers loaded via (alias, path) pairs see their config alias."""
     # create a simple provider module that asserts the alias in finalize_context
@@ -330,7 +409,9 @@ class Two(Provider[Ctx, BaseModel]):
 
     with pytest.raises(RuntimeError) as excinfo:
         create_providers([str(p)])
-    assert 'multiple Provider subclasses' in str(excinfo.value)
+    msg = str(excinfo.value)
+    assert 'multiple Provider subclasses' in msg
+    assert '__all__' in msg  # hint should mention the export list
 
 
 def test_create_providers_records_provider_contexts(tmp_path: Path):

@@ -63,11 +63,38 @@ def _find_provider_class(
         for val in module_dict.values()
         if isclass(val) and issubclass(val, _ProviderBase) and val is not _ProviderBase
     ]
+
+    # If the module defines ``__all__`` we treat it as the explicit export
+    # list.  this lets authors import other provider classes for utility
+    # purposes while still exporting a single implementation.  the list may
+    # contain arbitrary names; we only consider entries that match provider
+    # class names.  if a single provider appears in ``__all__`` we return
+    # that class even if others are present at module level.  the module may
+    # still define no public providers, in which case we behave as though
+    # no subclass were exported.
+    all_list = module_dict.get('__all__')
+    if isinstance(all_list, (list, tuple)) and all_list:
+        # filter the providers down to those listed explicitly
+        filtered = [cls for cls in providers if cls.__name__ in all_list]
+        if len(filtered) == 1:
+            return filtered[0]
+        if len(filtered) > 1:
+            names = ', '.join(cls.__name__ for cls in filtered)
+            msg = f'__all__ exports multiple Provider subclasses ({names}); only one class may be exported per file'
+            raise RuntimeError(msg)
+        # if ``__all__`` is present but doesn't mention any providers we
+        # continue with the normal logic below; the user has effectively
+        # hidden all classes from export.
+
     if not providers:
         return None
     if len(providers) > 1:
         names = ', '.join(cls.__name__ for cls in providers)
-        msg = f'provider module exports multiple Provider subclasses ({names}); only one class may be defined per file'
+        msg = (
+            f'provider module exports multiple Provider subclasses ({names}); '
+            'only one class may be defined per file; if you meant to expose a '
+            'single implementation please add that class name to ``__all__``'
+        )
         raise RuntimeError(msg)
     return providers[0]
 

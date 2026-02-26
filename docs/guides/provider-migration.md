@@ -126,13 +126,21 @@ How the loader recognizes the class
 - The loader imports the provider module (`repolish.py`) into a `module_dict`.
 - It scans exported values and uses `inspect.isclass()` +
   `issubclass(..., Provider)` to find any `Provider` subclasses (see
-  `repolish.loader.orchestrator._find_provider_class`). Only one subclass may be
-  defined per module; if more are found the loader raises a `RuntimeError`
-  immediately so the mistake can be fixed.
-- If found, the loader instantiates the class and _injects_ instance-backed
-  callables into the module dict (e.g. `create_context`, `create_file_mappings`,
-  `create_anchors`) so the rest of the loader works exactly the same as with
-  module-style providers (see
+  `repolish.loader.orchestrator._find_provider_class`).
+
+  Only one subclass may be exported; the old behaviour chose the first class
+  encountered which could hide accidental imports of helper providers. The
+  loader now looks at the module's `__all__` list (if present) and will use the
+  single provider class named there. This lets you freely import other provider
+  implementations at the top level so long as only the intended class is
+  included in `__all__`. Exporting multiple providers either via `__all__` or by
+  omitting `__all__` still results in a runtime error with a helpful message
+  directing you to the `__all__` mechanism.
+
+- If a provider class is selected, the loader instantiates it and _injects_
+  instance-backed callables into the module dict (e.g. `create_context`,
+  `create_file_mappings`, `create_anchors`) so the rest of the loader works
+  exactly the same as with module-style providers (see
   `repolish.loader.orchestrator._inject_provider_instance`).
 
 Practical notes
