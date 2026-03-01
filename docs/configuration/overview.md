@@ -155,13 +155,51 @@ delete_files:
 ## Post Process Section
 
 The `post_process` section defines shell commands to run after template
-generation. These are typically formatters or linters.
+generation but before the `--check` diff or apply step. This ensures that checks
+operate on formatted output.
+
+Commands are executed **once**, in order, with the working directory set to the
+rendered project folder inside `.repolish/setup-output/`.
+
+If any command exits with a non-zero status, Repolish fails immediately and
+returns a non-zero exit code.
+
+### Command forms
+
+You can provide entries as either a string or an argv list:
 
 ```yaml
 post_process:
+  # String — tokenized with shlex.split and executed without a shell
+  - 'ruff --fix .'
+  # Argv list — recommended when you need precise control over quoting
+  - ['prettier', '--write', 'src/']
+  # One-liner python scripts also work as strings
+  - "python -c \"open('generated.py','w').write('# auto')\""
+```
+
+**Platform note**: On Windows, `shlex` tokenization rules differ from POSIX
+shells. If commands include spaces or special characters, prefer the argv-list
+form to avoid surprises.
+
+**Security note**: Commands are intentionally executed without `shell=True` to
+reduce shell injection risk. If you need shell pipelines or metacharacters, wrap
+the logic in a committed script and call it via the argv-list form.
+
+### Example with formatters
+
+```yaml
+directories:
+  - ./templates/my-template
+
+context:
+  package_name: my-project
+
+post_process:
   - poe format
-  - black .
-  - isort .
+  - ['prettier', '--write', '.']
+
+delete_files: []
 ```
 
 ## Provider Linking Configuration
