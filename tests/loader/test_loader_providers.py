@@ -370,8 +370,8 @@ class P(Provider[Ctx, BaseModel]):
 """,
     )
 
-    provider_id = str(p)
-    providers = create_providers([provider_id])
+    provider_id = Path(p).as_posix()
+    providers = create_providers([str(p)])
     assert providers.provider_migrated.get(provider_id) is True
 
 
@@ -1160,7 +1160,7 @@ def test_validate_provider_emits_migration_suggestion(
     assert any('create_file_mappings' in str(call) for call in warning_calls)
     # the warning should include the provider identifier so users know which
     # module triggered it
-    assert any(call.kwargs.get('provider') == str(provider_dir) for call in warning_calls)
+    assert any(call.kwargs.get('provider') == Path(provider_dir).as_posix() for call in warning_calls)
 
 
 def test_is_suspicious_variable_returns_false_for_normal_names():
