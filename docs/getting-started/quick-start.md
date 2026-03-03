@@ -73,7 +73,11 @@ returns a non-zero exit code so CI can detect the problem.
 
 ## Next steps
 
-- [Configuration reference](../configuration/overview.md) — all `repolish.yaml` fields
-- [Templates guide](../guides/templates.md) — file mappings and create-only files
-- [Preprocessors guide](../guides/preprocessors.md) — anchors and regex directives
-- [Provider Patterns](../guides/patterns.md) — structuring providers for real projects
+- [Configuration reference](../configuration/overview.md) — all `repolish.yaml`
+  fields
+- [Templates guide](../guides/templates.md) — file mappings and create-only
+  files
+- [Preprocessors guide](../guides/preprocessors.md) — anchors and regex
+  directives
+- [Provider Patterns](../guides/patterns.md) — structuring providers for real
+  projects

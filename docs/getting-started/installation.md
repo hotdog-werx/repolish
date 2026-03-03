@@ -27,5 +27,6 @@ included in the package — no additional install steps are required.
 
 ## Next steps
 
-- [Quick Start](quick-start.md) — set up your first `repolish.yaml` and run a check
+- [Quick Start](quick-start.md) — set up your first `repolish.yaml` and run a
+  check
 - [Configuration](../configuration/overview.md) — full `repolish.yaml` reference

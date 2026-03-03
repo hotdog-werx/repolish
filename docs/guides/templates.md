@@ -151,8 +151,9 @@ which one to copy based on context. This keeps filenames clean without
 
 Files in your template directory that start with `_repolish.` are treated as
 **conditional/alternative files**. They are only copied to the project when
-explicitly referenced in `create_file_mappings()` (or a `file_mappings` variable)
-in `repolish.py`. They can be placed anywhere in the template directory tree.
+explicitly referenced in `create_file_mappings()` (or a `file_mappings`
+variable) in `repolish.py`. They can be placed anywhere in the template
+directory tree.
 
 The `file_mappings` return value is a dict where:
 
@@ -227,8 +228,8 @@ def create_file_mappings():
 
 Files listed in `create_only_files` are created when they do not exist in the
 project and skipped on all subsequent runs. This is useful for initial
-scaffolding — source files, example tests, README stubs — that should be
-created once and then owned by the developer.
+scaffolding — source files, example tests, README stubs — that should be created
+once and then owned by the developer.
 
 ### How it works
 
@@ -293,4 +294,3 @@ repolish apply
 - **Multiple providers**: `create_only_files` lists are merged additively.
 - **Works with file_mappings**: a file can be both conditional and create-only.
 - **Conflicts with delete_files**: if a file appears in both, the delete wins.
-

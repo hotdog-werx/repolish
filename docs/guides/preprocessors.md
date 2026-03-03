@@ -217,7 +217,8 @@ requests = "^2.30"
 
 The `repolish-regex[keep]` anchor ensures the local `version = "0.2.0"` line is
 preserved instead of being replaced by the template's `0.1.0`. The `extra-deps`
-block is preserved whole-cloth, letting projects keep local dependency additions.
+block is preserved whole-cloth, letting projects keep local dependency
+additions.
 
 **Tips**
 
@@ -294,8 +295,8 @@ intended capture so Repolish can reliably hydrate the template.
 
 Anchors can come from three places and are merged in this order:
 
-1. **Provider templates**: any `## repolish-start[...]` / `## repolish-regex[...]`
-   markers present inside provider template files.
+1. **Provider templates**: any `## repolish-start[...]` /
+   `## repolish-regex[...]` markers present inside provider template files.
 2. **Provider code**: a provider's `create_anchors()` callable can return an
    anchors mapping (key → replacement text) used during preprocessing.
 3. **Config-level anchors**: the `anchors` mapping in `repolish.yaml` applies
@@ -310,12 +311,14 @@ results.
 
 Two providers accidentally use the same key `init`:
 
-- `templates/a/Dockerfile` contains `## repolish-start[init]` … `## repolish-end[init]`
-- `templates/b/README.md` also contains `## repolish-start[init]` … `## repolish-end[init]`
+- `templates/a/Dockerfile` contains `## repolish-start[init]` …
+  `## repolish-end[init]`
+- `templates/b/README.md` also contains `## repolish-start[init]` …
+  `## repolish-end[init]`
 
 The `init` block from whichever provider is processed last will replace the
-other. For predictable behavior, scope anchor keys to the file or provider:
-e.g. `docker-install` or `readme-intro`.
+other. For predictable behavior, scope anchor keys to the file or provider: e.g.
+`docker-install` or `readme-intro`.
 
 **Best practice**: prefix anchor keys with the file or provider name when the
 content is file-scoped. This avoids accidental collisions when multiple

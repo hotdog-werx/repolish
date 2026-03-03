@@ -24,8 +24,8 @@ Instead of blindly replacing files, Repolish can:
 ## Key concepts
 
 **Providers** supply templates and context. Each provider lives in a template
-directory and may include a `repolish.py` module that exports `create_context()`,
-`create_anchors()`, and/or `create_delete_files()` helpers.
+directory and may include a `repolish.py` module that exports
+`create_context()`, `create_anchors()`, and/or `create_delete_files()` helpers.
 
 **Anchors** are markers placed in templates (and optionally in project files)
 that mark blocks or regex lines to preserve. Block anchors (`repolish-start` /
