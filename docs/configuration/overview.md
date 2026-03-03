@@ -155,13 +155,51 @@ delete_files:
 ## Post Process Section
 
 The `post_process` section defines shell commands to run after template
-generation. These are typically formatters or linters.
+generation but before the `--check` diff or apply step. This ensures that checks
+operate on formatted output.
+
+Commands are executed **once**, in order, with the working directory set to the
+rendered project folder inside `.repolish/setup-output/`.
+
+If any command exits with a non-zero status, Repolish fails immediately and
+returns a non-zero exit code.
+
+### Command forms
+
+You can provide entries as either a string or an argv list:
 
 ```yaml
 post_process:
+  # String — tokenized with shlex.split and executed without a shell
+  - 'ruff --fix .'
+  # Argv list — recommended when you need precise control over quoting
+  - ['prettier', '--write', 'src/']
+  # One-liner python scripts also work as strings
+  - "python -c \"open('generated.py','w').write('# auto')\""
+```
+
+**Platform note**: On Windows, `shlex` tokenization rules differ from POSIX
+shells. If commands include spaces or special characters, prefer the argv-list
+form to avoid surprises.
+
+**Security note**: Commands are intentionally executed without `shell=True` to
+reduce shell injection risk. If you need shell pipelines or metacharacters, wrap
+the logic in a committed script and call it via the argv-list form.
+
+### Example with formatters
+
+```yaml
+directories:
+  - ./templates/my-template
+
+context:
+  package_name: my-project
+
+post_process:
   - poe format
-  - black .
-  - isort .
+  - ['prettier', '--write', '.']
+
+delete_files: []
 ```
 
 ## Provider Linking Configuration
@@ -314,6 +352,44 @@ providers_order:
 
 See the [Context guide](context.md) for more information on how provider
 ordering affects context merging.
+
+## Template Overrides
+
+The `template_overrides` section gives you per‑file control over which provider
+supplies a template. Instead of always using the last provider defined in
+`providers_order`, you can specify glob patterns that map to a particular
+provider alias. When a file path matches a pattern, the matching provider will
+be used as the source for that file even if a later provider would normally
+override it.
+
+Patterns use standard [fnmatch](https://docs.python.org/3/library/fnmatch.html)
+glob syntax and are evaluated in YAML order (later patterns take precedence).
+The values must reference providers that are defined elsewhere in the
+configuration; an invalid alias will trigger a validation error when the config
+is loaded.
+
+```yaml
+providers_order:
+  - base
+  - db
+  - api
+
+providers:
+  base:
+    cli: base-link
+  db:
+    cli: db-link
+  api:
+    cli: api-link
+
+template_overrides:
+  'README.md': 'base' # keep the README from the base provider
+  'src/db/*': 'db' # use the db provider for anything under src/db
+  '**/*.py': 'api' # API provider wins for all Python files
+```
+
+This feature is particularly useful when you need fine‑grained control over
+template resolution without changing the overall provider order.
 
 ## Configuration Validation
 

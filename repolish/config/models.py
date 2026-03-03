@@ -11,7 +11,7 @@ from pydantic import (
     model_validator,
 )
 
-from repolish.exceptions import ProviderConfigError
+from repolish.exceptions import ConfigValidationError, ProviderConfigError
 
 logger = get_logger(__name__)
 
@@ -37,7 +37,15 @@ class ProviderSymlink(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    """Configuration for a single provider."""
+    """Configuration for a single provider.
+
+    Users may now specify an optional `context` mapping on a per-provider
+    basis; values supplied here are merged into the context produced by the
+    provider itself, giving projects the ability to tweak or override provider
+    defaults without editing the provider code.  This field is intentionally
+    named `context` to mirror the top-level configuration key and keep the
+    YAML concise.
+    """
 
     cli: str | None = Field(
         default=None,
@@ -54,6 +62,17 @@ class ProviderConfig(BaseModel):
     symlinks: list[ProviderSymlink] | None = Field(
         default=None,
         description='Symlinks from resources to repo. Use provider defaults with None. Skip symlinks with empty list.',
+    )
+    context: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional overrides to merge into this provider's context after evaluation.",
+    )
+    context_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Dot-notation overrides to apply to this provider's context (opt-in;"
+            ' providers must also be migrated to use).'
+        ),
     )
 
     @model_validator(mode='after')
@@ -103,9 +122,39 @@ class RepolishConfigFile(BaseModel):
             " '!' to negate (keep) a previously-added path."
         ),
     )
+    # Opt-in: allow users to disable cookiecutter rendering and instead use
+    # Jinja2 directly on the staged templates. Default is False (use
+    # cookiecutter) to preserve existing behavior.
+    no_cookiecutter: bool = Field(
+        default=False,
+        description=(
+            'When true, skip cookiecutter and render templates with Jinja2 using the merged provider context (opt-in).'
+        ),
+    )
+    provider_scoped_template_context: bool = Field(
+        default=True,
+        description=(
+            'Legacy flag preserved for backwards compatibility. The default is '
+            'now `true` and new class-based providers use their own context '
+            'automatically when migrated.  The only remaining use-case for '
+            'setting this to `false` is inside the old module-adapter '
+            'implementation, which globally forces merged-context rendering. '
+            'Most users never need to touch this setting.'
+        ),
+    )
+
     providers_order: list[str] = Field(
         default_factory=list,
         description='Optional: Order in which to process providers. Defaults to providers dict key order from YAML.',
+    )
+    template_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            'Optional mapping of glob-style file patterns to provider aliases. '
+            'Overrides which provider supplies a given file regardless of the '
+            'usual provider order. Keys are POSIX-style file paths, values must '
+            'reference a defined provider alias.'
+        ),
     )
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,
@@ -152,6 +201,22 @@ class RepolishConfigFile(BaseModel):
                 normalized[name] = config
 
         return normalized
+
+    @model_validator(mode='after')
+    def validate_template_overrides(self) -> 'RepolishConfigFile':
+        """Ensure every alias referenced in template_overrides is defined.
+
+        This validator runs after the entire model is built so we can access
+        both the overrides mapping and the providers dict.
+        """
+        if self.template_overrides:
+            unknown = set(self.template_overrides.values()) - set(
+                self.providers.keys(),
+            )
+            if unknown:
+                msg = f'template_overrides references undefined providers: {sorted(unknown)}'
+                raise ConfigValidationError(msg)
+        return self
 
 
 class AllProviders(BaseModel):
@@ -259,6 +324,10 @@ class ResolvedProviderInfo(BaseModel):
 
     This combines data from ProviderConfig (YAML) and ProviderInfo (JSON)
     with all paths resolved and validated.
+
+    The `context` field mirrors the top-level project `context` but is
+    scoped to a single provider; values supplied here are merged into the
+    context captured from the provider during loading.
     """
 
     alias: str = Field(
@@ -278,6 +347,16 @@ class ResolvedProviderInfo(BaseModel):
     symlinks: list[ProviderSymlink] = Field(
         default_factory=list,
         description='Additional symlinks to create from provider resources to repo',
+    )
+    context: dict[str, Any] | None = Field(
+        default=None,
+        description='Provider-specific context overrides from the project configuration.',
+    )
+    context_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            'Provider-scoped dotted-path overrides; applied after `context` and before global context overrides.'
+        ),
     )
 
 
@@ -318,6 +397,23 @@ class RepolishConfig(BaseModel):
         default_factory=list,
         description='List of POSIX-style paths to delete after generation',
     )
+    # Opt-in: when true, skip calling cookiecutter and render templates with
+    # Jinja2 directly using `providers.context`. Default is False to preserve
+    # the existing cookiecutter-based behavior.
+    no_cookiecutter: bool = Field(
+        default=False,
+        description=(
+            'If true, render templates with Jinja2 directly and skip cookiecutter (opt-in experimental feature).'
+        ),
+    )
+    provider_scoped_template_context: bool = Field(
+        default=False,
+        description=(
+            'When true, render per-mapping `TemplateMapping` entries '
+            "using only the declaring provider's context. Opt-in and may "
+            'break templates that rely on merged context.'
+        ),
+    )
     providers: dict[str, ResolvedProviderInfo] = Field(
         default_factory=dict,
         description='Fully resolved provider information',
@@ -325,4 +421,11 @@ class RepolishConfig(BaseModel):
     providers_order: list[str] = Field(
         default_factory=list,
         description='Order in which to process providers',
+    )
+    template_overrides: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            'Mapping of glob patterns to provider aliases after resolution. '
+            'Inherited directly from `RepolishConfigFile.template_overrides`.'
+        ),
     )

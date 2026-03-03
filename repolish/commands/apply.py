@@ -3,7 +3,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.builder import create_cookiecutter_template
-from repolish.config import load_config
+from repolish.config import RepolishConfig, load_config
 from repolish.cookiecutter import (
     apply_generated_output,
     build_final_providers,
@@ -13,10 +13,148 @@ from repolish.cookiecutter import (
     render_template,
     rich_print_diffs,
 )
+
+# use rendering helper to compute the merged context used by non-migrated
+# providers; importing the private function is fine since it lives in the
+# same package and keeps the algorithm in one place.
+from repolish.hydration.rendering import _compute_merged_context
+from repolish.loader.models import Providers
+from repolish.misc import ctx_to_dict
 from repolish.utils import run_post_process
 from repolish.version import __version__
 
 logger = get_logger(__name__)
+
+
+def _create_staged_template(
+    setup_input: Path,
+    config: RepolishConfig,
+) -> dict[str, str]:
+    """Build template directory list from `config` and create staging.
+
+    This mirrors the previous inline logic in `command` but keeps the
+    complexity outside of the top-level function.
+
+    Returns:
+        A mapping from merged-template-relative-path to the provider id that
+        supplied it.  Tests previously patched `create_cookiecutter_template`
+        and expected no return value; to keep them working we normalise the
+        result here.
+    """
+    template_dirs = _gather_template_directories(config)
+    result = create_cookiecutter_template(
+        setup_input,
+        template_dirs,
+        template_overrides=config.template_overrides,
+    )
+    # result may be either Path (legacy) or (Path, sources) tuple
+    if isinstance(result, tuple) and len(result) == 2:
+        _, sources = result
+    else:
+        sources = {}
+    return sources
+
+
+def _gather_template_directories(
+    config: RepolishConfig,
+) -> list[Path] | list[tuple[str | None, Path]]:
+    """Return the template directories in the order they should be staged.
+
+    When provider metadata is present this returns a list of `(alias, Path)`
+    tuples. Otherwise a plain list of `Path` objects is returned for legacy
+    compatibility.
+    """
+    if not config.providers_order:
+        return [Path(p) for p in config.directories]
+
+    template_dirs: list[tuple[str | None, Path]] = []
+    for alias in config.providers_order:
+        info = config.providers.get(alias)
+        if info is None:
+            continue
+        path = info.target_dir / info.templates_dir
+        template_dirs.append((alias, path))
+
+    for p in config.directories:
+        if not any(str(p) == str(d) for _, d in template_dirs):
+            template_dirs.append((None, Path(p)))
+
+    return template_dirs
+
+
+def _compute_migrated_list(
+    config: RepolishConfig,
+    providers: Providers,
+) -> list[dict[str, object]]:
+    """Return an ordered list of migrated provider contexts.
+
+    Each entry includes the provider alias (if known), the template directory
+    used as the loader provider id, and the context that provider captured.
+    The ordering respects `config.providers_order` when provided, and then
+    appends any other migrated providers.
+    """
+    # build quick lookups to avoid nested loops
+    pid_to_alias: dict[str, str] = {}
+    for alias, info in config.providers.items():
+        pid_to_alias[(info.target_dir / info.templates_dir).as_posix()] = alias
+
+    def pid_for_alias(alias: str) -> str | None:
+        return pid_to_alias.get(alias)
+
+    result: list[dict[str, object]] = []
+    seen: set[str] = set()
+
+    # honour explicit ordering first
+    for alias in config.providers_order or []:
+        pid = pid_for_alias(alias)
+        if not pid or not providers.provider_migrated.get(pid):
+            continue
+        result.append(
+            {
+                'alias': alias,
+                'directory': pid,
+                'context': ctx_to_dict(providers.provider_contexts.get(pid)),
+            },
+        )
+        seen.add(pid)
+
+    # then add any migrated providers not yet recorded
+    for pid, migrated in providers.provider_migrated.items():
+        if not migrated or pid in seen:
+            continue
+        alias = pid_to_alias.get(pid)
+        result.append(
+            {
+                'alias': alias,
+                'directory': pid,
+                'context': ctx_to_dict(providers.provider_contexts.get(pid)),
+            },
+        )
+
+    return result
+
+
+def _log_final_providers_event(
+    config: RepolishConfig,
+    providers: Providers,
+    non_migrated_ctx: dict[str, object],
+    migrated_list: list[dict[str, object]],
+) -> None:
+    """Emit the `final_providers_generated` logger event.
+
+    Extracts fields from `config` and `providers` to keep the call site
+    concise.
+    """
+    logger.info(
+        'final_providers_generated',
+        template_directories=[str(d) for d in config.directories],
+        context={'non_migrated': non_migrated_ctx, 'migrated': migrated_list},
+        delete_paths=[p.as_posix() for p in providers.delete_files],
+        delete_history={
+            key: [{'source': d.source, 'action': d.action.value} for d in decisions]
+            for key, decisions in providers.delete_history.items()
+        },
+    )
 
 
 def command(config_path: Path, *, check_only: bool) -> int:
@@ -27,31 +165,29 @@ def command(config_path: Path, *, check_only: bool) -> int:
     logger.info('running_repolish', version=__version__)
 
     config = load_config(config_path)
-
     providers = build_final_providers(config)
-    logger.info(
-        'final_providers_generated',
-        template_directories=[str(d) for d in config.directories],
-        context=providers.context,
-        delete_paths=[p.as_posix() for p in providers.delete_files],
-        delete_history={
-            key: [{'source': d.source, 'action': d.action.value} for d in decisions]
-            for key, decisions in providers.delete_history.items()
-        },
+
+    # compute contexts for logging
+    non_migrated_ctx = _compute_merged_context(providers)
+    migrated_list = _compute_migrated_list(config, providers)
+    _log_final_providers_event(
+        config,
+        providers,
+        non_migrated_ctx,
+        migrated_list,
     )
 
     # Prepare staging and template
     base_dir, setup_input, setup_output = prepare_staging(config)
-
-    template_dirs = [Path(p) for p in config.directories]
-
-    create_cookiecutter_template(setup_input, template_dirs)
+    sources = _create_staged_template(setup_input, config)
+    # attach file provenance map so rendering can pick per-file context
+    providers.template_sources = sources
 
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # Render once using cookiecutter
-    render_template(setup_input, providers, setup_output)
+    # Render once (cookiecutter by default; can opt-out via config.no_cookiecutter)
+    render_template(setup_input, providers, setup_output, config)
 
     # Run any configured post-processing commands (formatters, linters, etc.)
     # Run them in the generated output directory so tools operate on the files

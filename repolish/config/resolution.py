@@ -3,13 +3,13 @@ from typing import cast
 
 from hotlog import get_logger
 
-from .models import (
+from repolish.config.models import (
     ProviderConfig,
     RepolishConfig,
     RepolishConfigFile,
     ResolvedProviderInfo,
 )
-from .providers import load_provider_info
+from repolish.config.providers import load_provider_info
 
 logger = get_logger(__name__)
 
@@ -39,6 +39,8 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
     resolved_providers = _resolve_providers(config, config_dir)
 
     return RepolishConfig(
+        no_cookiecutter=config.no_cookiecutter,
+        provider_scoped_template_context=config.provider_scoped_template_context,
         config_dir=config_dir,
         directories=directories,
         context=config.context,
@@ -48,6 +50,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
         delete_files=config.delete_files,
         providers=resolved_providers,
         providers_order=config.providers_order,
+        template_overrides=config.template_overrides,
     )
 
 
@@ -153,6 +156,8 @@ def _resolve_single_provider(
             templates_dir=provider_info.templates_dir or provider_config.templates_dir,
             library_name=provider_info.library_name,
             symlinks=symlinks,
+            context=provider_config.context,
+            context_overrides=provider_config.context_overrides or None,
         )
     if provider_config.directory:
         # Use direct directory from config
@@ -165,6 +170,8 @@ def _resolve_single_provider(
             templates_dir=provider_config.templates_dir,
             library_name=None,
             symlinks=symlinks,
+            context=provider_config.context,
+            context_overrides=provider_config.context_overrides or None,
         )
     # Neither info file nor directory config
     logger.warning(

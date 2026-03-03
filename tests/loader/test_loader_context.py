@@ -1,17 +1,22 @@
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
+from pydantic import BaseModel, field_validator
 from pytest_mock import MockerFixture
 
-from repolish.loader.context import (
-    _apply_override,
+from repolish.loader.context import _apply_override, apply_context_overrides
+from repolish.loader.module_loader import (
     _collect_context_from_module,
-    apply_context_overrides,
     call_factory_with_context,
     collect_contexts,
-    extract_context_from_module,
+    collect_contexts_with_provider_map,
     extract_from_module_dict,
+    inject_provider_instance_for_module,
 )
+from repolish.loader.orchestrator import _apply_overrides_to_model
+
+if TYPE_CHECKING:
+    from repolish.loader.models import Provider as _ProviderBase
 
 
 def test_call_factory_with_context_zero_one_and_error():
@@ -49,16 +54,30 @@ def test_extract_from_module_dict_callable_exception_propagates():
 def test_extract_context_from_module_various_cases(mocker: MockerFixture):
     # create_context callable
     md1 = cast('dict[str, object]', {'create_context': lambda: {'a': 1}})
-    assert extract_context_from_module(md1) == {'a': 1}
+    inject_provider_instance_for_module(md1, 'test.provider.ctx.func')
+    assert cast(
+        '_ProviderBase',
+        md1['_repolish_provider_instance'],
+    ).create_context() == {'a': 1}
 
     # module-level context
     md2 = cast('dict[str, object]', {'context': {'b': 2}})
-    assert extract_context_from_module(md2) == {'b': 2}
+    inject_provider_instance_for_module(md2, 'test.provider.ctx.var')
+    assert cast(
+        '_ProviderBase',
+        md2['_repolish_provider_instance'],
+    ).create_context() == {'b': 2}
 
-    # missing context triggers warning and returns None
-    mock_logger = mocker.patch('repolish.loader.context.logger')
-    assert extract_context_from_module({}) is None
-    assert mock_logger.warning.call_count >= 1
+    # missing context on an adapter-backed provider returns an empty dict
+    md3 = cast('dict[str, object]', {})
+    inject_provider_instance_for_module(md3, 'test.provider.ctx.none')
+    assert (
+        cast(
+            '_ProviderBase',
+            md3['_repolish_provider_instance'],
+        ).create_context()
+        == {}
+    )
 
 
 def test_collect_contexts_merges_and_passes_merged():
@@ -83,7 +102,31 @@ def test__collect_context_from_module_raises_on_bad_return():
         _collect_context_from_module(md, {})
 
 
+def test_collect_contexts_with_provider_map_warns_on_none_return():
+    """`create_context()` returning None emits a deprecation warning.
+
+    DeprecationWarning but is still treated as an empty context
+    (back-compat).
+    """
+    module_cache = [('prov-none', {'create_context': lambda: None})]
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=r'create_context\(\) returning None is deprecated',
+    ) as record:
+        merged, provider_map = collect_contexts_with_provider_map(module_cache)
+
+    assert merged == {}
+    assert provider_map['prov-none'] == {}
+    assert any('create_context() returning None is deprecated' in str(w.message) for w in record)
+
+
 def test_apply_context_overrides(mocker: MockerFixture):
+    # include a plain object to prove that overrides only work on dict/list
+    class Repo(BaseModel):
+        owner: str
+        name: str
+
     context = {
         'devkits': [
             {'name': 'd1', 'ref': 'v0'},
@@ -93,6 +136,7 @@ def test_apply_context_overrides(mocker: MockerFixture):
         'nested': {'deep': {'value': 'original'}},
         'string_value': 'not_a_dict',  # This will trigger cannot-navigate when we try to navigate into it
         'direct_list': ['a', 'b', 'c'],
+        'repo': Repo(owner='me', name='original'),
     }
     overrides = {
         'devkits.0.name': 'new-d1',
@@ -103,6 +147,7 @@ def test_apply_context_overrides(mocker: MockerFixture):
         'devkits.invalid.name': 'invalid-index',
         'string_value.key': 'cannot-navigate',  # Try to navigate into a string
         'direct_list.1': 'replaced',  # Direct list index replacement
+        'repo.name': 'new_name',  # should not touch Repo instance
     }
     mock_logger = mocker.patch('repolish.loader.context.logger')
     apply_context_overrides(context, overrides)
@@ -111,9 +156,12 @@ def test_apply_context_overrides(mocker: MockerFixture):
     assert context['nested']['deep']['value'] == 'updated'
     assert context['direct_list'][1] == 'replaced'  # Direct list replacement works
     assert context['nonexistent']['key'] == 'ignored'
-    # Check warnings were logged: out-of-range, invalid-index, cannot-navigate
-    # Note: nonexistent.key now creates intermediate structure instead of warning
-    assert mock_logger.warning.call_count == 3
+
+    # object fields are untouched; we logged a warning when traversal failed
+    assert context['repo'].name == 'original'
+    assert mock_logger.warning.call_count >= 4
+    # one warning should be for navigating into our Repo object
+    assert any(call.kwargs.get('current_type') == 'Repo' for call in mock_logger.warning.call_args_list)
 
 
 def test_apply_context_overrides_nested_dict():
@@ -186,3 +234,57 @@ def test_apply_context_overrides_dotted_keys_in_nested_dict():
 
     # Should create nested structure: base.codeguides.base.ref = 'some-ref'
     assert context['base']['codeguides']['base']['ref'] == 'some-ref'
+
+
+def test_apply_overrides_to_model_helper(mocker: MockerFixture):
+    """Helper should return a new model when overrides apply and warn on failure."""
+
+    class M(BaseModel):
+        a: int = 0
+
+    instance = M()
+
+    mock_logger = mocker.patch('repolish.loader.orchestrator.logger')
+
+    # override valid field
+    new = _apply_overrides_to_model(instance, {'a': 5}, provider='pid')
+    assert isinstance(new, M)
+    assert new.a == 5
+    assert mock_logger.warning.call_count == 0
+
+    # if the model transforms the value during validation but does not drop
+    # the key we also should not warn (previous implementation would log
+    # ignored_keys=[]). this simulates more complex Pydantic behaviour.
+    class N(BaseModel):
+        a: int = 0
+
+        @field_validator('a', mode='after')
+        def bump(cls, v: int) -> int:  # noqa: N805
+            return v + 10
+
+    ninst = N()
+    mock_logger.reset_mock()
+    nout = _apply_overrides_to_model(ninst, {'a': 1}, provider='pid')
+    assert isinstance(nout, N)
+    assert nout.a == 11  # validator applied
+    assert mock_logger.warning.call_count == 0
+
+    # override invalid field should log but still produce a model with
+    # identical data (identity isn't guaranteed because we re-validated).
+    mock_logger.reset_mock()
+    out = _apply_overrides_to_model(instance, {'b': 1}, provider='pid')
+    assert isinstance(out, M)
+    assert out.a == instance.a
+    assert mock_logger.warning.call_count == 1
+    assert 'context_override_ignored' in str(
+        mock_logger.warning.call_args[0][0],
+    )
+
+    # override with bad type triggers validation failure
+    mock_logger.reset_mock()
+    out2 = _apply_overrides_to_model(instance, {'a': 'nope'}, provider='pid')
+    assert out2 is instance
+    assert mock_logger.warning.call_count == 1
+    assert 'context_override_validation_failed' in str(
+        mock_logger.warning.call_args[0][0],
+    )

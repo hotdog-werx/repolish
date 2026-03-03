@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from .models import AllProviders, ProviderInfo
+from repolish.config.models import AllProviders, ProviderInfo
 
 
 def get_provider_info_path(provider_alias: str, config_dir: Path) -> Path:

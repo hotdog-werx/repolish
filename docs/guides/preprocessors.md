@@ -146,3 +146,180 @@ Preprocessors are applied in the following order:
 - For complex configurations, consider using multiregex for entire sections
 - Keep default values in templates to ensure files work without context
 - Use the debugger to validate your preprocessor patterns
+
+## Practical examples
+
+### Dockerfile (block anchor)
+
+Template (`templates/my-template/repolish/Dockerfile`):
+
+```dockerfile
+FROM python:3.11-slim
+
+## repolish-start[install]
+# install system deps
+RUN apt-get update && apt-get install -y build-essential libssl-dev
+## repolish-end[install]
+
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
+```
+
+Local project `Dockerfile` (developer has custom install needs):
+
+```dockerfile
+FROM python:3.11-slim
+
+## repolish-start[install]
+# custom build deps for project X
+RUN apt-get update && apt-get install -y locales libpq-dev
+## repolish-end[install]
+
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
+```
+
+When Repolish preprocesses the template, the `install` block from the local
+project file is preserved in the staged template. The generated output keeps the
+local custom `RUN` command while the rest of the Dockerfile comes from the
+template.
+
+### pyproject.toml (regex anchor + block anchor)
+
+Template (`templates/my-template/repolish/pyproject.toml`):
+
+```toml
+[tool.poetry]
+name = "{{ cookiecutter.package_name }}"
+version = "0.1.0"
+## repolish-regex[keep]: ^version\s*=\s*".*"
+
+description = "A short description"
+
+## repolish-start[extra-deps]
+# optional extra deps (preserved when present)
+## repolish-end[extra-deps]
+```
+
+Local `pyproject.toml` (developer bumped version and added extras):
+
+```toml
+[tool.poetry]
+name = "myproj"
+version = "0.2.0"
+
+description = "Local project description"
+
+## repolish-start[extra-deps]
+requests = "^2.30"
+## repolish-end[extra-deps]
+```
+
+The `repolish-regex[keep]` anchor ensures the local `version = "0.2.0"` line is
+preserved instead of being replaced by the template's `0.1.0`. The `extra-deps`
+block is preserved whole-cloth, letting projects keep local dependency
+additions.
+
+**Tips**
+
+- Use meaningful anchor names (`install`, `readme`, `extra-deps`) so reviewers
+  immediately understand what the preserved section contains.
+- Regex anchors are applied line-by-line; prefer simple, easy-to-read patterns
+  to avoid surprises.
+- Anchors are processed before template rendering, so template substitutions
+  still work around preserved sections.
+
+## Regex capture groups
+
+Two important behaviors control what is extracted and inserted:
+
+**Capture group preference**: If your regex includes a capturing group
+(parentheses), Repolish prefers the first capture group (group 1) as the block
+to insert into the template. If there are no capture groups, Repolish falls back
+to the entire match (group 0).
+
+**Safeguard trimming**: As a conservative safeguard Repolish trims the captured
+block to a contiguous region based on indentation, so that incidental following
+sections are not accidentally pulled in. The canonical way to express intent is
+an explicit capture group — authors should prefer to capture exactly what they
+mean.
+
+### Example
+
+Template excerpt:
+
+```toml
+cat1:
+  - line1
+  - line2
+  ## repolish-regex[cat1-filter]: (^\s*# cat1-filter-additional-paths.*\n(?:\s+.*\n)*)
+  # cat1-filter-additional-paths
+
+cat2:
+  - from-template
+  ## repolish-regex[cat2-filter]: (^\s*# cat2-filter-additional-paths.*\n(?:\s+.*\n)*)
+  # cat2-filter-additional-paths
+```
+
+Local file excerpt:
+
+```toml
+cat1:
+  - line1
+  - line2
+  # cat1-filter-additional-paths
+  - extra
+
+cat2:
+  - from-template
+```
+
+Result after preprocessing:
+
+```toml
+cat1:
+  - line1
+  - line2
+  # cat1-filter-additional-paths
+  - extra
+
+cat2:
+  - from-template
+  # cat2-filter-additional-paths
+```
+
+When your regex is too greedy, tighten it or add explicit parentheses around the
+intended capture so Repolish can reliably hydrate the template.
+
+## Anchor scope and uniqueness
+
+Anchors can come from three places and are merged in this order:
+
+1. **Provider templates**: any `## repolish-start[...]` /
+   `## repolish-regex[...]` markers present inside provider template files.
+2. **Provider code**: a provider's `create_anchors()` callable can return an
+   anchors mapping (key → replacement text) used during preprocessing.
+3. **Config-level anchors**: the `anchors` mapping in `repolish.yaml` applies
+   last and overrides earlier values.
+
+Anchor keys are **global identifiers** — they must be unique across the entire
+merged template set. If two template files from different providers use the same
+anchor key, the later provider's value wins, which can produce surprising
+results.
+
+### Example conflict
+
+Two providers accidentally use the same key `init`:
+
+- `templates/a/Dockerfile` contains `## repolish-start[init]` …
+  `## repolish-end[init]`
+- `templates/b/README.md` also contains `## repolish-start[init]` …
+  `## repolish-end[init]`
+
+The `init` block from whichever provider is processed last will replace the
+other. For predictable behavior, scope anchor keys to the file or provider: e.g.
+`docker-install` or `readme-intro`.
+
+**Best practice**: prefix anchor keys with the file or provider name when the
+content is file-scoped. This avoids accidental collisions when multiple
+providers contribute templates with similarly-named sections.

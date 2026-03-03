@@ -3,14 +3,13 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config.models import ProviderInfo
-
-from .validation import (
+from repolish.config import ProviderInfo
+from repolish.linker.validation import (
     check_copy_validity,
     validate_existing_symlink,
     validate_source_directory,
 )
-from .windows_utils import supports_symlinks
+from repolish.linker.windows_utils import supports_symlinks
 
 logger = get_logger(__name__)
 
@@ -192,7 +191,7 @@ def create_additional_link(
         True if symlink was created, False if copy was used
 
     Example:
-        >>> from repolish.config.models import ProviderInfo
+        >>> from repolish.config import ProviderInfo
         >>> provider_info = ProviderInfo(
         ...     library_name='codeguide',
         ...     target_dir='/path/to/project/.repolish/codeguide'

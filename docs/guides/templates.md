@@ -90,6 +90,48 @@ Author: {{ cookiecutter.author }}
 See the [Preprocessors guide](preprocessors.md) for information about advanced
 features like anchors, create-only blocks, and conditional content.
 
+## Jinja rendering (opt-in) and Cookiecutter deprecation
+
+Historically Repolish used Cookiecutter for the final render pass. Newer
+projects can opt into native Jinja2 rendering which provides stricter
+validation, better error messages, and more flexible features (for example
+`tuple`-valued `file_mappings` and per-file extra context).
+
+- Enable native Jinja rendering in your `repolish.yaml`:
+
+```yaml
+# Use native Jinja for rendering (opt-in; default: false)
+no_cookiecutter: true
+```
+
+- What changes when you opt in:
+  - Templates are rendered with Jinja2 using the merged provider context.
+  - The merged context is available _both_ as top-level variables and under the
+    legacy `cookiecutter` namespace to ease migration (e.g.
+    `{{ my_provider.name }}` and `{{ cookiecutter.my_provider.name }}` both
+    work).
+  - File _paths_ and _file contents_ are Jinja-rendered (so use `{{ }}` in
+    filenames like `src/{{ module_name }}.py.jinja`).
+  - `tuple`-valued `file_mappings` are supported (see below).
+
+- Why migrate away from Cookiecutter
+  - Cookiecutter treats some data structures (notably arrays) as CLI options
+    which complicates templates and provider context. Jinja does not have that
+    limitation.
+  - Jinja provides better error reporting (we use StrictUndefined by default)
+    which surfaces missing variables during preview/apply rather than failing
+    silently or producing incorrect output.
+  - The new renderer supports per-mapping extra context and avoids Cookiecutter
+    CLI prompts or option-handling quirks.
+
+- Migration tips
+  - Enable `no_cookiecutter: true` in a local config and run `poe preview` (or
+    `repolish preview`) to validate templates.
+  - Replace direct `cookiecutter.*` references where convenient with top-level
+    variables (both are supported during migration).
+  - If you rely on Cookiecutter-specific behaviors, keep the old path but plan
+    to move logic into Jinja templates or provider factories.
+
 ## Best Practices
 
 1. **Use `.jinja` for syntax highlighting**: Add `.jinja` to files with
@@ -98,3 +140,157 @@ features like anchors, create-only blocks, and conditional content.
 3. **Consistent naming**: Use the same pattern across your templates for clarity
 4. **Test both ways**: Verify your templates work with and without the extension
    since the generated output is identical
+
+## Conditional files (file mappings)
+
+Template authors can provide multiple alternative files and conditionally choose
+which one to copy based on context. This keeps filenames clean without
+`{% if %}` clutter in paths.
+
+### How it works
+
+Files in your template directory that start with `_repolish.` are treated as
+**conditional/alternative files**. They are only copied to the project when
+explicitly referenced in `create_file_mappings()` (or a `file_mappings`
+variable) in `repolish.py`. They can be placed anywhere in the template
+directory tree.
+
+The `file_mappings` return value is a dict where:
+
+- **Keys** are destination paths in the final project (must be unique)
+- **Values** are source paths in the template, or `None` to skip
+
+### Example
+
+Template directory structure:
+
+```
+templates/my-template/
+├── repolish.py
+└── repolish/
+    ├── README.md                          # Always copied
+    ├── _repolish.poetry-pyproject.toml    # Conditional
+    ├── _repolish.setup-pyproject.toml     # Conditional
+    └── .github/
+        └── workflows/
+            ├── _repolish.github-ci.yml    # Conditional (nested)
+            └── _repolish.gitlab-ci.yml    # Conditional (nested)
+```
+
+`repolish.py`:
+
+```python
+def create_context():
+    return {
+        "use_github_actions": True,
+        "use_poetry": False,
+    }
+
+def create_file_mappings():
+    ctx = create_context()
+    return {
+        ".github/workflows/ci.yml": (
+            ".github/workflows/_repolish.github-ci.yml"
+            if ctx["use_github_actions"]
+            else ".github/workflows/_repolish.gitlab-ci.yml"
+        ),
+        "pyproject.toml": (
+            "_repolish.poetry-pyproject.toml" if ctx["use_poetry"]
+            else "_repolish.setup-pyproject.toml"
+        ),
+        # None means skip — don't copy this file
+        ".pre-commit-config.yaml": None,
+    }
+```
+
+### Key behaviours
+
+- **Conditional files** (`_repolish.` prefix) are **only** copied when
+  explicitly listed in `file_mappings`.
+- **Regular files** (no prefix) are always copied normally.
+- **Destinations are unique**: you cannot map multiple sources to the same
+  destination within a single provider.
+- **None values are skipped**: returning `None` means "don't copy this file".
+- **Multiple providers**: file mappings from multiple providers are merged;
+  later providers override earlier ones for the same destination.
+
+`tuple`-valued mappings (available with `no_cookiecutter: true`) allow per-file
+extra context:
+
+```python
+def create_file_mappings():
+    return {
+        "pyproject.toml": ("_repolish.setup-pyproject.toml", {"extra_key": "value"}),
+    }
+```
+
+## Create-only files
+
+Files listed in `create_only_files` are created when they do not exist in the
+project and skipped on all subsequent runs. This is useful for initial
+scaffolding — source files, example tests, README stubs — that should be created
+once and then owned by the developer.
+
+### How it works
+
+- **Present**: file is skipped (user modifications are preserved)
+- **Absent**: file is created normally from the template
+- **Check mode**: reports `MISSING` for absent create-only files but does not
+  report diffs for files that already exist, even if content differs
+
+### Example
+
+`repolish.py`:
+
+```python
+def create_context():
+    return {"package_name": "awesome_tool"}
+
+def create_create_only_files():
+    pkg = create_context()["package_name"]
+    return [
+        f"src/{pkg}/__init__.py",
+        f"src/{pkg}/py.typed",
+        f"src/{pkg}/main.py",
+        "tests/__init__.py",
+        "tests/test_main.py",
+        "README.md",
+    ]
+```
+
+Alternatively, use a module-level variable:
+
+```python
+create_only_files = [
+    "src/awesome_tool/__init__.py",
+    "src/awesome_tool/py.typed",
+]
+```
+
+### What happens across runs
+
+**First run** (new project):
+
+```bash
+repolish apply
+```
+
+Creates the full scaffold: `src/awesome_tool/`, `tests/`, etc., along with
+`pyproject.toml` and CI configs.
+
+**Later runs** (after the developer has written code):
+
+```bash
+repolish apply
+```
+
+- Skips `src/awesome_tool/__init__.py`, `tests/test_main.py`, etc. — user
+  modifications are untouched.
+- Updates `pyproject.toml`, `.github/workflows/ci.yml`, and other regular
+  template files as usual.
+
+### Key behaviours
+
+- **Multiple providers**: `create_only_files` lists are merged additively.
+- **Works with file_mappings**: a file can be both conditional and create-only.
+- **Conflicts with delete_files**: if a file appears in both, the delete wins.

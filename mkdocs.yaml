@@ -7,28 +7,28 @@ repo_name: hotdog-werx/repolish
 nav:
   - Getting Started:
       - Installation: getting-started/installation.md
-      # - Quick Start: getting-started/quick-start.md
+      - Quick Start: getting-started/quick-start.md
   - Configuration:
       - Overview: configuration/overview.md
       - Context: configuration/context.md
       # - Overrides: wip.md
       # - Anchors: wip.md
-  - Providers:
-      - Overview: wip.md
-      # - Creating Providers: wip.md
-      # - Context Functions: wip.md
-      # - File Operations: wip.md
-  - Templating:
-      - Overview: wip.md
-      # - Template Structure: wip.md
-      # - File Mappings: wip.md
-      # - Cookiecutter Integration: wip.md
-  - Processing:
-      - Overview: wip.md
-      # - Anchors: wip.md
-      # - Regex Patterns: wip.md
-      # - Text Replacement: wip.md
-      # - Post-Processing: wip.md
+  # - Providers:
+  #     - Overview: wip.md
+  # - Creating Providers: wip.md
+  # - Context Functions: wip.md
+  # - File Operations: wip.md
+  # - Templating:
+  #     - Overview: wip.md
+  # - Template Structure: wip.md
+  # - File Mappings: wip.md
+  # - Cookiecutter Integration: wip.md
+  # - Processing:
+  #     - Overview: wip.md
+  # - Anchors: wip.md
+  # - Regex Patterns: wip.md
+  # - Text Replacement: wip.md
+  # - Post-Processing: wip.md
   - Operations:
       # - Overview: wip.md
       - CLI Commands: operations/cli.md
@@ -42,6 +42,7 @@ nav:
       - Debugging Preprocessors: guides/debugger.md
       - Preprocessors: guides/preprocessors.md
       - Templates: guides/templates.md
+      - Provider Migration: guides/provider-migration.md
       # - Troubleshooting: wip.md
 
 # Configuration

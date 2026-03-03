@@ -147,6 +147,13 @@ context:
     names: ['a', 'b', 'c'] # Works as expected
 ```
 
+Note: Repolish now supports native Jinja rendering (opt‑in via
+`no_cookiecutter: true`) which removes many Cookiecutter-specific edge cases
+(e.g. array/option handling) and enables per-file extra context via
+`tuple`-valued `file_mappings`. Prefer using namespaced, top-level context in
+templates and migrate away from direct `cookiecutter.*` references when
+convenient — the `cookiecutter` namespace is still available during migration.
+
 ## Benefits
 
 - **Maintainability**: Clear separation of provider concerns

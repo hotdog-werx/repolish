@@ -1,18 +1,44 @@
-def create_context() -> dict[str, str]:
-    """Return the cookiecutter context for the example template.
+from pydantic import BaseModel
 
-    This is intentionally small for the example.
-    """
-    return {
-        'package_name': 'project',
-    }  # git can use used to figure out repo name
-
-
-def create_delete_files() -> list[str]:
-    """Return a list of POSIX-style paths the provider proposes to delete."""
-    return ['old_file.txt']
+from repolish import (
+    FileMode,
+    Provider,
+    TemplateMapping,
+)  # re-exported for simple API
+from repolish.loader.models import BaseContext
 
 
-def create_anchors() -> dict[str, str]:
-    """Return example anchor replacements used by the example provider."""
-    return {'extra-deps': '\nrequests = "^2.30"\n'}
+class Ctx(BaseContext):
+    """Example provider context for the `template_a` example."""
+
+    package_name: str = 'my-project'
+
+
+class TemplateAProvider(Provider[Ctx, BaseModel]):
+    """Class-based example provider for the `template_a` example."""
+
+    def get_provider_name(self) -> str:
+        """Return the provider identifier for this example."""
+        return 'template_a'
+
+    def create_context(self) -> Ctx:
+        """Return this provider's Pydantic context model."""
+        return Ctx()
+
+    def create_file_mappings(
+        self,
+        context: Ctx,  # noqa: ARG002 - context is not used in this example
+    ) -> dict[str, str | TemplateMapping]:
+        """Return file mappings for this example.
+
+        Uses a `TemplateMapping` with `FileMode.DELETE` to mark
+        `old_file.txt` for deletion.
+        """
+        return {'old_file.txt': TemplateMapping(None, None, FileMode.DELETE)}
+
+    def create_anchors(
+        self,
+        _ctx: dict[str, object] | None = None,
+    ) -> dict[str, str]:
+        """Return anchor replacements used by the example provider."""
+        return {'extra-deps': '\nrequests = "^2.30"\n'}

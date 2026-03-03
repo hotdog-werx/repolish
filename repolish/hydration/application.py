@@ -3,10 +3,10 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.loader import Providers
-
-from .comparison import collect_output_files
-from .context import _is_conditional_file
+from repolish.hydration.comparison import collect_output_files
+from repolish.hydration.misc import get_source_str_from_mapping
+from repolish.loader import Providers, TemplateMapping
+from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)
 
@@ -30,7 +30,7 @@ def _apply_regular_files(
         rel_str = rel.as_posix()
 
         # Skip conditional files (files with _repolish. prefix anywhere in path)
-        if _is_conditional_file(rel_str):
+        if is_conditional_file(rel_str):
             logger.debug('skipping_repolish_prefix_file', file=rel_str)
             continue
 
@@ -57,52 +57,82 @@ def _apply_regular_files(
         shutil.copy2(out, dest)
 
 
+def _copy_mapping_file(
+    dest_path: str,
+    source_str: str,
+    setup_output: Path,
+    base_dir: Path,
+    create_only_files_set: set[str],
+) -> None:
+    """Copy the resolved source string into the destination path (handles logging)."""
+    # mapping sources are materialized with a filename prefix; attempt to
+    # load the prefixed file first and fall back to the original name if the
+    # prefix isn't present (compatibility with older runs).
+    prefix = '_repolish.'
+    source_file = setup_output / 'repolish' / source_str
+    if not source_file.exists():
+        cand = Path(source_str)
+        prefixed = setup_output / 'repolish' / cand.parent / (prefix + cand.name)
+        if prefixed.exists():
+            source_file = prefixed
+        else:
+            logger.warning(
+                'file_mapping_source_not_found',
+                source=source_str,
+                dest=dest_path,
+            )
+            return
+
+    dest_file = base_dir / dest_path
+    # Respect create-only semantics
+    if dest_path in create_only_files_set and dest_file.exists():
+        logger.info(
+            'create_only_file_mapping_exists_skipping',
+            dest=dest_path,
+            source=source_str,
+            target_path=str(dest_file),
+            _display_level=1,
+        )
+        return
+
+    dest_file.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        'copying_file_mapping',
+        source=source_str,
+        dest=dest_path,
+        target_path=str(dest_file),
+        _display_level=1,
+    )
+    shutil.copy2(source_file, dest_file)
+
+
 def _apply_file_mappings(
-    file_mappings: dict[str, str],
+    file_mappings: dict[str, str | TemplateMapping],
     setup_output: Path,
     base_dir: Path,
     create_only_files_set: set[str],
 ) -> None:
     """Process file_mappings: copy source -> destination with rename.
 
-    Args:
-        file_mappings: Dict mapping destination paths to source paths.
-        setup_output: Path to the cookiecutter output directory.
-        base_dir: Base directory where the project root is located.
-        create_only_files_set: Set of destination paths that should only be created if they don't exist.
+    Implementation delegates validation and copy work to small helpers to
+    keep cognitive complexity low while preserving behavior.
     """
     for dest_path, source_path in file_mappings.items():
-        source_file = setup_output / 'repolish' / source_path
-        if not source_file.exists():
-            logger.warning(
-                'file_mapping_source_not_found',
-                source=source_path,
-                dest=dest_path,
-            )
+        source_str = get_source_str_from_mapping(source_path)
+        # When mapping has no source (e.g. TemplateMapping with None) skip
+        if not source_str:
+            if isinstance(source_path, TemplateMapping):
+                # warn rather than debug so misconfigured providers are visible
+                logger.warning('mapping_without_source', dest=dest_path)
             continue
 
-        dest_file = base_dir / dest_path
-
-        # Check if this destination is create-only and already exists
-        if dest_path in create_only_files_set and dest_file.exists():
-            logger.info(
-                'create_only_file_mapping_exists_skipping',
-                dest=dest_path,
-                source=source_path,
-                target_path=str(dest_file),
-                _display_level=1,
-            )
-            continue
-
-        dest_file.parent.mkdir(parents=True, exist_ok=True)
-        logger.info(
-            'copying_file_mapping',
-            source=source_path,
-            dest=dest_path,
-            target_path=str(dest_file),
-            _display_level=1,
+        _copy_mapping_file(
+            dest_path,
+            source_str,
+            setup_output,
+            base_dir,
+            create_only_files_set,
         )
-        shutil.copy2(source_file, dest_file)
 
 
 def apply_generated_output(
@@ -120,7 +150,7 @@ def apply_generated_output(
     Returns None. Exceptions during per-file operations are raised to caller.
     """
     output_files = collect_output_files(setup_output)
-    mapped_sources = set(providers.file_mappings.values())
+    mapped_sources = {v for v in providers.file_mappings.values() if isinstance(v, str)}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     logger.info(

@@ -1,43 +1,30 @@
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
+from typing import cast
 
-from .context import call_factory_with_context, extract_from_module_dict
-from .module import get_module
-from .types import Action, Decision
+from repolish.loader.models import Action, Decision, FileMode, TemplateMapping
 
 
 def process_delete_files(
-    module_dict: dict[str, object],
-    merged_context: dict[str, object],
+    mappings: dict[str, str | TemplateMapping] | object,
     delete_set: set[Path],
 ) -> list[Path]:
-    """Process a provider's delete-file contributions.
+    """Process a provider's delete-file contributions from precomputed mapping.
 
-    Supports a callable `create_delete_files()` returning a list/tuple or a
-    module-level `delete_files`. Returns a list of normalized `Path` objects
-    that can be used as fallbacks for raw module-level delete entries.
+    `mappings` is normally the return value of
+    `provider.create_file_mappings()`.  This helper scans it for
+    `FileMode.DELETE` items and adds the corresponding paths to
+    `delete_set`.  A list of those paths is also returned for callers that
+    need fallback history.
     """
-    df_fact = module_dict.get('create_delete_files')
-    df: list | tuple | None = None
     fallback_paths: list[Path] = []
-    if callable(df_fact):
-        val = call_factory_with_context(df_fact, merged_context)
-        if val is None:
-            df = []
-        elif not isinstance(val, (list, tuple)):
-            msg = 'create_delete_files() must return a list or tuple'
-            raise TypeError(msg)
-        else:
-            df = val
-    else:
-        df_var = module_dict.get('delete_files')
-        if isinstance(df_var, (list, tuple)):
-            df = df_var
+    if not isinstance(mappings, dict):
+        return fallback_paths
 
-    if callable(df_fact) and isinstance(df, (list, tuple)):
-        norm = _normalize_delete_iterable(df)
-        for it in norm:
-            p = Path(*PurePosixPath(it).parts)
+    for k, v in mappings.items():
+        if isinstance(v, TemplateMapping) and v.file_mode == FileMode.DELETE:
+            key = cast('str', k)
+            p = Path(*PurePosixPath(key).parts)
             delete_set.add(p)
             fallback_paths.append(p)
     return fallback_paths
@@ -92,38 +79,6 @@ def _normalize_delete_iterable(items: Iterable[object]) -> list[str]:
         if n:
             out.append(n)
     return out
-
-
-def extract_delete_items_from_module(
-    module: str | dict[str, object],
-) -> list[str]:
-    """Extract raw delete-file entries (POSIX strings) from a module path or dict.
-
-    Supports a callable `create_delete_files()` returning a list/tuple or a
-    module-level `delete_files`. Returns a list of POSIX-style strings. Exceptions
-    are logged and the function returns an empty list on failure.
-    """
-    module_dict = module if isinstance(module, dict) else get_module(str(module))
-
-    df = extract_from_module_dict(
-        module_dict,
-        'create_delete_files',
-        expected_type=(list, tuple),
-    )
-    # df may be None or a list/tuple — only treat it as iterable when it's
-    # actually a sequence. This narrows the type for the static checker.
-    if isinstance(df, (list, tuple)):
-        # Normalization raises on bad entries in fail-fast mode
-        return _normalize_delete_iterable(df)
-
-    raw_res = extract_from_module_dict(
-        module_dict,
-        'delete_files',
-        expected_type=(list, tuple),
-        allow_callable=False,
-    )
-    raw = raw_res if isinstance(raw_res, (list, tuple)) else []
-    return _normalize_delete_iterable(raw)
 
 
 def _apply_raw_delete_items(

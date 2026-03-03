@@ -29,7 +29,7 @@ def make_template_with_unreadable(base: Path, name: str) -> None:
     rep.write_text(
         textwrap.dedent("""\
     def create_context():
-        return {'repo_name': 'test_repo'}
+        return {'repo': {'name': 'test_repo'}}
     """),
     )
 
@@ -44,7 +44,7 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     # Stage the template into setup_input using the builder helper
     staging = tmp_path / '.repolish'
     setup_input = staging / 'setup-input'
-    create_cookiecutter_template(setup_input, [t1])
+    _, _ = create_cookiecutter_template(setup_input, [t1])
 
     # Find the staged secret file and make it unreadable
     staged_secret = setup_input / '{{cookiecutter._repolish_project}}' / 'secret.txt'

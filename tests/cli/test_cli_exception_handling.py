@@ -7,8 +7,6 @@ import pytest
 from pytest_mock import MockerFixture
 
 from repolish.cli.main import app as cli_main
-from repolish.cli.standalone.link_cli import app as link_cli_main
-from repolish.cli.standalone.preview_cli import app as debug_cli_main
 
 
 @dataclass
@@ -61,19 +59,8 @@ class CLITestCase:
                 """),
             error_has='Cannot specify both cli and directory',
         ),
-        # REMOVE later when link CLI is removed
-        CLITestCase(
-            name='link_cli_both_cli_and_directory',
-            main_func=link_cli_main,
-            argv=['repolish-link', '--config', '{config_path}'],
-            config_content=textwrap.dedent("""\
-                providers:
-                  some-provider:
-                    cli: some-link-cli
-                    directory: ./templates
-                """),
-            error_has='Cannot specify both cli and directory',
-        ),
+        # deprecated: moved to tests/deprecated/cli/test_cli_standalone.py
+        # (standalone `repolish-link` test removed from main suite)
         CLITestCase(
             name='preview_missing_template',
             main_func=cli_main,
@@ -87,20 +74,8 @@ class CLITestCase:
             config_filename='debug.yaml',
             error_has='Field required',
         ),
-        # REMOVE later when debug CLI is removed
-        CLITestCase(
-            name='debug_cli_missing_template',
-            main_func=debug_cli_main,
-            argv=['repolish-debugger', '{config_path}'],
-            config_content=textwrap.dedent("""\
-                target: |
-                  some content
-                config:
-                  anchors: {}
-                """),
-            config_filename='debug.yaml',
-            error_has='Field required',
-        ),
+        # deprecated: moved to tests/deprecated/cli/test_cli_standalone.py
+        # (standalone `repolish-debugger` test removed from main suite)
     ],
     ids=lambda case: case.name,
 )

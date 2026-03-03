@@ -5,9 +5,9 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.loader import Providers
-
-from .context import _is_conditional_file
+from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)
 
@@ -100,7 +100,7 @@ def _check_regular_files(
         rel_str = rel.as_posix()
 
         # Skip conditional files (files with _repolish. prefix anywhere in path)
-        if _is_conditional_file(rel_str):
+        if is_conditional_file(rel_str):
             continue
 
         # Skip files that are mapped sources, marked for deletion, or create-only files that exist
@@ -147,7 +147,16 @@ def _check_single_file_mapping(
 
     Returns (dest_path, message_or_diff) tuple if there's a diff, None if same.
     """
-    source_file = setup_output / 'repolish' / source_path
+    # mapping outputs are written with a filename prefix so they don't
+    # interfere with regular template files. look for the prefixed variant
+    # first but fall back to the unprefixed name for backwards compatibility.
+    prefix = '_repolish.'
+    candidate = setup_output / 'repolish' / source_path
+    if not candidate.exists():
+        cand_path = Path(source_path)
+        prefixed = setup_output / 'repolish' / cand_path.parent / (prefix + cand_path.name)
+        candidate = prefixed
+    source_file = candidate
     if not source_file.exists():
         return (dest_path, f'MAPPING_SOURCE_MISSING: {source_path}')
 
@@ -176,6 +185,16 @@ def _check_single_file_mapping(
     return (dest_path, ud)
 
 
+def _should_skip_mapping(
+    dest_path: str,
+    delete_files_set: set[str],
+    create_only_files_set: set[str],
+    base_dir: Path,
+) -> bool:
+    """Return True when the mapping should be skipped from checks."""
+    return dest_path in delete_files_set or (dest_path in create_only_files_set and (base_dir / dest_path).exists())
+
+
 def _check_file_mappings(
     providers: Providers,
     setup_output: Path,
@@ -185,30 +204,29 @@ def _check_file_mappings(
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
-    Args:
-        providers: Providers object with file_mappings, delete_files, and create_only_files.
-        setup_output: Path to the cookiecutter output directory.
-        base_dir: Base directory where the project root is located.
-        preserve: Whether to preserve line endings when comparing files.
-
-    Returns list of (relative_path, message_or_diff).
+    Implementation delegates skip logic and source normalization to helpers
+    so the main loop remains small and easy to follow.
     """
     diffs: list[tuple[str, str]] = []
     delete_files_set = {p.as_posix() for p in providers.delete_files}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     for dest_path, source_path in providers.file_mappings.items():
-        # Skip files marked for deletion (they'll be checked separately)
-        if dest_path in delete_files_set:
+        if _should_skip_mapping(
+            dest_path,
+            delete_files_set,
+            create_only_files_set,
+            base_dir,
+        ):
             continue
 
-        # Skip create-only files that already exist (no diff should be shown)
-        if dest_path in create_only_files_set and (base_dir / dest_path).exists():
+        src = get_source_str_from_mapping(source_path)
+        if not src:
             continue
 
         result = _check_single_file_mapping(
             dest_path,
-            source_path,
+            src,
             setup_output,
             base_dir,
             preserve=preserve,
@@ -232,7 +250,7 @@ def check_generated_output(
     diffs: list[tuple[str, str]] = []
 
     preserve = _preserve_line_endings()
-    mapped_sources = set(providers.file_mappings.values())
+    mapped_sources = {v for v in providers.file_mappings.values() if isinstance(v, str)}
     delete_files_set = {str(p) for p in providers.delete_files}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 

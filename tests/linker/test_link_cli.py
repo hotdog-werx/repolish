@@ -13,8 +13,12 @@ from repolish.commands.link import (
 from repolish.commands.link import (
     command as run_link,
 )
-from repolish.config import ProviderConfig, ProviderInfo, ProviderSymlink
-from repolish.config.models import RepolishConfigFile
+from repolish.config import (
+    ProviderConfig,
+    ProviderInfo,
+    ProviderSymlink,
+    RepolishConfigFile,
+)
 from repolish.linker import (
     create_provider_symlinks,
     process_provider,
