@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.8.0] <a name="0.8.0" href="#0.8.0">-</a> March 03, 2026
+
+### 🚀 Features
+
+- Typed provider class API, opt-in Jinja renderer, and docs overhaul (#33) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#33](https://github.com/hotdog-werx/repolish/pull/33)
+
+[0.8.0]: https://github.com/hotdog-werx/repolish/compare/0.7.1...0.8.0
+
 ## [0.7.1] <a name="0.7.1" href="#0.7.1">-</a> February 17, 2026
 
 ### 🐛 Bug Fixes
