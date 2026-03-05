@@ -67,30 +67,18 @@ can see why a path was flagged.
 
 ---
 
-!!! warning "Cookiecutter deprecation & migration (planned for v1)"
+!!! warning "Cookiecutter support removed"
 
-    Cookiecutter-based final rendering will be removed in the v1 release. You
-    can migrate now by enabling the opt-in native Jinja renderer
-    (`no_cookiecutter: true`) and validating your templates with
-    `repolish preview`.
+    Apple was here!  As of the v1 release all rendering is handled via Jinja2.
+    The old Cookiecutter engine and the `no_cookiecutter` setting have been
+    removed from the configuration schema and dependencies.  Projects do not
+    need to take any action unless they still reference the deprecated
+    configuration key; simply delete it and rerun your migration/test suite.
 
-    **Why migrate**
+    *Templates may still use `cookiecutter.*` variable names for backward
+    compatibility; the corresponding values are injected into the context.*
 
-    - Jinja avoids Cookiecutter CLI/option quirks (arrays treated as options),
-      provides stricter validation (`StrictUndefined`) and clearer error
-      messages, and enables new features such as `tuple`-valued `file_mappings`
-      (per-file extra context).
-
-    **Quick migration steps**
-
-    1. Enable `no_cookiecutter: true` and run `repolish apply`.
-    2. Update templates to prefer top-level context access
-       (`{{ my_provider.* }}`) — the `cookiecutter` namespace remains available
-       during migration.
-    3. Follow the examples in the [Templates guide](guides/templates.md).
-
-    See also: [Loader context](configuration/context.md) for `file_mappings`
-    examples.
+    See the [Templates guide](guides/templates.md) for more details.
 
 ## Documentation
 

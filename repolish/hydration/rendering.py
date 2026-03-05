@@ -1,9 +1,7 @@
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from shutil import copy2
 
-from cookiecutter.main import cookiecutter
 from hotlog import get_logger
 from jinja2 import (
     Environment,
@@ -217,28 +215,6 @@ def _jinja_render(
         raise UndefinedError(msg) from exc
 
 
-def render_with_cookiecutter(
-    setup_input: Path,
-    merged_ctx: dict,
-    setup_output: Path,
-) -> None:
-    """Deprecated: render using cookiecutter for backward compatibility.
-
-    This wrapper keeps the previous cookiecutter-based behaviour but is
-    separated so the cookiecutter implementation can be removed in the
-    future.
-    """
-    ctx_file = setup_input / 'cookiecutter.json'
-    ctx_file.write_text(
-        json.dumps(merged_ctx, ensure_ascii=False),
-        encoding='utf-8',
-    )
-
-    # NOTE: cookiecutter-based rendering is deprecated internally and may be
-    # removed in a future release — prefer `render_with_jinja` when possible.
-    cookiecutter(str(setup_input), no_input=True, output_dir=str(setup_output))
-
-
 def _compute_merged_context(providers: Providers) -> dict[str, object]:
     """Return a merged provider context used for rendering and logging.
 
@@ -323,13 +299,7 @@ def render_template(
         skip_templates=skip_templates,
     )
 
-    if config.no_cookiecutter:
-        render_with_jinja(render_ctx)
-    else:
-        if skip_templates:  # pragma: no cover -- cookiecutter path not supported for per-file TemplateMapping
-            msg = 'TemplateMapping entries require config.no_cookiecutter=True'
-            raise RuntimeError(msg)
-        render_with_cookiecutter(setup_input, merged_ctx, setup_output)
+    render_with_jinja(render_ctx)
 
     # Materialize TemplateMapping entries (render template per-mapping using
     # merged_ctx + extra_ctx).  we reuse `render_ctx` but switch on the

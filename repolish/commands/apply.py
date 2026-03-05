@@ -4,7 +4,7 @@ from hotlog import get_logger
 
 from repolish.builder import create_cookiecutter_template
 from repolish.config import RepolishConfig, load_config
-from repolish.cookiecutter import (
+from repolish.hydration import (
     apply_generated_output,
     build_final_providers,
     check_generated_output,
@@ -189,7 +189,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # Render once (cookiecutter by default; can opt-out via config.no_cookiecutter)
+    # Render templates using Jinja2 (cookiecutter support removed).
     render_template(setup_input, providers, setup_output, config)
 
     # Run any configured post-processing commands (formatters, linters, etc.)

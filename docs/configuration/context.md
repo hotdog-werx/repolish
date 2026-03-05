@@ -165,11 +165,7 @@ Notes:
 - `TemplateMapping(source_template, extra_context)` is the required and
   preferred form for per-file extra context; `extra_context` should be a typed
   `pydantic.BaseModel` when schema validation is desired.
-- Template-mapping rendering is performed by the **Jinja renderer only** — you
-  must enable `no_cookiecutter: true` in your configuration for
-  `TemplateMapping` entries to be materialized. Attempting to use
-  `TemplateMapping` while cookiecutter rendering is enabled will raise at
-  runtime.
+- Template-mapping rendering is performed by the Jinja renderer.
 
 - During rendering, Pydantic models in `extra_context` are converted to plain
   dicts. The original typed instance is preserved in `Providers.file_mappings`
@@ -234,13 +230,6 @@ of unmigrated providers so you can continue migrating safely.
 
 > Note: this behaviour is an opt-in, preparatory step for the v1 release. Use it
 > to progressively migrate providers and gain stronger isolation.
-
-> Compatibility note: cookiecutter-based rendering is still supported but opting
-> in to `TemplateMapping` requires `no_cookiecutter: true`. Because cookiecutter
-> will be removed in the next major version, migrate templates and provider
-> mappings to `TemplateMapping` on your upgrade schedule; if you must remain
-> compatible with older releases, pin to the most recent non-breaking release
-> until you migrate.
 
 ## Precedence and overrides
 

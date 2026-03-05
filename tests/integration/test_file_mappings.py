@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from repolish.cookiecutter import apply_generated_output, check_generated_output
+from repolish.hydration import apply_generated_output, check_generated_output
 from repolish.loader import (
     Providers,
     create_providers,

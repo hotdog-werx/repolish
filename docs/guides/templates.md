@@ -90,47 +90,30 @@ Author: {{ cookiecutter.author }}
 See the [Preprocessors guide](preprocessors.md) for information about advanced
 features like anchors, create-only blocks, and conditional content.
 
-## Jinja rendering (opt-in) and Cookiecutter deprecation
+## Jinja rendering (cookiecutter removed)
 
-Historically Repolish used Cookiecutter for the final render pass. Newer
-projects can opt into native Jinja2 rendering which provides stricter
-validation, better error messages, and more flexible features (for example
-`tuple`-valued `file_mappings` and per-file extra context).
+All template rendering now uses Jinja2 exclusively; the legacy Cookiecutter
+wrapper and its configuration flag have been dropped. Projects no longer need to
+opt in, and the `repolish.yaml` schema no longer contains a `no_cookiecutter`
+setting.
 
-- Enable native Jinja rendering in your `repolish.yaml`:
+The merged provider context is available both as top‑level variables and, for
+backwards compatibility, under the `cookiecutter` namespace. Thus existing
+templates continue to work while you gradually remove the `cookiecutter.`
+prefix.
 
-```yaml
-# Use native Jinja for rendering (opt-in; default: false)
-no_cookiecutter: true
-```
+Why we switched to Jinja:
 
-- What changes when you opt in:
-  - Templates are rendered with Jinja2 using the merged provider context.
-  - The merged context is available _both_ as top-level variables and under the
-    legacy `cookiecutter` namespace to ease migration (e.g.
-    `{{ my_provider.name }}` and `{{ cookiecutter.my_provider.name }}` both
-    work).
-  - File _paths_ and _file contents_ are Jinja-rendered (so use `{{ }}` in
-    filenames like `src/{{ module_name }}.py.jinja`).
-  - `tuple`-valued `file_mappings` are supported (see below).
+- binds more naturally to Python data types and avoids Cookiecutter's CLI option
+  quirks (arrays, prompts, etc.).
+- provides stricter validation via `StrictUndefined`, catching missing keys
+  early in preview runs.
+- allows features like tuple-valued `file_mappings` and per‑file extra context
+  without special cases.
 
-- Why migrate away from Cookiecutter
-  - Cookiecutter treats some data structures (notably arrays) as CLI options
-    which complicates templates and provider context. Jinja does not have that
-    limitation.
-  - Jinja provides better error reporting (we use StrictUndefined by default)
-    which surfaces missing variables during preview/apply rather than failing
-    silently or producing incorrect output.
-  - The new renderer supports per-mapping extra context and avoids Cookiecutter
-    CLI prompts or option-handling quirks.
-
-- Migration tips
-  - Enable `no_cookiecutter: true` in a local config and run `poe preview` (or
-    `repolish preview`) to validate templates.
-  - Replace direct `cookiecutter.*` references where convenient with top-level
-    variables (both are supported during migration).
-  - If you rely on Cookiecutter-specific behaviors, keep the old path but plan
-    to move logic into Jinja templates or provider factories.
+Migration is automatic for most users; simply remove any residual
+`no_cookiecutter` settings and continue editing templates as before. The old
+namespace remains available during transition.
 
 ## Best Practices
 
@@ -214,8 +197,8 @@ def create_file_mappings():
 - **Multiple providers**: file mappings from multiple providers are merged;
   later providers override earlier ones for the same destination.
 
-`tuple`-valued mappings (available with `no_cookiecutter: true`) allow per-file
-extra context:
+`tuple`-valued mappings allow per-file extra context and are supported with the
+current Jinja-only renderer:
 
 ```python
 def create_file_mappings():

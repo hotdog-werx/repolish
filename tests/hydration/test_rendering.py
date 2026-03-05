@@ -40,8 +40,26 @@ def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
     return tpl
 
 
-def test_render_template_with_no_cookiecutter_renders_jinja(tmp_path: Path):
-    """When config.no_cookiecutter is True, templates are rendered with Jinja2."""
+def test_render_template_renders_with_jinja(tmp_path: Path):
+    """Templates should always be rendered using Jinja2 after cookiecutter removal."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'foo.jinja').write_text(
+        'value={{ cookiecutter.value }}',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    providers = Providers(
+        context={'value': 'hello', '_repolish_project': 'repolish'},
+    )
+    preprocess_templates(setup_input, providers, config, base_dir)
+
+    render_template(setup_input, providers, setup_output, config)
+    assert (setup_output / 'repolish' / 'foo').read_text() == 'value=hello'
 
 
 def test_render_template_logs_merged_context(
@@ -66,7 +84,6 @@ def test_render_template_logs_merged_context(
     )
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     mock_logger = mocker.patch('repolish.hydration.rendering.logger')
     render_template(setup_input, providers, setup_output, config)
 
@@ -193,7 +210,6 @@ def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
     )
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
 
     out_file = setup_output / 'repolish' / 'acme' / 'README.md'
@@ -236,7 +252,6 @@ def test_render_with_file_mappings_generates_multiple_files(
 
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
 
     prefix = '_repolish.'
@@ -289,7 +304,6 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
 
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
 
     prefix = '_repolish.'
@@ -303,43 +317,6 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
     # After rendering the mapping entries are normalized to destination paths
     assert providers.file_mappings['file-typed-1.txt'] == 'file-typed-1.txt'
     assert providers.file_mappings['file-typed-2.txt'] == 'file-typed-2.txt'
-
-
-def test_cookiecutter_and_jinja_paths_produce_equivalent_output(tmp_path: Path):
-    """Ensure disabling cookiecutter produces equivalent rendered files."""
-    tpl = _make_template_dir(tmp_path, name='tpl2')
-
-    config = RepolishConfig(config_dir=tmp_path)
-
-    # --- cookiecutter run (default) ---
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    _, _ = create_cookiecutter_template(setup_input, [tpl])
-    providers = Providers(
-        context={'package_name': 'demo', 'description': 'Demo project'},
-    )
-    preprocess_templates(setup_input, providers, config, base_dir)
-
-    # run cookiecutter (default behavior)
-    render_template(setup_input, providers, setup_output, config)
-    cookie_out = setup_output / 'repolish' / 'demo' / 'README.md'
-    assert cookie_out.exists()
-    cookie_text = cookie_out.read_text(encoding='utf-8')
-
-    # --- jinja run (opted-out) ---
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    _, _ = create_cookiecutter_template(setup_input, [tpl])
-    preprocess_templates(setup_input, providers, config, base_dir)
-
-    config.no_cookiecutter = True
-    # When opting out, provider context needs _repolish_project if you want a specific folder
-    providers.context.setdefault('_repolish_project', 'repolish')
-    render_template(setup_input, providers, setup_output, config)
-
-    jinja_out = setup_output / 'repolish' / 'demo' / 'README.md'
-    assert jinja_out.exists()
-    jinja_text = jinja_out.read_text(encoding='utf-8')
-
-    assert cookie_text == jinja_text
 
 
 def test_render_with_jinja_copies_binary_files(tmp_path: Path):
@@ -365,7 +342,6 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
 
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
 
     out_logo = setup_output / 'repolish' / 'logo.png'
@@ -439,7 +415,6 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     providers = create_providers([str(prov_a), str(prov_b)])
 
     # Enable Jinja rendering (scoped context is now automatic)
-    config.no_cookiecutter = True
 
     # Render: both templates should succeed and have access to all keys.
     preprocess_templates(setup_input, providers, config, base_dir)
@@ -497,7 +472,6 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
     preprocess_templates(setup_input, providers, config, base_dir)
 
     # Enable Jinja rendering (scoped context applies automatically)
-    config.no_cookiecutter = True
     render_template(setup_input, providers, setup_output, config)
     prefix = '_repolish.'
     assert (setup_output / 'repolish' / f'{prefix}m.txt').read_text(
@@ -544,7 +518,6 @@ def create_context():
 
     providers = create_providers([str(p_a), str(p_b)])
     preprocess_templates(setup_input, providers, config, base_dir)
-    config.no_cookiecutter = True
 
     # rendering should succeed and include foo from provider A
     render_template(setup_input, providers, setup_output, config)
@@ -589,7 +562,6 @@ def create_context():
     providers.template_sources = sources
 
     preprocess_templates(setup_input, providers, config, base_dir)
-    config.no_cookiecutter = True
     # the configuration flag is now irrelevant for scoping; set it False to
     # prove that provider-specific contexts still win.
     config.provider_scoped_template_context = False
@@ -620,7 +592,6 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     providers = Providers(context={'_repolish_project': 'repolish'})
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     # patch logger so we can introspect which context was used during failure
     with (
         patch('repolish.hydration.rendering.logger') as mock_logger,
@@ -654,7 +625,6 @@ def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
     providers = Providers(context={'_repolish_project': 'repolish', 'bad': 'x'})
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     with pytest.raises(TemplateSyntaxError):
         render_template(setup_input, providers, setup_output, config)
 
@@ -677,7 +647,6 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
     providers = Providers(context={'_repolish_project': 'repolish'})
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    config.no_cookiecutter = True
     with pytest.raises(TemplateSyntaxError):
         render_template(setup_input, providers, setup_output, config)
 
@@ -709,7 +678,6 @@ def test_template_mapping_undefined_errors_are_collected(tmp_path: Path):
     )
 
     preprocess_templates(setup_input, providers, config, base_dir)
-    config.no_cookiecutter = True
 
     with pytest.raises(RuntimeError) as exc:
         render_template(setup_input, providers, setup_output, config)
@@ -739,7 +707,6 @@ def test_render_template_prunes_missing_and_unreadable_mapping(tmp_path: Path):
     )
 
     preprocess_templates(setup_input, providers, config, base_dir)
-    config.no_cookiecutter = True
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -772,7 +739,6 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
     )
 
     preprocess_templates(setup_input, providers, config, base_dir)
-    config.no_cookiecutter = True
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -803,9 +769,5 @@ def test_render_template_raises_when_templatemappings_and_cookiecutter_enabled(
 
     preprocess_templates(setup_input, providers, config, base_dir)
 
-    # default config.no_cookiecutter is False -> render_template must raise
-    with pytest.raises(
-        RuntimeError,
-        match=r'TemplateMapping entries require config\.no_cookiecutter=True',
-    ):
-        render_template(setup_input, providers, setup_output, config)
+    # template mappings are always supported; jinja handles them directly
+    render_template(setup_input, providers, setup_output, config)

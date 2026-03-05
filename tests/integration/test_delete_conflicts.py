@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from repolish.cookiecutter import apply_generated_output, check_generated_output
+from repolish.hydration import apply_generated_output, check_generated_output
 from repolish.loader import Providers
 
 
