@@ -64,7 +64,6 @@ class LoadProviderInfoCase:
     info_content: str | None  # None means file doesn't exist
     provider_alias: str
     expected_target_dir: str | None
-    expected_templates_dir: str | None = None
     expected_library_name: str | None = None
 
 
@@ -79,7 +78,6 @@ class LoadProviderInfoCase:
 "library_name": "codeguide"}""",
             provider_alias='base',
             expected_target_dir='.repolish/codeguide/resources',
-            expected_templates_dir='templates',
             expected_library_name='codeguide',
         ),
         LoadProviderInfoCase(
@@ -87,7 +85,6 @@ class LoadProviderInfoCase:
             info_content='{"target_dir": ".repolish/python-tools/res", "source_dir": "/fake/source/python-tools"}',
             provider_alias='py',
             expected_target_dir='.repolish/python-tools/res',
-            expected_templates_dir=None,
             expected_library_name=None,
         ),
         LoadProviderInfoCase(
@@ -125,5 +122,6 @@ def test_load_provider_info(tmp_path: Path, case: LoadProviderInfoCase):
     else:
         assert result is not None
         assert result.target_dir == case.expected_target_dir
-        assert result.templates_dir == case.expected_templates_dir
+        # the old ``templates_dir`` field is ignored/removed
+        assert not hasattr(result, 'templates_dir')
         assert result.library_name == case.expected_library_name

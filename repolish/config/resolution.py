@@ -105,8 +105,8 @@ def _resolve_single_provider(
         symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
         return ResolvedProviderInfo(
             alias=alias,
+            # `target_dir` should already point at templates root
             target_dir=target_dir,
-            templates_dir=provider_info.templates_dir or provider_config.templates_dir,
             library_name=provider_info.library_name,
             symlinks=symlinks,
             context=provider_config.context,
@@ -120,7 +120,6 @@ def _resolve_single_provider(
         return ResolvedProviderInfo(
             alias=alias,
             target_dir=target_dir,
-            templates_dir=provider_config.templates_dir,
             library_name=None,
             symlinks=symlinks,
             context=provider_config.context,
@@ -147,86 +146,3 @@ def _resolve_path(path: str | Path, base_dir: Path) -> Path:
     """
     p = Path(path)
     return p.resolve() if p.is_absolute() else (base_dir / p).resolve()
-
-
-def _build_directories_from_providers(
-    config: RepolishConfigFile,
-    config_dir: Path,
-) -> list[Path]:
-    """Build directories list from providers.
-
-    Uses providers_order if specified, otherwise uses providers dict key order.
-
-    Args:
-        config: Raw configuration
-        config_dir: Directory containing the config file
-
-    Returns:
-        List of resolved directory paths from providers
-    """
-    resolved = []
-    # Use providers_order if specified, else use providers dict key order (preserves YAML order)
-    provider_names = config.providers_order if config.providers_order else list(config.providers.keys())
-
-    for provider_name in provider_names:
-        templates_path = _get_provider_templates_dir(
-            config,
-            provider_name,
-            config_dir,
-        )
-        if templates_path:
-            resolved.append(templates_path)
-
-    return resolved
-
-
-def _get_provider_templates_dir(
-    config: RepolishConfigFile,
-    provider_name: str,
-    config_dir: Path,
-) -> Path | None:
-    """Get the templates directory path from a provider.
-
-    Args:
-        config: Raw configuration
-        provider_name: Name of the provider
-        config_dir: Directory containing the config file
-
-    Returns:
-        Resolved template directory path, or None if provider cannot be resolved
-    """
-    provider_config = config.providers.get(provider_name)
-    if not provider_config:  # pragma: no cover - validation ensures providers_order only references defined providers
-        logger.warning('provider_not_found_in_config', provider=provider_name)
-        return None
-
-    # If provider has a direct directory, use it
-    if provider_config.directory:
-        directory = _resolve_path(provider_config.directory, config_dir)
-        templates_path = directory / provider_config.templates_dir
-        logger.debug(
-            'auto_added_directory_from_provider',
-            provider=provider_name,
-            directory=str(templates_path),
-            source='direct_directory',
-        )
-        return templates_path
-
-    # Otherwise, try to load from linked provider info
-    provider_info = load_provider_info(provider_name, config_dir)
-    if not provider_info:
-        logger.warning('could_not_load_provider_info', provider=provider_name)
-        return None
-
-    # Get target_dir and templates_dir from provider info
-    target_dir = _resolve_path(provider_info.target_dir, config_dir)
-    templates_subdir = provider_info.templates_dir or provider_config.templates_dir
-    templates_path = target_dir / templates_subdir
-
-    logger.debug(
-        'auto_added_directory_from_provider',
-        provider=provider_name,
-        directory=str(templates_path),
-        source='linked_provider',
-    )
-    return templates_path

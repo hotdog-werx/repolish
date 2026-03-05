@@ -10,6 +10,7 @@ nav:
       - Quick Start: getting-started/quick-start.md
   - Configuration:
       - Overview: configuration/overview.md
+      - Config File: configuration/config-file.md
       - Context: configuration/context.md
       # - Overrides: wip.md
       # - Anchors: wip.md

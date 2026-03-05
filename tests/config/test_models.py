@@ -120,7 +120,6 @@ class ProviderInfoCase:
     name: str
     file_content: str | None  # None means file doesn't exist
     expected_target_dir: str | None
-    expected_templates_dir: str | None = None
     expected_library_name: str | None = None
 
 
@@ -151,10 +150,8 @@ class ProviderInfoCase:
             name='valid_with_optional_fields',
             file_content="""{"target_dir": ".repolish/provider1",
 "source_dir": "/fake/source/provider1",
-"templates_dir": "custom",
 "library_name": "mylib"}""",
             expected_target_dir='.repolish/provider1',
-            expected_templates_dir='custom',
             expected_library_name='mylib',
         ),
     ],
@@ -174,7 +171,6 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
     else:
         assert info is not None
         assert info.target_dir == case.expected_target_dir
-        assert info.templates_dir == case.expected_templates_dir
         assert info.library_name == case.expected_library_name
 
 

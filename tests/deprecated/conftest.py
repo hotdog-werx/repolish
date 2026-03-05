@@ -66,7 +66,6 @@ def provider_setup(tmp_path: Path):
         alias: str,
         *,
         target_dir: str | None = None,
-        templates_dir: str = 'templates',
         library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]:
@@ -85,19 +84,20 @@ def provider_setup(tmp_path: Path):
         info_data = {
             'target_dir': target_dir,
             'source_dir': f'/fake/source/{alias}',
-            'templates_dir': templates_dir,
             'library_name': library_name,
         }
 
         info_file.write_text(json.dumps(info_data))
 
         if create_templates:
-            templates_path = target_path / templates_dir
-            templates_path.mkdir(parents=True, exist_ok=True)
-            (templates_path / 'repolish.py').write_text(
+            # older behaviour placed templates in a subdirectory; now resources
+            # live at the provider root.  we simply create the top-level
+            # directory here so that deprecated tests (if any) still find a
+            # repolish.py file.
+            (target_path / 'repolish.py').write_text(
                 'def create_context():\n    return {}\n',
             )
-            (templates_path / 'repolish').mkdir(exist_ok=True)
+            (target_path / 'repolish').mkdir(exist_ok=True)
 
         return config_dir, target_path
 

@@ -167,7 +167,6 @@ def resource_linker(
     library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_subdir: str = 'templates',
     default_symlinks: list[Symlink] | None = None,
     _caller_frame: inspect.FrameInfo | None = None,
 ) -> Callable:
@@ -182,7 +181,6 @@ def resource_linker(
         default_source_dir: Path to resources relative to package root (default: 'resources').
             Can be overridden for custom locations (e.g., 'mylib/templates').
         default_target_base: Default base directory for the target (default: .repolish)
-        templates_subdir: Subdirectory within resources containing templates (default: templates)
         default_symlinks: List of Symlink objects defining default symlinks from provider resources.
             Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
 
@@ -257,7 +255,6 @@ def resource_linker(
                 info = ProviderInfo(
                     target_dir=str(args.target_dir.absolute()),
                     source_dir=str(args.source_dir.absolute()),
-                    templates_dir=templates_subdir,
                     library_name=library_name,
                     symlinks=provider_symlinks,
                 )
@@ -297,7 +294,6 @@ def resource_linker_cli(
     library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_subdir: str = 'templates',
     default_symlinks: list[Symlink] | None = None,
 ) -> Callable[[], None]:
     """Create a resource linker CLI function.
@@ -310,7 +306,6 @@ def resource_linker_cli(
             If not provided, auto-detects from the caller's top-level package name.
         default_source_dir: Path to resources relative to package root (default: 'resources').
         default_target_base: Default base directory for the target (default: .repolish)
-        templates_subdir: Subdirectory within resources containing templates (default: templates)
         default_symlinks: List of Symlink objects defining default symlinks from provider resources.
             Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
 
@@ -355,7 +350,6 @@ def resource_linker_cli(
         library_name=library_name,
         default_source_dir=default_source_dir,
         default_target_base=default_target_base,
-        templates_subdir=templates_subdir,
         default_symlinks=default_symlinks,
         _caller_frame=caller_frame,
     )

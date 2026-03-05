@@ -45,7 +45,6 @@ def test_run_provider_link_error_handling(
         'library_name': 'mylib',
         'target_dir': '.repolish/mylib',
         'source_dir': '/fake/source/mylib',
-        'templates_dir': 'templates',
     }
 
     mock_run = mocker.patch('subprocess.run')
@@ -365,10 +364,9 @@ def test_run_with_directory_provider(
     # Create provider directory with templates
     provider_dir = tmp_path / 'local_provider'
     provider_dir.mkdir()
-    templates_dir = provider_dir / 'templates'
-    templates_dir.mkdir()
-    (templates_dir / 'repolish.py').write_text('# local provider')
-    (templates_dir / 'repolish').mkdir()
+    # provider resources exist at the root of the directory now
+    (provider_dir / 'repolish.py').write_text('# local provider')
+    (provider_dir / 'repolish').mkdir()
 
     config_file = tmp_path / 'repolish.yaml'
     config_file.write_text(f"""
@@ -480,7 +478,6 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         library_name='mylib',
         target_dir=str(tmp_path / '.repolish' / 'mylib'),
         source_dir='/fake/source/mylib',
-        templates_dir='templates',
         symlinks=[
             ProviderSymlink(
                 source=Path('configs/.editorconfig'),
@@ -502,7 +499,7 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     saved_info = json.loads(info_file.read_text())
     assert saved_info['library_name'] == 'mylib'
     assert saved_info['target_dir'] == str(tmp_path / '.repolish' / 'mylib')
-    assert saved_info['templates_dir'] == 'templates'
+    assert 'templates_dir' not in saved_info
     assert len(saved_info['symlinks']) == 2
     assert saved_info['symlinks'][0]['source'] == 'configs/.editorconfig'
     assert saved_info['symlinks'][0]['target'] == '.editorconfig'
@@ -520,7 +517,6 @@ def test_save_provider_info_with_alias(
         library_name='codeguide',
         target_dir=str(tmp_path / '.repolish' / 'codeguide'),
         source_dir='/fake/source/codeguide',
-        templates_dir='templates',
     )
 
     save_provider_info('base', provider_info, tmp_path)
@@ -550,7 +546,6 @@ def test_run_provider_link_no_extra_save(
         'library_name': 'mylib',
         'target_dir': '.repolish/mylib',
         'source_dir': '/fake/source/mylib',
-        'templates_dir': 'templates',
     }
 
     mock_run = mocker.patch('subprocess.run')

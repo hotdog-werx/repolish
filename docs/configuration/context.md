@@ -21,6 +21,29 @@ so templates and providers can adapt to configuration.
     `name`) inferred from the `origin` remote, and
   - a `year` field containing the current calendar year (useful for license
     headers and similar boilerplate).
+  - when running `repolish` with `-vv` you will also see a
+    `final_providers_generated` log event. the payload is now structured with
+    two top-level keys:
+
+    ```yaml
+    final_providers_generated:
+      global_context: { ... }
+      providers:
+        - alias: foo
+          context: { ... }
+          provider_migrated: true
+        - alias: bar
+          context: { ... }
+          provider_migrated: false
+    ```
+
+    - `global_context` is the merged context that was applied across all
+      providers. it serves as a convenient debugging snapshot when you need to
+      know what values every template could potentially access.
+    - `providers` is a list of per-alias contexts. the boolean
+      `provider_migrated` flag continues to be recorded for backwards
+      compatibility and tests, but in practice every provider is treated as
+      migrated and you should rarely need to look at it.
 
   Project configuration may override any of these values via the usual
   `context`/`context_overrides` mechanism. Historically the repo fields were
@@ -152,37 +175,30 @@ Notes:
   dicts. The original typed instance is preserved in `Providers.file_mappings`
   until rendering so validation tooling can inspect it.
 
-### Provider-scoped template context (strict mode)
+### Provider-scoped template context
 
-The renderer now scopes `TemplateMapping` and generic files to the context of
-their originating provider automatically for any provider marked
-`provider_migrated = True`. The previous configuration flag
-`provider_scoped_template_context` still exists for backwards compatibility and
-defaults to **true**. The only remaining reason to set it to `false` is from
-within the legacy module-adapter implementation, which globally forces merged
-context rendering; regular users can ignore it entirely.
+As of the current release every provider is treated as if it has been migrated;
+templates belonging to a provider always render using that provider's own
+context. This isolation is automatic and you do **not** need to set
+`provider_migrated = True` in new providers. The flag continues to exist because
+some older tests and logging expectations still inspect it, but it is no longer
+required for normal operation.
 
-Important rules:
+The configuration option `provider_scoped_template_context` also lingers for
+compatibility, but it is effectively always `true` and may be removed in a
+future version. When you run with `-vv` the `final_providers_generated` event
+will include a `provider_migrated` boolean for each alias; this helps
+diagnostics but need not influence your configuration.
 
-- Providers must opt into the new model by setting `provider_migrated = True` in
-  their `repolish.py` module (this indicates the provider knows how to operate
-  in the provider-scoped world).
-- When `provider_scoped_template_context` is enabled the renderer will render
-  unmigrated (module-style) providers using the **merged context** rather than
-  failing outright. This allows you to migrate providers incrementally; only
-  those that set `provider_migrated = True` will be isolated. The original
-  strict check has been relaxed to avoid breaking mixed deployments.
+The staging phase records which provider supplied each template file. during
+rendering, files owned by a provider receive that provider's context. providers
+that happen to set `provider_migrated = True` will have that information logged
+but it no longer affects rendering behaviour.
 
-- The staging step now records a provenance map for every file copied from
-  provider template directories. When the strict flag is turned on that map is
-  used to determine which provider "owns" a given file, and if the owner is
-  migrated the _provider’s own context_ is used for Jinja rendering of that
-  file. This behaviour applies to both generic files and those produced via
-  `TemplateMapping`, giving migrated providers full control over their templates
-  even after the merge phase.
-- Class-based providers (the `Provider` base class) are the recommended
-  migration target; module-style providers must still set
-  `provider_migrated = True` once they adopt provider-scoped semantics.
+> **Tip:** if you're investigating unexpected values in a template, look at the
+> `final_providers_generated` log event (requires verbosity `-vv`). the
+> `global_context` key shows the merged context and the `providers` list shows
+> what each provider saw.
 
 Migration checklist
 

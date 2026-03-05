@@ -90,7 +90,6 @@ def test_per_provider_context_override(tmp_path: Path):
     info = ResolvedProviderInfo(
         alias='p',
         target_dir=prov,
-        templates_dir='',
         symlinks=[],
         context={'foo': 'override'},
     )
@@ -116,32 +115,80 @@ def test_per_provider_context_override(tmp_path: Path):
     assert global_ctx.get('foo') == 'override'
 
 
-def test_per_provider_context_override_with_templates_dir(tmp_path: Path):
-    """Overrides still work when the provider uses a non-empty templates_dir.
+def test_build_final_providers_preserves_migration(tmp_path: Path):
+    """Providers include the migration flags produced by the loader.
 
-    Previously we constructed provider IDs from `target_dir` alone, which
-    mismatched the directories passed to the loader when `templates_dir` was
-    non-empty.  This regression meant real applications would never apply the
-    override even though the unit tests (which used `templates_dir=''`) had
-    passed.
+    Regression: earlier versions dropped ``provider_migrated`` when rebuilding
+    the :class:`Providers` object, causing ``final_providers_generated`` logs to
+    show an empty migrated list.  See issue #123 for details.
+    """
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        """from pydantic import BaseModel
+from repolish.loader.models import Provider, BaseContext
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseModel]):
+    def get_provider_name(self):
+        return 'p'
+    def create_context(self):
+        return Ctx()
+""",
+    )
+
+    # construct a ResolvedProviderInfo directly to keep types clean
+    info = ResolvedProviderInfo(
+        alias='p',
+        target_dir=prov,
+        library_name=None,
+        symlinks=[],
+        context=None,
+        context_overrides={},
+    )
+
+    cfg = RepolishConfig.model_validate(
+        {
+            'config_dir': tmp_path,
+            'directories': [],
+            'context': {},
+            'context_overrides': {},
+            'anchors': {},
+            'post_process': [],
+            'delete_files': [],
+            'providers': {str(prov): info},
+        },
+    )
+    providers = build_final_providers(cfg)
+    assert providers.provider_migrated.get(str(prov.as_posix())) is True
+
+
+def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
+    """Overrides still work when the provider resources are nested.
+
+    Some providers may not live at the top-level of their linked directory;
+    ensure that the loader ID used by ``build_final_providers`` exactly
+    matches the ``target_dir`` given in the configuration so that per-provider
+    overrides are applied correctly.
     """
     prov = tmp_path / 'prov'
     prov.mkdir()
     sub = prov / 'templates'
     sub.mkdir()
-    # when templates_dir is non-empty the provider module lives under the
-    # templates directory just like the real linking code uses (see
-    # tests/deprecated/conftest.py for reference)
+    # provider roots can point directly at a nested folder; the override
+    # logic must still resolve the same path used by the loader.
     (sub / 'repolish.py').write_text(
         """def create_context():
     return {'foo': 'orig'}
 """,
     )
 
+    # target_dir is the nested path that the loader will receive
     info = ResolvedProviderInfo(
         alias='p',
-        target_dir=prov,
-        templates_dir='templates',
+        target_dir=sub,
         symlinks=[],
         context={'foo': 'override'},
     )
@@ -180,7 +227,6 @@ def test_provider_context_overrides_dotted(tmp_path: Path):
     info = ResolvedProviderInfo(
         alias='p',
         target_dir=prov,
-        templates_dir='',
         symlinks=[],
         context=None,
         context_overrides={'nested.key': 'patched', 'new': 123},

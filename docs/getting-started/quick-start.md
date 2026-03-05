@@ -7,9 +7,32 @@ your first check.
 
 Create a `repolish.yaml` at the root of your project:
 
+> ⚠️ **Notice:** The `directories` section is deprecated; use the `providers`
+> configuration to declare template sources when possible. See the
+> [Configuration reference](../configuration/overview.md) for details.
+
+You can still use the traditional `directories` field:
+
+> ⚠️ **Notice:** The `directories` section is deprecated; use the `providers`
+> configuration to declare template sources when possible. See the
+> [Configuration reference](../configuration/overview.md) for details.
+
 ```yaml
+# example using the old `directories` field (deprecated)
 directories:
   - ./templates/my-template
+
+context: {}
+anchors: {}
+delete_files: []
+```
+
+Alternatively, declare a provider directly:
+
+```yaml
+providers:
+  mylib:
+    directory: ./templates/my-template
 
 context: {}
 anchors: {}

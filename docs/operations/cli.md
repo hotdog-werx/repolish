@@ -148,7 +148,6 @@ to invoke and optional additional symlinks to create.
 providers:
   codeguide:
     cli: codeguide-link
-    templates_dir: templates
     symlinks:
       - source: configs/.editorconfig
         target: .editorconfig
@@ -163,8 +162,6 @@ providers_order:
   with `directory`)
 - `directory` (optional): Direct path to provider resources (mutually exclusive
   with `cli`)
-- `templates_dir` (optional): Subdirectory within provider resources containing
-  templates (default: `templates`)
 - `symlinks` (optional): Symlinks to create from provider resources to repo
   root. Can be:
   - Omitted: Use the provider's default symlinks (if any)

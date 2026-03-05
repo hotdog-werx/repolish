@@ -49,9 +49,7 @@ class InvalidConfigCase:
             name='invalid_provider_config_no_cli_or_directory',
             config_data={
                 'providers': {
-                    'test': {
-                        'templates_dir': 'templates',
-                    },
+                    'test': {},
                 },
             },
             error_type=ProviderConfigError,
@@ -212,7 +210,6 @@ def test_load_config_with_provider_directory(
     # provider entry should exist and point at the templates directory
     assert 'base' in config.providers
     assert config.providers['base'].target_dir.resolve() == provider_dir.resolve()
-    assert config.providers['base'].templates_dir == 'templates'
 
 
 def test_load_config_template_overrides_roundtrip(
@@ -269,7 +266,6 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
     assert 'mylib' in config.providers
     assert config.providers['mylib'].target_dir.resolve() == target_dir.resolve()
     assert config.providers['mylib'].library_name == 'my-library'
-    assert config.providers['mylib'].templates_dir == 'templates'
 
 
 def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
@@ -352,7 +348,6 @@ def test_load_config_with_provider_default_symlinks(
             {
                 'target_dir': str(target_dir),
                 'source_dir': '/fake/source',
-                'templates_dir': 'templates',
                 'library_name': 'test',
                 'symlinks': [
                     {
@@ -411,7 +406,6 @@ def test_load_config_override_provider_symlinks_with_empty_list(
             {
                 'target_dir': str(target_dir),
                 'source_dir': '/fake/source',
-                'templates_dir': 'templates',
                 'library_name': 'test',
                 'symlinks': [
                     {
@@ -493,7 +487,6 @@ def test_load_config_all_fields(
     # provider must be resolved
     assert 'base' in config.providers
     assert config.providers['base'].target_dir.resolve() == dir1.resolve()
-    assert config.providers['base'].templates_dir == 'templates'
 
     # other globals still preserved
     assert config.context == {'project': 'test'}

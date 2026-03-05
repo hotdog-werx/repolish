@@ -71,7 +71,7 @@ def _gather_template_directories(
         info = config.providers.get(alias)
         if info is None:
             continue
-        path = info.target_dir / info.templates_dir
+        path = info.target_dir
         template_dirs.append((alias, path))
 
     # if no alias information needed, return simple Paths
@@ -95,7 +95,7 @@ def _compute_migrated_list(
     # build quick lookups to avoid nested loops
     pid_to_alias: dict[str, str] = {}
     for alias, info in config.providers.items():
-        pid_to_alias[(info.target_dir / info.templates_dir).as_posix()] = alias
+        pid_to_alias[info.target_dir.as_posix()] = alias
 
     def pid_for_alias(alias: str) -> str | None:
         return pid_to_alias.get(alias)
@@ -147,7 +147,11 @@ def _log_final_providers_event(
     logger.info(
         'final_providers_generated',
         template_directories=[str(p[1] if isinstance(p, tuple) else p) for p in _gather_template_directories(config)],
-        context={'non_migrated': non_migrated_ctx, 'migrated': migrated_list},
+        # we now split context into a single global bucket and a provider list
+        context={
+            'global_context': non_migrated_ctx,
+            'providers': migrated_list,
+        },
         delete_paths=[p.as_posix() for p in providers.delete_files],
         delete_history={
             key: [{'source': d.source, 'action': d.action.value} for d in decisions]

@@ -1,9 +1,17 @@
 # Provider migration guide — module → provider-scoped templates
 
-This guide helps you migrate a provider so it can be rendered using the
-`provider_scoped_template_context` strict mode. The goal is to make each
-provider self-contained: templates declared by a provider should only use the
-context supplied by that provider (or the mapping's `extra_context`).
+In current versions of Repolish provider-scoped rendering is the **default
+behaviour**: every provider's templates are rendered using only the context
+collected for that provider. There is no longer a requirement to enable a
+special "strict mode" or to mark providers as migrated; the `provider_migrated`
+flag and the `provider_scoped_template_context` configuration option remain only
+for backwards compatibility and diagnostics.
+
+This guide therefore focuses on helping you understand the semantics and, if you
+are maintaining legacy providers or writing tests, how to opt into and verify
+the (largely implicit) migration state. The overall goal remains the same: make
+each provider self-contained so its templates do not accidentally depend on
+values from elsewhere in your project.
 
 Why migrate?
 
@@ -29,15 +37,16 @@ Quick checklist (practical)
    templates. Use a Pydantic `BaseModel` return type for validation.
 3. Update templates so they reference only keys present in `create_context()` or
    in the mapping's `extra_context`.
-4. Add `provider_migrated = True` at top-level in the provider's `repolish.py`
-   to mark the provider as migrated.
+4. (Optional) add `provider_migrated = True` at top-level in the provider's
+   `repolish.py` if you want to make the migration state explicit for tests or
+   debugging; it has no effect on rendering correctness.
 5. Add/adjust unit tests for the provider to assert provider-scoped rendering
    behaviour (see test suggestions below).
-6. The configuration flag now defaults to true; you rarely need to touch it in
-   your project config. Run `poe ci-checks` / CI to detect remaining
-   cross-provider usage. The staging step records which provider supplied each
-   template, so migrated providers will render all of their files with their own
-   context automatically.
+6. The configuration flag and default behaviour already yield provider-scoped
+   rendering. Run `poe ci-checks` / CI to detect any templates that
+   inadvertently depend on other providers. The staging step records which
+   provider supplied each template so that context isolation happens
+   automatically.
 
 Example: before → after (small provider)
 
@@ -145,16 +154,15 @@ How the loader recognizes the class
 
 Practical notes
 
-- Set `provider_migrated = True` at module level to mark the provider as
-  migrated; only migrated providers will have their mappings rendered against
-  their own context. Non-migrated providers continue to receive merged context
-  even if the legacy `provider_scoped_template_context` flag were to be set to
-  false.
+- You do not need to set `provider_migrated = True` for rendering isolation;
+  every provider already has its own context. the flag can be useful in tests or
+  when debugging older providers, but its presence or absence has no effect on
+  template output.
 - The class-based API is optional but recommended for larger providers and when
   you want compile/test-time reassurance (Pydantic types give IDE + validation
   benefits).
-- Existing module-style providers continue to work until you opt into strict
-  provider-scoped rendering.
+- Existing module-style providers continue to work with no changes; just avoid
+  relying on cross-provider context to make future maintenance easier.
 
 Testing suggestions
 
@@ -179,11 +187,13 @@ Troubleshooting & migration patterns
   - Add tests for each sub-area during the migration.
 
 - Want a smoother rollout for many providers:
-  1. Migrate provider code and add `provider_migrated = True` locally.
-  2. Run CI (the configuration flag is already true by default) in a feature
+  1. Migrate provider code incrementally; adding `provider_migrated = True` is
+     only needed for local tests or diagnostics, not for correctness.
+  2. Run CI (provider-scoped rendering is already the default) in a feature
      branch.
   3. Fix templates that fail; repeat until the branch is green.
-  4. Merge and enable the flag in the mainline once providers are migrated.
+  4. Merge once providers are behaving as desired; there is no extra flag to
+     flip in the mainline.
 
 Commands & quick checks
 
@@ -193,10 +203,12 @@ Commands & quick checks
 
 Final notes
 
-- This migration is opt‑in: enabling `provider_scoped_template_context` does not
-  immediately break existing module-style providers. Only providers that have
-  opted in via `provider_migrated = True` are isolated; others still render with
-  the merged context. You can gradually migrate providers and flip the flag at
-  your own pace.
+- Provider-scoped rendering is now the default; you don't need to opt in or flip
+  any configuration flags. The previous `provider_scoped_template_context`
+  option and the `provider_migrated` flag will eventually be removed, but they
+  currently remain for backwards compatibility and unit tests.
+- Having a `provider_migrated = True` declaration in a provider is mostly a
+  convenience for tooling and logging. It does not change how templates are
+  rendered.
 - If you want, I can update the example providers in `examples/` to show a full
-  end‑to‑end migrated provider.
+  end‑to‑end migrated provider (the examples already work without any changes).

@@ -63,10 +63,12 @@ class ProviderInfo(BaseModel):
     source_dir: str = Field(
         description='Directory where provider resources originate (e.g., in site-packages)',
     )
-    templates_dir: str | None = Field(
-        default=None,
-        description='Subdirectory containing templates (optional)',
-    )
+    # Deprecated: providers now specify the template root directly via
+    # `target_dir`.  Historically we allowed a separate
+    # ``templates_dir`` within the provider folder, but configuration and
+    # resolution no longer rely on this field.  The attribute is omitted from
+    # the model to keep the serialized JSON compact; older files may still
+    # contain the key and it will be ignored by the loader.
     library_name: str | None = Field(
         default=None,
         description='Name of the provider library (optional)',

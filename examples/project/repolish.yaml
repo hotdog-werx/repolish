@@ -1,8 +1,11 @@
-directories:
-  - ../template_a
-context:
-  package_name: some-package
+providers:
+  template_a:
+    directory: ../template_a
+    context_overrides:
+      package_name: some-package
+
 delete_files: []
+
 anchors:
   extra-deps: |
     requests = "^5.30"

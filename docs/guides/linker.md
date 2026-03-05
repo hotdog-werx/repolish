@@ -48,7 +48,6 @@ from repolish.linker import resource_linker
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',  # Relative to package root
-    templates_subdir='templates',     # Where templates live (default: 'templates')
 )
 def main():
     """Link mylib resources to your project."""
@@ -163,7 +162,6 @@ def resource_linker(
     library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_subdir: str = 'templates',
     default_symlinks: list[Symlink] | None = None,
 ) -> Callable
 ```
@@ -177,8 +175,6 @@ def resource_linker(
   (e.g., `'resources'` or `'mylib/templates'`). Default: `'resources'`.
 - `default_target_base` (str): Default base directory for target. Default:
   `'.repolish'`.
-- `templates_subdir` (str): Subdirectory within resources containing templates.
-  Default: `'templates'`.
 - `default_symlinks` (list[Symlink] | None): List of `Symlink` objects defining
   default symlinks from provider resources to the project root. Users can
   override these in their `repolish.yaml` by setting `symlinks` to `[]` (no
@@ -252,7 +248,6 @@ def resource_linker_cli(
     library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_subdir: str = 'templates',
     default_symlinks: list[Symlink] | None = None,
 ) -> Callable[[], None]
 ```
@@ -504,20 +499,6 @@ dependencies = ["repolish"]
 
 [project.scripts]
 mylib-link = "mylib.cli_link:main"
-```
-
-### Custom Templates Subdirectory
-
-If your templates are in a non-standard location:
-
-```python
-@resource_linker(
-    library_name='mylib',
-    default_source_dir='resources',
-    templates_subdir='custom_templates',  # Instead of 'templates'
-)
-def main():
-    pass
 ```
 
 ### Multiple Resource Packages

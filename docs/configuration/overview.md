@@ -1,22 +1,26 @@
 # Configuration
 
 Repolish uses a YAML configuration file (`repolish.yaml` by default) to control
-how templates are applied to your project. This file defines template
-directories, context variables, anchors, and provider linking.
+how templates are applied to your project. This file defines which providers
+should be used, context variables, anchors, and provider linking.
 
 ## Basic Structure
 
 ```yaml
-# Template directories to load (optional when using providers)
-directories:
-  - ./templates
-  - ../shared-templates
-
-# Context variables for template rendering (optional)
-context:
-  package_name: 'my-project'
-  version: '1.0.0'
-  author: 'Your Name'
+# Providers define where to find templates and how to link them to your
+# project. Each provider may specify a `cli` command or a direct
+# `directory` containing its resources.
+providers:
+  mylib:
+    cli: mylib-link
+    symlinks:
+      - source: configs/.editorconfig
+        target: .editorconfig
+    # Context variables for template rendering (optional)
+    context:
+      package_name: 'my-project'
+      version: '1.0.0'
+      author: 'Your Name'
 
 # Global anchors for text replacement (optional)
 anchors:
@@ -31,70 +35,34 @@ delete_files:
 
 # Shell commands to run after generation (optional)
 post_process:
-  - poe format
-  - black .
+  - poe format-dprint
+  - poe format-python
+```
 
-# Provider linking configuration (optional)
+## Provider Configuration
+
+All template sources are described via the `providers` section. Each provider
+entry specifies either:
+
+- a `cli` command to invoke (for external libraries), or
+- a `directory` path pointing directly at the provider’s resources.
+
+Optionally you can override or disable the provider’s default symlinks.
+
+```yaml
 providers:
+  codeguide:
+    cli: codeguide-link
   mylib:
-    cli: mylib-link
-    templates_dir: templates
+    directory: ./local/mylib/resources
     symlinks:
       - source: configs/.editorconfig
         target: .editorconfig
 ```
 
-## Directories Section
-
-> **⚠️ DEPRECATED:** The `directories` field is deprecated and will be removed
-> in v1.0. Use the `providers` configuration with either `cli` or `directory`
-> instead. See the
-> [Provider Linking Configuration](#provider-linking-configuration) section
-> below.
-
-The `directories` section specifies template directories to load. Each directory
-must contain either a `repolish.py` file or a `repolish/` folder with provider
-logic.
-
-**Note:** When using provider linking with `providers_order`, the `directories`
-field becomes **optional**. If omitted, directories will be automatically built
-from the linked providers' template locations. This simplifies configuration
-when all your templates come from linked providers.
-
-```yaml
-directories:
-  - ./templates
-  - ../shared-templates
-  - /absolute/path/to/templates
-```
-
-Paths are resolved relative to the directory containing the `repolish.yaml`
-file.
-
-### Auto-Building from Providers
-
-When you use `repolish-link` to link provider resources and have
-`providers_order` configured, you can omit the `directories` field entirely:
-
-```yaml
-# Simplified configuration - no directories needed!
-providers_order:
-  - codeguide
-  - mylib
-
-providers:
-  codeguide:
-    cli: codeguide-link
-  mylib:
-    cli: mylib-link
-
-context:
-  package_name: 'my-project'
-```
-
-After running `repolish-link`, the directories will be automatically determined
-from the `.repolish/<provider>/.provider-info.json` files created during
-linking.
+Provider ordering can be controlled with `providers_order`, which is useful when
+multiple providers supply the same files (see the
+[linker docs](/docs/guides/linker.md)).
 
 ## Context Section
 
@@ -189,11 +157,11 @@ the logic in a committed script and call it via the argv-list form.
 ### Example with formatters
 
 ```yaml
-directories:
-  - ./templates/my-template
-
-context:
-  package_name: my-project
+providers:
+  mylib:
+    directory: ./templates/my-template
+    context:
+      package_name: my-project
 
 post_process:
   - poe format
@@ -212,16 +180,13 @@ configure provider linking through the `providers` section. This allows the
 providers:
   mylib:
     cli: mylib-link
-    templates_dir: templates
     symlinks:
       - source: configs/.editorconfig
         target: .editorconfig
   anotherlib:
     cli: anotherlib-link
-    templates_dir: ui-templates
   locallib:
     directory: ./path/to/locallib/resources
-    templates_dir: templates
 ```
 
 ### Provider Configuration Options
@@ -232,8 +197,6 @@ Each provider in the linking configuration supports these options:
   exclusive with `directory`)
 - `directory` (optional): Direct path to provider resources (mutually exclusive
   with `cli`)
-- `templates_dir` (optional): Subdirectory within provider resources containing
-  templates (default: `templates`)
 - `symlinks` (optional): Symlinks to create from provider resources to repo
   root. Can be:
   - Omitted: Use the provider's default symlinks (if defined in the
@@ -288,41 +251,9 @@ providers:
 ### Example: Complete Configuration
 
 ```yaml
-# Using explicit directories (traditional approach)
-directories:
-  - ./.pkglink/.codeguide/templates
-
-context:
-  codeguide_ref: topic/repolish
-  ci_operating_systems: '["windows-latest", "ubuntu-latest", "macos-latest"]'
-
-post_process:
-  - poe format-dprint
-
-providers:
-  codeguide:
-    cli: codeguide-link
-    templates_dir: templates
-    symlinks:
-      - source: configs/.editorconfig
-        target: .editorconfig
-      - source: configs/.gitignore
-        target: .gitignore
-```
-
-### Example: Simplified Configuration with Auto-Discovery
-
-```yaml
-# No directories needed - auto-built from providers!
 providers_order:
   - codeguide
-
-context:
-  codeguide_ref: topic/repolish
-  ci_operating_systems: '["windows-latest", "ubuntu-latest", "macos-latest"]'
-
-post_process:
-  - poe format-dprint
+  - mylib
 
 providers:
   codeguide:
@@ -332,10 +263,24 @@ providers:
         target: .editorconfig
       - source: configs/.gitignore
         target: .gitignore
+
+  mylib:
+    directory: ./local/mylib/resources
+    # default symlinks will be used
+
+post_process:
+  - poe format-dprint
 ```
 
-After running `repolish-link`, the templates directory
-(`.repolish/codeguide/templates`) will be automatically discovered and used.
+This example illustrates an explicit provider order with a mix of a linked
+package and a local directory. no `directories` field is needed at all.
+
+```yaml
+# Another variation: simple single-provider setup
+providers:
+  codeguide:
+    cli: codeguide-link
+```
 
 ## Providers Order Section
 
@@ -396,14 +341,14 @@ template resolution without changing the overall provider order.
 Repolish validates your configuration file when loading. Common validation
 errors include:
 
-- Missing both `directories` and `providers_order` sections (at least one is
-  required)
-- Invalid directory paths (not a directory or missing `repolish.py`/`repolish/`)
+- `providers` section missing or empty
+- `providers_order` references a provider that is not defined
 - Malformed YAML syntax
-- Invalid provider configurations
+- Invalid provider configurations (missing CLI/directory, bad symlink entries,
+  etc.)
 
 Use `repolish --check` to validate your configuration without applying changes.
 
-**Note:** When using provider-based directory discovery, make sure you've run
-`repolish-link` at least once to create the `.provider-info.json` files that
-repolish uses to find template directories.
+**Note:** provider-based directory discovery requires that the link step has run
+at least once. `repolish-link` creates `.provider-info.json` files which allow
+Repolish to locate the template directories for each provider.

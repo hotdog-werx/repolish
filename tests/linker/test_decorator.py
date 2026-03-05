@@ -107,7 +107,7 @@ def test_resource_linker_info_mode(
         test_package['pkg_root'],
         mocker,
         capsys,
-        {'library_name': 'mylib', 'templates_dir': 'templates'},
+        {'library_name': 'mylib'},
     )
 
     assert 'source_dir' in info
@@ -162,27 +162,27 @@ def test_resource_linker_force_flag(
     )
 
 
-def test_resource_linker_custom_templates_subdir(
+def test_resource_linker_info_mode_ignores_templates_subdir(
     test_package: PackageDictFixture,
     capsys: pytest.CaptureFixture[str],
     mocker: pytest_mock.MockerFixture,
 ):
-    """Test resource_linker with custom templates subdirectory."""
+    """`--info` output should not contain outdated templates subdir key."""
 
     @resource_linker(
         library_name='mylib',
         default_source_dir='resources',
-        templates_subdir='custom_templates',
     )
     def link_cli() -> None:
         pass
 
+    # custom subdirectory no longer represented in info output
     _test_info_mode(
         link_cli,
         test_package['pkg_root'],
         mocker,
         capsys,
-        {'templates_dir': 'custom_templates'},
+        {},
     )
 
 
@@ -435,7 +435,7 @@ def test_resource_linker_cli_info_mode(
     info = json.loads(captured.out)
 
     assert info['library_name'] == 'mylib'
-    assert info['templates_dir'] == 'templates'
+    assert 'templates_dir' not in info
     assert 'source_dir' in info
     assert 'target_dir' in info
     # Should NOT print the success message in info mode

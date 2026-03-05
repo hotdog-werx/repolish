@@ -1,11 +1,11 @@
 from pydantic import BaseModel
 
 from repolish import (
+    BaseContext,
     FileMode,
     Provider,
     TemplateMapping,
 )  # re-exported for simple API
-from repolish.loader.models import BaseContext
 
 
 class Ctx(BaseContext):

@@ -7,6 +7,7 @@ from repolish.commands.apply import command as run_repolish
 
 if TYPE_CHECKING:
     import pytest
+    from pytest_mock import MockerFixture
 
 
 def write_file(p: Path, content: str) -> None:
@@ -100,10 +101,7 @@ def test_integration_emoji_encoding(
     # create template dir with emoji content (provider directory)
     templates = tmp_path / 'templates'
     tpl_dir = templates / 'emoji_template'
-    repo_dir = tpl_dir / 'templates' / 'repolish'
-    repo_dir.mkdir(parents=True, exist_ok=True)
-
-    # file with emoji content
+    repo_dir = tpl_dir / 'repolish'
     write_file(
         repo_dir / 'CHANGELOG.md',
         textwrap.dedent("""\
@@ -118,7 +116,7 @@ def test_integration_emoji_encoding(
     )
 
     # repolish.py provider file (required for template validation)
-    repolish_py = tpl_dir / 'templates' / 'repolish.py'
+    repolish_py = tpl_dir / 'repolish.py'
     write_file(
         repolish_py,
         textwrap.dedent("""\
@@ -159,6 +157,65 @@ def test_integration_emoji_encoding(
     assert '🚀 Features' in content
 
 
+def test_integration_migration_flag_in_event(
+    tmp_path: Path,
+    monkeypatch: 'pytest.MonkeyPatch',
+    capsys: 'pytest.CaptureFixture[str]',
+    mocker: 'MockerFixture',
+) -> None:
+    """When a class-based provider is used the final event should list it.
+
+    This confirms the fix for dropping ``provider_migrated`` in
+    :func:`build_final_providers` and mirrors the user's manual check.
+    """
+    # provider directory
+    p = tmp_path / 'p'
+    p.mkdir()
+    (p / 'repolish.py').write_text(
+        """from pydantic import BaseModel
+from repolish.loader.models import Provider, BaseContext
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseModel]):
+    def get_provider_name(self):
+        return 'p'
+    def create_context(self):
+        return Ctx()
+""",
+    )
+
+    cfg = tmp_path / 'repolish.yaml'
+    cfg.write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'directory': './p'}},
+                'context': {},
+                'anchors': {},
+                'delete_files': [],
+            },
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # patch render_template so we don't require a valid cookiecutter project
+    mocker.patch(
+        'repolish.commands.apply.render_template',
+    ).return_value = None
+
+    rv = run_repolish(cfg, check_only=True)
+    assert rv == 0
+    captured = capsys.readouterr()
+    out = captured.out
+    assert 'final_providers_generated' in out
+    # ensure new keys appear
+    assert 'global_context' in out
+    assert 'providers' in out
+    assert 'p' in out
+
+
 def test_cli_provider_order_with_overrides(
     tmp_path: Path,
     monkeypatch: 'pytest.MonkeyPatch',
@@ -173,19 +230,19 @@ def test_cli_provider_order_with_overrides(
     """
     # provider 1
     p1 = tmp_path / 'p1'
-    (p1 / 'templates' / 'repolish').mkdir(parents=True)
-    write_file(p1 / 'templates' / 'repolish' / 'foo.txt', 'from p1')
+    (p1 / 'repolish').mkdir(parents=True)
+    write_file(p1 / 'repolish' / 'foo.txt', 'from p1')
     write_file(
-        p1 / 'templates' / 'repolish.py',
+        p1 / 'repolish.py',
         'def create_context():\n    return {}\n',
     )
 
     # provider 2
     p2 = tmp_path / 'p2'
-    (p2 / 'templates' / 'repolish').mkdir(parents=True)
-    write_file(p2 / 'templates' / 'repolish' / 'foo.txt', 'from p2')
+    (p2 / 'repolish').mkdir(parents=True)
+    write_file(p2 / 'repolish' / 'foo.txt', 'from p2')
     write_file(
-        p2 / 'templates' / 'repolish.py',
+        p2 / 'repolish.py',
         'def create_context():\n    return {}\n',
     )
 

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from repolish.config import RepolishConfig
 from repolish.loader import FileMode, Providers, TemplateMapping
-from repolish.misc import ctx_keys, ctx_to_dict
+from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
 
@@ -240,15 +240,20 @@ def render_with_cookiecutter(
 
 
 def _compute_merged_context(providers: Providers) -> dict[str, object]:
-    """Return a merged provider context with migrated keys removed.
+    """Return a merged provider context used for rendering and logging.
 
-    Extracted to keep the function small and easier to test.  Logging here is
-    intentionally verbose because mis-merged contexts have been a recurring
-    source of cross-platform confusion; the Windows CI in particular has
-    produced cases where provider context appeared completely missing.  The
-    debug output shows the original providers.context, the per-provider
-    contexts, and the migration flags so that you can trace how the final
-    dictionary was derived.
+    Historically we filtered out context values from providers that had been
+    marked as "migrated" so that only unmigrated providers contributed to the
+    global context.  That made sense during the transition when module-style
+    providers merged their contexts globally, but it breaks templates that
+    rely on provider-specific keys (see example project issue).  We now return
+    all keys in ``providers.context`` unaltered; consumers that need to treat
+    migrated providers specially should inspect ``providers.provider_migrated``
+    directly.
+
+    The function logs input state and the final merged dict to aid debugging
+    when contexts appear to vanish, which has been a common source of
+    confusion on CI.
     """
     # debug dump of incoming state
     logger.debug(
@@ -259,12 +264,7 @@ def _compute_merged_context(providers: Providers) -> dict[str, object]:
     )
 
     merged = dict(providers.context)
-    for pid, migrated in providers.provider_migrated.items():
-        if not migrated:
-            continue
-        ctx_obj = providers.provider_contexts.get(pid)
-        for k in ctx_keys(ctx_obj):
-            merged.pop(k, None)
+    # no longer strip migrated provider keys; keep everything
 
     merged.setdefault('_repolish_project', 'repolish')
     logger.debug('compute_merged_context_result', merged_ctx=merged)

@@ -72,10 +72,9 @@ def test_apply_logs_migrated_and_nonmigrated_context(
 ) -> None:
     """`final_providers_generated` event should break the context down.
 
-    The logged payload must include:
-      * `non_migrated` - the merged context used by unmigrated providers (keys
-        from migrated providers removed)
-      * `migrated` - a dict mapping provider names to their own contexts
+    The logged payload now includes:
+      * `global_context` - the merged context used across providers
+      * `providers` - a list of provider-specific context dicts
     """
     cfg_path = tmp_path / 'repolish.yaml'
     cfg_path.write_text('')
@@ -83,7 +82,7 @@ def test_apply_logs_migrated_and_nonmigrated_context(
     fake_config = SimpleNamespace(
         providers_order=['a'],
         providers={
-            'a': SimpleNamespace(target_dir=Path('a'), templates_dir=''),
+            'a': SimpleNamespace(target_dir=Path('a')),
         },
         directories=[],
         template_overrides={},
@@ -142,8 +141,8 @@ def test_apply_logs_migrated_and_nonmigrated_context(
 
     ctx = payload['context']
 
-    assert ctx['non_migrated'] == _compute_merged_context(fake_providers)
-    assert ctx['migrated'] == [
+    assert ctx['global_context'] == _compute_merged_context(fake_providers)
+    assert ctx['providers'] == [
         {'alias': 'a', 'directory': 'a', 'context': {'a': 1}},
     ]
 

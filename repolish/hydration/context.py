@@ -16,7 +16,7 @@ def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
         return alias_to_pid
 
     for alias, info in config.providers.items():
-        alias_to_pid[alias] = (info.target_dir / info.templates_dir).as_posix()
+        alias_to_pid[alias] = info.target_dir.as_posix()
     return alias_to_pid
 
 
@@ -116,10 +116,10 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     # to `create_providers`; this is effectively `info.target_dir`.
     # build a small alias->provider-id map that mirrors the one used when
     # resolving directories from providers.  when a provider specifies a
-    # non-empty `templates_dir` the loader will receive a path that includes
-    # that suffix, so the override key must match or the configuration will be
-    # ignored.  `_build_alias_to_pid` already performs this computation, so
-    # reuse it here rather than repeating the logic.
+    # loader provider id is just the directory path passed to
+    # `create_providers`; this should already point at the template root.
+    # `_build_alias_to_pid` computes the mapping so reuse it rather than
+    # repeating the logic.
     alias_to_pid = _build_alias_to_pid(config)
 
     provider_overrides: dict[str, dict[str, object]] = {}
@@ -138,7 +138,7 @@ def build_final_providers(config: RepolishConfig) -> Providers:
             provider_overrides[pid] = merged
 
     # determine directories from provider info (alias_to_pid holds the
-    # normalized loader IDs constructed from target_dir and templates_dir)
+    # normalized loader IDs constructed from target_dir)
     # type is union because create_providers accepts either plain strings or
     # (alias,path) tuples.  we only provide strings here, hence the explicit
     # annotation to satisfy the type checker.
@@ -167,4 +167,5 @@ def build_final_providers(config: RepolishConfig) -> Providers:
         file_mappings=providers.file_mappings,
         create_only_files=providers.create_only_files,
         provider_contexts=providers.provider_contexts,
+        provider_migrated=providers.provider_migrated,
     )

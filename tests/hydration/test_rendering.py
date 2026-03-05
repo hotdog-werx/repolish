@@ -377,15 +377,12 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     tmp_path: Path,
     mocker: MockerFixture,
 ):
-    """Migrated providers are isolated; unmigrated providers no longer inherit migrated keys.
+    """Migrated providers do not hide their keys from peers.
 
-    Context isolation is always active for migrated providers; the former
-    `provider_scoped_template_context` configuration flag no longer needs to
-    be enabled by users.  This test exercises the same guarantees as before:
-
-    1. Templates belonging to unmigrated providers do not see keys from
-       providers that have already migrated.  Those values are stripped from
-       the merged context as soon as a provider is marked `provider_migrated`.
+    With context isolation always active, every provider sees the full merged
+    context.  Earlier versions stripped the keys of migrated providers from
+    subsequent providers; that behaviour is gone.  This test ensures both
+    ``a_key`` and ``b_key`` are available to every template.
     """
     tpl = tmp_path / 'tpl-providers'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
@@ -444,21 +441,20 @@ def test_provider_scoped_template_context_blocks_cross_provider_keys(
     # Enable Jinja rendering (scoped context is now automatic)
     config.no_cookiecutter = True
 
-    # Render: migrated provider's mapping sees only its context; unmigrated
-    # provider's mapping does *not* inherit the migrated provider's keys.
+    # Render: both templates should succeed and have access to all keys.
     preprocess_templates(setup_input, providers, config, base_dir)
 
     migrated_map = providers.provider_migrated
     assert any(migrated_map.values())
     assert any(not v for v in migrated_map.values())
 
-    # B's template references `a_key` (owned by migrated provider A) - since
-    # A's context is removed from the merged context the render should fail.
-    # the failure happens when rendering mappings, so the error is wrapped in a
-    # RuntimeError by `_process_template_mappings`.
-    with pytest.raises(RuntimeError) as exc:
-        render_template(setup_input, providers, setup_output, config)
-    assert 'a_key' in str(exc.value)
+    render_template(setup_input, providers, setup_output, config)
+
+    # verify outputs contain expected values
+    a_out = (setup_output / 'repolish' / '_repolish.a.txt').read_text(encoding='utf-8').strip()
+    b_out = (setup_output / 'repolish' / '_repolish.b.txt').read_text(encoding='utf-8').strip()
+    assert a_out == 'A=A'
+    assert b_out == 'A=A B=B'
 
 
 def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
@@ -510,14 +506,11 @@ def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
 
 
 def test_render_context_excludes_migrated_providers(tmp_path: Path):
-    """Keys from migrated providers are excluded from the merged context.
+    """Merged context always includes keys from migrated providers.
 
-    Keys from migrated (class-based) providers are not present in
-    the merged context, as demonstrated by a failing render.
-
-    This behaviour is independent of the
-    `provider_scoped_template_context` flag; merging occurs once per
-    `render_template` invocation and always omits migrated contexts.
+    In recent releases the merged context is never pruned; providers marked as
+    migrated no longer hide their values from their peers.  Rendering should
+    succeed and the output should include the migrated provider's value.
     """
     tpl = tmp_path / 'tpl-mig'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
@@ -553,9 +546,13 @@ def create_context():
     preprocess_templates(setup_input, providers, config, base_dir)
     config.no_cookiecutter = True
 
-    # rendering should blow up because `foo` was stripped from merged_ctx
-    with pytest.raises(UndefinedError):
-        render_template(setup_input, providers, setup_output, config)
+    # rendering should succeed and include foo from provider A
+    render_template(setup_input, providers, setup_output, config)
+    # the generated file name may not be prefixed; just grab whatever was created
+    files = list((setup_output / 'repolish').iterdir())
+    assert files, 'no output files were produced'
+    content = files[0].read_text(encoding='utf-8').strip()
+    assert content == 'VALUE=A'
 
 
 def test_generic_templates_get_provider_context_when_scoped(tmp_path: Path):

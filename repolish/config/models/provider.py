@@ -43,11 +43,11 @@ class ProviderConfig(BaseModel):
     )
     directory: str | None = Field(
         default=None,
-        description='Direct path to provider directory (alternative to cli)',
-    )
-    templates_dir: str = Field(
-        default='templates',
-        description='Subdirectory within provider resources containing templates',
+        description=(
+            'Path to provider resources (either a directory or location '
+            'discovered by CLI). Should point at the template root containing '
+            '`repolish.py`.'
+        ),
     )
     symlinks: list[ProviderSymlink] | None = Field(
         default=None,
@@ -92,11 +92,7 @@ class ResolvedProviderInfo(BaseModel):
         description='Provider alias name used in configuration',
     )
     target_dir: Path = Field(
-        description='Fully resolved directory where provider resources are linked',
-    )
-    templates_dir: str = Field(
-        default='templates',
-        description='Subdirectory within target_dir containing templates',
+        description='Fully resolved directory where provider resources are linked (must contain repolish.py).',
     )
     library_name: str | None = Field(
         default=None,
