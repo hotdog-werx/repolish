@@ -30,6 +30,11 @@ def _merge_provider_contexts(
     This updates `providers.provider_contexts` in-place and returns the
     computed merged context starting from the loader-provided values.
     """
+    # start from whatever context the loader produced; this no longer
+    # includes any project-level values since those top-level keys were
+    # removed from the configuration schema. providers.context is typically
+    # seeded with the global namespace plus any provider contributions, so
+    # it already contains the correct base state.
     merged_context: dict[str, object] = dict(providers.context)
     if not config.providers:
         return merged_context
@@ -52,15 +57,12 @@ def _merge_provider_contexts(
     return merged_context
 
 
-def _apply_global_overrides(
-    merged_context: dict[str, object],
-    config: RepolishConfig,
-) -> None:
-    """Apply project-level dotted overrides and final context into merged_context."""
-    if config.context_overrides:
-        apply_context_overrides(merged_context, config.context_overrides)
-
-    merged_context.update(config.context)
+# project-level `context` and `context_overrides` were removed from the
+# configuration schema. all overrides now live inside provider entries, so
+# there is nothing to apply at the global level. the former behaviour was
+# encapsulated in `_apply_global_overrides`, but the helper is now vestigial
+# and can safely be deleted. (we keep this comment as historical context
+# until the helper is removed completely.)
 
 
 def _apply_delete_overrides(
@@ -99,12 +101,11 @@ def _apply_delete_overrides(
 def build_final_providers(config: RepolishConfig) -> Providers:
     """Build the final Providers object by merging provider contributions.
 
-    - Loads providers from config.directories
+    - Loads providers from the directories referenced by configured providers
     - Applies per-provider context overrides defined in `config.providers[alias].context`
       before merging, giving project config fine-grained control over each
       provider's values.
-    - Merges config.context over provider.context
-    - Applies config.delete_files entries (with '!' negation) on top of
+    - Applies `config.delete_files` entries (with '!' negation) on top of
       provider decisions and records provenance Decisions for config entries
     """
     # construct per-provider override map that will be applied "early"
@@ -143,16 +144,18 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     # (alias,path) tuples.  we only provide strings here, hence the explicit
     # annotation to satisfy the type checker.
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.values())
+    # `base_context` and `context_overrides` parameters are no longer driven by
+    # project configuration; omit them entirely so the loader only sees its
+    # own merged context (which already includes the global namespace).
     providers = create_providers(
         dirs,
-        base_context=config.context,
-        context_overrides=config.context_overrides,
         provider_overrides=provider_overrides,
     )
 
     alias_to_pid = _build_alias_to_pid(config)
     merged_context = _merge_provider_contexts(providers, config, alias_to_pid)
-    _apply_global_overrides(merged_context, config)
+    # no global overrides to apply; the previous call was removed in an earlier
+    # PR that eliminated top-level context keys
 
     delete_files = _apply_delete_overrides(providers, config)
 

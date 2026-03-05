@@ -23,7 +23,6 @@ def test_config_level_provenance(tmp_path: Path):
         {
             'config_dir': tmp_path,
             'directories': [d],
-            'context': {},
             'anchors': {},
             'post_process': [],
             # config negates a.txt and adds b.txt
@@ -97,8 +96,6 @@ def test_per_provider_context_override(tmp_path: Path):
         {
             'config_dir': tmp_path,
             'directories': [prov],
-            'context': {},
-            'context_overrides': {},
             'anchors': {},
             'post_process': [],
             'delete_files': [],
@@ -153,8 +150,6 @@ class P(Provider[Ctx, BaseModel]):
         {
             'config_dir': tmp_path,
             'directories': [],
-            'context': {},
-            'context_overrides': {},
             'anchors': {},
             'post_process': [],
             'delete_files': [],
@@ -197,8 +192,6 @@ def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
         {
             'config_dir': tmp_path,
             'directories': [sub],
-            'context': {},
-            'context_overrides': {},
             'anchors': {},
             'post_process': [],
             'delete_files': [],
@@ -235,8 +228,6 @@ def test_provider_context_overrides_dotted(tmp_path: Path):
         {
             'config_dir': tmp_path,
             'directories': [prov],
-            'context': {},
-            'context_overrides': {},
             'anchors': {},
             'post_process': [],
             'delete_files': [],

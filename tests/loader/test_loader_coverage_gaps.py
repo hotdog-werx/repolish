@@ -481,17 +481,14 @@ class Receiver(Provider[RecCtx, Msg]):
     # provider config/overrides.  using that helper gives us confidence that
     # `provide_inputs` will see the updated context (previously the test
     # exercised `create_providers` directly which hid a bug).
-    # global `context_overrides` argument is deprecated and isn't where
-    # provider code actually looks; overrides live on the per-provider
-    # configuration (cf. `ResolvedProviderInfo.context_overrides`).  the
-    # previous test variant accidentally passed them globally which hid a
-    # bug in real-world invocations.
-    # final provider directories are exactly the paths returned by the
-    # loader; our manual config should match that shape.  no extra subdir is
-    # appended or expected.
+    # project configuration no longer supports a global context or
+    # dotted overrides; all such values must be provided on the
+    # per-provider entries (see <docs> for details).  our manual config
+    # should therefore omit those keys entirely.  final provider
+    # directories are exactly the paths returned by the loader; no extra
+    # subdir is appended or expected.
     cfg = RepolishConfig(
         config_dir=tmp_path,
-        context={},
         anchors={},
         providers={
             'sender': ResolvedProviderInfo(

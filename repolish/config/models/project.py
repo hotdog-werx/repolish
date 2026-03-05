@@ -19,14 +19,6 @@ class RepolishConfigFile(BaseModel):
     convert this to RepolishConfig using resolve_config().
     """
 
-    context: dict[str, Any] = Field(
-        default_factory=dict,
-        description='Context variables for template rendering',
-    )
-    context_overrides: dict[str, Any] = Field(
-        default_factory=dict,
-        description='Overrides for context variables using dot-notation paths or nested dict structures',
-    )
     anchors: dict[str, str] = Field(
         default_factory=dict,
         description='Anchor content for block replacements',
@@ -150,14 +142,6 @@ class RepolishConfig(BaseModel):
 
     config_dir: Path = Field(
         description='Directory containing the repolish.yaml file',
-    )
-    context: dict[str, Any] = Field(
-        default_factory=dict,
-        description='Context variables for template rendering',
-    )
-    context_overrides: dict[str, Any] = Field(
-        default_factory=dict,
-        description='Overrides for context variables',
     )
     anchors: dict[str, str] = Field(
         default_factory=dict,

@@ -191,7 +191,6 @@ class P(Provider[Ctx, BaseModel]):
         json.dumps(
             {
                 'providers': {'p': {'directory': './p'}},
-                'context': {},
                 'anchors': {},
                 'delete_files': [],
             },

@@ -41,7 +41,7 @@ class InvalidConfigCase:
         ),
         InvalidConfigCase(
             name='missing_required_fields',
-            config_data={'context': {'key': 'value'}},
+            config_data={},
             error_type=ConfigValidationError,
             error_match='must specify at least one provider',
         ),
@@ -474,8 +474,6 @@ def test_load_config_all_fields(
 
     config_data = {
         'providers': {'base': {'directory': str(dir1)}},
-        'context': {'project': 'test'},
-        'context_overrides': {'nested.key': 'value'},
         'anchors': {'header': '# Header'},
         'post_process': ['black .', 'ruff check .'],
         'delete_files': ['old.txt', '!keep.txt'],
@@ -489,8 +487,6 @@ def test_load_config_all_fields(
     assert config.providers['base'].target_dir.resolve() == dir1.resolve()
 
     # other globals still preserved
-    assert config.context == {'project': 'test'}
-    assert config.context_overrides == {'nested.key': 'value'}
     assert config.anchors == {'header': '# Header'}
     assert config.post_process == ['black .', 'ruff check .']
     assert config.delete_files == ['old.txt', '!keep.txt']
