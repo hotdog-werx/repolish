@@ -501,7 +501,6 @@ class Receiver(Provider[RecCtx, Msg]):
 
     cfg = RepolishConfig(
         config_dir=tmp_path,
-        directories=[sdir_sub, rdir_sub],
         context={},
         anchors={},
         providers={

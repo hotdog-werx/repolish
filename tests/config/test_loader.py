@@ -1,5 +1,4 @@
 import json
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,13 +37,13 @@ class InvalidConfigCase:
             name='empty_config',
             config_data={},
             error_type=ConfigValidationError,
-            error_match='must specify either "directories" or "providers"',
+            error_match='must specify at least one provider',
         ),
         InvalidConfigCase(
             name='missing_required_fields',
             config_data={'context': {'key': 'value'}},
             error_type=ConfigValidationError,
-            error_match='must specify either "directories" or "providers"',
+            error_match='must specify at least one provider',
         ),
         InvalidConfigCase(
             name='invalid_provider_config_no_cli_or_directory',
@@ -106,7 +105,7 @@ class InvalidConfigCase:
                 },
             },
             error_type=DirectoryValidationError,
-            error_match='No directories resolved - providers may not be linked yet',
+            error_match='No providers resolved - configuration may be empty',
         ),
     ],
     ids=lambda case: case.name,
@@ -210,13 +209,9 @@ def test_load_config_with_provider_directory(
 
     config = load_config(config_path)
 
-    # Should auto-build directories from provider
-    assert len(config.directories) == 1
-    assert config.directories[0] == templates_path.resolve()
-
-    # Provider should be resolved
+    # provider entry should exist and point at the templates directory
     assert 'base' in config.providers
-    assert config.providers['base'].target_dir == provider_dir.resolve()
+    assert config.providers['base'].target_dir.resolve() == provider_dir.resolve()
     assert config.providers['base'].templates_dir == 'templates'
 
 
@@ -270,22 +265,17 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
 
     config = load_config(config_path)
 
-    # Should auto-build directories from linked provider
-    assert len(config.directories) == 1
-    expected_templates = target_dir / 'templates'
-    assert config.directories[0] == expected_templates.resolve()
-
-    # Provider should be resolved with info from JSON
+    # provider should be registered with correct info from JSON
     assert 'mylib' in config.providers
-    assert config.providers['mylib'].target_dir == target_dir.resolve()
+    assert config.providers['mylib'].target_dir.resolve() == target_dir.resolve()
     assert config.providers['mylib'].library_name == 'my-library'
     assert config.providers['mylib'].templates_dir == 'templates'
 
 
 def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
     """Test loading with multiple providers in order."""
-    config_dir, target1 = provider_setup('base', create_templates=True)
-    _, target2 = provider_setup('python', create_templates=True)
+    config_dir, _target1 = provider_setup('base', create_templates=True)
+    _, _target2 = provider_setup('python', create_templates=True)
 
     config_data = {
         'providers_order': ['base', 'python'],
@@ -300,11 +290,10 @@ def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
 
     config = load_config(config_path)
 
-    # Directories should be in providers_order
-    assert len(config.directories) == 2
-    assert config.directories[0] == (target1 / 'templates').resolve()
-    assert config.directories[1] == (target2 / 'templates').resolve()
+    # providers should respect providers_order
     assert config.providers_order == ['base', 'python']
+    # provider entries should exist in that order when iterating
+    assert list(config.providers.keys()) == ['base', 'python']
 
 
 def test_load_config_with_symlinks(provider_setup: ProviderSetupFixture):
@@ -472,9 +461,8 @@ def test_load_config_skip_validation_for_linking(
     # Should not raise even though provider is not linked
     config = load_config(config_path, validate=False)
 
-    # Provider is not linked and has no directory, so it won't be in providers dict
-    assert config.directories == []  # No directories since not linked
-    assert 'unlinked' not in config.providers  # Not resolved
+    # Provider is not linked and has no directory, so it isn't resolved
+    assert 'unlinked' not in config.providers
     assert config.providers_order == ['unlinked']  # But order preserved
 
 
@@ -482,11 +470,16 @@ def test_load_config_all_fields(
     yaml_config_file: YamlConfigFileFixture,
     template_dir: TemplateDirFixture,
 ):
-    """Test loading config with all optional fields populated."""
+    """Test loading config with all optional fields populated.
+
+    The old version used the deprecated `directories` key; now we supply a
+    single provider configured via `directory`.  All other global fields
+    should round-trip through validation and resolution unchanged.
+    """
     dir1 = template_dir('test1')
 
     config_data = {
-        'directories': [str(dir1)],
+        'providers': {'base': {'directory': str(dir1)}},
         'context': {'project': 'test'},
         'context_overrides': {'nested.key': 'value'},
         'anchors': {'header': '# Header'},
@@ -495,10 +488,14 @@ def test_load_config_all_fields(
     }
     config_path = yaml_config_file(config_data)
 
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', DeprecationWarning)
-        config = load_config(config_path)
+    config = load_config(config_path)
 
+    # provider must be resolved
+    assert 'base' in config.providers
+    assert config.providers['base'].target_dir.resolve() == dir1.resolve()
+    assert config.providers['base'].templates_dir == 'templates'
+
+    # other globals still preserved
     assert config.context == {'project': 'test'}
     assert config.context_overrides == {'nested.key': 'value'}
     assert config.anchors == {'header': '# Header'}
@@ -530,8 +527,4 @@ def test_load_config_providers_order_optional(
     config = load_config(config_path)
 
     # Should process providers in the order they appear in the YAML (dict key order)
-    assert len(config.directories) == 3
-    assert config.directories[0].name == 'templates'
-    assert config.directories[0].parent.name == 'base'
-    assert config.directories[1].parent.name == 'python'
-    assert config.directories[2].parent.name == 'extras'
+    assert list(config.providers.keys()) == ['base', 'python', 'extras']

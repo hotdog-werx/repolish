@@ -19,11 +19,6 @@ class RepolishConfigFile(BaseModel):
     convert this to RepolishConfig using resolve_config().
     """
 
-    directories: list[str] = Field(
-        default_factory=list,
-        description='DEPRECATED: Use providers instead. List of template directories. Removed in v1.0.',
-        deprecated=True,
-    )
     context: dict[str, Any] = Field(
         default_factory=dict,
         description='Context variables for template rendering',
@@ -155,10 +150,6 @@ class RepolishConfig(BaseModel):
 
     config_dir: Path = Field(
         description='Directory containing the repolish.yaml file',
-    )
-    directories: list[Path] = Field(
-        default_factory=list,
-        description='Fully resolved template directory paths',
     )
     context: dict[str, Any] = Field(
         default_factory=dict,

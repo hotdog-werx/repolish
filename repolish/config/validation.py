@@ -1,6 +1,5 @@
 """Validation logic for configuration."""
 
-import warnings
 from pathlib import Path
 
 from repolish.config.models import RepolishConfig, RepolishConfigFile
@@ -23,19 +22,10 @@ def validate_config_file(config: RepolishConfigFile) -> None:
     Raises:
         ValueError: If configuration structure is invalid
     """
-    # Warn if using deprecated directories field
-    if config.directories:
-        warnings.warn(
-            "The 'directories' field is deprecated and will be removed in v1.0. "
-            "Use 'providers' with 'directory' configuration instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    # Basic validation: must have either directories or providers
-    # providers_order is optional - defaults to providers dict key order
-    if not config.directories and not config.providers:
-        msg = 'Configuration must specify either "directories" or "providers"'
+    # Basic validation: must have at least one provider defined
+    # (directories were removed in v1.0)
+    if not config.providers:
+        msg = 'Configuration must specify at least one provider'
         raise ConfigValidationError(msg)
 
     # Validate providers_order references only defined providers
@@ -58,12 +48,10 @@ def validate_resolved_config(config: RepolishConfig) -> None:
     Raises:
         ValueError: If resolved paths or structure is invalid
     """
-    if not config.directories:
-        msg = 'No directories resolved - providers may not be linked yet'
+    # directories removed; we still require at least one provider for structure
+    if not config.providers:
+        msg = 'No providers resolved - configuration may be empty'
         raise DirectoryValidationError(msg)
-
-    # Validate directory structure
-    _validate_directory_structure(config.directories)
 
     # Validate provider symlinks
     _validate_provider_symlinks(config)

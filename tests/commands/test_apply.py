@@ -166,7 +166,6 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     fake_config = SimpleNamespace(
         providers_order=['missing'],
         providers={},
-        directories=['/extra/dir'],
         template_overrides={'foo': 'bar'},
         no_cookiecutter=False,
         provider_scoped_template_context=False,
@@ -227,6 +226,6 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     rv = run_repolish(cfg_path, check_only=False)
     assert rv == 0
 
-    # verify branch behaviour: missing provider skipped, extra directory appended
-    assert recorded['template_dirs'] == [(None, Path('/extra/dir'))]
+    # verify branch behaviour: missing provider skipped (no directories available)
+    assert recorded['template_dirs'] == []
     assert recorded['overrides'] == {'foo': 'bar'}

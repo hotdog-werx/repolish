@@ -137,8 +137,14 @@ def build_final_providers(config: RepolishConfig) -> Providers:
         if merged:
             provider_overrides[pid] = merged
 
+    # determine directories from provider info (alias_to_pid holds the
+    # normalized loader IDs constructed from target_dir and templates_dir)
+    # type is union because create_providers accepts either plain strings or
+    # (alias,path) tuples.  we only provide strings here, hence the explicit
+    # annotation to satisfy the type checker.
+    dirs: list[str | tuple[str, str]] = list(alias_to_pid.values())
     providers = create_providers(
-        [str(d) for d in config.directories],
+        dirs,
         base_context=config.context,
         context_overrides=config.context_overrides,
         provider_overrides=provider_overrides,
@@ -161,5 +167,4 @@ def build_final_providers(config: RepolishConfig) -> Providers:
         file_mappings=providers.file_mappings,
         create_only_files=providers.create_only_files,
         provider_contexts=providers.provider_contexts,
-        provider_migrated=providers.provider_migrated,
     )

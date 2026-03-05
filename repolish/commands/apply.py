@@ -60,24 +60,23 @@ def _gather_template_directories(
 ) -> list[Path] | list[tuple[str | None, Path]]:
     """Return the template directories in the order they should be staged.
 
-    When provider metadata is present this returns a list of `(alias, Path)`
-    tuples. Otherwise a plain list of `Path` objects is returned for legacy
-    compatibility.
+    Providers drive the result; the `directories` field no longer exists.
+    If `providers_order` is given we honour it, otherwise we use dict key order.
+    The return type matches the previous helper so callers remain unchanged.
     """
-    if not config.providers_order:
-        return [Path(p) for p in config.directories]
-
     template_dirs: list[tuple[str | None, Path]] = []
-    for alias in config.providers_order:
+    # build in-order list from providers
+    order = config.providers_order or list(config.providers.keys())
+    for alias in order:
         info = config.providers.get(alias)
         if info is None:
             continue
         path = info.target_dir / info.templates_dir
         template_dirs.append((alias, path))
 
-    for p in config.directories:
-        if not any(str(p) == str(d) for _, d in template_dirs):
-            template_dirs.append((None, Path(p)))
+    # if no alias information needed, return simple Paths
+    if not any(alias is not None for alias, _ in template_dirs):
+        return [path for _, path in template_dirs]
 
     return template_dirs
 
@@ -147,7 +146,7 @@ def _log_final_providers_event(
     """
     logger.info(
         'final_providers_generated',
-        template_directories=[str(d) for d in config.directories],
+        template_directories=[str(p[1] if isinstance(p, tuple) else p) for p in _gather_template_directories(config)],
         context={'non_migrated': non_migrated_ctx, 'migrated': migrated_list},
         delete_paths=[p.as_posix() for p in providers.delete_files],
         delete_history={

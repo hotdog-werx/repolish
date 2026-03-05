@@ -97,10 +97,10 @@ def test_integration_emoji_encoding(
     monkeypatch: 'pytest.MonkeyPatch',
 ) -> None:
     """Test that repolish handles emoji content correctly (exposes Windows encoding issues)."""
-    # create template dir with emoji content
+    # create template dir with emoji content (provider directory)
     templates = tmp_path / 'templates'
     tpl_dir = templates / 'emoji_template'
-    repo_dir = tpl_dir / 'repolish'
+    repo_dir = tpl_dir / 'templates' / 'repolish'
     repo_dir.mkdir(parents=True, exist_ok=True)
 
     # file with emoji content
@@ -118,7 +118,7 @@ def test_integration_emoji_encoding(
     )
 
     # repolish.py provider file (required for template validation)
-    repolish_py = tpl_dir / 'repolish.py'
+    repolish_py = tpl_dir / 'templates' / 'repolish.py'
     write_file(
         repolish_py,
         textwrap.dedent("""\
@@ -135,7 +135,9 @@ def test_integration_emoji_encoding(
     cfg.write_text(
         json.dumps(
             {
-                'directories': [str((tpl_dir).as_posix())],
+                'providers': {
+                    'emoji': {'directory': str(tpl_dir)},
+                },
                 'context': {},
                 'anchors': {},
                 'delete_files': [],

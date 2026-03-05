@@ -32,8 +32,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
     config_file = cast('Path', config.config_file)
     config_dir = config_file.resolve().parent
 
-    # Resolve directories (either explicit or from providers)
-    directories = _resolve_directories(config, config_dir)
+    # directories are determined solely from providers; resolved later as needed
 
     # Resolve all providers
     resolved_providers = _resolve_providers(config, config_dir)
@@ -42,7 +41,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
         no_cookiecutter=config.no_cookiecutter,
         provider_scoped_template_context=config.provider_scoped_template_context,
         config_dir=config_dir,
-        directories=directories,
+        # `directories` removed in v1; providers supply needed paths
         context=config.context,
         context_overrides=config.context_overrides,
         anchors=config.anchors,
@@ -52,52 +51,6 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
         providers_order=config.providers_order,
         template_overrides=config.template_overrides,
     )
-
-
-def _resolve_directories(
-    config: RepolishConfigFile,
-    config_dir: Path,
-) -> list[Path]:
-    """Resolve directory configuration to absolute Path objects.
-
-    If directories are explicitly configured, resolve them.
-    If providers are configured, build directories from providers
-    (using providers_order if specified, else providers dict key order).
-
-    Args:
-        config: Raw configuration
-        config_dir: Directory containing the config file
-
-    Returns:
-        List of resolved directory paths
-    """
-    # If directories is explicitly set, resolve them
-    # Note: directories field is deprecated, but if it's still used, we resolve it directly
-    if config.directories:
-        return _resolve_directory_list(config.directories, config_dir)
-
-    # Otherwise, build from providers (using providers_order if specified, else dict key order)
-    if config.providers:
-        return _build_directories_from_providers(config, config_dir)
-
-    # No directories configured
-    return []  # pragma: no cover - This should be caught by validation before resolution
-
-
-def _resolve_directory_list(
-    directories: list[str],
-    config_dir: Path,
-) -> list[Path]:
-    """Resolve a list of directory strings to absolute Path objects.
-
-    Args:
-        directories: List of directory paths from config
-        config_dir: Directory containing the config file
-
-    Returns:
-        List of resolved absolute Path objects
-    """
-    return [_resolve_path(entry, config_dir) for entry in directories]
 
 
 def _resolve_providers(
