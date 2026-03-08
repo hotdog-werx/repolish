@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
-from pytest_mock import MockerFixture
 
 from repolish import ProviderEntry
 from repolish.config import RepolishConfig, ResolvedProviderInfo
@@ -18,30 +17,16 @@ from repolish.loader import (
 )
 from repolish.loader import Provider as _ProviderBase
 from repolish.loader.mappings import (
-    _process_mapping_item,
     process_file_mappings,
-)
-from repolish.loader.module_loader import (
-    ModuleProviderAdapter,
-    # helpers called indirectly in tests
-    _collect_context_from_module,
-    _handle_callable_create_ctx,
-    collect_contexts_with_provider_map,
-    inject_provider_instance_for_module,
 )
 from repolish.loader.orchestrator import (
     _create_context_wrapper_for,
     _process_phase_two,
 )
 from repolish.loader.three_phase import (
-    _get_own_model,
-    _store_new_context,
-    _validate_raw_inputs,
-    build_provider_metadata,
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.loader.validation import _emit_provider_migration_suggestion
 from repolish.misc import ctx_keys, ctx_to_dict
 
 
@@ -62,41 +47,6 @@ class DummyProvider(_ProviderBase):
 
     def create_context(self) -> BaseModel | dict:
         return {}
-
-
-# ---------------------------------------------------------------------------
-
-
-def test_process_file_mappings_non_dict_feedback(
-    make_provider: Callable[[str, str], str],
-):
-    """If module-style provider returns None the adapter still produces a dict.
-
-    This test primarily exercises the adapter path and the helper that
-    ignores non-`TemplateMapping` values (the integer case).  It does *not*
-    hit the early-return branch in `repolish/loader/mappings.py`; a
-    separate test below covers that.
-    """
-    src = """
-    def create_file_mappings(context):
-        return None
-    """
-    # `make_provider` signature accepts a name, but the fixture is untyped
-    # at call sites; silence the checker instead of changing every use.
-    p = make_provider(src)  # type: ignore[call-arg]
-    providers = create_providers([p])
-    assert providers.file_mappings == {}
-
-    # the integer value case exercises `_process_mapping_item` fallthrough
-    acc = Accumulators(
-        merged_anchors={},
-        merged_file_mappings={},
-        create_only_set=set(),
-        delete_set=set(),
-        history={},
-    )
-    _process_mapping_item('foo', 42, 'pid', acc)
-    assert acc.merged_file_mappings == {}
 
 
 def test_process_file_mappings_skips_none_values() -> None:
@@ -182,107 +132,6 @@ def test_process_file_mappings_early_return_for_class_provider() -> None:  # pra
     assert acc.merged_file_mappings == {}
 
 
-# ----- module_loader helpers ------------------------------------------------
-
-
-def test_collect_context_from_module_with_context_var():
-    """_collect_context_from_module should update merged dict with context var."""
-    # build a fake module cache with context key
-    module_dict = {'context': {'x': 1}}
-    merged = {}
-    # call function from loader.module_loader
-
-    _collect_context_from_module(module_dict, merged)
-    assert merged == {'x': 1}
-
-
-def test_handle_callable_create_ctx_deprecated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When factory returns None a DeprecationWarning is emitted."""
-
-    def factory(ctx: dict | None) -> None:
-        return None
-
-    merged = {}
-    provider_map: dict[str, object] = {}
-    with pytest.warns(DeprecationWarning, match='deprecated'):
-        _handle_callable_create_ctx('p', factory, merged, provider_map)
-    assert merged == {}
-    assert provider_map == {'p': {}}
-
-
-def test_collect_contexts_with_provider_map_variants(tmp_path: Path):
-    """Exercise branches where context var exists and where none present."""
-    # module with context variable
-    m1 = {'context': {'a': 1}}
-    # module with neither factory nor context
-    m2 = {}
-    merged, provider_map = collect_contexts_with_provider_map(
-        [('p1', m1), ('p2', m2)],
-    )
-    assert merged['a'] == 1
-    assert provider_map == {'p1': {'a': 1}, 'p2': {}}
-
-
-def test_module_provider_adapter_basic_behavior():
-    """Validate default returns and adapter helpers used in coverage gaps."""
-    module_dict: dict[str, object] = {}
-    adapter = ModuleProviderAdapter(module_dict, 'pid')
-
-    # no original callables: methods should exercise fallbacks
-    assert adapter.provide_inputs({}, [], 0) == []
-
-    ctx = {'foo': 'bar'}
-    assert adapter.finalize_context(ctx, [], [], 0) is ctx
-    assert adapter.get_inputs_schema() is None
-
-    # test wrapper injection prevention
-    inject_provider_instance_for_module(module_dict, 'pid')
-    # second call should be no-op (line 481)
-    inject_provider_instance_for_module(module_dict, 'pid')
-
-    # wrapper for create_context should convert BaseModel to dict
-    class Ctx(BaseModel):
-        x: int
-
-    class P(_ProviderBase):
-        def get_provider_name(self) -> str:
-            return 'x'
-
-        def create_context(self) -> BaseModel:
-            return Ctx(x=5)
-
-    inst = P()
-    module_dict2: dict[str, object] = {}
-    inject_provider_instance_for_module(module_dict2, 'p2')
-    # replace wrapper with one generated from inst manually
-    wrapper = _create_context_wrapper_for(inst)
-    res = wrapper(None)
-    assert res == {'x': 5}
-
-
-def test_module_adapter_merge_create_only_and_delete():
-    """Verify _add_create_only_entries and _add_delete_entries branches."""
-    adapter = ModuleProviderAdapter({}, 'pid')
-    merged: dict[str, str | TemplateMapping] = {}
-
-    # create-only with a falsy item and a real item
-    adapter._add_create_only_entries(merged, [None, 'foo.txt'])
-    assert 'foo.txt' in merged
-
-    # duplicate entry should be skipped
-    adapter._add_create_only_entries(merged, ['foo.txt'])
-    assert len(merged) == 1
-
-    # delete entries: skip None, raise for bad type, skip existing key
-    with pytest.raises(TypeError):
-        adapter._add_delete_entries({}, [123])
-    merged2: dict[str, str | TemplateMapping] = {'keep.txt': 'x'}
-    adapter._add_delete_entries(merged2, [None, 'keep.txt', 'del.txt'])
-    assert 'del.txt' in merged2
-
-
 # ---- orchestrator helpers --------------------------------------------------
 
 
@@ -308,19 +157,6 @@ def test_process_phase_two_skips_missing_instance():
 
 
 # ---- three_phase helpers ---------------------------------------------------
-
-
-def test_build_provider_metadata_handles_bad_name():
-    class BadName(_ProviderBase):
-        def get_provider_name(self) -> str:
-            msg = 'boom'
-            raise RuntimeError(msg)
-
-        def create_context(self) -> dict:
-            return {}
-
-    module_cache = [('p', {'_repolish_provider_instance': BadName()})]
-    _mig, _insts = build_provider_metadata(module_cache)
 
 
 def test_ctx_to_dict_behaves_consistently():
@@ -355,8 +191,9 @@ def test_gather_received_inputs_variants() -> None:
     """Cover module path both with and without recipients after."""
     # provider1 has no recipients after (flag False)
     module_cache = [('p1', {})]
-    instances = [None]
-    provider_contexts: dict[str, object] = {}
+    # annotate so the type checker knows we intend the broader provider union
+    instances: list[_ProviderBase | None] = [None]
+    provider_contexts: dict[str, BaseContext] = {}
     # new API now uses ProviderEntry rather than a raw tuple.  we can
     # construct a minimal entry; context is a plain dict and no schema is
     # declared.
@@ -411,17 +248,16 @@ def test_overrides_affect_inputs(
     overrides were applied.
     """
     sender_src = """
-from pydantic import BaseModel
-from repolish.loader.models import Provider, ProviderEntry
+from repolish import Provider, ProviderEntry, BaseContext, BaseInputs
 from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
 
 
-class Repo(BaseModel):
+class Repo(BaseContext):
     owner: str
     name: str
 
 
-class Ctx(BaseModel):
+class Ctx(BaseContext):
     foo: str
     repo: Repo
 
@@ -444,12 +280,11 @@ class Sender(Provider[Ctx, Msg]):
         return [Msg(foo=own_context.foo)]
 """
     recv_src = """
-from pydantic import BaseModel
-from repolish.loader.models import Provider, ProviderEntry
+from repolish import Provider, ProviderEntry, BaseContext, BaseInputs
 from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
 
 
-class RecCtx(BaseModel):
+class RecCtx(BaseContext):
     got: str | None = None
 
 
@@ -543,15 +378,14 @@ def test_invalid_override_preserves_model(
     callers know something went wrong (extra field, wrong type, etc.).
     """
     src = """
-from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish.loader.models import Provider, BaseContext, BaseInputs
 
 
-class IntCtx(BaseModel):
+class IntCtx(BaseContext):
     x: int = 0
 
 
-class P(Provider[IntCtx, BaseModel]):
+class P(Provider[IntCtx, BaseInputs]):
     def get_provider_name(self):
         return 'p'
 
@@ -572,7 +406,7 @@ class P(Provider[IntCtx, BaseModel]):
             context_overrides={'x': 'not-an-int'},
         )
         ctx = next(iter(providers.provider_contexts.values()))
-        assert isinstance(ctx, BaseModel)
+        assert isinstance(ctx, BaseContext)
         # cast to Any so we can access the field without type errors
 
         ctx_typed = cast('Any', ctx)
@@ -592,15 +426,14 @@ def test_override_unknown_field_logs_warning(
 ):
     """Override targeting fields that don't exist should be ignored and reported via a warning."""
     src = """
-from pydantic import BaseModel
-from repolish.loader import Provider
+from repolish import Provider, BaseContext, BaseInputs
 
 
-class SimpleCtx(BaseModel):
+class SimpleCtx(BaseContext):
     a: int = 1
 
 
-class P(Provider[SimpleCtx, BaseModel]):
+class P(Provider[SimpleCtx, BaseInputs]):
     def get_provider_name(self):
         return 'p'
 
@@ -617,7 +450,7 @@ class P(Provider[SimpleCtx, BaseModel]):
         )
         providers = create_providers([pdir], context_overrides={'y': 'value'})
         ctx = next(iter(providers.provider_contexts.values()))
-        assert isinstance(ctx, BaseModel)
+        assert isinstance(ctx, BaseContext)
         ctx_typed = cast('Any', ctx)
         assert not hasattr(ctx_typed, 'y')
         assert mock_logger.warning.call_count >= 1
@@ -638,19 +471,18 @@ def test_override_on_nested_default_model(
     dump initially contains only empty values.
     """
     src = """
-from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish import Provider, BaseContext, BaseInputs
 
 
-class Inner(BaseModel):
+class Inner(BaseContext):
     x: int = 0
 
 
-class Ctx(BaseModel):
+class Ctx(BaseContext):
     inner: Inner = Inner()
 
 
-class P(Provider[Ctx, BaseModel]):
+class P(Provider[Ctx, BaseInputs]):
     def get_provider_name(self):
         return 'p'
 
@@ -660,41 +492,10 @@ class P(Provider[Ctx, BaseModel]):
     pdir = make_provider(src, 'p')
     providers = create_providers([pdir], context_overrides={'inner.x': 42})
     ctx = next(iter(providers.provider_contexts.values()))
-    assert isinstance(ctx, BaseModel)
+    assert isinstance(ctx, BaseContext)
     ctx_typed = cast('Any', ctx)
     assert hasattr(ctx_typed, 'inner')
     assert ctx_typed.inner.x == 42
-
-
-def test_validate_raw_inputs_and_helpers() -> None:
-    # inputs_schema Null returns unchanged list
-    assert _validate_raw_inputs([1, 2, 3], None) == [1, 2, 3]
-
-    class S(BaseModel):
-        a: int
-
-    # valid inputs should round-trip
-    validated = _validate_raw_inputs([S(a=1), {'a': 2}], S)
-    assert isinstance(validated[0], S)
-    assert isinstance(validated[1], S)
-
-    # _get_own_model error fallback
-    class E(_ProviderBase):
-        def get_provider_name(self) -> str:
-            return 'e'
-
-        def create_context(self) -> dict:
-            raise RuntimeError
-
-    assert _get_own_model(E(), {'p': {'foo': 'bar'}}, 'p') == {'foo': 'bar'}
-
-    # _store_new_context accepts dict and raises on bad type
-    store_ctx: dict[str, dict[str, object]] = {}
-    _store_new_context(cast('dict[str, object]', store_ctx), 'p', {'x': 1})
-    assert cast('dict', store_ctx)['p']['x'] == 1
-
-    with pytest.raises(TypeError):
-        _store_new_context({}, 'p', 123)
 
 
 def test_finalize_provider_contexts_edge_cases() -> None:
@@ -725,20 +526,3 @@ def test_finalize_provider_contexts_edge_cases() -> None:
     inst = Setter()
     finalize_provider_contexts([('p', {})], [inst], {}, cast('dict', ctxs), [])
     assert ctxs == {'p': {'called': True}}
-
-
-def test_emit_provider_migration_suggestion_no_legacy():
-    # should quietly return without warning
-    _emit_provider_migration_suggestion({})
-
-
-def test_emit_provider_migration_suggestion_includes_provider(
-    mocker: MockerFixture,
-) -> None:
-    """When a provider_id is passed the log record should include it."""
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-    module = {'create_context': dict, 'file_mappings': {}}
-    _emit_provider_migration_suggestion(module, provider_id='foo/bar')
-    calls = [call for call in mock_logger.warning.call_args_list if 'provider_migration_suggestion' in str(call)]
-    assert calls, 'expected a migration suggestion warning'
-    assert any(call.kwargs.get('provider') == 'foo/bar' for call in calls)

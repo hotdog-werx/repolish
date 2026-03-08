@@ -1,124 +1,9 @@
-from typing import TYPE_CHECKING, cast
-
-import pytest
 from pydantic import BaseModel, field_validator
 from pytest_mock import MockerFixture
 
 from repolish.loader.context import _apply_override, apply_context_overrides
-from repolish.loader.module_loader import (
-    _collect_context_from_module,
-    call_factory_with_context,
-    collect_contexts,
-    collect_contexts_with_provider_map,
-    extract_from_module_dict,
-    inject_provider_instance_for_module,
-)
+from repolish.loader.models import BaseContext
 from repolish.loader.orchestrator import _apply_overrides_to_model
-
-if TYPE_CHECKING:
-    from repolish.loader.models import Provider as _ProviderBase
-
-
-def test_call_factory_with_context_zero_one_and_error():
-    def zero() -> str:
-        return 'z'
-
-    def one(ctx: dict) -> str:
-        return ctx.get('x', 'no')
-
-    def two(a: object, b: object) -> None:
-        return None
-
-    assert call_factory_with_context(zero, {}) == 'z'
-    assert call_factory_with_context(one, {'x': 'y'}) == 'y'
-    with pytest.raises(TypeError):
-        call_factory_with_context(two, {})
-
-
-def test_extract_from_module_dict_callable_returns_wrong_type_raises():
-    md = cast('dict[str, object]', {'create_thing': lambda: 'not-a-dict'})
-    with pytest.raises(TypeError):
-        extract_from_module_dict(md, 'create_thing', expected_type=dict)
-
-
-def test_extract_from_module_dict_callable_exception_propagates():
-    def bad() -> None:
-        msg = 'boom'
-        raise RuntimeError(msg)
-
-    md = cast('dict[str, object]', {'create_thing': bad})
-    with pytest.raises(RuntimeError):
-        extract_from_module_dict(md, 'create_thing')
-
-
-def test_extract_context_from_module_various_cases(mocker: MockerFixture):
-    # create_context callable
-    md1 = cast('dict[str, object]', {'create_context': lambda: {'a': 1}})
-    inject_provider_instance_for_module(md1, 'test.provider.ctx.func')
-    assert cast(
-        '_ProviderBase',
-        md1['_repolish_provider_instance'],
-    ).create_context() == {'a': 1}
-
-    # module-level context
-    md2 = cast('dict[str, object]', {'context': {'b': 2}})
-    inject_provider_instance_for_module(md2, 'test.provider.ctx.var')
-    assert cast(
-        '_ProviderBase',
-        md2['_repolish_provider_instance'],
-    ).create_context() == {'b': 2}
-
-    # missing context on an adapter-backed provider returns an empty dict
-    md3 = cast('dict[str, object]', {})
-    inject_provider_instance_for_module(md3, 'test.provider.ctx.none')
-    assert (
-        cast(
-            '_ProviderBase',
-            md3['_repolish_provider_instance'],
-        ).create_context()
-        == {}
-    )
-
-
-def test_collect_contexts_merges_and_passes_merged():
-    # first provider returns {'a': 1}
-    md1 = cast('dict[str, object]', {'create_context': lambda: {'a': 1}})
-
-    # second provider uses merged context when called
-    def second(ctx: dict) -> dict:
-        return {'b': ctx['a'] + 1}
-
-    md2 = cast('dict[str, object]', {'create_context': second})
-    merged = collect_contexts([('p1', md1), ('p2', md2)])
-    assert merged == {'a': 1, 'b': 2}
-
-
-def test__collect_context_from_module_raises_on_bad_return():
-    md = cast(
-        'dict[str, object]',
-        {'create_context': lambda: ['not', 'a', 'dict']},
-    )
-    with pytest.raises(TypeError):
-        _collect_context_from_module(md, {})
-
-
-def test_collect_contexts_with_provider_map_warns_on_none_return():
-    """`create_context()` returning None emits a deprecation warning.
-
-    DeprecationWarning but is still treated as an empty context
-    (back-compat).
-    """
-    module_cache = [('prov-none', {'create_context': lambda: None})]
-
-    with pytest.warns(
-        DeprecationWarning,
-        match=r'create_context\(\) returning None is deprecated',
-    ) as record:
-        merged, provider_map = collect_contexts_with_provider_map(module_cache)
-
-    assert merged == {}
-    assert provider_map['prov-none'] == {}
-    assert any('create_context() returning None is deprecated' in str(w.message) for w in record)
 
 
 def test_apply_context_overrides(mocker: MockerFixture):
@@ -239,7 +124,7 @@ def test_apply_context_overrides_dotted_keys_in_nested_dict():
 def test_apply_overrides_to_model_helper(mocker: MockerFixture):
     """Helper should return a new model when overrides apply and warn on failure."""
 
-    class M(BaseModel):
+    class M(BaseContext):
         a: int = 0
 
     instance = M()
@@ -255,7 +140,7 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
     # if the model transforms the value during validation but does not drop
     # the key we also should not warn (previous implementation would log
     # ignored_keys=[]). this simulates more complex Pydantic behaviour.
-    class N(BaseModel):
+    class N(BaseContext):
         a: int = 0
 
         @field_validator('a', mode='after')

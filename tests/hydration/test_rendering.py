@@ -16,10 +16,10 @@ from repolish.hydration.rendering import (
 )
 from repolish.hydration.staging import prepare_staging, preprocess_templates
 from repolish.loader import (
+    BaseContext,
     FileMode,
     Providers,
     TemplateMapping,
-    create_providers,
 )
 
 
@@ -98,8 +98,7 @@ def test_compute_merged_context_logs_details(mocker: MockerFixture):
     # simulate a migrated provider whose context supplies 'a'.
     providers = Providers(
         context={'base': 1},
-        provider_migrated={'p': True},
-        provider_contexts={'p': {'a': 2}},
+        provider_contexts={},
     )
 
     mock_logger = mocker.patch('repolish.hydration.rendering.logger')
@@ -117,11 +116,13 @@ def test_compute_merged_context_logs_details(mocker: MockerFixture):
 
 def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
     """Choosing context for a path emits debug information."""
-    # prepare a provider that is marked migrated and has its own context
+
+    class CtxA(BaseContext):
+        a: int = 2
+
     providers = Providers(
         context={'base': 1},
-        provider_contexts={'p': {'a': 2}},
-        provider_migrated={'p': True},
+        provider_contexts={'p': CtxA()},
         template_sources={'tpl.txt': 'p'},
     )
 
@@ -136,13 +137,12 @@ def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
 
     mock_logger = mocker.patch('repolish.hydration.rendering.logger')
     result = _choose_ctx_for_file('tpl.txt', render_ctx)
-    assert result == {'a': 2}
+    assert result.get('a') == 2
     mock_logger.debug.assert_any_call(
         'choose_context_for_file',
         rel='tpl.txt',
         pid='p',
         normalized_pid='p',
-        migrated=True,
     )
 
 
@@ -151,14 +151,13 @@ def test_choose_ctx_for_file_normalizes_windows_pid(
     tmp_path: Path,
 ):
     """A mismatched Windows-style provider id should still resolve."""
-    # Use a provider id that would normally be converted from a
-    # Windows-style path with backslashes.  after normalisation it should
-    # appear as 'P/subdir' which is the key we store in the migrated map.
+
+    class CtxX(BaseContext):
+        x: int = 9
+
     providers = Providers(
         context={'base': 1},
-        provider_contexts={'P/subdir': {'x': 9}},
-        # loader will use posix style
-        provider_migrated={'P/subdir': True},
+        provider_contexts={'P/subdir': CtxX()},
         # template_sources comes from builder; simulate backslash pid
         template_sources={'f.txt': 'P\\subdir'},
     )
@@ -174,15 +173,12 @@ def test_choose_ctx_for_file_normalizes_windows_pid(
 
     mock_logger = mocker.patch('repolish.hydration.rendering.logger')
     result = _choose_ctx_for_file('f.txt', render_ctx)
-    # normalization should strip the backslash component and succeed
-    assert result == {'x': 9}
-    # debug log should record both original and normalized pid
+    assert result.get('x') == 9
     mock_logger.debug.assert_any_call(
         'choose_context_for_file',
         rel='f.txt',
         pid='P\\subdir',
         normalized_pid='P/subdir',
-        migrated=True,
     )
 
 
@@ -347,229 +343,6 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
     out_logo = setup_output / 'repolish' / 'logo.png'
     assert out_logo.exists()
     assert out_logo.read_bytes().startswith(b'\x89PNG')
-
-
-def test_provider_scoped_template_context_blocks_cross_provider_keys(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Migrated providers do not hide their keys from peers.
-
-    With context isolation always active, every provider sees the full merged
-    context.  Earlier versions stripped the keys of migrated providers from
-    subsequent providers; that behaviour is gone.  This test ensures both
-    ``a_key`` and ``b_key`` are available to every template.
-    """
-    tpl = tmp_path / 'tpl-providers'
-    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
-
-    # Two templates: one that expects only a_key, another that expects both
-    (tpl / 'repolish' / 'item_a.jinja').write_text(
-        'A={{ a_key }}\n',
-        encoding='utf-8',
-    )
-    (tpl / 'repolish' / 'item_b.jinja').write_text(
-        'A={{ a_key }} B={{ b_key }}\n',
-        encoding='utf-8',
-    )
-
-    config = RepolishConfig(config_dir=tmp_path)
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
-
-    # Provider A (migrated): provides a_key and mapping that only needs its own context
-    prov_a = tmp_path / 'prov-a'
-    prov_a.mkdir()
-    (prov_a / 'repolish.py').write_text(
-        dedent(
-            """
-            from repolish import TemplateMapping
-            provider_migrated = True
-
-            def create_context():
-                return {'a_key': 'A'}
-
-            def create_file_mappings():
-                return {'a.txt': TemplateMapping('item_a', None)}
-            """,
-        ),
-    )
-
-    # Provider B (unmigrated): provides b_key and mapping that expects merged context
-    prov_b = tmp_path / 'prov-b'
-    prov_b.mkdir()
-    (prov_b / 'repolish.py').write_text(
-        dedent(
-            """
-            from repolish import TemplateMapping
-
-            def create_context():
-                return {'b_key': 'B'}
-
-            def create_file_mappings():
-                return {'b.txt': TemplateMapping('item_b', None)}
-            """,
-        ),
-    )
-
-    providers = create_providers([str(prov_a), str(prov_b)])
-
-    # Enable Jinja rendering (scoped context is now automatic)
-
-    # Render: both templates should succeed and have access to all keys.
-    preprocess_templates(setup_input, providers, config, base_dir)
-
-    migrated_map = providers.provider_migrated
-    assert any(migrated_map.values())
-    assert any(not v for v in migrated_map.values())
-
-    render_template(setup_input, providers, setup_output, config)
-
-    # verify outputs contain expected values
-    a_out = (setup_output / 'repolish' / '_repolish.a.txt').read_text(encoding='utf-8').strip()
-    b_out = (setup_output / 'repolish' / '_repolish.b.txt').read_text(encoding='utf-8').strip()
-    assert a_out == 'A=A'
-    assert b_out == 'A=A B=B'
-
-
-def test_provider_scoped_template_context_allows_own_keys(tmp_path: Path):
-    """Per-mapping rendering using only the declaring provider's context must.
-
-    still allow templates that reference keys provided by the same provider.
-
-    Scoping happens automatically for migrated providers.
-    """
-    tpl = tmp_path / 'tpl-owned'
-    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
-    (tpl / 'repolish' / 'item.jinja').write_text(
-        'X={{ my_key }}\n',
-        encoding='utf-8',
-    )
-
-    config = RepolishConfig(config_dir=tmp_path)
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
-
-    # Provider supplies `my_key` and a mapping for `m.txt`; mark it migrated
-    prov = tmp_path / 'prov'
-    prov.mkdir()
-    (prov / 'repolish.py').write_text(
-        dedent(
-            """
-            from repolish import TemplateMapping
-            provider_migrated = True
-
-            def create_context():
-                return {'my_key': 'VAL'}
-
-            def create_file_mappings():
-                return {'m.txt': TemplateMapping('item', None)}
-            """,
-        ),
-    )
-
-    providers = create_providers([str(prov)])
-    preprocess_templates(setup_input, providers, config, base_dir)
-
-    # Enable Jinja rendering (scoped context applies automatically)
-    render_template(setup_input, providers, setup_output, config)
-    prefix = '_repolish.'
-    assert (setup_output / 'repolish' / f'{prefix}m.txt').read_text(
-        encoding='utf-8',
-    ).strip() == 'X=VAL'
-
-
-def test_render_context_excludes_migrated_providers(tmp_path: Path):
-    """Merged context always includes keys from migrated providers.
-
-    In recent releases the merged context is never pruned; providers marked as
-    migrated no longer hide their values from their peers.  Rendering should
-    succeed and the output should include the migrated provider's value.
-    """
-    tpl = tmp_path / 'tpl-mig'
-    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
-    # single template that references `foo`
-    (tpl / 'repolish' / 'out.jinja').write_text(
-        'VALUE={{ foo }}\n',
-        encoding='utf-8',
-    )
-
-    config = RepolishConfig(config_dir=tmp_path)
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
-
-    # provider A is migrated and supplies `foo`; provider B is unmigrated
-    p_a = tmp_path / 'pa'
-    p_a.mkdir()
-    (p_a / 'repolish.py').write_text(
-        """provider_migrated = True
-
-def create_context():
-    return {'foo': 'A'}
-""",
-    )
-    p_b = tmp_path / 'pb'
-    p_b.mkdir()
-    (p_b / 'repolish.py').write_text(
-        """def create_context():
-    return {'bar': 'B'}
-""",
-    )
-
-    providers = create_providers([str(p_a), str(p_b)])
-    preprocess_templates(setup_input, providers, config, base_dir)
-
-    # rendering should succeed and include foo from provider A
-    render_template(setup_input, providers, setup_output, config)
-    # the generated file name may not be prefixed; just grab whatever was created
-    files = list((setup_output / 'repolish').iterdir())
-    assert files, 'no output files were produced'
-    content = files[0].read_text(encoding='utf-8').strip()
-    assert content == 'VALUE=A'
-
-
-def test_generic_templates_get_provider_context_when_scoped(tmp_path: Path):
-    """When provider-scoped rendering is enabled we use the provider's own context.
-
-    Context selection uses the provenance map produced during staging.
-    """
-    # create a migrated provider that supplies a single template
-    prov = tmp_path / 'prov'
-    prov.mkdir()
-    rep = prov / 'repolish'
-    rep.mkdir()
-    (rep / 'foo.jinja').write_text('VALUE={{ foo }}\n')
-    # provider module indicating migrated and providing context
-    (prov / 'repolish.py').write_text(
-        """provider_migrated = True
-
-def create_context():
-    return {'foo': 'A'}
-""",
-    )
-
-    providers = create_providers([str(prov)])
-    # force the migration flag and context (loader normally does this)
-    pid = next(iter(providers.provider_contexts.keys()))
-    providers.provider_migrated = {pid: True}
-    providers.provider_contexts = {pid: {'foo': 'A'}}
-
-    # stage the template directory with alias equal to pid so the sources map
-    # records the correct provider identifier
-    config = RepolishConfig(config_dir=tmp_path)
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    _, sources = create_cookiecutter_template(setup_input, [(pid, prov)])
-    providers.template_sources = sources
-
-    preprocess_templates(setup_input, providers, config, base_dir)
-    # the configuration flag is now irrelevant for scoping; set it False to
-    # prove that provider-specific contexts still win.
-    config.provider_scoped_template_context = False
-
-    render_template(setup_input, providers, setup_output, config)
-    out = setup_output / 'repolish' / 'foo'
-    assert out.exists()
-    assert out.read_text(encoding='utf-8').strip() == 'VALUE=A'
 
 
 def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):

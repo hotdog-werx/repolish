@@ -5,8 +5,6 @@ from inspect import isclass
 from pathlib import Path
 from typing import Any, cast
 
-from pydantic import BaseModel as _BaseModel
-
 from repolish.loader import (
     Accumulators,
     Decision,
@@ -21,25 +19,20 @@ from repolish.loader.context import (
     apply_context_overrides,
 )
 from repolish.loader.create_only import process_create_only_files
-from repolish.loader.deletes import (
-    _apply_raw_delete_items,
-    process_delete_files,
-)
+from repolish.loader.deletes import process_delete_files
 from repolish.loader.mappings import process_file_mappings
-from repolish.loader.models import GlobalContext, get_global_context
-from repolish.loader.module import get_module
-from repolish.loader.module_loader import (
-    ModuleProviderAdapter,
-    collect_contexts_with_provider_map,
-    inject_provider_instance_for_module,
+from repolish.loader.models import (
+    BaseContext,
+    GlobalContext,
+    get_global_context,
 )
+from repolish.loader.module import get_module
 from repolish.loader.three_phase import (
     build_provider_metadata,
     compute_recipient_flags,
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.loader.validation import _validate_provider_module
 
 
 def _find_provider_class(
@@ -111,7 +104,7 @@ def _create_context_wrapper_for(
         # override the global namespace (it will be injected later by the
         # loader); leaving the key present would otherwise wipe out the
         # values seeded by ``base_context``.
-        if isinstance(val, _BaseModel):
+        if isinstance(val, BaseContext):
             data = val.model_dump()
             data.pop('repolish', None)
             return data
@@ -136,7 +129,6 @@ def _inject_provider_instance(
 
 def _maybe_instantiate_provider(
     module_dict: dict[str, object],
-    provider_id: str,
 ) -> None:
     """Instantiate and expose a Provider instance if one is exported.
 
@@ -145,26 +137,18 @@ def _maybe_instantiate_provider(
     the loader can treat it like a class-based provider.
     """
     cls = _find_provider_class(module_dict)
-    if cls:
-        inst = cls()  # Let instantiation raise if invalid (fail-fast)
-        _inject_provider_instance(module_dict, inst)
-        return
+    if not cls:
+        msg = 'provider module does not export a Provider subclass'
+        raise RuntimeError(msg)
 
-    # No Provider subclass — create an adapter-backed instance and inject it.
-    inject_provider_instance_for_module(module_dict, provider_id)
+    inst = cls()  # Let instantiation raise if invalid (fail-fast)
+    _inject_provider_instance(module_dict, inst)
 
 
-def _load_module_cache(
-    directories: list[str],
-    *,
-    require_file_mappings: bool = False,
-) -> list[tuple[str, dict]]:
+def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
     """Load provider modules and validate them.
 
     Returns a list of (provider_id, module_dict) tuples.
-
-    The `require_file_mappings` flag is propagated to the validator so
-    callers can opt into strict enforcement of the file-mappings contract.
     """
     cache: list[tuple[str, dict]] = []
     for directory in directories:
@@ -172,17 +156,9 @@ def _load_module_cache(
         module_dict = get_module(str(module_path))
         provider_id = Path(directory).as_posix()
 
-        # Detect and instantiate class-based providers (opt-in API). If a
-        # Provider subclass is exported instantiate it; otherwise let the
-        # module_loader provide an adapter so downstream code can treat the
-        # module uniformly as an instance-backed provider.
-        _maybe_instantiate_provider(module_dict, provider_id)
+        # Detect and instantiate class-based providers
+        _maybe_instantiate_provider(module_dict)
 
-        _validate_provider_module(
-            module_dict,
-            require_file_mappings=require_file_mappings,
-            provider_id=provider_id,
-        )
         cache.append((provider_id, module_dict))
     return cache
 
@@ -190,7 +166,7 @@ def _load_module_cache(
 def _process_phase_two(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, Any],
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
 ) -> None:
     """Phase 2: process anchors, file mappings, delete/create-only files.
@@ -213,25 +189,14 @@ def _process_phase_two(
         own_ctx = provider_contexts.get(provider_id, {})
         fm = inst.create_file_mappings(own_ctx)
         process_file_mappings(provider_id, fm, accum)
-        fallback_paths = process_delete_files(fm, accum.delete_set)
+        process_delete_files(fm, accum.delete_set, provider_id, accum.history)
         process_create_only_files(fm, accum.create_only_set)
-
-        # Raw delete history application (module-level raw delete_files)
-        raw_items = module_dict.get('delete_files') or []
-        raw_items_seq = raw_items if isinstance(raw_items, (list, tuple)) else [raw_items]
-        _apply_raw_delete_items(
-            accum.delete_set,
-            raw_items_seq,
-            fallback_paths,
-            provider_id,
-            accum.history,
-        )
 
 
 def _build_all_providers_list(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     *,
     alias_map: dict[str, str] | None = None,
 ) -> list[ProviderEntry]:
@@ -248,7 +213,7 @@ def _build_all_providers_list(
         alias: str | None = None
         inst_type: type[Any] | None = None
         ctx_obj = provider_contexts.get(pid)
-        ctx_type: type[_BaseModel] | None = None
+        ctx_type: type[BaseContext] | None = None
 
         if inst is not None:
             try:
@@ -272,7 +237,7 @@ def _build_all_providers_list(
             inst_type = None
 
         # if context object is a BaseModel we remember its class
-        if isinstance(ctx_obj, _BaseModel):
+        if isinstance(ctx_obj, BaseContext):
             ctx_type = type(ctx_obj)
 
         # if an alias map was provided, prefer it over the default
@@ -286,7 +251,7 @@ def _build_all_providers_list(
                 name=name,
                 alias=alias,
                 inst_type=inst_type,
-                context=ctx_obj or {},
+                context=ctx_obj or BaseContext(),
                 context_type=ctx_type,
                 input_type=schema,
             ),
@@ -297,10 +262,10 @@ def _build_all_providers_list(
 # helper used by both override-appliers.  extracted to reduce duplication and
 # make the higher-level loops easier to understand.
 def _apply_overrides_to_model(
-    ctx: _BaseModel,
+    ctx: BaseContext,
     overrides: dict[str, object],
     provider: str | None = None,
-) -> _BaseModel:
+) -> BaseContext:
     """Return a new `BaseModel` with `overrides` applied, or the original.
 
     The implementation mirrors the complexity that formerly lived inline in the
@@ -345,7 +310,7 @@ def _apply_overrides_to_model(
 
 
 def _apply_overrides_to_provider_contexts(
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     context_overrides: dict[str, object],
 ) -> None:
     """Apply configuration overrides to each provider's context.
@@ -366,22 +331,15 @@ def _apply_overrides_to_provider_contexts(
     field that doesn't exist yet or violates the model schema).
     """
     for pid, ctx in provider_contexts.items():
-        if isinstance(ctx, _BaseModel):
-            provider_contexts[pid] = _apply_overrides_to_model(
-                ctx,
-                context_overrides,
-                provider=pid,
-            )
-        elif isinstance(ctx, dict):
-            # cast to expected key/value types for type checker
-            apply_context_overrides(
-                cast('dict[str, Any]', ctx),
-                context_overrides,
-            )
+        provider_contexts[pid] = _apply_overrides_to_model(
+            ctx,
+            context_overrides,
+            provider=pid,
+        )
 
 
 def _apply_provider_overrides(
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     provider_overrides: dict[str, dict[str, object]] | None,
 ) -> None:
     """Apply per-provider overrides (handles BaseModel and dict contexts).
@@ -395,14 +353,12 @@ def _apply_provider_overrides(
 
     for pid, overrides in provider_overrides.items():
         ctx = provider_contexts.get(pid)
-        if isinstance(ctx, _BaseModel):
+        if ctx:
             provider_contexts[pid] = _apply_overrides_to_model(
                 ctx,
                 overrides,
                 provider=pid,
             )
-        elif isinstance(ctx, dict):
-            apply_context_overrides(cast('dict[str, Any]', ctx), overrides)
 
 
 @dataclass(frozen=True)
@@ -417,7 +373,7 @@ class RunThreePhaseContext:
 
 def _recompute_merged_context(
     module_cache: list[tuple[str, dict]],
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     base_context: dict[str, object] | None,
     context_overrides: dict[str, object] | None,
 ) -> dict[str, object]:
@@ -428,7 +384,7 @@ def _recompute_merged_context(
     merged_context = dict(base_context or {})
     for pid, _ in module_cache:
         own = provider_contexts.get(pid, {})
-        if isinstance(own, _BaseModel):
+        if isinstance(own, BaseContext):
             merged_context.update(own.model_dump())
         else:
             merged_context.update(cast('dict[str, object]', own))
@@ -444,7 +400,7 @@ def _recompute_merged_context(
 def _synthesize_provider_context_for_pid(
     inst: _ProviderBase | None,
     pid: str,
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     merged_context: dict[str, object],
 ) -> None:
     """Ensure `provider_contexts[pid]` contains a typed context for class-based providers.
@@ -453,15 +409,16 @@ def _synthesize_provider_context_for_pid(
     inject the global `repolish` namespace into returned BaseModel
     instances when appropriate.
     """
-    if inst is None or isinstance(inst, ModuleProviderAdapter) or isinstance(provider_contexts.get(pid), _BaseModel):
+    if inst is None or isinstance(provider_contexts.get(pid), BaseContext):
         return
 
     try:
-        ctx = inst.create_context()
+        # create_context is generic but its bound by BaseContext
+        ctx = cast('BaseContext', inst.create_context())
     except Exception:  # noqa: BLE001 - don't let one provider stop the run
-        ctx = provider_contexts.get(pid, {})
+        return
 
-    if isinstance(ctx, _BaseModel) and hasattr(ctx, 'repolish'):
+    if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):
         glob = merged_context.get('repolish')
         if glob:
             if isinstance(glob, dict):
@@ -472,7 +429,7 @@ def _synthesize_provider_context_for_pid(
 
 
 def _ensure_repolish_in_dict_contexts(
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     merged_context: dict[str, object],
 ) -> None:
     """Ensure every dict-valued provider context contains the global namespace."""
@@ -483,14 +440,14 @@ def _ensure_repolish_in_dict_contexts(
             val['repolish'] = cast(
                 'dict[str, object]',
                 merged_context['repolish'],
-            )  # type: ignore[assignment]
+            )
             provider_contexts[pid] = val
 
 
 def _populate_provider_context(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     merged_context: dict[str, object],
 ) -> None:
     # before we compute schemas or apply overrides we must populate
@@ -521,7 +478,7 @@ def _populate_provider_context(
 def _run_three_phase(
     module_cache: list[tuple[str, dict]],
     merged_context: dict[str, object],
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     options: RunThreePhaseContext | None = None,
 ) -> Providers:
     """Execute phase-2/3 logic and return final Providers object.
@@ -540,10 +497,7 @@ def _run_three_phase(
     history: dict[str, list[Decision]] = {}
 
     # gather metadata and basic helper structures
-    (
-        provider_migrated_map,
-        instances,
-    ) = build_provider_metadata(module_cache)
+    instances = build_provider_metadata(module_cache)
 
     _populate_provider_context(
         module_cache,
@@ -634,7 +588,6 @@ def _run_three_phase(
         create_only_files=list(accum.create_only_set),
         delete_history=accum.history,
         provider_contexts=provider_contexts,
-        provider_migrated=provider_migrated_map,
     )
 
 
@@ -644,7 +597,6 @@ def create_providers(
     context_overrides: dict[str, object] | None = None,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = None,
-    require_file_mappings: bool = False,
 ) -> Providers:
     """Load all template providers and merge their contributions.
 
@@ -690,15 +642,13 @@ def create_providers(
             normalized_dirs.append(path_str)
     # other accumulators are handled by Accumulators object below
 
-    module_cache = _load_module_cache(
-        normalized_dirs,
-        require_file_mappings=require_file_mappings,
-    )
-    # Collect provider contexts (also capture per-provider contexts)
-    merged_context, provider_contexts = collect_contexts_with_provider_map(
-        module_cache,
-        initial=merged_context,
-    )
+    module_cache = _load_module_cache(normalized_dirs)
+    # provider contexts are populated by _populate_provider_context via
+    # create_context(); start empty so the guard in
+    # _synthesize_provider_context_for_pid correctly calls create_context()
+    # for every provider (a pre-seeded BaseContext() instance would satisfy
+    # the isinstance guard and cause create_context() to be skipped).
+    provider_contexts: dict[str, BaseContext] = {}
 
     # hand off the remainder of the workflow to a helper that encapsulates
     # the three-phase input/finalization logic plus related metadata tracking.

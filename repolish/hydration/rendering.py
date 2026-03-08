@@ -10,10 +10,9 @@ from jinja2 import (
     UndefinedError,
     select_autoescape,
 )
-from pydantic import BaseModel
 
 from repolish.config import RepolishConfig
-from repolish.loader import FileMode, Providers, TemplateMapping
+from repolish.loader import BaseContext, FileMode, Providers, TemplateMapping
 from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
@@ -139,13 +138,8 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
 
     Extracted to reduce complexity of the main rendering function.
     """
-    # Always attempt to honor a migrated provider's own context; the
-    # previous implementation gated this behaviour behind the
-    # `provider_scoped_template_context` configuration flag.  that flag is
-    # now *always* effectively true (default changed to True in the config
-    # model) and exists only for legacy module adapters which can override it
-    # if they really need merged contexts globally.  upstream callers and
-    # tests no longer need to set the flag just to enable scoping.
+    # Use the declaring provider's own context when the template has a known
+    # provider source; fall back to the merged context otherwise.
     pid = ctx.providers.template_sources.get(rel_str)
     # provider_ids are expected to be POSIX-formatted, but earlier versions of
     # the code sometimes exposed raw Windows paths (backslashes).  normalise
@@ -157,18 +151,13 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
         norm_pid = Path(clean).as_posix()
     else:
         norm_pid = None
-    # `provider_migrated` is keyed by str; do not attempt to look up using
-    # `None` which would confuse the type checker.  using a ternary keeps the
-    # expression short while still satisfying type checkers.
-    migrated = ctx.providers.provider_migrated.get(norm_pid, False) if norm_pid is not None else False
     logger.debug(
         'choose_context_for_file',
         rel=rel_str,
         pid=pid,
         normalized_pid=norm_pid,
-        migrated=migrated,
     )
-    if norm_pid and migrated:
+    if norm_pid:
         return ctx_to_dict(ctx.providers.provider_contexts.get(norm_pid))
     return ctx.merged_ctx
 
@@ -216,32 +205,21 @@ def _jinja_render(
 
 
 def _compute_merged_context(providers: Providers) -> dict[str, object]:
-    """Return a merged provider context used for rendering and logging.
+    """Return the merged context used as the fallback for rendering and logging.
 
-    Historically we filtered out context values from providers that had been
-    marked as "migrated" so that only unmigrated providers contributed to the
-    global context.  That made sense during the transition when module-style
-    providers merged their contexts globally, but it breaks templates that
-    rely on provider-specific keys (see example project issue).  We now return
-    all keys in ``providers.context`` unaltered; consumers that need to treat
-    migrated providers specially should inspect ``providers.provider_migrated``
-    directly.
-
-    The function logs input state and the final merged dict to aid debugging
-    when contexts appear to vanish, which has been a common source of
-    confusion on CI.
+    Returns ``providers.context`` (seeded by the loader with the global
+    namespace) with ``_repolish_project`` defaulting to ``'repolish'``.
+    Logs the input and result at debug level to aid diagnosis when context
+    values appear to vanish on CI.
     """
     # debug dump of incoming state
     logger.debug(
         'compute_merged_context_start',
         base_context=providers.context,
         provider_contexts={pid: ctx_to_dict(ctx) for pid, ctx in providers.provider_contexts.items()},
-        provider_migrated=providers.provider_migrated,
     )
 
     merged = dict(providers.context)
-    # no longer strip migrated provider keys; keep everything
-
     merged.setdefault('_repolish_project', 'repolish')
     logger.debug('compute_merged_context_result', merged_ctx=merged)
     return merged
@@ -274,18 +252,6 @@ def render_template(
     # sensitive data since context is already available to template authors.
     logger.debug('computed_merged_context', merged_ctx=merged_ctx)
     skip_templates = _collect_skip_templates(providers)
-
-    # provider-scoped context changes the base context per-mapping.  when
-    # the feature is enabled we still allow unmigrated (module-adapter)
-    # providers to operate using the merged context for compatibility.  this
-    # behaviour allows users to migrate incrementally: class-based providers
-    # may opt into the new model by setting `provider_migrated=True` while
-    # legacy modules continue to receive a full merged context.  the
-    # per-provider logic in `_choose_base_ctx_for_mapping` takes care of the
-    # fallback, so no global validation is required here.
-    #
-    # (previously we raised an error if any providers were unmigrated; that
-    # strictness proved too aggressive for mixed deployments.)
 
     # build a RenderContext once; the same object will later drive both
     # the Jinja pass and the mapping pass.  `use_provider_context` is
@@ -352,16 +318,9 @@ def _choose_base_ctx_for_mapping(
     if not use_provider_context or not source_provider:
         return merged_ctx
 
-    migrated = providers.provider_migrated.get(source_provider, False)
-    if migrated:
-        ctx = providers.provider_contexts.get(source_provider)
-        if isinstance(ctx, BaseModel):
-            return ctx.model_dump()
-        if isinstance(ctx, dict):
-            return ctx
-        return merged_ctx
-
-    # unmigrated providers simply fallback to merged context; no error raised
+    ctx = providers.provider_contexts.get(source_provider)
+    if isinstance(ctx, BaseContext):
+        return ctx.model_dump()
     return merged_ctx
 
 

@@ -24,14 +24,23 @@ def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # n
 
     src = dedent(
         """
-        def create_context():
-            return {'readme_ext': 'txt'}
+        from repolish import BaseContext, Provider, BaseInputs
 
-        def create_file_mappings(ctx):
-            # global context should be available as a nested dict
-            assert ctx['repolish']['repo']['owner'] == 'owner'
-            ext = ctx.get('readme_ext', 'md')
-            return {f'README.{ext}': 'README_template'}
+        class Ctx(BaseContext):
+            readme_ext: str = 'txt'
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                # global context is available via typed attribute
+                assert context.repolish.repo.owner == 'owner'
+                ext = context.readme_ext
+                return {f'README.{ext}': 'README_template'}
         """,
     )
 
@@ -49,13 +58,23 @@ def test_create_file_mappings_accepts_pydantic_extra_context(tmp_path: Path):
     src = dedent(
         """
         from pydantic import BaseModel
-        from repolish import TemplateMapping
+        from repolish import BaseContext, Provider, BaseInputs, TemplateMapping
 
         class ItemCtx(BaseModel):
             file_number: int
 
-        def create_file_mappings():
-            return {'typed.txt': TemplateMapping('template.jinja', ItemCtx(file_number=7))}
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                return {'typed.txt': TemplateMapping('template.jinja', ItemCtx(file_number=7))}
         """,
     )
 
@@ -79,10 +98,20 @@ def test_template_mapping_file_mode_create_only_includes_in_create_only(
 ):
     src = dedent(
         """
-        from repolish import TemplateMapping, FileMode
+        from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
 
-        def create_file_mappings():
-            return {'a.txt': TemplateMapping('template.jinja', None, FileMode.CREATE_ONLY)}
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                return {'a.txt': TemplateMapping('template.jinja', None, FileMode.CREATE_ONLY)}
         """,
     )
 
@@ -102,10 +131,20 @@ def test_template_mapping_file_mode_create_only_includes_in_create_only(
 def test_template_mapping_file_mode_delete_marks_for_deletion(tmp_path: Path):
     src = dedent(
         """
-        from repolish import TemplateMapping, FileMode
+        from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
 
-        def create_file_mappings():
-            return {'old.txt': TemplateMapping(None, None, FileMode.DELETE)}
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                return {'old.txt': TemplateMapping(None, None, FileMode.DELETE)}
         """,
     )
 

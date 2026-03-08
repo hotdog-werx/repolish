@@ -35,18 +35,6 @@ class CLITestCase:
                 """),
             error_has='Either cli or directory must be provided',
         ),
-        # REMOVE later when standalone apps are removed
-        CLITestCase(
-            name='cli_invalid_provider_config',
-            main_func=cli_main,
-            argv=['repolish', '--config', '{config_path}'],
-            config_content=textwrap.dedent("""\
-                providers:
-                  some-provider:
-                    link: some-link-cli
-                """),
-            error_has='Either cli or directory must be provided',
-        ),
         CLITestCase(
             name='link_both_cli_and_directory',
             main_func=cli_main,

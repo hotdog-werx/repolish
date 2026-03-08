@@ -6,10 +6,6 @@ reference from the rest of the codebase.
 """
 
 from repolish.loader._log import logger
-from repolish.loader.deletes import (
-    normalize_delete_item,
-    normalize_delete_items,
-)
 from repolish.loader.models import (
     Accumulators,
     Action,
@@ -37,6 +33,4 @@ __all__ = [
     'create_providers',
     'get_provider_context',
     'logger',
-    'normalize_delete_item',
-    'normalize_delete_items',
 ]

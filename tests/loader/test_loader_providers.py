@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import pytest
 from pydantic import BaseModel
@@ -12,10 +12,6 @@ from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
 from repolish.loader import Providers, create_providers
-
-if TYPE_CHECKING:
-    from repolish.loader.models import BaseContext
-from repolish.loader.validation import _is_suspicious_variable
 from tests.support import write_module
 
 
@@ -34,12 +30,29 @@ class ProviderCase:
         ProviderCase(
             name='single_provider',
             providers=[
-                # one provider exporting context, anchors, and delete_files
+                # one class-based provider with context, anchors, and file_mappings-based deletes
                 dedent(
                     """
-                    context = {'a': 1}
-                    anchors = {'X': 'replace'}
-                    delete_files = ['foo.txt', 'sub/bar.txt']
+                    from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
+
+                    class Ctx(BaseContext):
+                        a: int = 0
+
+                    class MyProvider(Provider[Ctx, BaseInputs]):
+                        def get_provider_name(self):
+                            return 'my_provider'
+
+                        def create_context(self):
+                            return Ctx(a=1)
+
+                        def create_anchors(self, _ctx=None):
+                            return {'X': 'replace'}
+
+                        def create_file_mappings(self, context=None):
+                            return {
+                                'foo.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                                'sub/bar.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                            }
                     """,
                 ),
             ],
@@ -50,24 +63,55 @@ class ProviderCase:
         ProviderCase(
             name='override_and_negation',
             providers=[
-                # first provider adds a and anchor and file
+                # first provider: contributes a, keep, anchor X=first, and two delete entries
                 dedent(
                     """
-                    context = {'a': 1, 'keep': True}
-                    anchors = {'X': 'first'}
-                    delete_files = ['a.txt', 'c.txt']
+                    from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
+
+                    class Ctx(BaseContext):
+                        a: int = 0
+                        keep: bool = False
+
+                    class ProviderOne(Provider[Ctx, BaseInputs]):
+                        def get_provider_name(self):
+                            return 'provider_one'
+
+                        def create_context(self):
+                            return Ctx(a=1, keep=True)
+
+                        def create_anchors(self, _ctx=None):
+                            return {'X': 'first'}
+
+                        def create_file_mappings(self, context=None):
+                            return {
+                                'a.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                                'c.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                            }
                     """,
                 ),
-                # second provider overrides context/anchor and negates a.txt
+                # second provider: overrides a and anchor, cancels a.txt deletion, adds b.txt
                 dedent(
                     """
-                    def create_context():
-                        return {'a': 2}
+                    from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
 
-                    def create_anchors():
-                        return {'X': 'second'}
+                    class Ctx(BaseContext):
+                        a: int = 0
 
-                    delete_files = ['!a.txt', 'b.txt']
+                    class ProviderTwo(Provider[Ctx, BaseInputs]):
+                        def get_provider_name(self):
+                            return 'provider_two'
+
+                        def create_context(self):
+                            return Ctx(a=2)
+
+                        def create_anchors(self, _ctx=None):
+                            return {'X': 'second'}
+
+                        def create_file_mappings(self, context=None):
+                            return {
+                                'a.txt': TemplateMapping(source_template=None, file_mode=FileMode.KEEP),
+                                'b.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                            }
                     """,
                 ),
             ],
@@ -76,14 +120,28 @@ class ProviderCase:
             expected_delete=[Path('c.txt'), Path('b.txt')],
         ),
         ProviderCase(
-            name='create_delete_files_returns_paths',
+            name='delete_via_file_mappings',
             providers=[
+                # provider expressing deletes entirely through create_file_mappings
                 dedent(
                     """
-                    def create_delete_files():
-                        from pathlib import Path
+                    from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
 
-                        return [Path('one.txt'), Path('two.txt')]
+                    class Ctx(BaseContext):
+                        pass
+
+                    class MyProvider(Provider[Ctx, BaseInputs]):
+                        def get_provider_name(self):
+                            return 'my_provider'
+
+                        def create_context(self):
+                            return Ctx()
+
+                        def create_file_mappings(self, context=None):
+                            return {
+                                'one.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                                'two.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                            }
                     """,
                 ),
             ],
@@ -214,14 +272,13 @@ def test_config_alias_passed_through(tmp_path: Path):
     prov = tmp_path / 'simple'
     prov.mkdir()
     (prov / 'repolish.py').write_text(
-        """from pydantic import BaseModel
-from repolish.loader.models import Provider, ProviderEntry
-from repolish import BaseContext
+        """
+from repolish import BaseContext, Provider, BaseInputs, ProviderEntry
 
-class Ctx(BaseModel):
+class Ctx(BaseContext):
     pass
 
-class Checker(Provider[Ctx, BaseModel]):
+class Checker(Provider[Ctx, BaseInputs]):
     def get_provider_name(self):
         return 'pname'
 
@@ -241,59 +298,6 @@ class Checker(Provider[Ctx, BaseModel]):
     # inside the provider itself).  the provider_contexts map may still use
     # provider IDs as keys.
     assert providers.provider_contexts is not None
-
-
-def test_create_providers_records_provider_migrated_flag(tmp_path: Path):
-    # Provider 1 sets provider_migrated=True; Provider 2 does not
-    p1 = tmp_path / 'p1'
-    p1.mkdir()
-    (p1 / 'repolish.py').write_text('provider_migrated = True\n')
-
-    p2 = tmp_path / 'p2'
-    p2.mkdir()
-    (p2 / 'repolish.py').write_text('create_file_mappings = {}\n')
-
-    providers = create_providers([str(p1), str(p2)])
-    migrated = providers.provider_migrated
-    assert isinstance(migrated, dict)
-    assert any(migrated.values())
-    assert any(not v for v in migrated.values())
-
-
-def test_global_context_appears_in_merged_and_provider_dicts(
-    tmp_path: Path,
-    monkeypatch,  # noqa: ANN001
-):
-    """The global ``repolish`` namespace is seeded and propagated.
-
-    Both the final merged context and each provider's own context (dict or
-    model) should contain the inferred repository owner/name under a
-    ``repolish`` key.  Providers may override the value by returning their own
-    key or via project configuration.
-    """
-    monkeypatch.setattr(
-        'repolish.providers.git.get_owner_repo',
-        lambda: ('foo', 'bar'),
-    )
-
-    prov = tmp_path / 'prov'
-    prov.mkdir()
-    # no explicit context; loader should still provide repolish globals
-    (prov / 'repolish.py').write_text('')
-
-    providers = create_providers([str(prov)])
-    # merged context should include our fake values; other keys (e.g. `year`)
-    # may also be present and are fine.
-    merged = cast('dict[str, object]', providers.context.get('repolish', {}))
-    assert merged.get('repo') == {'owner': 'foo', 'name': 'bar'}
-    assert merged.get('year') == datetime.datetime.now(datetime.UTC).year
-    # and the provider-specific context dict should have them too
-    pid = next(iter(providers.provider_contexts.keys()))
-    ctx_val = cast('dict[str, object]', providers.provider_contexts[pid])
-    prov_ctx = cast('dict[str, object]', ctx_val['repolish'])
-    assert prov_ctx.get('repo') == {'owner': 'foo', 'name': 'bar'}
-    # provider contexts may or may not include the year key depending on
-    # when they were constructed; we don't require it.
 
 
 def test_global_context_in_class_based_provider(
@@ -337,42 +341,10 @@ class P(Provider[Ctx, BaseModel]):
 
     pid = next(iter(providers.provider_contexts.keys()))
 
-    ctx = cast('BaseContext', providers.provider_contexts[pid])
+    ctx = providers.provider_contexts[pid]
     assert hasattr(ctx, 'repolish')
     assert ctx.repolish.repo.owner == 'x'
     assert ctx.repolish.repo.name == 'y'
-
-
-def test_class_based_provider_is_marked_migrated(tmp_path: Path):
-    """Providers implemented as a subclass should be considered migrated.
-
-    The loader previously required an explicit `provider_migrated = True`
-    variable; after the change any module that exports a `Provider`
-    instance will be treated as migrated automatically.  This makes the
-    assumption stated in the apply command docs true and avoids needing to
-    update the boolean in every provider.
-    """
-    p = tmp_path / 'p'
-    p.mkdir()
-    (p / 'repolish.py').write_text(
-        """
-from pydantic import BaseModel
-from repolish.loader.models import Provider
-
-class Ctx(BaseModel):
-    val: int = 42
-
-class P(Provider[Ctx, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'foo'
-    def create_context(self) -> Ctx:
-        return Ctx()
-""",
-    )
-
-    provider_id = Path(p).as_posix()
-    providers = create_providers([str(p)])
-    assert providers.provider_migrated.get(provider_id) is True
 
 
 def test_error_when_module_exports_multiple_provider_classes(tmp_path: Path):
@@ -415,23 +387,41 @@ class Two(Provider[Ctx, BaseModel]):
 
 
 def test_create_providers_records_provider_contexts(tmp_path: Path):
-    # Provider A provides {'a': 1}; Provider B depends on merged value and adds 'b'
+    """Each loaded provider gets its own typed entry in provider_contexts."""
     src_a = dedent(
         """
-        def create_context():
-            return {'a': 1}
+        from repolish import BaseContext, Provider, BaseInputs
 
-        def create_file_mappings():
-            return {'x.txt': 'tmpl'}
+        class CtxA(BaseContext):
+            a: int = 0
+
+        class ProviderA(Provider[CtxA, BaseInputs]):
+            def get_provider_name(self):
+                return 'provider_a'
+
+            def create_context(self):
+                return CtxA(a=1)
+
+            def create_file_mappings(self, context=None):
+                return {'x.txt': 'tmpl'}
         """,
     )
     src_b = dedent(
         """
-        def create_context(ctx):
-            return {'b': ctx['a'] + 1}
+        from repolish import BaseContext, Provider, BaseInputs
 
-        def create_file_mappings():
-            return {'y.txt': 'tmpl'}
+        class CtxB(BaseContext):
+            b: int = 0
+
+        class ProviderB(Provider[CtxB, BaseInputs]):
+            def get_provider_name(self):
+                return 'provider_b'
+
+            def create_context(self):
+                return CtxB(b=42)
+
+            def create_file_mappings(self, context=None):
+                return {'y.txt': 'tmpl'}
         """,
     )
 
@@ -444,21 +434,14 @@ def test_create_providers_records_provider_contexts(tmp_path: Path):
 
     providers = create_providers(dirs)
 
-    # provider_contexts should include per-provider objects keyed by provider id
+    # each provider should have its own typed context entry
     assert isinstance(providers.provider_contexts, dict)
     assert len(providers.provider_contexts) == 2
-    # convert each to dict for assertion
     pids = list(providers.provider_contexts.keys())
-    ctx0 = providers.provider_contexts[pids[0]]
-    if isinstance(ctx0, BaseModel):
-        ctx0 = ctx0.model_dump()
-    ctx0 = cast('dict[str, object]', ctx0)
+    ctx0 = providers.provider_contexts[pids[0]].model_dump()
     assert ctx0.get('a') == 1
-    ctx1 = providers.provider_contexts[pids[1]]
-    if isinstance(ctx1, BaseModel):
-        ctx1 = ctx1.model_dump()
-    ctx1 = cast('dict[str, object]', ctx1)
-    assert ctx1.get('b') == 2
+    ctx1 = providers.provider_contexts[pids[1]].model_dump()
+    assert ctx1.get('b') == 42
 
 
 def test_three_phase_input_routing_and_finalize(tmp_path: Path):
@@ -469,13 +452,12 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
     (p_a / 'repolish.py').write_text(
         dedent(
             """
-            from pydantic import BaseModel
-            from repolish.loader import Provider
+            from repolish import Provider, BaseContext, BaseInputs
 
-            class AContext(BaseModel):
+            class AContext(BaseContext):
                 val: int = 1
 
-            class AProvider(Provider[AContext, BaseModel]):
+            class AProvider(Provider[AContext, BaseInputs]):
                 def get_provider_name(self) -> str:
                     return 'prov-a'
 
@@ -495,13 +477,12 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
     (p_b / 'repolish.py').write_text(
         dedent(
             """
-            from pydantic import BaseModel
-            from repolish.loader.models import Provider
+            from repolish import Provider, BaseContext, BaseInputs
 
-            class BContext(BaseModel):
+            class BContext(BaseContext):
                 registered_components: list[str] = []
 
-            class BInputs(BaseModel):
+            class BInputs(BaseInputs):
                 register_component: str
 
             class BProvider(Provider[BContext, BInputs]):
@@ -565,13 +546,12 @@ def test_loading_reuses_existing_module(tmp_path: Path, mocker: MockerFixture):
     write_module(
         src,
         """
-from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish import Provider, BaseContext, BaseInputs
 
-class MyCtx(BaseModel):
+class MyCtx(BaseContext):
     value: int = 1
 
-class MyProvider(Provider[MyCtx, BaseModel]):
+class MyProvider(Provider[MyCtx, BaseInputs]):
     def get_provider_name(self):
         return 'foo'
     def create_context(self) -> MyCtx:
@@ -634,13 +614,12 @@ def test_loader_registers_importable_name(
     write_module(
         src,
         """
-from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish import Provider, BaseContext, BaseInputs
 
-class Ctx(BaseModel):
+class Ctx(BaseContext):
     pass
 
-class P(Provider[Ctx, BaseModel]):
+class P(Provider[Ctx, BaseInputs]):
     def get_provider_name(self):
         return 'foo'
     def create_context(self) -> Ctx:
@@ -687,21 +666,6 @@ class P(Provider[Ctx, BaseModel]):
             expected_context={},
             expected_anchors={},
             expected_delete=[Path('one.txt')],
-        ),
-        ProviderCase(
-            name='module_level_paths',
-            providers=[
-                dedent(
-                    """
-                    from pathlib import Path
-
-                    delete_files = [Path('pm.txt'), 'str.txt']
-                    """,
-                ),
-            ],
-            expected_context={},
-            expected_anchors={},
-            expected_delete=[Path('pm.txt'), Path('str.txt')],
         ),
         ProviderCase(
             name='create_delete_files_raises_fallback',
@@ -815,286 +779,6 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
     assert got_delete == set(case.expected_delete)
 
 
-def test_create_providers_permissive_by_default_allows_missing_mappings(
-    tmp_path: Path,
-):
-    """Missing `create_file_mappings` is accepted by default (backward compat)."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_context():
-                return {'a': 1}
-            """,
-        ),
-    )
-
-    providers = create_providers([str(provider_dir)])
-    ctx = dict(providers.context)
-    ctx.pop('repolish', None)
-    assert ctx == {'a': 1}
-    assert providers.file_mappings == {}
-
-
-def test_create_providers_require_file_mappings_opt_in_raises(tmp_path: Path):
-    """When `require_file_mappings=True`, missing mappings raise (opt-in)."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_context():
-                return {'a': 1}
-            """,
-        ),
-    )
-
-    with pytest.raises(RuntimeError):
-        create_providers([str(provider_dir)], require_file_mappings=True)
-
-
-def test_normalize_delete_items_skips_non_strings():
-    # Should raise TypeError for non-string entries (fail-fast mode)
-    items = [123, 'a/b.txt', None, 'c.txt']
-    # In fail-fast mode non-string entries raise
-    with pytest.raises(TypeError):
-        loader_mod.normalize_delete_items(items)  # type: ignore - testing bad input
-
-
-def test_normalize_delete_item_as_posix_raises(mocker: MockerFixture):
-    # Use a real Path and patch its as_posix to raise so we exercise the
-    # path-object branch of the normalizer.
-    p = Path('some.txt')
-    # Patch the class method; instances delegate to this and instance attributes
-    # are read-only on Path subclasses, so patching the class is required.
-    mocker.patch.object(type(p), 'as_posix', side_effect=RuntimeError('boom'))
-    with pytest.raises(RuntimeError):
-        loader_mod.normalize_delete_item(p)
-
-
-def test_validate_provider_warns_on_typo_create_create(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test that _validate_provider_module warns about create_create typo."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    # Mock the logger to capture warnings
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    # Simulate the user's typo: create_create (double create) instead of create_create_only_files
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_create():
-                return ['file1.txt']
-            """,
-        ),
-    )
-
-    # Load the provider
-    create_providers([str(provider_dir)])
-
-    # Should have warned about the suspicious function name
-    warning_calls = [
-        call
-        for call in mock_logger.warning.call_args_list
-        if 'suspicious_provider_function' in str(call) or 'unknown_provider_function' in str(call)
-    ]
-    assert len(warning_calls) > 0, "Expected warning about 'create_create' typo"
-
-    # Verify the function name was mentioned
-    assert any('create_create' in str(call) for call in warning_calls)
-
-
-def test_validate_provider_warns_on_unknown_create_function(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test that _validate_provider_module warns about unknown create_ functions."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_something_weird():
-                return []
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    # Should warn about unknown function starting with create_
-    warning_calls = [call for call in mock_logger.warning.call_args_list if 'unknown_provider_function' in str(call)]
-    assert len(warning_calls) > 0
-    assert any('create_something_weird' in str(call) for call in warning_calls)
-
-
-def test_validate_provider_warns_on_suspicious_variables(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test that _validate_provider_module warns about suspicious variable names."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            create_only_file = ['typo.txt']  # Should be create_only_files
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    # Should warn about suspicious variable
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if 'suspicious_provider_variable' in str(call)
-    ]
-    assert len(warning_calls) > 0
-    assert any('create_only_file' in str(call) for call in warning_calls)
-
-
-def test_validate_provider_no_warnings_for_valid_functions(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test that _validate_provider_module doesn't warn for valid provider functions."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_context():
-                return {'key': 'value'}
-
-            def create_create_only_files():
-                return ['file.txt']
-
-            def create_delete_files():
-                return ['old.txt']
-
-            def create_file_mappings():
-                return {'dest.txt': 'src.txt'}
-
-            def create_anchors():
-                return {'anchor': 'value'}
-
-            # Helper function should be ignored (starts with _)
-            def _helper():
-                pass
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    # Should have no warnings about suspicious functions or variables
-    warning_calls = [
-        call
-        for call in mock_logger.warning.call_args_list
-        if 'suspicious_provider' in str(call) or 'unknown_provider' in str(call)
-    ]
-    assert len(warning_calls) == 0, f'Expected no warnings, got: {warning_calls}'
-
-
-def test_validate_provider_warns_on_suspicious_files_variable(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test warning for variables ending in _files that aren't valid."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            my_files = ['file1.txt', 'file2.txt']  # Suspicious: ends in _files
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if 'suspicious_provider_variable' in str(call)
-    ]
-    assert len(warning_calls) > 0
-    assert any('my_files' in str(call) for call in warning_calls)
-
-
-def test_validate_provider_warns_on_suspicious_mappings_variable(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test warning for variables ending in _mappings that aren't valid."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            my_mappings = {'a': 'b'}  # Suspicious: ends in _mappings
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if 'suspicious_provider_variable' in str(call)
-    ]
-    assert len(warning_calls) > 0
-    assert any('my_mappings' in str(call) for call in warning_calls)
-
-
-def test_validate_provider_no_warnings_for_normal_variables(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test that normal variables don't trigger warnings."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            # Normal variables that shouldn't trigger warnings
-            my_config = {'key': 'value'}
-            package_version = '1.0.0'
-            SOME_CONSTANT = 42
-            helper_data = []
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    # Should have no warnings about suspicious variables
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if 'suspicious_provider_variable' in str(call)
-    ]
-    assert len(warning_calls) == 0, f'Expected no warnings for normal variables, got: {warning_calls}'
-
-
 def test_loader_instantiates_class_based_provider(tmp_path: Path):
     """Loader should detect and use a Provider subclass exported by module."""
     provider_dir = tmp_path / 'provider'
@@ -1103,13 +787,12 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
     (provider_dir / 'repolish.py').write_text(
         dedent(
             """
-            from pydantic import BaseModel
-            from repolish.loader.models import Provider
+            from repolish import BaseContext, BaseInputs, Provider
 
-            class Ctx(BaseModel):
+            class Ctx(BaseContext):
                 name: str = 'from-class'
 
-            class MyProvider(Provider[Ctx, BaseModel]):
+            class MyProvider(Provider[Ctx, BaseInputs]):
                 def get_provider_name(self) -> str:
                     return 'my'
 
@@ -1121,91 +804,3 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
 
     providers = create_providers([str(provider_dir)])
     assert providers.context.get('name') == 'created-by-class'
-
-
-def test_validate_provider_emits_migration_suggestion(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """If module-style provider is detected, emit migration suggestion."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_context():
-                return {'a': 1}
-
-            def create_file_mappings():
-                return {'x': 'y'}
-
-            def create_delete_files():
-                return ['old.txt']
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    # Should have emitted a provider_migration_suggestion warning
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if 'provider_migration_suggestion' in str(call)
-    ]
-    assert len(warning_calls) > 0
-    # Verify suggested methods mention class-style equivalents
-    assert any('create_context' in str(call) for call in warning_calls)
-    assert any('create_file_mappings' in str(call) for call in warning_calls)
-    # the warning should include the provider identifier so users know which
-    # module triggered it
-    assert any(call.kwargs.get('provider') == Path(provider_dir).as_posix() for call in warning_calls)
-
-
-def test_is_suspicious_variable_returns_false_for_normal_names():
-    """Direct unit test for _is_suspicious_variable returning False."""
-    valid_variables = {
-        'context',
-        'delete_files',
-        'file_mappings',
-        'create_only_files',
-        'anchors',
-    }
-
-    # These should all return False (not suspicious)
-    assert _is_suspicious_variable('my_config', valid_variables) is False
-    assert _is_suspicious_variable('package_version', valid_variables) is False
-    assert _is_suspicious_variable('SOME_CONSTANT', valid_variables) is False
-    assert _is_suspicious_variable('helper_data', valid_variables) is False
-    assert _is_suspicious_variable('some_other_thing', valid_variables) is False
-
-
-def test_validate_provider_warns_on_create_only_typo(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Test warning for function names that look like create_only typos."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-
-    mock_logger = mocker.patch('repolish.loader.validation.logger')
-
-    (provider_dir / 'repolish.py').write_text(
-        dedent(
-            """
-            def create_createonly_files():  # Typo: createonly instead of create_only
-                return ['file.txt']
-            """,
-        ),
-    )
-
-    create_providers([str(provider_dir)])
-
-    # Should warn with specific suggestion about create_create_only_files
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if 'suspicious_provider_function' in str(call)
-    ]
-    assert len(warning_calls) > 0
-    assert any('create_createonly_files' in str(call) for call in warning_calls)
-    assert any('create_create_only_files' in str(call) for call in warning_calls)

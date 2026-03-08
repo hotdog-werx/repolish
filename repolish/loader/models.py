@@ -127,6 +127,16 @@ class BaseContext(BaseModel):
     repolish: GlobalContext = Field(default_factory=GlobalContext)
 
 
+class BaseInputs(BaseModel):
+    """Base class for provider inputs.
+
+    This is not strictly necessary since providers can declare any Pydantic
+    model as their input schema, but it provides a convenient shared parent
+    for type checking and tooling.  Providers that declare an input schema
+    but don't need any fields can use this empty class as a default.
+    """
+
+
 class Action(str, Enum):
     """Enumeration of possible actions for a path."""
 
@@ -151,11 +161,13 @@ class FileMode(str, Enum):
     - REGULAR: render and materialize as normal (default)
     - CREATE_ONLY: treat the destination as create-only (never overwrite existing)
     - DELETE: mark the destination for deletion (no source template required)
+    - KEEP: explicitly cancel a delete scheduled by an earlier provider
     """
 
     REGULAR = 'regular'
     CREATE_ONLY = 'create_only'
     DELETE = 'delete'
+    KEEP = 'keep'
 
 
 @dataclass(frozen=True)
@@ -204,21 +216,17 @@ class Providers(BaseModel):
     # provenance mapping: posix path -> list of Decision instances
     delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
     # provider-specific contexts captured during provider evaluation
-    # These values may be either a plain dict or a BaseModel instance; the
+    # These values are BaseContext instances; the
     # orchestrator will convert them to dicts when merging into the global
     # context.  Keeping the original object lets us pass typed models to
     # provider helpers such as 'create_file_mappings()'.
-    provider_contexts: dict[str, object] = Field(
+    provider_contexts: dict[str, BaseContext] = Field(
         default_factory=dict,
     )
-    # per-provider migration flag: providers that have opted into the new
-    # provider-scoped template-context behaviour set this to True
-    provider_migrated: dict[str, bool] = Field(default_factory=dict)
     # mapping from a relative template path (POSIX string) to the provider id
     # that supplied the file when staging.  Populated by the builder so the
-    # renderer can later look up which provider owns a given template and, in
-    # conjunction with 'provider_migrated', decide whether to render using
-    # the merged context or the provider's own context.
+    # renderer can later look up which provider owns a given template and
+    # decide whether to use the provider's own context.
     template_sources: dict[str, str] = Field(default_factory=dict)
 
 

@@ -2,7 +2,6 @@ from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
 from repolish.loader import Action, Decision, Providers, create_providers
-from repolish.loader.context import apply_context_overrides
 from repolish.misc import ctx_to_dict
 
 
@@ -18,51 +17,6 @@ def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
     for alias, info in config.providers.items():
         alias_to_pid[alias] = info.target_dir.as_posix()
     return alias_to_pid
-
-
-def _merge_provider_contexts(
-    providers: Providers,
-    config: RepolishConfig,
-    alias_to_pid: dict[str, str],
-) -> dict[str, object]:
-    """Merge provider-scoped contexts into a single merged context.
-
-    This updates `providers.provider_contexts` in-place and returns the
-    computed merged context starting from the loader-provided values.
-    """
-    # start from whatever context the loader produced; this no longer
-    # includes any project-level values since those top-level keys were
-    # removed from the configuration schema. providers.context is typically
-    # seeded with the global namespace plus any provider contributions, so
-    # it already contains the correct base state.
-    merged_context: dict[str, object] = dict(providers.context)
-    if not config.providers:
-        return merged_context
-
-    for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, alias)
-
-        existing = providers.provider_contexts.get(pid)
-        merged = dict(ctx_to_dict(existing))
-
-        if info.context:
-            merged.update(ctx_to_dict(info.context))
-
-        if info.context_overrides:
-            apply_context_overrides(merged, info.context_overrides)
-
-        providers.provider_contexts[pid] = merged
-        merged_context.update(merged)
-
-    return merged_context
-
-
-# project-level `context` and `context_overrides` were removed from the
-# configuration schema. all overrides now live inside provider entries, so
-# there is nothing to apply at the global level. the former behaviour was
-# encapsulated in `_apply_global_overrides`, but the helper is now vestigial
-# and can safely be deleted. (we keep this comment as historical context
-# until the helper is removed completely.)
 
 
 def _apply_delete_overrides(
@@ -99,28 +53,18 @@ def _apply_delete_overrides(
 
 
 def build_final_providers(config: RepolishConfig) -> Providers:
-    """Build the final Providers object by merging provider contributions.
+    """Build the final Providers object from all configured providers.
 
-    - Loads providers from the directories referenced by configured providers
-    - Applies per-provider context overrides defined in `config.providers[alias].context`
-      before merging, giving project config fine-grained control over each
-      provider's values.
+    - Loads providers from the directories referenced by configured providers.
+    - Applies per-provider context and overrides from `config.providers[alias]`
+      so that provider hooks see project-supplied values during execution.
     - Applies `config.delete_files` entries (with '!' negation) on top of
-      provider decisions and records provenance Decisions for config entries
+      provider decisions and records provenance Decisions for config entries.
     """
-    # construct per-provider override map that will be applied "early"
-    # inside the loader.  this ensures provider hooks see project-supplied
-    # values before they execute, matching the behaviour of the real
-    # application.  `create_providers` will merge these into the
-    # `provider_contexts` map before gathering inputs.
-    # provider IDs used by the loader are just the directory path passed
-    # to `create_providers`; this is effectively `info.target_dir`.
-    # build a small alias->provider-id map that mirrors the one used when
-    # resolving directories from providers.  when a provider specifies a
-    # loader provider id is just the directory path passed to
-    # `create_providers`; this should already point at the template root.
-    # `_build_alias_to_pid` computes the mapping so reuse it rather than
-    # repeating the logic.
+    # build a per-provider override map from the project configuration.
+    # the loader applies these via `_apply_provider_overrides` which uses
+    # `apply_context_overrides` (dot-notation aware) and then re-validates
+    # the model, so each provider's typed context is the single source of truth.
     alias_to_pid = _build_alias_to_pid(config)
 
     provider_overrides: dict[str, dict[str, object]] = {}
@@ -135,7 +79,7 @@ def build_final_providers(config: RepolishConfig) -> Providers:
             merged.update(ctx_to_dict(info.context))
         if info.context_overrides:
             merged.update(info.context_overrides)
-        if merged:
+        if merged and pid:
             provider_overrides[pid] = merged
 
     # determine directories from provider info (alias_to_pid holds the
@@ -152,23 +96,14 @@ def build_final_providers(config: RepolishConfig) -> Providers:
         provider_overrides=provider_overrides,
     )
 
-    alias_to_pid = _build_alias_to_pid(config)
-    merged_context = _merge_provider_contexts(providers, config, alias_to_pid)
-    # no global overrides to apply; the previous call was removed in an earlier
-    # PR that eliminated top-level context keys
-
     delete_files = _apply_delete_overrides(providers, config)
 
-    # produce final Providers-like object.  Preserve provider-specific
-    # metadata from the loader so callers can make migration decisions and
-    # renderers can perform provider-scoped template contexts.
     return Providers(
-        context=merged_context,
+        context=providers.context,
         anchors=providers.anchors,
         delete_files=delete_files,
         delete_history=providers.delete_history,
         file_mappings=providers.file_mappings,
         create_only_files=providers.create_only_files,
         provider_contexts=providers.provider_contexts,
-        provider_migrated=providers.provider_migrated,
     )

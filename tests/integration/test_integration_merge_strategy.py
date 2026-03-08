@@ -7,40 +7,68 @@ from repolish.loader import create_providers
 def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
     """Integration-style test demonstrating derived context (merge strategy).
 
-    - Provider A defines base configuration via `create_context()`.
-    - Provider B reads the merged context and derives a `merge_strategy`
-      variable (e.g. 'ours' vs 'theirs') and exposes a `create_file_mappings`
-      factory that varies its output based on that derived value.
+    - Provider A sends its ``preferred_source`` value to other providers via
+      ``provide_inputs``.
+    - Provider B receives the input, derives a ``merge_strategy`` in
+      ``finalize_context``, and exposes a ``create_file_mappings`` factory
+      that varies its output based on that derived value.
 
-    The loader must call Provider B's factory with the merged context so that
-    templates can adapt their behavior based on configuration provided by
-    earlier providers (or the project config).
+    This verifies the full class-based inter-provider communication path.
     """
-    # Provider A: supplies a base config value
+    # Provider A: supplies preferred_source via provide_inputs (plain dict)
     a = dedent(
         """
-        def create_context():
-            return {'preferred_source': 'provider_a'}
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class ACtx(BaseContext):
+            preferred_source: str = 'provider_a'
+
+        class A(Provider[ACtx, BaseInputs]):
+            def get_provider_name(self):
+                return 'prov_a'
+
+            def create_context(self):
+                return ACtx()
+
+            def provide_inputs(self, own_context, all_providers, provider_index):
+                # return a plain dict; the loader routes it by structural match
+                return [{'preferred_source': own_context.preferred_source}]
         """,
     )
 
-    # Provider B: derives 'merge_strategy' from merged context and produces
-    # a mapping that embeds the strategy into the destination filename.
+    # Provider B: receives preferred_source, derives merge_strategy, uses it
+    # in create_file_mappings.
     b = dedent(
         """
-        def create_context(ctx):
-            # derive a merge_strategy based on existing merged values
-            preferred = ctx.get('preferred_source')
-            if preferred == 'provider_a':
-                strat = 'ours'
-            else:
-                strat = 'theirs'
-            return {'merge_strategy': strat}
+        from pydantic import BaseModel
+        from repolish import BaseContext, Provider, BaseInputs
 
-        def create_file_mappings(ctx):
-            strat = ctx.get('merge_strategy', 'unknown')
-            # mapping key is destination file; value is source template name
-            return {f'config.merged.{strat}': 'config_template'}
+        class PrefInput(BaseModel):
+            preferred_source: str = 'unknown'
+
+        class BCtx(BaseContext):
+            merge_strategy: str = 'unknown'
+
+        class B(Provider[BCtx, PrefInput]):
+            def get_provider_name(self):
+                return 'prov_b'
+
+            def create_context(self):
+                return BCtx()
+
+            def get_inputs_schema(self):
+                return PrefInput
+
+            def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
+                if received_inputs:
+                    preferred = received_inputs[0].preferred_source
+                    strat = 'ours' if preferred == 'provider_a' else 'theirs'
+                    return own_context.model_copy(update={'merge_strategy': strat})
+                return own_context
+
+            def create_file_mappings(self, context=None):
+                strat = context.merge_strategy if context else 'unknown'
+                return {f'config.merged.{strat}': 'config_template'}
         """,
     )
 
@@ -54,6 +82,5 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
 
     providers = create_providers([str(pa), str(pb)])
 
-    # Provider B's factory should see the merged context and expose a mapping
-    # using the derived 'merge_strategy' value from Provider B's create_context.
+    # Provider B's mapping key should reflect the strategy derived from A's input
     assert providers.file_mappings.get('config.merged.ours') == 'config_template'

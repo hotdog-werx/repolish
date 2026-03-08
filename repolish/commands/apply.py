@@ -57,14 +57,17 @@ def _create_staged_template(
 
 def _gather_template_directories(
     config: RepolishConfig,
-) -> list[Path] | list[tuple[str | None, Path]]:
+) -> list[Path | tuple[str | None, Path]]:
     """Return the template directories in the order they should be staged.
 
     Providers drive the result; the `directories` field no longer exists.
     If `providers_order` is given we honour it, otherwise we use dict key order.
-    The return type matches the previous helper so callers remain unchanged.
+    The return type now uses the same element-level union as
+    :func:`create_cookiecutter_template` so `ci-checks` won't complain about
+    invariant lists.  Callers need not change.
     """
-    template_dirs: list[tuple[str | None, Path]] = []
+    # each entry may be a plain Path or an (alias, Path) pair
+    template_dirs: list[Path | tuple[str | None, Path]] = []
     # build in-order list from providers
     order = config.providers_order or list(config.providers.keys())
     for alias in order:
@@ -74,9 +77,12 @@ def _gather_template_directories(
         path = info.target_dir
         template_dirs.append((alias, path))
 
-    # if no alias information needed, return simple Paths
-    if not any(alias is not None for alias, _ in template_dirs):
-        return [path for _, path in template_dirs]
+    # if no alias information needed (only plain Paths or ``(None, path)``
+    # pairs), convert everything to a simple list of directories.  we avoid
+    # unpacking here because ``template_dirs`` may contain bare Path objects
+    # once the element-level union type is in play.
+    if not any(isinstance(entry, tuple) and entry[0] is not None for entry in template_dirs):
+        return [entry if isinstance(entry, Path) else entry[1] for entry in template_dirs]
 
     return template_dirs
 
@@ -106,7 +112,7 @@ def _compute_migrated_list(
     # honour explicit ordering first
     for alias in config.providers_order or []:
         pid = pid_for_alias(alias)
-        if not pid or not providers.provider_migrated.get(pid):
+        if not pid:
             continue
         result.append(
             {
@@ -116,19 +122,6 @@ def _compute_migrated_list(
             },
         )
         seen.add(pid)
-
-    # then add any migrated providers not yet recorded
-    for pid, migrated in providers.provider_migrated.items():
-        if not migrated or pid in seen:
-            continue
-        alias = pid_to_alias.get(pid)
-        result.append(
-            {
-                'alias': alias,
-                'directory': pid,
-                'context': ctx_to_dict(providers.provider_contexts.get(pid)),
-            },
-        )
 
     return result
 

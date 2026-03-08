@@ -13,63 +13,75 @@ def write_provider(tmp_path: Path, src: str) -> str:
     return str(d)
 
 
-def test_create_anchors_callable_and_module(tmp_path: Path):
-    # callable
-    src = dedent(
-        """
-        def create_anchors():
-            return {'A': 'one'}
-        """,
-    )
-    p1 = write_provider(tmp_path / 'p1', src)
-    providers = create_providers([p1])
-    assert providers.anchors.get('A') == 'one'
-
-    # module-level
-    src2 = "anchors = {'B': 'two'}\n"
-    p2 = write_provider(tmp_path / 'p2', src2)
-    providers2 = create_providers([p2])
-    assert providers2.anchors.get('B') == 'two'
-
-
 def test_create_anchors_wrong_type_raises(tmp_path: Path):
+    """create_anchors() returning a non-dict raises TypeError."""
     src = dedent(
         """
-        def create_anchors():
-            return ('not', 'a', 'dict')
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_anchors(self, _ctx=None):
+                return ('not', 'a', 'dict')
         """,
     )
-    d = tmp_path / 'prov'
-    d.mkdir()
-    (d / 'repolish.py').write_text(src)
     with pytest.raises(TypeError):
-        create_providers([str(d)])
+        create_providers([write_provider(tmp_path, src)])
 
 
-def test_missing_context_logs_warning(tmp_path: Path):
-    src = '# no context defined\n'
-    d = tmp_path / 'prov'
-    d.mkdir(parents=True, exist_ok=True)
-    (d / 'repolish.py').write_text(src)
-
-    providers = create_providers([str(d)])
-    assert providers is not None
-
-
-def test_apply_raw_delete_items_negation_and_history(tmp_path: Path):
-    src = dedent(
+def test_delete_files_negation_and_history(tmp_path: Path):
+    """A later provider can cancel a delete via FileMode.KEEP and provenance is tracked."""
+    src1 = dedent(
         """
-        def create_delete_files():
-            return ['a.txt']
+        from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
 
-        delete_files = ['!a.txt', 'b.txt']
+        class Ctx(BaseContext):
+            pass
+
+        class P1(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p1'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                return {'a.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE)}
         """,
     )
-    d = tmp_path / 'prov'
-    d.mkdir()
-    (d / 'repolish.py').write_text(src)
+    src2 = dedent(
+        """
+        from repolish import BaseContext, Provider, BaseInputs, TemplateMapping, FileMode
 
-    providers = create_providers([str(d)])
+        class Ctx(BaseContext):
+            pass
+
+        class P2(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p2'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                return {
+                    'a.txt': TemplateMapping(source_template=None, file_mode=FileMode.KEEP),
+                    'b.txt': TemplateMapping(source_template=None, file_mode=FileMode.DELETE),
+                }
+        """,
+    )
+    p1 = write_provider(tmp_path / 'p1', src1)
+    p2 = write_provider(tmp_path / 'p2', src2)
+
+    providers = create_providers([p1, p2])
     got = {Path(p) for p in providers.delete_files}
     assert Path('b.txt') in got
     assert Path('a.txt') not in got
@@ -79,34 +91,26 @@ def test_apply_raw_delete_items_negation_and_history(tmp_path: Path):
     assert providers.delete_history['b.txt'][-1].action.value == 'delete'
 
 
-def test_file_mappings_module_variable_filters_none(tmp_path: Path):
+def test_file_mappings_none_values_are_filtered(tmp_path: Path):
+    """None values returned from create_file_mappings() are silently ignored."""
     src = dedent(
         """
-        file_mappings = {'dest.txt': None, 'x.txt': 'y.txt'}
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p'
+
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                return {'dest.txt': None, 'x.txt': 'y.txt'}
         """,
     )
-    d = tmp_path / 'prov'
-    d.mkdir()
-    (d / 'repolish.py').write_text(src)
-
-    providers = create_providers([str(d)])
+    providers = create_providers([write_provider(tmp_path, src)])
     assert 'dest.txt' not in providers.file_mappings
     assert providers.file_mappings.get('x.txt') == 'y.txt'
-
-
-def test_create_only_callable_and_module_merge(tmp_path: Path):
-    src = dedent(
-        """
-        def create_create_only_files():
-            return ['one.txt']
-
-        create_only_files = ['two.txt']
-        """,
-    )
-    d = tmp_path / 'prov'
-    d.mkdir()
-    (d / 'repolish.py').write_text(src)
-
-    providers = create_providers([str(d)])
-    got = {Path(p) for p in providers.create_only_files}
-    assert Path('one.txt') in got

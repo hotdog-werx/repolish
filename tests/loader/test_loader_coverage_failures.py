@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from repolish.hydration.rendering import _load_and_validate_template
 from repolish.loader.models import (
     BaseContext,
+    BaseInputs,
     ProviderEntry,
     Providers,
     TemplateMapping,
@@ -46,10 +47,10 @@ def test_retrieve_instance_inputs_raises_on_collect_error() -> None:
 
 
 def test_validate_raw_inputs_wrong_model() -> None:
-    class S(BaseModel):
+    class S(BaseInputs):
         a: int
 
-    class Other(BaseModel):
+    class Other(BaseInputs):
         b: int
 
     with pytest.raises(pydantic_core.ValidationError):
@@ -77,7 +78,7 @@ def test_finalize_provider_contexts_error_path() -> None:
         finalize_provider_contexts(
             [('p', {})],
             [F()],
-            {'p': [1]},
+            {'p': [1]},  # type: ignore[arg-type]
             {},
             [],
         )

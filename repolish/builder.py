@@ -5,7 +5,12 @@ from pathlib import Path
 
 def create_cookiecutter_template(
     staging_dir: Path,
-    template_directories: list[Path] | list[tuple[str | None, Path]],
+    # `list` is invariant, so a union of two list types rejects callers that
+    # supply `list[tuple[str, Path]]` even though that form is perfectly
+    # valid.  using an element-level union lets mypy/ty treat the argument as
+    # `list[Path | tuple[str | None, Path]]` which accepts both plain paths and
+    # (alias, path) pairs with or without a `None` alias.
+    template_directories: list[Path | tuple[str | None, Path]],
     *,
     template_overrides: dict[str, str] | None = None,
 ) -> tuple[Path, dict[str, str]]:

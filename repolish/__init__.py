@@ -1,5 +1,6 @@
 from .loader.models import (
     BaseContext,
+    BaseInputs,
     FileMode,
     Provider,
     ProviderEntry,
@@ -9,6 +10,7 @@ from .loader.models import (
 
 __all__ = [
     'BaseContext',
+    'BaseInputs',
     'FileMode',
     'Provider',
     'ProviderEntry',

@@ -192,24 +192,38 @@ def test_file_mappings_merge_across_providers(tmp_path: Path):
 
     # Provider A has one mapping
     (template_a / 'repolish.py').write_text("""
-def create_context():
-    return {}
+from repolish import BaseContext, Provider, BaseInputs
 
-def create_file_mappings():
-    return {
-        "file-a.yml": "_repolish.a.yml"
-    }
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def get_provider_name(self):
+        return 'p_a'
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'file-a.yml': '_repolish.a.yml'}
 """)
 
     # Provider B has another mapping
     (template_b / 'repolish.py').write_text("""
-def create_context():
-    return {}
+from repolish import BaseContext, Provider, BaseInputs
 
-def create_file_mappings():
-    return {
-        "file-b.yml": "_repolish.b.yml"
-    }
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def get_provider_name(self):
+        return 'p_b'
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'file-b.yml': '_repolish.b.yml'}
 """)
 
     providers = create_providers([str(template_a), str(template_b)])
@@ -231,23 +245,37 @@ def test_file_mappings_later_provider_overrides_earlier(tmp_path: Path):
 
     # Both providers map same destination
     (template_a / 'repolish.py').write_text("""
-def create_context():
-    return {}
+from repolish import BaseContext, Provider, BaseInputs
 
-def create_file_mappings():
-    return {
-        "config.yml": "_repolish.option-a.yml"
-    }
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def get_provider_name(self):
+        return 'p_a'
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'config.yml': '_repolish.option-a.yml'}
 """)
 
     (template_b / 'repolish.py').write_text("""
-def create_context():
-    return {}
+from repolish import BaseContext, Provider, BaseInputs
 
-def create_file_mappings():
-    return {
-        "config.yml": "_repolish.option-b.yml"  # Override
-    }
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def get_provider_name(self):
+        return 'p_b'
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'config.yml': '_repolish.option-b.yml'}  # Override
 """)
 
     providers = create_providers([str(template_a), str(template_b)])

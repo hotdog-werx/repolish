@@ -1,46 +1,39 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 from pydantic import BaseModel as _BaseModel
 from pydantic_core import ValidationError
 
 from repolish.loader._log import logger
 from repolish.loader.models import (
+    BaseContext,
+    BaseInputs,
     GlobalContext,
     ProviderEntry,
     get_global_context,
 )
 from repolish.loader.models import Provider as _ProviderBase
-from repolish.loader.module_loader import ModuleProviderAdapter
 
 
 def build_provider_metadata(
     module_cache: list[tuple[str, dict]],
-) -> tuple[dict[str, bool], list[_ProviderBase | None]]:
-    """Compute migration flags and provider instances.
+) -> list[_ProviderBase | None]:
+    """Return the provider instance list from the module cache.
 
-    Historically this helper also returned a `canonical_name_to_pid` map
-    used for explicit name-based routing.  that mechanism has been removed,
-    so the helper now returns only the two values still needed by the loader.
-    The map is no longer constructed at all.
+    Each module is expected to expose its provider via the
+    ``_repolish_provider_instance`` key.  Entries without an instance
+    (or with a non-Provider object) produce a ``None`` slot so that
+    index-based pairing with ``module_cache`` is preserved.
     """
-    provider_migrated_map: dict[str, bool] = {}
     instances: list[_ProviderBase | None] = []
 
-    for _idx, (provider_id, module_dict) in enumerate(module_cache):
+    for _idx, (_provider_id, module_dict) in enumerate(module_cache):
         inst = module_dict.get('_repolish_provider_instance')
-        # explicit flag may be any truthy value; adapters should not count as
-        # migrated even though they are instances of `Provider`.  only real
-        # class-based providers cause automatic migration.
-        is_adapter = isinstance(inst, ModuleProviderAdapter)
-        migrated = bool(module_dict.get('provider_migrated')) or (inst is not None and not is_adapter)
-        provider_migrated_map[provider_id] = migrated
-
         instances.append(inst if isinstance(inst, _ProviderBase) else None)
 
-    return provider_migrated_map, instances
+    return instances
 
 
 def compute_recipient_flags(
@@ -66,7 +59,9 @@ def _retrieve_instance_inputs(
     provider_id: str,
     idx: int,
     inst: _ProviderBase,
-    provider_contexts: dict[str, object],
+    # context values are arbitrary; using ``Any`` prevents invariant-type
+    # complaints when callers hold more specific mappings.
+    provider_contexts: dict[str, Any],
     all_providers_list: list[ProviderEntry],
 ) -> list[object] | None:
     """Call an instance's `provide_inputs` (or deprecated `collect_*`).
@@ -130,16 +125,16 @@ def _distribute_payloads(
                 continue
             if _schema_matches(schema, inp):
                 state.received_inputs.setdefault(entry.provider_id, []).append(
-                    inp,
+                    cast('BaseInputs', inp),
                 )
 
 
 @dataclass
 class _GatherState:
-    provider_contexts: dict[str, object]
+    provider_contexts: dict[str, BaseContext]
     all_providers_list: list[ProviderEntry]
     has_recipient_after: list[bool]
-    received_inputs: dict[str, list[object]]
+    received_inputs: dict[str, list[BaseInputs]]
 
 
 def _collect_for_provider(
@@ -177,10 +172,10 @@ def _collect_for_provider(
 def gather_received_inputs(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
     has_recipient_after: list[bool],
-) -> dict[str, list[object]]:
+) -> dict[str, list[BaseInputs]]:
     """Collect provider inputs and organize them by recipient provider id."""
     state = _GatherState(
         provider_contexts=provider_contexts,
@@ -204,16 +199,16 @@ def gather_received_inputs(
 
 
 def _validate_raw_inputs(
-    raw_inputs: list[object],
-    inputs_schema: type[_BaseModel] | None,
-) -> list[object]:
+    raw_inputs: list[BaseInputs],
+    inputs_schema: type[BaseInputs] | None,
+) -> list[BaseInputs]:
     """Validate a sequence of inputs against a pydantic schema if provided."""
     if inputs_schema is None:
         return raw_inputs
 
-    validated: list[object] = []
+    validated: list[BaseInputs] = []
     for v in raw_inputs:
-        if isinstance(v, _BaseModel):
+        if isinstance(v, BaseInputs):
             if isinstance(v, inputs_schema):
                 validated.append(v)
             else:
@@ -229,9 +224,9 @@ def _validate_raw_inputs(
 
 def _get_own_model(
     inst: _ProviderBase,
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     provider_id: str,
-) -> object:
+) -> BaseContext:
     """Return the provider's context model, falling back to existing context.
 
     This helper is no longer invoked during finalization; it remains for
@@ -242,45 +237,23 @@ def _get_own_model(
     try:
         return inst.create_context()
     except Exception:  # noqa: BLE001
-        return provider_contexts.get(provider_id, {})
-
-
-def _store_new_context(
-    provider_contexts: dict[str, object],
-    provider_id: str,
-    new_ctx: object,
-) -> None:
-    """Store a returned context value.
-
-    Unlike earlier versions we keep the value exactly as returned (either a
-    `BaseModel` or a `dict`).  The orchestrator will convert to a dict when
-    building the merged context; retaining the original object allows us to
-    pass a typed `ContextT` instance to helpers such as
-    `create_file_mappings()`.
-    """
-    if isinstance(new_ctx, _BaseModel | dict):
-        provider_contexts[provider_id] = new_ctx
-        return
-    msg = 'finalize_context() must return a dict or Pydantic model'
-    raise TypeError(msg)
+        return provider_contexts.get(provider_id, BaseContext())
 
 
 def _prepare_own_model(
     inst: _ProviderBase,
-    provider_contexts: dict[str, object],
+    provider_contexts: dict[str, BaseContext],
     provider_id: str,
-) -> object:
+) -> BaseContext:
     """Return the context object to pass to `finalize_context`.
 
     Encapsulates adapter handling, create_context fallback, and global
     namespace injection.
     """
-    prev_ctx = provider_contexts.get(provider_id, {})
-    if isinstance(inst, ModuleProviderAdapter):
-        return prev_ctx
+    prev_ctx = provider_contexts.get(provider_id, BaseContext())
 
     try:
-        own_model = inst.create_context()
+        own_model = cast('BaseContext', inst.create_context())
     except Exception:  # noqa: BLE001
         own_model = prev_ctx
 
@@ -296,12 +269,12 @@ def _prepare_own_model(
 
 def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
     inst: _ProviderBase,
-    own_model: object,
-    validated_inputs: list[object],
+    own_model: BaseContext,
+    validated_inputs: list[BaseInputs],
     all_providers_list: list[ProviderEntry],
     idx: int,
     provider_id: str,
-) -> object:
+) -> BaseContext:
     """Call `finalize_context` with consistent logging on failure."""
     try:
         return inst.finalize_context(
@@ -322,8 +295,8 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
 def finalize_provider_contexts(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
-    received_inputs: dict[str, list[object]],
-    provider_contexts: dict[str, object],
+    received_inputs: dict[str, list[BaseInputs]],
+    provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
 ) -> None:
     """Mutate `provider_contexts` by running finalize_context on each instance.
@@ -349,5 +322,4 @@ def finalize_provider_contexts(
             idx,
             provider_id,
         )
-
-        _store_new_context(provider_contexts, provider_id, new_ctx)
+        provider_contexts[provider_id] = new_ctx

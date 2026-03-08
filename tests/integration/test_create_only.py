@@ -5,7 +5,6 @@ from pathlib import Path
 from repolish.hydration import apply_generated_output, check_generated_output
 from repolish.loader import (
     Providers,
-    create_providers,
 )
 
 
@@ -208,46 +207,6 @@ def test_create_only_missing_gets_created(tmp_path: Path):
 
     # File should be created (doesn't exist, so create-only creates it)
     assert (base_dir / 'custom' / '__init__.py').read_text() == '# Template init'
-
-
-def test_create_providers_merges_create_only_files(tmp_path: Path):
-    """Test that create_only_files are merged across multiple providers."""
-    # Create provider modules
-    provider1_dir = tmp_path / 'provider1'
-    provider1_dir.mkdir()
-    (provider1_dir / 'repolish.py').write_text(
-        'create_only_files = ["file1.txt", "file2.txt"]',
-    )
-
-    provider2_dir = tmp_path / 'provider2'
-    provider2_dir.mkdir()
-    (provider2_dir / 'repolish.py').write_text(
-        'create_only_files = ["file3.txt"]',
-    )
-
-    providers = create_providers([str(provider1_dir), str(provider2_dir)])
-
-    # Should have all create_only_files from both providers (lists merged)
-    assert len(providers.create_only_files) == 3
-    paths = {str(p) for p in providers.create_only_files}
-    assert paths == {'file1.txt', 'file2.txt', 'file3.txt'}
-
-
-def test_create_providers_normalizes_create_only_paths(tmp_path: Path):
-    """Test that create_only_files paths are normalized to Path objects."""
-    provider_dir = tmp_path / 'provider'
-    provider_dir.mkdir()
-    (provider_dir / 'repolish.py').write_text(
-        'create_only_files = ["file.txt", "other.txt"]',
-    )
-
-    providers = create_providers([str(provider_dir)])
-
-    # Should be a list of Path objects
-    assert isinstance(providers.create_only_files, list)
-    assert len(providers.create_only_files) == 2
-    paths = {str(p) for p in providers.create_only_files}
-    assert paths == {'file.txt', 'other.txt'}
 
 
 def test_create_only_files_with_delete_files_conflict(tmp_path: Path):

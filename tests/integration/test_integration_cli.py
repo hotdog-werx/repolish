@@ -120,11 +120,17 @@ def test_integration_emoji_encoding(
     write_file(
         repolish_py,
         textwrap.dedent("""\
-        def create_context():
-            return {}
+        from repolish import BaseContext, Provider, BaseInputs
 
-        def create_delete_files():
-            return []
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'emoji'
+
+            def create_context(self):
+                return Ctx()
         """),
     )
 
@@ -233,7 +239,19 @@ def test_cli_provider_order_with_overrides(
     write_file(p1 / 'repolish' / 'foo.txt', 'from p1')
     write_file(
         p1 / 'repolish.py',
-        'def create_context():\n    return {}\n',
+        textwrap.dedent("""\
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p1'
+
+            def create_context(self):
+                return Ctx()
+        """),
     )
 
     # provider 2
@@ -242,7 +260,19 @@ def test_cli_provider_order_with_overrides(
     write_file(p2 / 'repolish' / 'foo.txt', 'from p2')
     write_file(
         p2 / 'repolish.py',
-        'def create_context():\n    return {}\n',
+        textwrap.dedent("""\
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def get_provider_name(self):
+                return 'p2'
+
+            def create_context(self):
+                return Ctx()
+        """),
     )
 
     cfg = tmp_path / 'repolish.yaml'
