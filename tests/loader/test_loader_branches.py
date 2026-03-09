@@ -29,7 +29,7 @@ def test_create_anchors_wrong_type_raises(tmp_path: Path):
             def create_context(self):
                 return Ctx()
 
-            def create_anchors(self, _ctx=None):
+            def create_anchors(self, context=None):
                 return ('not', 'a', 'dict')
         """,
     )

@@ -2,14 +2,10 @@
 
 import textwrap
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 from repolish.builder import create_cookiecutter_template
 from repolish.hydration.staging import preprocess_templates
 from repolish.loader import Providers
-
-if TYPE_CHECKING:
-    from repolish.config import RepolishConfig
 
 
 def write_file(p: Path, content: str) -> None:
@@ -51,7 +47,7 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     assert staged_secret.exists()
     staged_secret.chmod(0)
 
-    # Prepare a minimal providers and config-like object for preprocessing
+    # Prepare a minimal providers object for preprocessing
     providers = Providers(
         context={},
         anchors={},
@@ -59,14 +55,9 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
         delete_history={},
     )
 
-    class Cfg:
-        def __init__(self) -> None:
-            self.anchors: dict[str, str] = {}
-
     # Call preprocess_templates directly; it should skip the unreadable file and not raise
     preprocess_templates(
         setup_input,
         providers,
-        cast('RepolishConfig', Cfg()),
         tmp_path,
     )

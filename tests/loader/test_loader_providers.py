@@ -45,7 +45,7 @@ class ProviderCase:
                         def create_context(self):
                             return Ctx(a=1)
 
-                        def create_anchors(self, _ctx=None):
+                        def create_anchors(self, context=None):
                             return {'X': 'replace'}
 
                         def create_file_mappings(self, context=None):
@@ -79,7 +79,7 @@ class ProviderCase:
                         def create_context(self):
                             return Ctx(a=1, keep=True)
 
-                        def create_anchors(self, _ctx=None):
+                        def create_anchors(self, context=None):
                             return {'X': 'first'}
 
                         def create_file_mappings(self, context=None):
@@ -104,7 +104,7 @@ class ProviderCase:
                         def create_context(self):
                             return Ctx(a=2)
 
-                        def create_anchors(self, _ctx=None):
+                        def create_anchors(self, context=None):
                             return {'X': 'second'}
 
                         def create_file_mappings(self, context=None):

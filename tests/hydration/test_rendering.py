@@ -56,42 +56,10 @@ def test_render_template_renders_with_jinja(tmp_path: Path):
     providers = Providers(
         context={'value': 'hello', '_repolish_project': 'repolish'},
     )
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
     assert (setup_output / 'repolish' / 'foo').read_text() == 'value=hello'
-
-
-def test_render_template_logs_merged_context(
-    tmp_path: Path,
-    mocker: MockerFixture,
-):
-    """Rendering logs the merged context at debug level."""
-    # simple template so rendering will proceed without errors
-    tpl = tmp_path / 'tpl'
-    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
-    (tpl / 'repolish' / 'foo.jinja').write_text(
-        'X={{ cookiecutter.foo }}',
-        encoding='utf-8',
-    )
-
-    config = RepolishConfig(config_dir=tmp_path)
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
-
-    providers = Providers(
-        context={'foo': 'bar', '_repolish_project': 'repolish'},
-    )
-    preprocess_templates(setup_input, providers, config, base_dir)
-
-    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
-    render_template(setup_input, providers, setup_output, config)
-
-    # ensure debug log called with merged context dictionary
-    mock_logger.debug.assert_any_call(
-        'computed_merged_context',
-        merged_ctx={'foo': 'bar', '_repolish_project': 'repolish'},
-    )
 
 
 def test_compute_merged_context_logs_details(mocker: MockerFixture):
@@ -129,7 +97,6 @@ def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
     config = RepolishConfig(config_dir=tmp_path)
     render_ctx = RenderContext(
         setup_input=tmp_path,
-        merged_ctx={'base': 1},
         setup_output=tmp_path,
         providers=providers,
         config=config,
@@ -165,7 +132,6 @@ def test_choose_ctx_for_file_normalizes_windows_pid(
     config = RepolishConfig(config_dir=tmp_path)
     render_ctx = RenderContext(
         setup_input=tmp_path,
-        merged_ctx={'base': 1},
         setup_output=tmp_path,
         providers=providers,
         config=config,
@@ -204,7 +170,7 @@ def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
     providers = Providers(
         context={'package_name': 'acme', '_repolish_project': 'repolish'},
     )
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -246,7 +212,7 @@ def test_render_with_file_mappings_generates_multiple_files(
         },
     )
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -298,7 +264,7 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
         },
     )
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -336,7 +302,7 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
 
     providers = Providers(context={'_repolish_project': 'repolish'})
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -363,7 +329,7 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     create_cookiecutter_template(setup_input, [tpl])
 
     providers = Providers(context={'_repolish_project': 'repolish'})
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     # patch logger so we can introspect which context was used during failure
     with (
@@ -396,7 +362,7 @@ def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
     create_cookiecutter_template(setup_input, [tpl])
 
     providers = Providers(context={'_repolish_project': 'repolish', 'bad': 'x'})
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(TemplateSyntaxError):
         render_template(setup_input, providers, setup_output, config)
@@ -418,7 +384,7 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
     create_cookiecutter_template(setup_input, [tpl])
 
     providers = Providers(context={'_repolish_project': 'repolish'})
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(TemplateSyntaxError):
         render_template(setup_input, providers, setup_output, config)
@@ -450,7 +416,7 @@ def test_template_mapping_undefined_errors_are_collected(tmp_path: Path):
         },
     )
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(RuntimeError) as exc:
         render_template(setup_input, providers, setup_output, config)
@@ -479,7 +445,7 @@ def test_render_template_prunes_missing_and_unreadable_mapping(tmp_path: Path):
         file_mappings={'cfg.yml': TemplateMapping('missing.tpl', None)},
     )
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -511,7 +477,7 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
         },
     )
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     render_template(setup_input, providers, setup_output, config)
 
@@ -540,7 +506,36 @@ def test_render_template_raises_when_templatemappings_and_cookiecutter_enabled(
         file_mappings={'x.txt': TemplateMapping('item', None)},
     )
 
-    preprocess_templates(setup_input, providers, config, base_dir)
+    preprocess_templates(setup_input, providers, base_dir)
 
     # template mappings are always supported; jinja handles them directly
     render_template(setup_input, providers, setup_output, config)
+
+
+def test_process_template_mappings_skips_string_entries(tmp_path: Path):
+    """String-valued file_mappings entries are ignored by the mapping render phase."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'item.jinja').write_text('rendered', encoding='utf-8')
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    providers = Providers(
+        context={'_repolish_project': 'repolish'},
+        file_mappings={
+            # plain string entry — must be skipped by _process_template_mappings
+            'plain.txt': 'item',
+            # TemplateMapping entry — must still be rendered
+            'mapped.txt': TemplateMapping('item', None),
+        },
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+    render_template(setup_input, providers, setup_output, config)
+
+    # the TemplateMapping entry is materialized with the prefixed name
+    assert (setup_output / 'repolish' / '_repolish.mapped.txt').exists()
+    # the string entry is untouched in file_mappings (not normalized to dest path)
+    assert providers.file_mappings['plain.txt'] == 'item'

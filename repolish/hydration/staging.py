@@ -68,15 +68,15 @@ def _process_single_template_file(
 def preprocess_templates(
     setup_input: Path,
     providers: Providers,
-    config: RepolishConfig,
     base_dir: Path,
 ) -> None:
     """Apply anchor-driven replacements to files under setup_input.
 
     Local project files used for anchor-driven overrides are resolved relative
     to `base_dir` (usually the directory containing the config file).
+    Anchors originate exclusively from provider `create_anchors()` implementations.
     """
-    anchors_mapping = {**providers.anchors, **config.anchors}
+    anchors_mapping = providers.anchors
 
     # Build reverse mapping for conditional files. Support `TemplateMapping`
     # entries where `source_template` identifies the source template file.

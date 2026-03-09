@@ -20,7 +20,6 @@ from repolish.loader.mappings import (
     process_file_mappings,
 )
 from repolish.loader.orchestrator import (
-    _create_context_wrapper_for,
     _process_phase_two,
 )
 from repolish.loader.three_phase import (
@@ -87,58 +86,7 @@ def test_process_file_mappings_skips_none_values() -> None:
     assert acc2.merged_file_mappings == {'b.txt': 'tmpl'}
 
 
-# this test exercises a defensive branch that only exists for module-style
-# providers via the adapter. after v1 we plan to drop the adapter and the
-# guard can go away; at that point this test should be removed too.
-# marking no-cover so that any future refactor of the guard doesn't force
-# changes to unrelated coverage expectations.
-
-
-def test_process_file_mappings_early_return_for_class_provider() -> None:  # pragma: no cover
-    """A class-based provider returning a non-dict should bail out immediately."""
-
-    class Bad(_ProviderBase):
-        def get_provider_name(self) -> str:
-            return 'bad'
-
-        def create_context(self) -> dict:
-            return {}
-
-        # this return deliberately violates the declared return type;
-        # clients should never do this. the branch path exercised below is
-        # defensive and once our codebase is fully typed the only way to hit it
-        # is by ignoring types. the `override` ignore has since become
-        # unnecessary (the signature matches), but we still keep the
-        # `return-value` ignore. revisit this entire test once the v1 adapter
-        # support is removed, since the defensive branch can be deleted
-        # entirely at that point.
-        def create_file_mappings(
-            self,
-            context: dict[str, object],  # noqa: ARG002 - needs signature
-        ) -> dict[str, str | TemplateMapping]:
-            return 'not a dict'  # type: ignore[return-value]
-
-    inst = Bad()
-
-    acc = Accumulators(
-        merged_anchors={},
-        merged_file_mappings={},
-        create_only_set=set(),
-        delete_set=set(),
-        history={},
-    )
-    fm_bad = inst.create_file_mappings({})
-    process_file_mappings('bad', fm_bad, acc)
-    assert acc.merged_file_mappings == {}
-
-
 # ---- orchestrator helpers --------------------------------------------------
-
-
-def test_create_context_wrapper_for_returns_plain_dict():
-    inst = DummyProvider()
-    wrapper = _create_context_wrapper_for(inst)
-    assert wrapper(None) == {}
 
 
 def test_process_phase_two_skips_missing_instance():
@@ -150,7 +98,7 @@ def test_process_phase_two_skips_missing_instance():
         history={},
     )
     # module_cache entry with no instance
-    _process_phase_two([('p', {})], {}, {}, acc)
+    _process_phase_two([('p', {})], {}, acc)
     # nothing should have changed
     assert acc.merged_anchors == {}
     assert acc.merged_file_mappings == {}
@@ -324,7 +272,6 @@ class Receiver(Provider[RecCtx, Msg]):
     # subdir is appended or expected.
     cfg = RepolishConfig(
         config_dir=tmp_path,
-        anchors={},
         providers={
             'sender': ResolvedProviderInfo(
                 alias='sender',

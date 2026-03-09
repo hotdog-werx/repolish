@@ -40,8 +40,6 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
     return RepolishConfig(
         provider_scoped_template_context=config.provider_scoped_template_context,
         config_dir=config_dir,
-        # `directories` removed in v1; providers supply needed paths
-        anchors=config.anchors,
         post_process=config.post_process,
         delete_files=config.delete_files,
         providers=resolved_providers,

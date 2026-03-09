@@ -1,11 +1,10 @@
 from pathlib import Path, PurePosixPath
-from typing import cast
 
 from repolish.loader.models import Action, Decision, FileMode, TemplateMapping
 
 
 def process_delete_files(
-    mappings: dict[str, str | TemplateMapping] | object,
+    mappings: dict[str, str | TemplateMapping],
     delete_set: set[Path],
     provider_id: str,
     history: dict[str, list[Decision]],
@@ -21,15 +20,12 @@ def process_delete_files(
       `Action.keep`, allowing a later provider to cancel a delete scheduled
       by an earlier one.
     """
-    if not isinstance(mappings, dict):
-        return
-
     for k, v in mappings.items():
         if not isinstance(v, TemplateMapping):
             continue
         if v.file_mode not in (FileMode.DELETE, FileMode.KEEP):
             continue
-        p = Path(*PurePosixPath(cast('str', k)).parts)
+        p = Path(*PurePosixPath(k).parts)
         key = p.as_posix()
         if v.file_mode == FileMode.DELETE:
             delete_set.add(p)

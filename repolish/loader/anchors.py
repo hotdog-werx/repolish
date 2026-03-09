@@ -5,16 +5,15 @@ from repolish.loader.models import Provider as _ProviderBase
 
 def process_anchors(
     provider: _ProviderBase,
-    merged_context: dict[str, object],
+    provider_context: object,
     merged_anchors: dict[str, str],
 ) -> None:
     """Resolve anchors for a provider and merge into `merged_anchors`.
 
-    `provider` must be a `Provider` instance (e.g. `ModuleProviderAdapter`).
+    `provider_context` is the provider's own context object (the same value
+    passed to `create_file_mappings`).
     """
-    inst = cast('_ProviderBase', provider)
-
-    val = inst.create_anchors(merged_context)
+    val = provider.create_anchors(provider_context)
     if not val:
         return
     if not isinstance(val, dict):

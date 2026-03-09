@@ -224,3 +224,51 @@ def test_preserve_line_endings_identical_files(
 
     diffs = check_generated_output(setup_output, providers, base_dir)
     assert not diffs, 'Expected no diffs for identical files even when preserving line endings'
+
+
+def test_binary_files_identical_produce_no_diff(tmp_path: Path) -> None:
+    """Identical binary files that cannot be decoded as UTF-8 should produce no diff."""
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+    binary = b'\x89PNG\r\n\x1a\n\x00\x00\x00\xff\xfe'
+    (setup_output / 'repolish' / 'logo.png').write_bytes(binary)
+
+    base_dir = tmp_path / 'base'
+    base_dir.mkdir()
+    (base_dir / 'logo.png').write_bytes(binary)
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+    assert not diffs
+
+
+def test_binary_files_different_produce_diff_entry(tmp_path: Path) -> None:
+    """Differing binary files that cannot be decoded as UTF-8 should appear in diffs."""
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+    (setup_output / 'repolish' / 'logo.png').write_bytes(
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\xff\xfe',
+    )
+
+    base_dir = tmp_path / 'base'
+    base_dir.mkdir()
+    (base_dir / 'logo.png').write_bytes(
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\xaa\xbb',
+    )
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+    assert len(diffs) == 1
+    assert diffs[0][0] == 'logo.png'

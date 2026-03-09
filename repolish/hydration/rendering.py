@@ -12,7 +12,7 @@ from jinja2 import (
 )
 
 from repolish.config import RepolishConfig
-from repolish.loader import BaseContext, FileMode, Providers, TemplateMapping
+from repolish.loader import FileMode, Providers, TemplateMapping
 from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
@@ -31,12 +31,10 @@ class RenderContext:
     """
 
     setup_input: Path
-    merged_ctx: dict
     setup_output: Path
     providers: Providers
     config: RepolishConfig
     skip_templates: set[str] | None = None
-    use_provider_context: bool = False
 
 
 def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
@@ -75,14 +73,15 @@ def render_with_jinja(ctx: RenderContext) -> None:
     # lookups, which avoids key typos and improves autocomplete support in
     # editors.
     setup_input = ctx.setup_input
-    merged_ctx = ctx.merged_ctx
     setup_output = ctx.setup_output
     # `providers` and `config` are available on `ctx` and only used
     # indirectly via helpers; no need to create local variables here.
     skip_templates = ctx.skip_templates
 
     template_root = setup_input / '{{cookiecutter._repolish_project}}'
-    project_name = str(merged_ctx.get('_repolish_project', 'repolish'))
+    project_name = str(
+        ctx.providers.context.get('_repolish_project', 'repolish'),
+    )
 
     env = Environment(
         autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
@@ -133,6 +132,19 @@ def render_with_jinja(ctx: RenderContext) -> None:
         dest.write_text(rendered_txt, encoding='utf-8')
 
 
+def _ctx_for_pid(pid: str | None, providers: Providers) -> dict:
+    """Return the context dict for the given provider id.
+
+    Falls back to ``providers.context`` when ``pid`` is ``None`` or not found
+    in ``provider_contexts``.
+    """
+    if pid:
+        found = providers.provider_contexts.get(pid)
+        if found is not None:
+            return ctx_to_dict(found)
+    return ctx_to_dict(providers.context)
+
+
 def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
     """Return the context to use when rendering a generic staged file.
 
@@ -157,9 +169,7 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
         pid=pid,
         normalized_pid=norm_pid,
     )
-    if norm_pid:
-        return ctx_to_dict(ctx.providers.provider_contexts.get(norm_pid))
-    return ctx.merged_ctx
+    return _ctx_for_pid(norm_pid, ctx.providers)
 
 
 def _jinja_render(
@@ -246,19 +256,12 @@ def render_template(
     config: RepolishConfig,
 ) -> None:
     """Dispatch rendering to Jinja or cookiecutter based on runtime config."""
-    merged_ctx = _compute_merged_context(providers)
-    # log the full merged context for diagnostic purposes (e.g. windows CI
-    # runs where context appears truncated).  this log does not expose
-    # sensitive data since context is already available to template authors.
-    logger.debug('computed_merged_context', merged_ctx=merged_ctx)
     skip_templates = _collect_skip_templates(providers)
 
-    # build a RenderContext once; the same object will later drive both
-    # the Jinja pass and the mapping pass.  `use_provider_context` is
-    # toggled for the second phase.
+    # build a RenderContext once; the same object drives both
+    # the Jinja pass and the mapping pass.
     render_ctx = RenderContext(
         setup_input=setup_input,
-        merged_ctx=merged_ctx,
         setup_output=setup_output,
         providers=providers,
         config=config,
@@ -267,11 +270,8 @@ def render_template(
 
     render_with_jinja(render_ctx)
 
-    # Materialize TemplateMapping entries (render template per-mapping using
-    # merged_ctx + extra_ctx).  we reuse `render_ctx` but switch on the
-    # provider-context flag; this mirrors the previous behaviour where a
-    # temporary dict was created solely for the mapping helpers.
-    render_ctx.use_provider_context = True
+    # Materialize TemplateMapping entries, rendering each with the declaring
+    # provider's own context merged with any mapping-level extra_context.
     _process_template_mappings(render_ctx)
 
 
@@ -301,29 +301,6 @@ def _load_and_validate_template(
         return None
 
 
-def _choose_base_ctx_for_mapping(
-    source_provider: str | None,
-    *,
-    use_provider_context: bool,
-    merged_ctx: dict,
-    providers: Providers,
-) -> dict:
-    """Return the appropriate base context for rendering a mapping.
-
-    - If provider-scoped rendering is disabled, returns merged_ctx.
-    - If enabled and the declaring provider is migrated, returns that provider's
-      captured context. Unmigrated providers receive the full merged context as
-      a compatibility fallback.
-    """
-    if not use_provider_context or not source_provider:
-        return merged_ctx
-
-    ctx = providers.provider_contexts.get(source_provider)
-    if isinstance(ctx, BaseContext):
-        return ctx.model_dump()
-    return merged_ctx
-
-
 def _render_single_mapping(
     dest_path: str,
     mapping: TemplateMapping,
@@ -338,8 +315,6 @@ def _render_single_mapping(
     setup_input: Path = ctx.setup_input
     setup_output: Path = ctx.setup_output
     providers: Providers = ctx.providers
-    merged_ctx: dict = ctx.merged_ctx
-    use_provider_context: bool = ctx.use_provider_context
 
     if mapping.file_mode == FileMode.DELETE:
         providers.file_mappings.pop(dest_path, None)
@@ -362,12 +337,7 @@ def _render_single_mapping(
         keep_trailing_newline=True,
     )
 
-    base_ctx = _choose_base_ctx_for_mapping(
-        mapping.source_provider,
-        use_provider_context=use_provider_context,
-        merged_ctx=merged_ctx,
-        providers=providers,
-    )
+    base_ctx = _ctx_for_pid(mapping.source_provider, providers)
     # compose context for rendering and delegate
     render_ctx = {**base_ctx, **ctx_to_dict(mapping.extra_context)}
     try:
@@ -398,7 +368,7 @@ def _render_single_mapping(
     prefix = '_repolish.'
     orig = Path(dest_path)
     prefixed_name = prefix + orig.name
-    target = setup_output / str(merged_ctx.get('_repolish_project', 'repolish')) / orig.parent / prefixed_name
+    target = setup_output / str(providers.context.get('_repolish_project', 'repolish')) / orig.parent / prefixed_name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(rendered, encoding='utf-8')
 
@@ -411,12 +381,7 @@ def _render_single_mapping(
 def _process_template_mappings(
     ctx: RenderContext,
 ) -> None:
-    """Render and materialize `TemplateMapping`-valued file_mappings into setup-output.
-
-    `ctx` is expected to have `merged_ctx` and `use_provider_context`
-    filled appropriately.  Passing a dataclass avoids the untyped dictionary
-    seen previously.
-    """
+    """Render and materialize `TemplateMapping`-valued file_mappings into setup-output."""
     errors: list[str] = []
 
     for dest_path, source_val in list(ctx.providers.file_mappings.items()):

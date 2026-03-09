@@ -38,7 +38,7 @@ class TemplateAProvider(Provider[Ctx, BaseModel]):
 
     def create_anchors(
         self,
-        _ctx: dict[str, object] | None = None,
+        context: Ctx,  # noqa: ARG002 - context is not used in this example
     ) -> dict[str, str]:
         """Return anchor replacements used by the example provider."""
         return {'extra-deps': '\nrequests = "^2.30"\n'}

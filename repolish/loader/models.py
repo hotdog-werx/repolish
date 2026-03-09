@@ -438,12 +438,12 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
     def create_anchors(
         self,
-        _ctx: dict[str, object] | None = None,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
     ) -> dict[str, str]:
         """Optional: return anchors mapping for this provider.
 
-        Default: no anchors (empty dict). Subclasses may accept an optional
-        context argument to make decisions based on the merged context.
+        The provider's own context object is passed so implementations can
+        make decisions based on it.  Default: no anchors (empty dict).
         """
         return {}
 

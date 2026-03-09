@@ -1,5 +1,4 @@
 import copy
-from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import isclass
 from pathlib import Path
@@ -92,57 +91,21 @@ def _find_provider_class(
     return providers[0]
 
 
-def _create_context_wrapper_for(
-    inst: _ProviderBase,
-) -> Callable[[dict | None], dict | None]:
-    """Return a module-style `create_context` wrapper for a provider instance."""
-
-    def _wrapper(_ctx: dict | None = None) -> dict | None:
-        val = inst.create_context()
-        # Accept pydantic models or dicts.  for models we intentionally
-        # drop the ``repolish`` field because the provider should never
-        # override the global namespace (it will be injected later by the
-        # loader); leaving the key present would otherwise wipe out the
-        # values seeded by ``base_context``.
-        if isinstance(val, BaseContext):
-            data = val.model_dump()
-            data.pop('repolish', None)
-            return data
-        return val
-
-    return _wrapper
-
-
-def _inject_provider_instance(
-    module_dict: dict[str, object],
-    inst: _ProviderBase,
-) -> None:
-    """Mutate `module_dict` to expose instance-backed factories."""
-    # Keep a reference for diagnostics / tests
-    module_dict['_repolish_provider_instance'] = inst
-
-    # Module-level `create_context` wrapper
-    module_dict['create_context'] = _create_context_wrapper_for(inst)
-    module_dict['create_file_mappings'] = inst.create_file_mappings
-    module_dict['create_anchors'] = inst.create_anchors
-
-
 def _maybe_instantiate_provider(
     module_dict: dict[str, object],
 ) -> None:
-    """Instantiate and expose a Provider instance if one is exported.
+    """Instantiate a Provider subclass and store the instance in `module_dict`.
 
-    For module-style providers (no Provider subclass exported) delegate to
-    `module_loader` which wraps the module into an adapter so the rest of
-    the loader can treat it like a class-based provider.
+    The instance is stored under ``_repolish_provider_instance`` for later
+    retrieval by ``_process_phase_two`` and diagnostics.  Raises
+    ``RuntimeError`` if the module does not export exactly one subclass.
     """
     cls = _find_provider_class(module_dict)
     if not cls:
         msg = 'provider module does not export a Provider subclass'
         raise RuntimeError(msg)
 
-    inst = cls()  # Let instantiation raise if invalid (fail-fast)
-    _inject_provider_instance(module_dict, inst)
+    module_dict['_repolish_provider_instance'] = cls()
 
 
 def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
@@ -165,7 +128,6 @@ def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
 
 def _process_phase_two(
     module_cache: list[tuple[str, dict]],
-    merged_context: dict[str, Any],
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
 ) -> None:
@@ -181,12 +143,12 @@ def _process_phase_two(
             continue
         inst = cast('_ProviderBase', inst)
 
-        process_anchors(inst, merged_context, accum.merged_anchors)
+        own_ctx = provider_contexts.get(provider_id, {})
+        process_anchors(inst, own_ctx, accum.merged_anchors)
         # compute file mappings once per provider and forward the result to the
         # helpers.  this avoids three separate calls to
         # `inst.create_file_mappings()` and decouples the helpers from the
         # provider API (making future adapter removal easier).
-        own_ctx = provider_contexts.get(provider_id, {})
         fm = inst.create_file_mappings(own_ctx)
         process_file_mappings(provider_id, fm, accum)
         process_delete_files(fm, accum.delete_set, provider_id, accum.history)
@@ -428,42 +390,18 @@ def _synthesize_provider_context_for_pid(
     provider_contexts[pid] = ctx
 
 
-def _ensure_repolish_in_dict_contexts(
-    provider_contexts: dict[str, BaseContext],
-    merged_context: dict[str, object],
-) -> None:
-    """Ensure every dict-valued provider context contains the global namespace."""
-    if merged_context.get('repolish') is None:
-        return
-    for pid, val in list(provider_contexts.items()):
-        if isinstance(val, dict) and 'repolish' not in val:
-            val['repolish'] = cast(
-                'dict[str, object]',
-                merged_context['repolish'],
-            )
-            provider_contexts[pid] = val
-
-
 def _populate_provider_context(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, BaseContext],
     merged_context: dict[str, object],
 ) -> None:
-    # before we compute schemas or apply overrides we must populate
-    # `provider_contexts` for class-based providers.  the initial map
-    # produced by `collect_contexts_with_provider_map` only knows about
-    # module-style providers; class-based providers do not participate in the
-    # first-phase merge and therefore appear as empty dicts.  this is fine for
-    # finalization (where we re-create contexts explicitly) but breaks
-    # `provide_inputs` because that hook expects a typed context object.
-    #
-    # we deliberately do *not* persist the result back into the merged context
-    # here; the merged context is built later once the final provider contexts
-    # are available.  applying overrides now ensures that both providers and
-    # the merged project context see the same overridden values.
+    """Populate `provider_contexts` with typed context objects for each provider.
 
-    # Top-level helpers avoid inner functions and lower cognitive load.
+    Must run before schemas are inspected or overrides applied so that
+    `provide_inputs` receives a typed context object rather than an empty
+    placeholder.
+    """
     for idx, (pid, _mod) in enumerate(module_cache):
         _synthesize_provider_context_for_pid(
             instances[idx],
@@ -471,8 +409,6 @@ def _populate_provider_context(
             provider_contexts,
             merged_context,
         )
-
-    _ensure_repolish_in_dict_contexts(provider_contexts, merged_context)
 
 
 def _run_three_phase(
@@ -578,7 +514,7 @@ def _run_three_phase(
         delete_set=delete_set,
         history=history,
     )
-    _process_phase_two(module_cache, merged_context, provider_contexts, accum)
+    _process_phase_two(module_cache, provider_contexts, accum)
 
     return Providers(
         context=merged_context,

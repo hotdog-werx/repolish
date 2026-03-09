@@ -474,7 +474,6 @@ def test_load_config_all_fields(
 
     config_data = {
         'providers': {'base': {'directory': str(dir1)}},
-        'anchors': {'header': '# Header'},
         'post_process': ['black .', 'ruff check .'],
         'delete_files': ['old.txt', '!keep.txt'],
     }
@@ -487,7 +486,6 @@ def test_load_config_all_fields(
     assert config.providers['base'].target_dir.resolve() == dir1.resolve()
 
     # other globals still preserved
-    assert config.anchors == {'header': '# Header'}
     assert config.post_process == ['black .', 'ruff check .']
     assert config.delete_files == ['old.txt', '!keep.txt']
     assert config.config_dir == config_path.parent.resolve()

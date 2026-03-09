@@ -125,8 +125,11 @@ def test_get_provider_context_lookup() -> None:
     ctx = get_provider_context(Prov1, entries)
     assert isinstance(ctx, Ctx)
 
-    # missing returns None
+    # base provider returns None - all of them are subclasses
     assert get_provider_context(Provider, entries) is None
+
+    # missing returns None
+    assert get_provider_context(Prov1, [entries[1]]) is None
 
 
 def test_provider_inputs_module_filtering() -> None:

@@ -19,10 +19,6 @@ class RepolishConfigFile(BaseModel):
     convert this to RepolishConfig using resolve_config().
     """
 
-    anchors: dict[str, str] = Field(
-        default_factory=dict,
-        description='Anchor content for block replacements',
-    )
     post_process: list[str] = Field(
         default_factory=list,
         description='List of shell commands to run after generating files (formatters)',
@@ -133,10 +129,6 @@ class RepolishConfig(BaseModel):
 
     config_dir: Path = Field(
         description='Directory containing the repolish.yaml file',
-    )
-    anchors: dict[str, str] = Field(
-        default_factory=dict,
-        description='Anchor content for block replacements',
     )
     post_process: list[str] = Field(
         default_factory=list,
