@@ -61,3 +61,48 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
         providers,
         tmp_path,
     )
+
+
+def test_preprocess_templates_writes_file_when_anchor_content_changes(
+    tmp_path: Path,
+) -> None:
+    """preprocess_templates rewrites the staged file when anchor content differs.
+
+    Exercises the `tpl.write_text(new_text, ...)` branch (staging.py line 65)
+    which is only reached when replace_text returns text different from the
+    original template content.
+    """
+    setup_input = tmp_path / 'setup-input'
+    tpl_dir = setup_input / '{{cookiecutter._repolish_project}}'
+    tpl_dir.mkdir(parents=True)
+
+    # Template file has anchor with default placeholder content
+    tpl_file = tpl_dir / 'README.md'
+    tpl_file.write_text(
+        '## repolish-start[intro]\nDefault content\nrepolish-end[intro]\n',
+        encoding='utf-8',
+    )
+
+    # Local project file has different content inside the same anchor
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'README.md').write_text(
+        '## repolish-start[intro]\nProject-specific content\nrepolish-end[intro]\n',
+        encoding='utf-8',
+    )
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        delete_history={},
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+
+    # anchor markers are control syntax stripped from the output; the file
+    # should differ from the original staged content
+    updated = tpl_file.read_text(encoding='utf-8')
+    original = '## repolish-start[intro]\nDefault content\nrepolish-end[intro]\n'
+    assert updated != original
+    assert 'repolish-start' not in updated

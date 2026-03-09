@@ -6,14 +6,8 @@ from repolish.misc import ctx_to_dict
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
-    """Return a mapping of provider alias -> loader provider id (posix path).
-
-    Falls back to an empty mapping when no `config.providers` are defined.
-    """
+    """Return a mapping of provider alias -> loader provider id (posix path)."""
     alias_to_pid: dict[str, str] = {}
-    if not config.providers:
-        return alias_to_pid
-
     for alias, info in config.providers.items():
         alias_to_pid[alias] = info.target_dir.as_posix()
     return alias_to_pid

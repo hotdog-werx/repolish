@@ -171,3 +171,31 @@ def test_mapping_without_source_logs_warning(
     assert any('mapping_without_source' in str(call) for call in mock_logger.warning.call_args_list)
     # consumer behaviour: file should not be produced
     assert not (base_dir / 'dest.txt').exists()
+
+
+def test_apply_deletes_directory_in_delete_files(tmp_path: Path) -> None:
+    """A directory listed in delete_files is removed via shutil.rmtree.
+
+    Exercises the `target.is_dir()` branch in apply_generated_output.
+    """
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # Create a directory tree in the project that should be removed
+    dir_to_delete = base_dir / 'old_cache'
+    (dir_to_delete / 'sub').mkdir(parents=True)
+    (dir_to_delete / 'sub' / 'file.txt').write_text('stale')
+
+    providers = Providers(
+        context={},
+        delete_files=[Path('old_cache')],
+        file_mappings={},
+        create_only_files=[],
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    assert not dir_to_delete.exists()

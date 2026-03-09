@@ -1,8 +1,10 @@
 """Tests for hydration comparison functionality."""
 
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.display import rich_print_diffs
@@ -63,8 +65,35 @@ def test_check_generated_output_reports_missing_and_diff(
     diffs = check_generated_output(setup_output, providers, project_root)
     # we expect a diff because contents differ
     assert diffs
-    # Now exercise rich_print_diffs to ensure code path executes (no exception)
+
+    # Call without a console so the default Console(force_terminal=True) path is exercised
     rich_print_diffs(diffs)
+
+    # Capture output for each branch and assert expected content appears
+    buf = StringIO()
+    console = Console(file=buf, highlight=False)
+
+    rich_print_diffs(diffs, console=console)
+    output = buf.getvalue()
+    assert 'foo.txt' in output  # rule header
+    assert 'new content' in output  # diff body
+
+    buf = StringIO()
+    console = Console(file=buf, highlight=False)
+    rich_print_diffs([('gone.txt', 'MISSING')], console=console)
+    output = buf.getvalue()
+    assert 'gone.txt' in output
+    assert 'MISSING' in output
+
+    buf = StringIO()
+    console = Console(file=buf, highlight=False)
+    rich_print_diffs(
+        [('extra.txt', 'PRESENT_BUT_SHOULD_BE_DELETED')],
+        console=console,
+    )
+    output = buf.getvalue()
+    assert 'extra.txt' in output
+    assert 'PRESENT_BUT_SHOULD_BE_DELETED' in output
 
 
 def test_unified_diff_format_has_proper_newlines(tmp_path: Path) -> None:
