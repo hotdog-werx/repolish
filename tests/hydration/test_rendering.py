@@ -58,7 +58,7 @@ def test_render_template_renders_with_jinja(tmp_path: Path):
     )
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
     assert (setup_output / 'repolish' / 'foo').read_text() == 'value=hello'
 
 
@@ -94,12 +94,10 @@ def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
         template_sources={'tpl.txt': 'p'},
     )
 
-    config = RepolishConfig(config_dir=tmp_path)
     render_ctx = RenderContext(
         setup_input=tmp_path,
         setup_output=tmp_path,
         providers=providers,
-        config=config,
     )
 
     mock_logger = mocker.patch('repolish.hydration.rendering.logger')
@@ -129,12 +127,10 @@ def test_choose_ctx_for_file_normalizes_windows_pid(
         template_sources={'f.txt': 'P\\subdir'},
     )
 
-    config = RepolishConfig(config_dir=tmp_path)
     render_ctx = RenderContext(
         setup_input=tmp_path,
         setup_output=tmp_path,
         providers=providers,
-        config=config,
     )
 
     mock_logger = mocker.patch('repolish.hydration.rendering.logger')
@@ -172,7 +168,7 @@ def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
     )
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     out_file = setup_output / 'repolish' / 'acme' / 'README.md'
     assert out_file.exists()
@@ -214,7 +210,7 @@ def test_render_with_file_mappings_generates_multiple_files(
 
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     prefix = '_repolish.'
     for i in (1, 2, 3):
@@ -266,7 +262,7 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
 
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     prefix = '_repolish.'
     assert (setup_output / 'repolish' / f'{prefix}file-typed-1.txt').read_text(
@@ -304,7 +300,7 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
 
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     out_logo = setup_output / 'repolish' / 'logo.png'
     assert out_logo.exists()
@@ -336,7 +332,7 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
         patch('repolish.hydration.rendering.logger') as mock_logger,
         pytest.raises(UndefinedError) as exc,
     ):
-        render_template(setup_input, providers, setup_output, config)
+        render_template(setup_input, providers, setup_output)
     # message should include the original Jinja error and note which file was
     # being rendered.
     msg = str(exc.value)
@@ -365,7 +361,7 @@ def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
     preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(TemplateSyntaxError):
-        render_template(setup_input, providers, setup_output, config)
+        render_template(setup_input, providers, setup_output)
 
 
 def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
@@ -387,7 +383,7 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
     preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(TemplateSyntaxError):
-        render_template(setup_input, providers, setup_output, config)
+        render_template(setup_input, providers, setup_output)
 
 
 # verify that errors raised while rendering individual TemplateMapping entries
@@ -419,7 +415,7 @@ def test_template_mapping_undefined_errors_are_collected(tmp_path: Path):
     preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(RuntimeError) as exc:
-        render_template(setup_input, providers, setup_output, config)
+        render_template(setup_input, providers, setup_output)
     msg = str(exc.value)
     assert 'a.txt' in msg
     assert 'b.txt' in msg
@@ -447,7 +443,7 @@ def test_render_template_prunes_missing_and_unreadable_mapping(tmp_path: Path):
 
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     assert 'cfg.yml' not in providers.file_mappings
     assert not (setup_output / 'repolish' / 'cfg.yml').exists()
@@ -479,7 +475,7 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
 
     preprocess_templates(setup_input, providers, base_dir)
 
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     assert 'will_delete.txt' not in providers.file_mappings
     assert 'none_src.txt' not in providers.file_mappings
@@ -509,7 +505,7 @@ def test_render_template_raises_when_templatemappings_and_cookiecutter_enabled(
     preprocess_templates(setup_input, providers, base_dir)
 
     # template mappings are always supported; jinja handles them directly
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
 
 def test_process_template_mappings_skips_string_entries(tmp_path: Path):
@@ -533,7 +529,7 @@ def test_process_template_mappings_skips_string_entries(tmp_path: Path):
     )
 
     preprocess_templates(setup_input, providers, base_dir)
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     # the TemplateMapping entry is materialized with the prefixed name
     assert (setup_output / 'repolish' / '_repolish.mapped.txt').exists()

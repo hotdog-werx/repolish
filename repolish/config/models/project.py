@@ -30,18 +30,6 @@ class RepolishConfigFile(BaseModel):
             " '!' to negate (keep) a previously-added path."
         ),
     )
-    provider_scoped_template_context: bool = Field(
-        default=True,
-        description=(
-            'Legacy flag preserved for backwards compatibility. The default is '
-            '`true` and new class-based providers use their own context '
-            'automatically when migrated.  The only remaining use-case for '
-            'setting this to `false` is inside the old module-adapter '
-            'implementation, which globally forces merged-context rendering. '
-            'Most users never need to touch this setting.'
-        ),
-    )
-
     providers_order: list[str] = Field(
         default_factory=list,
         description='Optional: Order in which to process providers. Defaults to providers dict key order from YAML.',
@@ -137,14 +125,6 @@ class RepolishConfig(BaseModel):
     delete_files: list[str] = Field(
         default_factory=list,
         description='List of POSIX-style paths to delete after generation',
-    )
-    provider_scoped_template_context: bool = Field(
-        default=False,
-        description=(
-            'When true, render per-mapping `TemplateMapping` entries '
-            "using only the declaring provider's context. Opt-in and may "
-            'break templates that rely on merged context.'
-        ),
     )
     providers: dict[str, Any] = Field(
         default_factory=dict,

@@ -183,7 +183,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
     preprocess_templates(setup_input, providers, base_dir)
 
     # Render templates using Jinja2 (cookiecutter support removed).
-    render_template(setup_input, providers, setup_output, config)
+    render_template(setup_input, providers, setup_output)
 
     # Run any configured post-processing commands (formatters, linters, etc.)
     # Run them in the generated output directory so tools operate on the files

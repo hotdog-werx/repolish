@@ -11,7 +11,6 @@ from jinja2 import (
     select_autoescape,
 )
 
-from repolish.config import RepolishConfig
 from repolish.loader import FileMode, Providers, TemplateMapping
 from repolish.misc import ctx_to_dict
 
@@ -33,7 +32,6 @@ class RenderContext:
     setup_input: Path
     setup_output: Path
     providers: Providers
-    config: RepolishConfig
     skip_templates: set[str] | None = None
 
 
@@ -58,15 +56,13 @@ def render_with_jinja(ctx: RenderContext) -> None:
     existing templates continue to work unchanged.  For any file that can be
     traced back to a migrated provider (the provenance map is recorded during
     staging), rendering uses that provider's own captured context instead of
-    the merged context.  The former configuration flag
-    `provider_scoped_template_context` is now always effectively enabled and
-    only exists for legacy module adapters that need to override this behaviour.
+    the merged context.
 
     Args:
         ctx: A `RenderContext` instance containing all material needed for
             rendering.  Fields are documented on the class itself and include
             paths, the merged context dict, the provider collection, and a
-            reference to the overall configuration.  `skip_templates` is
+            set of templates to skip.  `skip_templates` is
             optional and mirrors the previous behaviour.
     """
     # `RenderContext` provides attribute access instead of dictionary
@@ -74,8 +70,8 @@ def render_with_jinja(ctx: RenderContext) -> None:
     # editors.
     setup_input = ctx.setup_input
     setup_output = ctx.setup_output
-    # `providers` and `config` are available on `ctx` and only used
-    # indirectly via helpers; no need to create local variables here.
+    # `providers` is available on `ctx` and only used
+    # indirectly via helpers; no need to create a local variable here.
     skip_templates = ctx.skip_templates
 
     template_root = setup_input / 'repolish'
@@ -253,9 +249,8 @@ def render_template(
     setup_input: Path,
     providers: Providers,
     setup_output: Path,
-    config: RepolishConfig,
 ) -> None:
-    """Dispatch rendering to Jinja or cookiecutter based on runtime config."""
+    """Dispatch rendering to Jinja2."""
     skip_templates = _collect_skip_templates(providers)
 
     # build a RenderContext once; the same object drives both
@@ -264,7 +259,6 @@ def render_template(
         setup_input=setup_input,
         setup_output=setup_output,
         providers=providers,
-        config=config,
         skip_templates=skip_templates,
     )
 

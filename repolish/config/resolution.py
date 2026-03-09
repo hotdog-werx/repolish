@@ -38,7 +38,6 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
     resolved_providers = _resolve_providers(config, config_dir)
 
     return RepolishConfig(
-        provider_scoped_template_context=config.provider_scoped_template_context,
         config_dir=config_dir,
         post_process=config.post_process,
         delete_files=config.delete_files,
