@@ -14,8 +14,8 @@ def test_create_cookiecutter_template_handles_missing_repolish(
 
     staging_path, _ = create_cookiecutter_template(staging, [template])
     assert staging_path.exists()
-    # no repolish project copied
-    assert not (staging / '{{cookiecutter._repolish_project}}').exists()
+    # no repolish project files copied — staging/repolish dir should not exist
+    assert not (staging_path / 'repolish').exists()
 
 
 def test_copy_template_dir_handles_directories(tmp_path: Path) -> None:
@@ -29,7 +29,7 @@ def test_copy_template_dir_handles_directories(tmp_path: Path) -> None:
     staging = tmp_path / 'staging'
     _, _ = create_cookiecutter_template(staging, [template])
 
-    copied_dir = staging / '{{cookiecutter._repolish_project}}' / 'subdir'
+    copied_dir = staging / 'repolish' / 'subdir'
     assert copied_dir.exists()
     assert copied_dir.is_dir()
 
@@ -49,7 +49,7 @@ def test_jinja_extension_stripped_from_filenames(tmp_path: Path) -> None:
     staging = tmp_path / 'staging'
     _, _ = create_cookiecutter_template(staging, [template])
 
-    project_dir = staging / '{{cookiecutter._repolish_project}}'
+    project_dir = staging / 'repolish'
 
     # .jinja extension should be stripped
     assert (project_dir / 'config.yaml').exists()
@@ -89,7 +89,7 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
         staging,
         [('p1', p1), ('p2', p2)],
     )
-    project = staging / '{{cookiecutter._repolish_project}}'
+    project = staging / 'repolish'
     assert (project / 'common.txt').read_text() == 'from p2'
 
     # with an override pinning the common file to p1
@@ -99,7 +99,7 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
         [('p1', p1), ('p2', p2)],
         template_overrides={'common.txt': 'p1'},
     )
-    project2 = staging2 / '{{cookiecutter._repolish_project}}'
+    project2 = staging2 / 'repolish'
     assert (project2 / 'common.txt').read_text() == 'from p1'
     # other files unaffected
     assert (project2 / 'unique1.txt').read_text() == 'only p1'

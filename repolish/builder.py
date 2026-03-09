@@ -133,7 +133,7 @@ def _copy_template_dir(
 
     Each provider is expected to have a `repolish/` subdirectory containing
     the project layout files. These will be copied over to the staging dir under
-    the special folder `{{cookiecutter._repolish_project}}`.
+    the staging directory root.
 
     When `overrides` is provided and `alias` is not None, files whose
     relative path matches a pattern in the overrides mapping *and* whose
@@ -145,7 +145,7 @@ def _copy_template_dir(
     if not (repolish_dir.exists() and repolish_dir.is_dir()):
         return
 
-    dest_root = staging_dir / '{{cookiecutter._repolish_project}}'
+    dest_root = staging_dir / 'repolish'
     for item in repolish_dir.rglob('*'):
         rel = item.relative_to(repolish_dir)
         rel_str = rel.as_posix()

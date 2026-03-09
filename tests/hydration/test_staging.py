@@ -39,11 +39,11 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
 
     # Stage the template into setup_input using the builder helper
     staging = tmp_path / '.repolish'
-    setup_input = staging / 'setup-input'
+    setup_input = staging / '_' / 'stage'
     _, _ = create_cookiecutter_template(setup_input, [t1])
 
     # Find the staged secret file and make it unreadable
-    staged_secret = setup_input / '{{cookiecutter._repolish_project}}' / 'secret.txt'
+    staged_secret = setup_input / 'repolish' / 'secret.txt'
     assert staged_secret.exists()
     staged_secret.chmod(0)
 
@@ -72,8 +72,8 @@ def test_preprocess_templates_writes_file_when_anchor_content_changes(
     which is only reached when replace_text returns text different from the
     original template content.
     """
-    setup_input = tmp_path / 'setup-input'
-    tpl_dir = setup_input / '{{cookiecutter._repolish_project}}'
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
     tpl_dir.mkdir(parents=True)
 
     # Template file has anchor with default placeholder content

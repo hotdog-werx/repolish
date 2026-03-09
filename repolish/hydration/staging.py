@@ -17,8 +17,8 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     """
     base_dir = config.config_dir
     staging = base_dir / '.repolish'
-    setup_input = staging / 'setup-input'
-    setup_output = staging / 'setup-output'
+    setup_input = staging / '_' / 'stage'
+    setup_output = staging / '_' / 'render'
 
     # clear output dir if present
     shutil.rmtree(setup_input, ignore_errors=True)
@@ -48,7 +48,7 @@ def _process_single_template_file(
         )
         return
 
-    rel = tpl.relative_to(setup_input / '{{cookiecutter._repolish_project}}')
+    rel = tpl.relative_to(setup_input / 'repolish')
     rel_str = rel.as_posix()
 
     # For conditional files, use the mapped destination as local path
@@ -86,7 +86,7 @@ def preprocess_templates(
         if isinstance(key, str):
             source_to_dest[key] = dest
 
-    for tpl in setup_input.rglob('*'):
+    for tpl in (setup_input / 'repolish').rglob('*'):
         if not tpl.is_file():
             continue
         _process_single_template_file(

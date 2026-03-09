@@ -78,7 +78,7 @@ def render_with_jinja(ctx: RenderContext) -> None:
     # indirectly via helpers; no need to create local variables here.
     skip_templates = ctx.skip_templates
 
-    template_root = setup_input / '{{cookiecutter._repolish_project}}'
+    template_root = setup_input / 'repolish'
     project_name = str(
         ctx.providers.context.get('_repolish_project', 'repolish'),
     )
@@ -325,7 +325,7 @@ def _render_single_mapping(
         providers.file_mappings.pop(dest_path, None)
         return
 
-    project_root = setup_input / '{{cookiecutter._repolish_project}}'
+    project_root = setup_input / 'repolish'
     template_file = project_root / src_template
     txt = _load_and_validate_template(template_file, providers, dest_path)
     if txt is None:
