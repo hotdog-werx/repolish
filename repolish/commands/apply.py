@@ -99,12 +99,12 @@ def _compute_migrated_list(
     appends any other migrated providers.
     """
     # build quick lookups to avoid nested loops
-    pid_to_alias: dict[str, str] = {}
+    alias_to_pid: dict[str, str] = {}
     for alias, info in config.providers.items():
-        pid_to_alias[info.target_dir.as_posix()] = alias
+        alias_to_pid[alias] = info.target_dir.as_posix()
 
     def pid_for_alias(alias: str) -> str | None:
-        return pid_to_alias.get(alias)
+        return alias_to_pid.get(alias)
 
     result: list[dict[str, object]] = []
     seen: set[str] = set()

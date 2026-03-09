@@ -1,11 +1,11 @@
 """Shared fixtures for linker tests."""
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import Any, TypedDict
 
 import pytest
 import pytest_mock
+import typer
 
 from repolish.config import ProviderInfo
 from repolish.linker.decorator import resource_linker
@@ -26,12 +26,8 @@ class MockedPackageDict(TypedDict):
     mock_link_resources: Any
 
 
-class BasicLinkCliFixture(Protocol):
-    """Type for basic_link_cli fixture callable."""
-
-    def __call__(self) -> None:
-        """Execute the decorated link_cli function."""
-        ...
+# Callable alias for the typer app returned by the resource_linker decorator.
+BasicLinkCliFixture = typer.Typer
 
 
 @pytest.fixture
@@ -69,7 +65,7 @@ def mocked_package(tmp_path: Path, mocker: pytest_mock.MockerFixture):
 
 
 @pytest.fixture
-def basic_link_cli(mocked_package: dict[str, Any]) -> Callable[[], None]:
+def basic_link_cli(mocked_package: dict[str, Any]) -> typer.Typer:
     """Fixture that returns a basic decorated link_cli function."""
 
     @resource_linker(

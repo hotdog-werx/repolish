@@ -135,3 +135,107 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     # verify branch behaviour: missing provider skipped (no directories available)
     assert recorded['template_dirs'] == []
     assert recorded['overrides'] == {'foo': 'bar'}
+
+
+def test_apply_command_migrated_list_appends_valid_provider(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Exercise _compute_migrated_list when providers_order contains a valid alias.
+
+    Lines 117-124: result.append(...) and seen.add(pid) are only reached when
+    the alias resolves to an existing provider id.
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'prov_a'
+    fake_config = SimpleNamespace(
+        providers_order=['prov_a'],
+        providers={'prov_a': SimpleNamespace(target_dir=provider_dir)},
+        template_overrides=None,
+        provider_scoped_template_context=False,
+        anchors={},
+        post_process=[],
+        delete_files=[],
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch(
+        'repolish.commands.apply.create_cookiecutter_template',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = Providers(
+        context={},
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch('repolish.commands.apply.render_template').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.apply_generated_output',
+    ).return_value = None
+
+    rv = run_repolish(cfg_path, check_only=False)
+    assert rv == 0
+
+
+def test_check_only_with_diffs_returns_2(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Exercise the check_only path when diffs are detected.
+
+    Lines 201-205: logger.error, rich_print_diffs and return 2 are only
+    reached when check_only=True and check_generated_output returns diffs.
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    fake_config = SimpleNamespace(
+        providers_order=None,
+        providers={},
+        template_overrides=None,
+        provider_scoped_template_context=False,
+        anchors={},
+        post_process=[],
+        delete_files=[],
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch(
+        'repolish.commands.apply.create_cookiecutter_template',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = Providers(
+        context={},
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch('repolish.commands.apply.render_template').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check_generated_output',
+    ).return_value = ['some_diff']
+    mocker.patch('repolish.commands.apply.rich_print_diffs').return_value = None
+
+    rv = run_repolish(cfg_path, check_only=True)
+    assert rv == 2

@@ -1,21 +1,18 @@
 """Decorator for creating library resource linking CLIs."""
 
-import argparse
 import inspect
 import json
-import os
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import typer
 from hotlog import (
-    add_verbosity_argument,
     configure_logging,
     get_logger,
     resolve_verbosity,
+    verbosity_option,
 )
-from rich.console import Console
 
 from repolish.config import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
@@ -23,13 +20,15 @@ from repolish.linker.symlinks import link_resources
 
 logger = get_logger(__name__)
 
-# Create Console with auto-detection: disable colors during tests
-# (similar to hotlog's get_console behavior)
-_force_terminal = True
-if 'pytest' in sys.modules or any(key.startswith('PYTEST_') for key in os.environ):
-    _force_terminal = False
-
-console = Console(force_terminal=_force_terminal)
+# Module-level Typer option singletons to avoid B008
+_FORCE_OPTION = typer.Option(
+    default=False,
+    help='Force recreation even if target already exists and is correct',
+)
+_INFO_OPTION = typer.Option(
+    default=False,
+    help='Output JSON with source/target information instead of linking',
+)
 
 
 @dataclass
@@ -78,57 +77,6 @@ def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
     # set to None/empty is not a standard Python module scenario that developers can control.
     msg = 'Could not determine library name: caller module has no package'  # pragma: no cover
     raise ResourceLinkerError(msg)  # pragma: no cover
-
-
-def _create_argument_parser(
-    library_name: str,
-    resolved_source_dir: Path,
-    default_target_base_path: Path,
-) -> argparse.ArgumentParser:
-    """Create and configure the argument parser for the resource linker CLI.
-
-    Args:
-        library_name: Name of the library
-        resolved_source_dir: Resolved path to source directory
-        default_target_base_path: Base path for target directory
-
-    Returns:
-        Configured ArgumentParser instance
-    """
-    parser = argparse.ArgumentParser(
-        description=f'Link {library_name} resources to your project.',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    # add standard verbosity switch provided by hotlog
-    add_verbosity_argument(parser)
-
-    parser.add_argument(
-        '--source-dir',
-        type=Path,
-        default=resolved_source_dir,
-        help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
-    )
-
-    parser.add_argument(
-        '--target-dir',
-        type=Path,
-        default=default_target_base_path / library_name,
-        help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
-    )
-
-    parser.add_argument(
-        '--force',
-        action='store_true',
-        help='Force recreation even if target already exists and is correct',
-    )
-
-    parser.add_argument(
-        '--info',
-        action='store_true',
-        help='Output JSON with source/target information instead of linking',
-    )
-
-    return parser
 
 
 def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
@@ -228,23 +176,30 @@ def resource_linker(
     resolved_source_dir = package_root / Path(default_source_dir)
     default_target_base_path = Path(default_target_base)
 
-    def decorator(func: Callable) -> Callable:
-        def wrapper() -> None:
-            parser = _create_argument_parser(
-                library_name,
+    def decorator(func: Callable) -> typer.Typer:
+        link_app = typer.Typer(add_completion=False)
+
+        @link_app.command(
+            help=f'Link {library_name} resources to your project.',
+        )
+        def _command(
+            *,
+            source_dir: Path = typer.Option(  # noqa: B008
                 resolved_source_dir,
-                default_target_base_path,
-            )
-            args = parser.parse_args()
-            # Configure logging using resolved verbosity (supports CI auto-detection)
-            verbosity = resolve_verbosity(args)
+                help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
+            ),
+            target_dir: Path = typer.Option(  # noqa: B008
+                default_target_base_path / library_name,
+                help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
+            ),
+            force: bool = _FORCE_OPTION,
+            info: bool = _INFO_OPTION,
+            verbose: int = verbosity_option,
+        ) -> None:
+            verbosity = resolve_verbosity(verbose=verbose)
             configure_logging(verbosity=verbosity)
 
-            # If --info mode, output JSON and exit
-            if args.info:
-                # Create ProviderInfo model and output as JSON
-                # Note: target_dir uses absolute() not resolve() to avoid following symlinks
-                # Convert Symlink to ProviderSymlink
+            if info:
                 provider_symlinks = [
                     ProviderSymlink(
                         source=Path(s.source),
@@ -252,39 +207,35 @@ def resource_linker(
                     )
                     for s in (default_symlinks or [])
                 ]
-                info = ProviderInfo(
-                    target_dir=str(args.target_dir.absolute()),
-                    source_dir=str(args.source_dir.absolute()),
+                info_obj = ProviderInfo(
+                    target_dir=str(target_dir.absolute()),
+                    source_dir=str(source_dir.absolute()),
                     library_name=library_name,
                     symlinks=provider_symlinks,
                 )
-                print(json.dumps(info.model_dump(mode='json'), indent=2))  # noqa: T201 - Allow print for CLI output
+                print(json.dumps(info_obj.model_dump(mode='json'), indent=2))  # noqa: T201
                 return
 
             try:
                 is_symlink = link_resources(
-                    source_dir=args.source_dir,
-                    target_dir=args.target_dir,
-                    force=args.force,
+                    source_dir=source_dir,
+                    target_dir=target_dir,
+                    force=force,
                 )
-
                 link_type = 'symlink' if is_symlink else 'copy'
                 logger.info(
                     'resources_linked',
                     library_name=library_name,
                     link_type=link_type,
-                    target=str(args.target_dir),
+                    target=str(target_dir),
                     _display_level=1,
                 )
-
-                # Call the wrapped function (for custom messages or actions)
                 func()
-
             except Exception as e:
                 logger.exception('linking_failed', error=str(e))
-                sys.exit(1)
+                raise typer.Exit(1) from None
 
-        return wrapper
+        return link_app
 
     return decorator
 
@@ -295,7 +246,7 @@ def resource_linker_cli(
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
-) -> Callable[[], None]:
+) -> typer.Typer:
     """Create a resource linker CLI function.
 
     This is a simpler alternative to the @resource_linker decorator.
@@ -339,9 +290,9 @@ def resource_linker_cli(
     # Create a function with auto-generated success message
     def _success_message() -> None:
         """Auto-generated success message."""
-        console.print(
-            f'- [bold cyan]{default_source_dir}[/bold cyan] from '
-            f'[bold green]{detected_library_name}[/bold green] are now available',
+        # typer.echo writes to the current sys.stdout so CliRunner captures it.
+        typer.echo(
+            f'- {default_source_dir} from {detected_library_name} are now available',
         )
 
     # Apply the decorator to create the CLI
