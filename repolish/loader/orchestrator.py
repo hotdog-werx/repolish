@@ -1,5 +1,5 @@
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from inspect import isclass
 from pathlib import Path
 from typing import Any, cast
@@ -192,11 +192,6 @@ def _build_all_providers_list(
                 name = None
             alias = pid
             inst_type = type(inst)
-        else:
-            # fallback when no instance was created (should be rare)
-            name = None
-            alias = pid
-            inst_type = None
 
         # if context object is a BaseModel we remember its class
         if isinstance(ctx_obj, BaseContext):
@@ -327,51 +322,25 @@ def _apply_provider_overrides(
 class RunThreePhaseContext:
     """Typed container for optional runtime parameters used by the three-phase provider runner."""
 
-    base_context: dict[str, object] | None = None
     context_overrides: dict[str, object] | None = None
     provider_overrides: dict[str, dict[str, object]] | None = None
     alias_map: dict[str, str] | None = None  # provider_id -> config alias
-
-
-def _recompute_merged_context(
-    module_cache: list[tuple[str, dict]],
-    provider_contexts: dict[str, BaseContext],
-    base_context: dict[str, object] | None,
-    context_overrides: dict[str, object] | None,
-) -> dict[str, object]:
-    """Rebuild merged_context after provider finalization.
-
-    Extracted to lower the complexity of the main runner.
-    """
-    merged_context = dict(base_context or {})
-    for pid, _ in module_cache:
-        own = provider_contexts.get(pid, {})
-        if isinstance(own, BaseContext):
-            merged_context.update(own.model_dump())
-        else:
-            merged_context.update(cast('dict[str, object]', own))
-
-    if context_overrides:
-        apply_context_overrides(merged_context, context_overrides)
-    if base_context:
-        merged_context.update(base_context)
-
-    return merged_context
+    global_context: GlobalContext = field(default_factory=GlobalContext)
 
 
 def _synthesize_provider_context_for_pid(
-    inst: _ProviderBase | None,
+    inst: _ProviderBase,
     pid: str,
     provider_contexts: dict[str, BaseContext],
-    merged_context: dict[str, object],
+    global_context: GlobalContext,
 ) -> None:
     """Ensure `provider_contexts[pid]` contains a typed context for class-based providers.
 
     Call `create_context`, fall back to existing value on error, and
-    inject the global `repolish` namespace into returned BaseModel
-    instances when appropriate.
+    inject the shared `GlobalContext` into provider contexts that declare
+    a `repolish` field (i.e. subclasses of `BaseContext`).
     """
-    if inst is None or isinstance(provider_contexts.get(pid), BaseContext):
+    if isinstance(provider_contexts.get(pid), BaseContext):
         return
 
     try:
@@ -381,11 +350,7 @@ def _synthesize_provider_context_for_pid(
         return
 
     if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):
-        glob = merged_context.get('repolish')
-        if glob:
-            if isinstance(glob, dict):
-                glob = GlobalContext(**cast('dict[str, object]', glob))  # type: ignore[arg-type]
-            ctx = ctx.model_copy(update={'repolish': glob})
+        ctx = ctx.model_copy(update={'repolish': global_context})
 
     provider_contexts[pid] = ctx
 
@@ -394,7 +359,7 @@ def _populate_provider_context(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, BaseContext],
-    merged_context: dict[str, object],
+    global_context: GlobalContext,
 ) -> None:
     """Populate `provider_contexts` with typed context objects for each provider.
 
@@ -403,17 +368,19 @@ def _populate_provider_context(
     placeholder.
     """
     for idx, (pid, _mod) in enumerate(module_cache):
+        inst = instances[idx]
+        if inst is None:  # pragma: no cover - load path always provides instances
+            continue
         _synthesize_provider_context_for_pid(
-            instances[idx],
+            inst,
             pid,
             provider_contexts,
-            merged_context,
+            global_context,
         )
 
 
 def _run_three_phase(
     module_cache: list[tuple[str, dict]],
-    merged_context: dict[str, object],
     provider_contexts: dict[str, BaseContext],
     options: RunThreePhaseContext | None = None,
 ) -> Providers:
@@ -435,14 +402,14 @@ def _run_three_phase(
     # gather metadata and basic helper structures
     instances = build_provider_metadata(module_cache)
 
+    global_context = options.global_context if options is not None else GlobalContext()
     _populate_provider_context(
         module_cache,
         instances,
         provider_contexts,
-        merged_context,
+        global_context,
     )
 
-    base_context = None if options is None else options.base_context
     context_overrides = None if options is None else options.context_overrides
     provider_overrides = None if options is None else options.provider_overrides
 
@@ -499,14 +466,6 @@ def _run_three_phase(
     # in the returned `Providers` object include any project-supplied values.
     _apply_provider_overrides(provider_contexts, provider_overrides)
 
-    # recompute merged_context after finalization
-    merged_context = _recompute_merged_context(
-        module_cache,
-        provider_contexts,
-        base_context,
-        context_overrides,
-    )
-
     accum = Accumulators(
         merged_anchors=merged_anchors,
         merged_file_mappings=merged_file_mappings,
@@ -517,7 +476,6 @@ def _run_three_phase(
     _process_phase_two(module_cache, provider_contexts, accum)
 
     return Providers(
-        context=merged_context,
         anchors=accum.merged_anchors,
         delete_files=list(accum.delete_set),
         file_mappings=accum.merged_file_mappings,
@@ -529,7 +487,6 @@ def _run_three_phase(
 
 def create_providers(
     directories: list[str | tuple[str, str]],
-    base_context: dict[str, object] | None = None,
     context_overrides: dict[str, object] | None = None,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = None,
@@ -546,23 +503,9 @@ def create_providers(
       undo for that path (i.e., prevent deletion). The loader will apply
       additions/removals in provider order.
     """
-    # Two-phase load: first collect contexts (allowing providers to see
-    # a base context if provided), then call other factories with the
-    # fully merged context so factories can make decisions based on it.
-    # Seed merged context with project-level config when provided so
-    # provider factories see project values during their `create_context()`
-    # calls. Providers may modify the merged context during collection, but
-    # we re-apply `base_context` afterwards so project config wins as the
-    # final override.
-    # compute a global namespace and mix it with whatever base context the
-    # caller provided. the project-level ``base_context`` always wins so
-    # consumers can override the inferred values if necessary (tests and the
-    # CLI rely on this behaviour).
-    # wrap in a namespace so consumers access values via ``ctx['repolish']``
-    global_ctx = {'repolish': get_global_context().model_dump()}
-    merged_context: dict[str, object] = {}
-    merged_context.update(global_ctx)
-    merged_context.update(base_context or {})
+    # Compute the global context once; it is injected into every provider's
+    # `repolish` field as a typed object.
+    global_ctx_obj = get_global_context()
     # Normalize input directories and build an alias map for configuration
     normalized_dirs: list[str] = []
     alias_map: dict[str, str] = {}
@@ -576,7 +519,6 @@ def create_providers(
         else:
             path_str = Path(entry).as_posix()
             normalized_dirs.append(path_str)
-    # other accumulators are handled by Accumulators object below
 
     module_cache = _load_module_cache(normalized_dirs)
     # provider contexts are populated by _populate_provider_context via
@@ -586,22 +528,11 @@ def create_providers(
     # the isinstance guard and cause create_context() to be skipped).
     provider_contexts: dict[str, BaseContext] = {}
 
-    # hand off the remainder of the workflow to a helper that encapsulates
-    # the three-phase input/finalization logic plus related metadata tracking.
-    # ``_run_three_phase`` will recompute the merged context using the
-    # ``base_context`` stored in the options struct; ensure it includes the
-    # global namespace as well so the final returned ``Providers`` object
-    # reflects the same values we seeded above.
-    base_concrete: dict[str, object] = {}
-    base_concrete.update(global_ctx)
-    base_concrete.update(base_context or {})
-
     return _run_three_phase(
         module_cache,
-        merged_context,
         provider_contexts,
         RunThreePhaseContext(
-            base_context=base_concrete,
+            global_context=global_ctx_obj,
             context_overrides=context_overrides,
             provider_overrides=provider_overrides,
             alias_map=alias_map,

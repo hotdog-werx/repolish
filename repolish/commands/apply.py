@@ -13,11 +13,6 @@ from repolish.hydration import (
     render_template,
     rich_print_diffs,
 )
-
-# use rendering helper to compute the merged context used by non-migrated
-# providers; importing the private function is fine since it lives in the
-# same package and keeps the algorithm in one place.
-from repolish.hydration.rendering import _compute_merged_context
 from repolish.loader.models import Providers
 from repolish.misc import ctx_to_dict
 from repolish.utils import run_post_process
@@ -129,7 +124,6 @@ def _compute_migrated_list(
 def _log_final_providers_event(
     config: RepolishConfig,
     providers: Providers,
-    non_migrated_ctx: dict[str, object],
     migrated_list: list[dict[str, object]],
 ) -> None:
     """Emit the `final_providers_generated` logger event.
@@ -140,11 +134,7 @@ def _log_final_providers_event(
     logger.info(
         'final_providers_generated',
         template_directories=[str(p[1] if isinstance(p, tuple) else p) for p in _gather_template_directories(config)],
-        # we now split context into a single global bucket and a provider list
-        context={
-            'global_context': non_migrated_ctx,
-            'providers': migrated_list,
-        },
+        context={'providers': migrated_list},
         delete_paths=[p.as_posix() for p in providers.delete_files],
         delete_history={
             key: [{'source': d.source, 'action': d.action.value} for d in decisions]
@@ -164,12 +154,10 @@ def command(config_path: Path, *, check_only: bool) -> int:
     providers = build_final_providers(config)
 
     # compute contexts for logging
-    non_migrated_ctx = _compute_merged_context(providers)
     migrated_list = _compute_migrated_list(config, providers)
     _log_final_providers_event(
         config,
         providers,
-        non_migrated_ctx,
         migrated_list,
     )
 
@@ -190,8 +178,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
     # that will be checked or applied. If a command fails, surface an error
     # and exit non-zero so CI will fail.
     # run post_process within the rendered project folder inside setup_output
-    project_folder = str(providers.context.get('_repolish_project', 'repolish'))
-    post_cwd = setup_output / project_folder
+    post_cwd = setup_output / 'repolish'
     run_post_process(config.post_process, post_cwd)
 
     # Decide whether to check or apply generated output

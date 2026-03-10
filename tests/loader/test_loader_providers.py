@@ -1,4 +1,3 @@
-import datetime
 import importlib
 import sys
 from dataclasses import dataclass
@@ -19,7 +18,6 @@ from tests.support import write_module
 class ProviderCase:
     name: str
     providers: list[str]
-    expected_context: dict
     expected_anchors: dict
     expected_delete: list[Path]
 
@@ -56,7 +54,6 @@ class ProviderCase:
                     """,
                 ),
             ],
-            expected_context={'a': 1},
             expected_anchors={'X': 'replace'},
             expected_delete=[Path('foo.txt'), Path('sub/bar.txt')],
         ),
@@ -115,7 +112,6 @@ class ProviderCase:
                     """,
                 ),
             ],
-            expected_context={'a': 2, 'keep': True},
             expected_anchors={'X': 'second'},
             expected_delete=[Path('c.txt'), Path('b.txt')],
         ),
@@ -145,7 +141,6 @@ class ProviderCase:
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[Path('one.txt'), Path('two.txt')],
         ),
@@ -162,11 +157,6 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
 
     providers: Providers = create_providers(dirs)  # type: ignore[arg-type]
 
-    # the merged context now always contains a ``repolish`` key; tests were
-    # written assuming it didn't exist so strip it before comparing.
-    ctx = dict(providers.context)
-    ctx.pop('repolish', None)
-    assert ctx == case.expected_context
     assert providers.anchors == case.expected_anchors
 
     # delete_files should be a list of Path objects (relative paths from provider)
@@ -201,20 +191,27 @@ def test_multiple_provider_classes_with_all(tmp_path: Path):
         dedent(
             """
         from repolish.loader.models import Provider, ProviderEntry
+        from repolish import BaseContext
+
+        class ACtx(BaseContext):
+            which: str = 'A'
+
+        class BCtx(BaseContext):
+            which: str = 'B'
 
         class A(Provider):
             def get_provider_name(self):
                 return 'A'
 
             def create_context(self):
-                return {'which': 'A'}
+                return ACtx()
 
         class B(Provider):
             def get_provider_name(self):
                 return 'B'
 
             def create_context(self):
-                return {'which': 'B'}
+                return BCtx()
 
         __all__ = ['A']
         """,
@@ -222,9 +219,10 @@ def test_multiple_provider_classes_with_all(tmp_path: Path):
     )
 
     providers = create_providers([str(prov)])  # should succeed using A
-    ctx = dict(providers.context)
-    ctx.pop('repolish', None)
-    assert ctx == {'which': 'A'}
+    pid = next(iter(providers.provider_contexts.keys()))
+    ctx = providers.provider_contexts[pid]
+    assert hasattr(ctx, 'which')
+    assert ctx.which == 'A'  # type: ignore[union-attr]
 
 
 def test_multiple_providers_all_conflict(tmp_path: Path):
@@ -333,12 +331,7 @@ class P(Provider[Ctx, BaseModel]):
     )
 
     providers = create_providers([str(prov)])
-    # merged context should still contain the global namespace; we only
-    # check that the repo info is correct and the year key exists.
-    merged = cast('dict[str, object]', providers.context.get('repolish', {}))
-    assert merged.get('repo') == {'owner': 'x', 'name': 'y'}
-    assert merged.get('year') == datetime.datetime.now(datetime.UTC).year
-
+    # GlobalContext is injected into each provider's typed context.
     pid = next(iter(providers.provider_contexts.keys()))
 
     ctx = providers.provider_contexts[pid]
@@ -645,7 +638,6 @@ class P(Provider[Ctx, BaseInputs]):
         ProviderCase(
             name='import_failure',
             providers=["raise RuntimeError('boom')\n"],
-            expected_context={},
             expected_anchors={},
             expected_delete=[],
         ),
@@ -663,7 +655,6 @@ class P(Provider[Ctx, BaseInputs]):
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[Path('one.txt')],
         ),
@@ -679,7 +670,6 @@ class P(Provider[Ctx, BaseInputs]):
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[Path('fallback.txt')],
         ),
@@ -693,7 +683,6 @@ class P(Provider[Ctx, BaseInputs]):
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[],
         ),
@@ -707,7 +696,6 @@ class P(Provider[Ctx, BaseInputs]):
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[],
         ),
@@ -721,7 +709,6 @@ class P(Provider[Ctx, BaseInputs]):
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[],
         ),
@@ -735,7 +722,6 @@ class P(Provider[Ctx, BaseInputs]):
                     """,
                 ),
             ],
-            expected_context={},
             expected_anchors={},
             expected_delete=[],
         ),
@@ -771,9 +757,6 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
 
     providers = create_providers(dirs)  # type: ignore[arg-type]
 
-    ctx = dict(providers.context)
-    ctx.pop('repolish', None)
-    assert ctx == case.expected_context
     assert providers.anchors == case.expected_anchors
     got_delete = {Path(p) for p in providers.delete_files}
     assert got_delete == set(case.expected_delete)
@@ -803,4 +786,5 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
     )
 
     providers = create_providers([str(provider_dir)])
-    assert providers.context.get('name') == 'created-by-class'
+    pid = next(iter(providers.provider_contexts.keys()))
+    assert providers.provider_contexts[pid].name == 'created-by-class'  # type: ignore[union-attr]

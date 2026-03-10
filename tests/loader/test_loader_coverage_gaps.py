@@ -19,8 +19,12 @@ from repolish.loader import Provider as _ProviderBase
 from repolish.loader.mappings import (
     process_file_mappings,
 )
+from repolish.loader.models import GlobalContext
 from repolish.loader.orchestrator import (
+    _apply_overrides_to_model,
+    _build_all_providers_list,
     _process_phase_two,
+    _synthesize_provider_context_for_pid,
 )
 from repolish.loader.three_phase import (
     finalize_provider_contexts,
@@ -102,6 +106,80 @@ def test_process_phase_two_skips_missing_instance():
     # nothing should have changed
     assert acc.merged_anchors == {}
     assert acc.merged_file_mappings == {}
+
+
+def test_apply_overrides_to_model_noop_returns_original() -> None:
+    """When overrides don't change any value the original instance is returned."""
+
+    class Ctx(BaseContext):
+        x: int = 5
+
+    ctx = Ctx()
+    result = _apply_overrides_to_model(ctx, {'x': 5})
+    assert result is ctx
+
+
+def test_synthesize_provider_context_skips_already_populated() -> None:
+    """When `provider_contexts[pid]` already holds a `BaseContext` the function exits early."""
+
+    class Sentinel(DummyProvider):
+        def create_context(self) -> BaseContext:
+            raise AssertionError('create_context must not be called')
+
+    existing = BaseContext()
+    provider_contexts: dict[str, BaseContext] = {'p': existing}
+    _synthesize_provider_context_for_pid(
+        Sentinel(),
+        'p',
+        provider_contexts,
+        GlobalContext(),
+    )
+    assert provider_contexts['p'] is existing
+
+
+def test_build_all_providers_list_swallows_broken_schema_and_name() -> None:
+    """Exception branches for `get_inputs_schema`, `get_provider_name`, and
+    `create_context` are all swallowed.
+
+    A provider that raises in any of those methods must not abort the build:
+    * `get_inputs_schema` raising -> `input_type=None`
+    * `get_provider_name` raising -> `name=None`
+    * `create_context` raising  -> provider_contexts is left unchanged
+    """
+
+    class BrokenProvider(DummyProvider):
+        def get_inputs_schema(self) -> type[BaseModel]:  # type: ignore[override]
+            raise RuntimeError('broken schema')
+
+        def get_provider_name(self) -> str:
+            raise RuntimeError('broken name')
+
+        def create_context(self) -> BaseContext:  # type: ignore[override]
+            raise RuntimeError('broken create_context')
+
+    inst = BrokenProvider()
+    module_cache = [('bp', {})]
+    instances: list[_ProviderBase | None] = [inst]
+    provider_contexts: dict[str, BaseContext] = {}
+    result = _build_all_providers_list(
+        module_cache,
+        instances,
+        provider_contexts,
+    )
+    assert len(result) == 1
+    entry = result[0]
+    assert entry.input_type is None
+    assert entry.name is None
+    assert entry.provider_id == 'bp'
+
+    # create_context raising must not add an entry to provider_contexts
+    _synthesize_provider_context_for_pid(
+        inst,
+        'bp',
+        provider_contexts,
+        GlobalContext(),
+    )
+    assert 'bp' not in provider_contexts
 
 
 # ---- three_phase helpers ---------------------------------------------------

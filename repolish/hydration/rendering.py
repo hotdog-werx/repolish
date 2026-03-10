@@ -75,9 +75,6 @@ def render_with_jinja(ctx: RenderContext) -> None:
     skip_templates = ctx.skip_templates
 
     template_root = setup_input / 'repolish'
-    project_name = str(
-        ctx.providers.context.get('_repolish_project', 'repolish'),
-    )
 
     env = Environment(
         autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
@@ -115,7 +112,7 @@ def render_with_jinja(ctx: RenderContext) -> None:
             )
             raise
 
-        dest = setup_output / project_name / rendered_rel
+        dest = setup_output / 'repolish' / rendered_rel
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -131,14 +128,15 @@ def render_with_jinja(ctx: RenderContext) -> None:
 def _ctx_for_pid(pid: str | None, providers: Providers) -> dict:
     """Return the context dict for the given provider id.
 
-    Falls back to ``providers.context`` when ``pid`` is ``None`` or not found
-    in ``provider_contexts``.
+    Returns an empty dict when ``pid`` is ``None`` or not found in
+    ``provider_contexts``; rendering falls back to an empty context for
+    templates with no declared provider owner.
     """
     if pid:
         found = providers.provider_contexts.get(pid)
         if found is not None:
             return ctx_to_dict(found)
-    return ctx_to_dict(providers.context)
+    return {}
 
 
 def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
@@ -208,27 +206,6 @@ def _jinja_render(
         )
         msg = f'{exc} (while rendering {filename})'
         raise UndefinedError(msg) from exc
-
-
-def _compute_merged_context(providers: Providers) -> dict[str, object]:
-    """Return the merged context used as the fallback for rendering and logging.
-
-    Returns ``providers.context`` (seeded by the loader with the global
-    namespace) with ``_repolish_project`` defaulting to ``'repolish'``.
-    Logs the input and result at debug level to aid diagnosis when context
-    values appear to vanish on CI.
-    """
-    # debug dump of incoming state
-    logger.debug(
-        'compute_merged_context_start',
-        base_context=providers.context,
-        provider_contexts={pid: ctx_to_dict(ctx) for pid, ctx in providers.provider_contexts.items()},
-    )
-
-    merged = dict(providers.context)
-    merged.setdefault('_repolish_project', 'repolish')
-    logger.debug('compute_merged_context_result', merged_ctx=merged)
-    return merged
 
 
 def _collect_skip_templates(providers: Providers) -> set[str]:
@@ -362,7 +339,7 @@ def _render_single_mapping(
     prefix = '_repolish.'
     orig = Path(dest_path)
     prefixed_name = prefix + orig.name
-    target = setup_output / str(providers.context.get('_repolish_project', 'repolish')) / orig.parent / prefixed_name
+    target = setup_output / 'repolish' / orig.parent / prefixed_name
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(rendered, encoding='utf-8')
 

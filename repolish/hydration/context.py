@@ -82,9 +82,6 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     # (alias,path) tuples.  we only provide strings here, hence the explicit
     # annotation to satisfy the type checker.
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.values())
-    # `base_context` and `context_overrides` parameters are no longer driven by
-    # project configuration; omit them entirely so the loader only sees its
-    # own merged context (which already includes the global namespace).
     providers = create_providers(
         dirs,
         provider_overrides=provider_overrides,
@@ -93,7 +90,6 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     delete_files = _apply_delete_overrides(providers, config)
 
     return Providers(
-        context=providers.context,
         anchors=providers.anchors,
         delete_files=delete_files,
         delete_history=providers.delete_history,

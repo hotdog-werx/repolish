@@ -1,10 +1,7 @@
-"""Loader-side Provider base class (incremental, backwards-compatible).
+"""Loader-side Provider base class and shared data models.
 
-This module introduces a small, typed, abstract base class to guide
-implementation of class-based providers. Existing module-style providers
-(repolish.py with `create_context()` etc.) remain fully supported; this
-class is opt-in and intended to improve discoverability, editor
-experience and testing for new providers.
+This module defines the abstract base class for class-based providers
+as well as all shared data models used by the loader and orchestrator.
 
 Short example
 --------------
@@ -26,8 +23,6 @@ Notes:
 - Only `get_provider_name()` and `create_context()` are required.
 - Optional methods have sensible defaults so subclasses implement only
   the behaviour they need.
-- This class is intentionally minimal and lives in the `loader` package
-  so migration from module-style providers can be incremental.
 """
 
 from __future__ import annotations
@@ -89,8 +84,8 @@ def get_global_context() -> GlobalContext:
     The implementation is intentionally forgiving; any failure to extract
     information (for example when not running inside a git repository) is
     swallowed and the returned object will simply have default values.  The
-    loader calls this during startup and merges the resulting dict into the
-    initial *base context* so the ``repolish`` namespace is available to all
+    loader calls this during startup and injects the result directly into
+    every provider context so the ``repolish`` namespace is available to all
     providers and templates.
     """
     # imported locally to avoid a circular dependency when the loader tests
@@ -192,20 +187,20 @@ class TemplateMapping:
 
 
 class Providers(BaseModel):
-    """Structured provider contributions collected from template modules.
+    """Structured provider contributions collected from all loaded providers.
 
-    - context: merged cookiecutter context
     - anchors: merged anchors mapping
     - delete_files: list of Paths representing files to delete
     - file_mappings: dict mapping destination paths to source paths in template
     - create_only_files: list of Paths for files that should only be created if they don't exist
+    - provider_contexts: typed per-provider context objects; use these (not a
+      flat dict) to access provider-specific data during rendering.
 
     Validation: `file_mappings` entries are validated by Pydantic so downstream
     code can safely rely on typed values instead of performing defensive
     runtime checks.
     """
 
-    context: dict[str, object] = Field(default_factory=dict)
     anchors: dict[str, str] = Field(default_factory=dict)
     delete_files: list[Path] = Field(default_factory=list)
     # destination -> source OR TemplateMapping
@@ -215,11 +210,10 @@ class Providers(BaseModel):
     create_only_files: list[Path] = Field(default_factory=list)
     # provenance mapping: posix path -> list of Decision instances
     delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
-    # provider-specific contexts captured during provider evaluation
-    # These values are BaseContext instances; the
-    # orchestrator will convert them to dicts when merging into the global
-    # context.  Keeping the original object lets us pass typed models to
-    # provider helpers such as 'create_file_mappings()'.
+    # provider-specific contexts captured during provider evaluation.
+    # These are the authoritative typed objects for each provider; the
+    # renderer looks up the owning provider's context here when processing
+    # per-file template mappings (e.g. 'create_file_mappings()').
     provider_contexts: dict[str, BaseContext] = Field(
         default_factory=dict,
     )
@@ -299,9 +293,6 @@ class ProviderEntry(BaseModel):
         consumers to dispatch based on implementation class rather than string
         names.
     context:
-        raw context object.  this is typed as `object` to support the
-        legacy module adapter; after v1 when the adapter is removed this will
-        be tightened to `BaseModel`.
         raw context object produced or stored for this provider.
     context_type:
         if `context` is a :class:`pydantic.BaseModel`, this is its class

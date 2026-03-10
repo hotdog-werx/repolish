@@ -215,10 +215,9 @@ class P(Provider[Ctx, BaseModel]):
     captured = capsys.readouterr()
     out = captured.out
     assert 'final_providers_generated' in out
-    # ensure new keys appear
-    assert 'global_context' in out
+    # ensure context section appears
+    assert 'context' in out
     assert 'providers' in out
-    assert 'p' in out
 
 
 def test_cli_provider_order_with_overrides(

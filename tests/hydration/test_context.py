@@ -74,8 +74,6 @@ def test_config_level_provenance(tmp_path: Path):
     assert b_hist[-1].action.value == 'delete'
 
     assert isinstance(providers.provider_contexts, dict)
-    assert 'repolish' in providers.context
-    assert isinstance(providers.context['repolish'], dict)
 
 
 def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
@@ -128,4 +126,3 @@ def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
     assert ctx is not None
     ctx_dict = ctx.model_dump()
     assert ctx_dict.get('foo') == 'override'
-    assert providers.context.get('foo') == 'override'
