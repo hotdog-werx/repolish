@@ -2,26 +2,29 @@ from pathlib import Path
 from typing import Annotated
 
 from cyclopts import Parameter
+from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
 from repolish.commands.apply import command
 
-_DEFAULT_CONFIG = Path('repolish.yaml')
+
+@Parameter(name='*')
+class ApplyParams(BaseModel):
+    """Parameters for the apply command."""
+
+    config: Annotated[Path, Parameter(name=['--config', '-c'])] = Field(
+        Path('repolish.yaml'),
+        description='Path to the repolish YAML configuration file',
+    )
+    check: bool = Field(
+        default=False,
+        description='Load config and create context (dry-run check)',
+    )
 
 
-def apply(
-    config: Annotated[
-        Path,
-        Parameter(
-            name=['--config', '-c'],
-            help='Path to the repolish YAML configuration file',
-        ),
-    ] = _DEFAULT_CONFIG,
-    *,
-    check: Annotated[
-        bool,
-        Parameter(help='Load config and create context (dry-run check)'),
-    ] = False,
-) -> None:
+_DEFAULT_APPLY_PARAMS = ApplyParams()
+
+
+def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
     """Apply templates to project."""
-    run_cli_command(lambda: command(config, check_only=check))
+    run_cli_command(lambda: command(params.config, check_only=params.check))

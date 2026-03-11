@@ -24,7 +24,11 @@ def _meta(
     *tokens: Annotated[str, Parameter(show=False, allow_leading_hyphen=True)],
     verbose: Annotated[
         int,
-        Parameter(name=['-v', '--verbose'], count=True, help='Increase verbosity (-v, -vv).'),
+        Parameter(
+            name=['-v', '--verbose'],
+            count=True,
+            help='Increase verbosity (-v, -vv).',
+        ),
     ] = 0,
 ) -> None:
     """Repolish - Maintain consistency across repositories."""
