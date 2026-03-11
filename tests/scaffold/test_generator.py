@@ -69,7 +69,7 @@ def test_generate_renders_names_into_files(
     assert written  # at least one file must be created
 
     # resources/repolish.py uses package_name and class_name
-    entry = tmp_path / 'resources' / 'repolish.py'
+    entry = tmp_path / case.package_name / 'resources' / 'repolish.py'
     assert entry.exists()
     content = entry.read_text()
     assert case.package_name in content
@@ -79,6 +79,7 @@ def test_generate_renders_names_into_files(
     models_py = tmp_path / case.package_name / 'repolish' / 'models.py'
     assert models_py.exists()
     models_text = models_py.read_text()
+    assert 'BaseInputs' in models_text
     assert case.context_class in models_text
     assert case.inputs_class in models_text
 
@@ -90,9 +91,18 @@ def test_generate_renders_names_into_files(
     assert case.context_class in provider_text
     assert case.inputs_class in provider_text
 
-    # __init__.py uses absolute import
+    # __init__.py exports provider, context, and inputs
     init_py = tmp_path / case.package_name / 'repolish' / '__init__.py'
-    assert f'from {case.package_name}.repolish.provider import' in init_py.read_text()
+    init_text = init_py.read_text()
+    assert f'from {case.package_name}.repolish.provider import' in init_text
+    assert f'from {case.package_name}.repolish.models import' in init_text
+    assert case.context_class in init_text
+    assert case.inputs_class in init_text
+
+    # README.md uses the cli form
+    readme = tmp_path / 'README.md'
+    assert readme.exists()
+    assert f'cli: {case.repo_name}-link' in readme.read_text()
 
     # pyproject.toml uses repo_name, package_name, and declares the link script
     pyproject = tmp_path / 'pyproject.toml'
@@ -115,6 +125,7 @@ def test_generate_package_dir_uses_package_name(tmp_path: Path) -> None:
     # the package directory exists under the correct name
     assert (tmp_path / 'my_provider').is_dir()
     assert (tmp_path / 'my_provider' / 'repolish' / 'provider.py').exists()
+    assert (tmp_path / 'my_provider' / 'resources' / 'repolish.py').exists()
 
 
 def test_generate_creates_all_expected_files(tmp_path: Path) -> None:
@@ -132,8 +143,8 @@ def test_generate_creates_all_expected_files(tmp_path: Path) -> None:
         'acme_base/repolish/linker.py',
         'acme_base/repolish/models.py',
         'acme_base/repolish/provider.py',
-        'resources/repolish.py',
-        'resources/templates/repolish/.gitkeep',
+        'acme_base/resources/repolish.py',
+        'acme_base/resources/templates/repolish/.gitkeep',
     }
     assert relative == expected
 
@@ -171,6 +182,7 @@ def test_generate_provider_py_contains_all_methods(tmp_path: Path) -> None:
     ):
         assert method in provider_py
     # uses absolute import, not relative
+    assert 'from typing import override' in provider_py
     assert 'from my_lib.repolish.models import' in provider_py
     assert 'LibProviderContext' in provider_py
     assert 'LibProviderInputs' in provider_py

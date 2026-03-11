@@ -1,3 +1,5 @@
+from typing import override
+
 from repolish import Provider, ProviderEntry, TemplateMapping
 
 from {{ package_name }}.repolish.models import (
@@ -9,6 +11,7 @@ from {{ package_name }}.repolish.models import (
 class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
     """{{ class_name }} repolish provider."""
 
+    @override
     def create_context(self) -> {{ context_class }}:
         """Return the initial context for this provider.
 
@@ -18,6 +21,7 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         """
         return {{ context_class }}()
 
+    @override
     def provide_inputs(
         self,
         own_context: {{ context_class }},
@@ -33,6 +37,7 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         """
         return []
 
+    @override
     def finalize_context(
         self,
         own_context: {{ context_class }},
@@ -50,6 +55,7 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         """
         return own_context
 
+    @override
     def get_inputs_schema(self) -> type[{{ inputs_class }}]:
         """Declare the Pydantic model class this provider accepts as input.
 
@@ -58,6 +64,7 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         """
         return {{ inputs_class }}
 
+    @override
     def create_file_mappings(
         self,
         context: {{ context_class }},
@@ -72,6 +79,7 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         """
         return {}
 
+    @override
     def create_anchors(
         self,
         context: {{ context_class }},

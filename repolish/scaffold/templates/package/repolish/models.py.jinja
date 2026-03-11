@@ -1,13 +1,11 @@
-from pydantic import BaseModel
-
-from repolish import BaseContext
+from repolish import BaseContext, BaseInputs
 
 
 class {{ context_class }}(BaseContext):
     """Context for the {{ class_name }}."""
 
 
-class {{ inputs_class }}(BaseModel):
+class {{ inputs_class }}(BaseInputs):
     """Inputs for the {{ class_name }}.
 
     Fields declared here can be populated by other providers via
