@@ -24,7 +24,10 @@ def test_scaffold_creates_files(tmp_path: Path) -> None:
 
 
 def test_scaffold_idempotent(tmp_path: Path) -> None:
-    runner.invoke(app, ['scaffold', 'my-provider', '--output-dir', str(tmp_path)])
+    runner.invoke(
+        app,
+        ['scaffold', 'my-provider', '--output-dir', str(tmp_path)],
+    )
     result = runner.invoke(
         app,
         ['-v', 'scaffold', 'my-provider', '--output-dir', str(tmp_path)],

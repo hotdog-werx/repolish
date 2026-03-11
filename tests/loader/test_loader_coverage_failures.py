@@ -34,7 +34,7 @@ class BadInst(_ProviderBase[BaseContext, BaseModel]):
         own_context: BaseContext,  # noqa: ARG002 - method signature must match base
         all_providers: list[ProviderEntry],  # noqa: ARG002 - method signature must match base
         provider_index: int,  # noqa: ARG002 - method signature must match base
-    ) -> list[BaseModel]:
+    ) -> list[BaseInputs]:
         raise RuntimeError
 
 

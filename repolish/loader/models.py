@@ -456,12 +456,12 @@ class Provider(ABC, Generic[ContextT, InputT]):
         own_context: ContextT,  # noqa: ARG002 - parameter may be unused
         all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
         provider_index: int,  # noqa: ARG002 - parameter may be unused
-    ) -> list[BaseModel]:
+    ) -> list[BaseInputs]:
         """Return payload objects that should be sent to other providers.
 
         The loader calls this hook when it needs outbound data from a
         provider. The implementation should return a sequence of
-        :class:`BaseModel` instances; returning raw mappings is only supported
+        :class:`BaseInputs` instances; returning raw mappings is only supported
         for legacy module-style providers and will be removed in v1.  The
         orchestration layer routes each item based on the receiving
         provider's input schema (provided via :meth:`get_inputs_schema`).

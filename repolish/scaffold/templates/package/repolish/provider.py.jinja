@@ -1,6 +1,6 @@
 from typing import override
 
-from repolish import Provider, ProviderEntry, TemplateMapping
+from repolish import BaseInputs, Provider, ProviderEntry, TemplateMapping
 
 from {{ package_name }}.repolish.models import (
     {{ context_class }},
@@ -27,13 +27,13 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         own_context: {{ context_class }},
         all_providers: list[ProviderEntry],
         provider_index: int,
-    ) -> list[{{ inputs_class }}]:
+    ) -> list[BaseInputs]:
         """Broadcast data to other providers that declare a matching input schema.
 
-        Return a list of ``{{ inputs_class }}`` instances.  The loader routes
-        each item to every provider whose ``get_inputs_schema()`` matches
-        ``{{ inputs_class }}``.  Return an empty list if this provider has
-        nothing to share.
+        Return a list of Pydantic model instances destined for other providers.
+        The loader routes each item to every provider whose
+        ``get_inputs_schema()`` matches the item's type.  Return an empty list
+        if this provider has nothing to share.
         """
         return []
 

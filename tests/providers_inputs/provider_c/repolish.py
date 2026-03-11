@@ -1,6 +1,9 @@
-from pydantic import BaseModel
-
-from repolish.loader.models import BaseContext, Provider, ProviderEntry
+from repolish.loader.models import (
+    BaseContext,
+    BaseInputs,
+    Provider,
+    ProviderEntry,
+)
 from tests.providers_inputs.shared import InputA
 
 
@@ -18,5 +21,5 @@ class ProviderC(Provider[CtxC, InputA]):
         own_context: CtxC,  # noqa: ARG002 - method signature must match base
         all_providers: list[ProviderEntry],  # noqa: ARG002 - method signature must match base
         provider_index: int,  # noqa: ARG002 - method signature must match base
-    ) -> list[BaseModel]:
+    ) -> list[BaseInputs]:
         return [InputA(prob_a_input='provider_c')]

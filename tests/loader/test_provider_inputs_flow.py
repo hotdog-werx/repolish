@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from repolish.loader import create_providers
 from repolish.loader.models import (
     BaseContext,
+    BaseInputs,
     Provider,
     ProviderEntry,
     get_provider_context,
@@ -136,7 +137,7 @@ def test_provider_inputs_module_filtering() -> None:
             own_context: Dummy,  # noqa: ARG002 - method signature must match base
             all_providers: list[ProviderEntry],
             provider_index: int,  # noqa: ARG002 - method signature must match base
-        ) -> list[BaseModel]:
+        ) -> list[BaseInputs]:
             # inspect schemas rather than names; access via attributes for
             # clarity. previously callers unpacked a 3-tuple; the new
             # `ProviderEntry` class requires attribute access but the intent
