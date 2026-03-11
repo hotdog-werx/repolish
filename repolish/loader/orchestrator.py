@@ -410,7 +410,7 @@ def _populate_provider_context(
     """
     for idx, (pid, _mod) in enumerate(module_cache):
         inst = instances[idx]
-        if inst is None:  # pragma: no cover - load path always provides instances
+        if inst is None:  # pragma: no cover - module-style providers have no class instance
             continue
         _synthesize_provider_context_for_pid(
             inst,

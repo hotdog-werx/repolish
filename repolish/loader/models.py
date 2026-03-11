@@ -91,7 +91,7 @@ def get_global_context() -> GlobalContext:
 
     try:
         owner, name = git.get_owner_repo()
-    except Exception:  # pragma: no cover - best-effort only  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         owner = name = 'Unknown'
     # explicitly compute the year here as well; this mirrors the default
     # factory and ensures callers that bypass the default still receive a
