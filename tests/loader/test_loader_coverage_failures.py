@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from repolish.hydration.rendering import _load_and_validate_template
 from repolish.loader.exchange import (
     _retrieve_instance_inputs,
+    _schema_matches,
     _validate_raw_inputs,
     finalize_provider_contexts,
 )
@@ -35,6 +36,29 @@ class BadInst(_ProviderBase[BaseContext, BaseModel]):
         provider_index: int,  # noqa: ARG002 - method signature must match base
     ) -> list[BaseModel]:
         raise RuntimeError
+
+
+def test_schema_matches_returns_false_on_invalid_dict() -> None:
+    """A non-BaseModel that fails schema validation returns False."""
+
+    class S(BaseInputs):
+        x: int
+
+    # dict missing required field -> ValidationError -> False
+    assert _schema_matches(S, {'y': 'wrong'}) is False
+
+
+def test_validate_raw_inputs_coerces_compatible_base_inputs() -> None:
+    """A BaseInputs already of the correct type is appended directly."""
+
+    class Target(BaseInputs):
+        x: int
+
+    instance = Target(x=7)
+    result = _validate_raw_inputs([instance], Target)
+    assert len(result) == 1
+    assert result[0] is instance  # passed through unchanged, not re-validated
+    assert result[0].x == 7
 
 
 def test_retrieve_instance_inputs_raises_on_collect_error() -> None:
