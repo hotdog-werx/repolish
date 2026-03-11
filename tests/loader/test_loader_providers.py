@@ -408,6 +408,9 @@ def test_provider_exchange_input_routing_and_finalize(tmp_path: Path):
             """
             from repolish import Provider, BaseContext, BaseInputs
 
+            class AInputs(BaseInputs):
+                register_component: str
+
             class AContext(BaseContext):
                 val: int = 1
 
@@ -416,9 +419,7 @@ def test_provider_exchange_input_routing_and_finalize(tmp_path: Path):
                     return AContext()
 
                 def provide_inputs(self, own_context, all_providers, provider_index):
-                    # emit a simple dict; the loader will validate it against B's
-                    # input schema during distribution
-                    return [{'register_component': 'database'}]
+                    return [AInputs(register_component='database')]
             """,
         ),
     )

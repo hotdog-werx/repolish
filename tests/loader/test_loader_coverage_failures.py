@@ -38,14 +38,16 @@ class BadInst(_ProviderBase[BaseContext, BaseModel]):
         raise RuntimeError
 
 
-def test_schema_matches_returns_false_on_invalid_dict() -> None:
-    """A non-BaseModel that fails schema validation returns False."""
+def test_schema_matches_returns_false_on_incompatible_model() -> None:
+    """A model with incompatible fields does not match the schema."""
 
-    class S(BaseInputs):
+    class Expected(BaseInputs):
         x: int
 
-    # dict missing required field -> ValidationError -> False
-    assert _schema_matches(S, {'y': 'wrong'}) is False
+    class Unrelated(BaseInputs):
+        y: str
+
+    assert _schema_matches(Expected, Unrelated(y='hi')) is False
 
 
 def test_validate_raw_inputs_coerces_compatible_base_inputs() -> None:

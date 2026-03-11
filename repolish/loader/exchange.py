@@ -68,14 +68,20 @@ def _retrieve_instance_inputs(
 
 
 def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
-    if isinstance(value, _BaseModel):
-        return isinstance(value, schema)
+    """Return True if `value` satisfies `schema`.
+
+    Checks exact type first for performance, then falls back to
+    `model_validate` to handle structurally compatible models loaded from
+    separate dynamic modules (which produce distinct class objects).
+    """
+    if isinstance(value, schema):
+        return True
     try:
-        schema.model_validate(value)
+        data = value.model_dump() if isinstance(value, _BaseModel) else value
+        schema.model_validate(data)
     except ValidationError:
         return False
-    else:
-        return True
+    return True
 
 
 def _distribute_payloads(
