@@ -19,7 +19,10 @@ class MyProvider(Provider[Ctx, BaseInputs]):
 """
 
 
-def test_lint_cli_clean_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lint_cli_clean_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The lint CLI entry point exercises run_cli_command and exits 0 for a clean provider."""
     provider_dir = tmp_path / 'provider'
     provider_dir.mkdir()
