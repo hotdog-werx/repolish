@@ -24,7 +24,7 @@ class TemplateAProvider(Provider[Ctx, BaseModel]):
     def create_file_mappings(
         self,
         context: Ctx,  # noqa: ARG002 - context is not used in this example
-    ) -> dict[str, str | TemplateMapping]:
+    ) -> dict[str, str | TemplateMapping | None]:
         """Return file mappings for this example.
 
         Uses a `TemplateMapping` with `FileMode.DELETE` to mark

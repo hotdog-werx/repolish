@@ -88,12 +88,5 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     )
 
     delete_files = _apply_delete_overrides(providers, config)
-
-    return Providers(
-        anchors=providers.anchors,
-        delete_files=delete_files,
-        delete_history=providers.delete_history,
-        file_mappings=providers.file_mappings,
-        create_only_files=providers.create_only_files,
-        provider_contexts=providers.provider_contexts,
-    )
+    providers.delete_files = delete_files
+    return providers

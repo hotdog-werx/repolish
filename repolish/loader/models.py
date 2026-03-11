@@ -517,7 +517,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
     def create_file_mappings(
         self,
         context: ContextT,  # noqa: ARG002 - parameter may be unused
-    ) -> dict[str, str | TemplateMapping]:
+    ) -> dict[str, str | TemplateMapping | None]:
         """Optional: return `file_mappings`-style dict for this provider.
 
         The merged provider context (a 'ContextT' instance) is passed when

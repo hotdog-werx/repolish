@@ -12,18 +12,15 @@ from repolish.hydration.context import build_final_providers
 from repolish.loader import (
     Accumulators,
     BaseContext,
-    TemplateMapping,
     create_providers,
 )
 from repolish.loader import Provider as _ProviderBase
-from repolish.loader.mappings import (
-    process_file_mappings,
-)
 from repolish.loader.models import GlobalContext
 from repolish.loader.orchestrator import (
     _apply_overrides_to_model,
     _build_all_providers_list,
-    _process_phase_two,
+    _collect_provider_contributions,
+    _process_provider_fm,
     _synthesize_provider_context_for_pid,
 )
 from repolish.loader.three_phase import (
@@ -50,41 +47,26 @@ class DummyProvider(_ProviderBase):
 
 
 def test_process_file_mappings_skips_none_values() -> None:
-    """Using the public API, ensure `None` mapping entries are ignored.
-
-    This test constructs a minimal provider that returns a mapping containing
-    `None` alongside a normal string entry.  The accumulator should only
-    contain the string entry once processed, exercising the `if v is None`
-    branch of `_process_mapping_item`.
-    """
-
-    class Minimal(_ProviderBase):
-        def create_context(self) -> dict:
-            return {}
-
-        def create_file_mappings(
-            self,
-            context: object,  # noqa: ARG002 - parameter may be unused
-        ) -> dict[str, str | TemplateMapping]:
-            # include a None value which should be skipped
-            return {  # type: ignore[return-value] - deliberately violates return type for test
-                'a.txt': None,  # pyright: ignore[reportReturnType]
-                'b.txt': 'tmpl',
-            }
-
+    """Ensure `None` mapping entries are silently skipped."""
     acc2 = Accumulators()
-    fm = Minimal().create_file_mappings({})
-    process_file_mappings('m', fm, acc2)
+    _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc2)
     assert acc2.merged_file_mappings == {'b.txt': 'tmpl'}
 
 
 # ---- orchestrator helpers --------------------------------------------------
 
 
-def test_process_phase_two_skips_missing_instance():
+def test_process_provider_fm_skips_none_values() -> None:
+    """Ensure `None` mapping entries are silently skipped by `_process_provider_fm`."""
+    acc = Accumulators()
+    _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc)
+    assert acc.merged_file_mappings == {'b.txt': 'tmpl'}
+
+
+def test_collect_provider_contributions_skips_missing_instance():
     acc = Accumulators()
     # module_cache entry with no instance
-    _process_phase_two([('p', {})], {}, acc)
+    _collect_provider_contributions([('p', {})], {}, acc)
     # nothing should have changed
     assert acc.merged_anchors == {}
     assert acc.merged_file_mappings == {}

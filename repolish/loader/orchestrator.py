@@ -1,7 +1,7 @@
 import copy
 from dataclasses import dataclass, field
 from inspect import isclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from repolish.loader import (
@@ -11,16 +11,16 @@ from repolish.loader import (
 )
 from repolish.loader import Provider as _ProviderBase
 from repolish.loader._log import logger
-from repolish.loader.anchors import process_anchors
 from repolish.loader.context import (
     apply_context_overrides,
 )
-from repolish.loader.create_only import process_create_only_files
-from repolish.loader.deletes import process_delete_files
-from repolish.loader.mappings import process_file_mappings
 from repolish.loader.models import (
+    Action,
     BaseContext,
+    Decision,
+    FileMode,
     GlobalContext,
+    TemplateMapping,
     get_global_context,
 )
 from repolish.loader.module import get_module
@@ -95,7 +95,7 @@ def _maybe_instantiate_provider(
     """Instantiate a Provider subclass and store the instance in `module_dict`.
 
     The instance is stored under ``_repolish_provider_instance`` for later
-    retrieval by ``_process_phase_two`` and diagnostics.  Raises
+    retrieval by ``_collect_provider_contributions`` and diagnostics.  Raises
     ``RuntimeError`` if the module does not export exactly one subclass.
     """
     cls = _find_provider_class(module_dict)
@@ -124,12 +124,64 @@ def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
     return cache
 
 
-def _process_phase_two(
+def _apply_annotated_tm(
+    dest: str,
+    annotated: TemplateMapping,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Apply a fully-annotated TemplateMapping to the accumulators."""
+    path = Path(*PurePosixPath(dest).parts)
+    key = path.as_posix()
+    if annotated.file_mode == FileMode.DELETE:
+        accum.delete_set.add(path)
+        accum.merged_file_mappings.pop(dest, None)
+        accum.history.setdefault(key, []).append(
+            Decision(source=provider_id, action=Action.delete),
+        )
+    elif annotated.file_mode == FileMode.KEEP:
+        accum.delete_set.discard(path)
+        accum.history.setdefault(key, []).append(
+            Decision(source=provider_id, action=Action.keep),
+        )
+    else:
+        if annotated.file_mode == FileMode.CREATE_ONLY:
+            accum.create_only_set.add(path)
+        accum.merged_file_mappings[dest] = annotated
+
+
+def _process_provider_fm(
+    provider_id: str,
+    fm: dict[str, str | TemplateMapping | None],
+    accum: Accumulators,
+) -> None:
+    """Process one provider's file_mappings in a single pass.
+
+    Handles all modes in order: plain string sources, DELETE, KEEP,
+    CREATE_ONLY, and REGULAR entries.  Populates `merged_file_mappings`,
+    `delete_set`, `create_only_set`, and `history` on `accum`.
+    """
+    for dest, src in fm.items():
+        if src is None:
+            continue
+        if isinstance(src, str):
+            accum.merged_file_mappings[dest] = src
+            continue
+        annotated = TemplateMapping(
+            source_template=src.source_template,
+            extra_context=src.extra_context,
+            file_mode=src.file_mode,
+            source_provider=provider_id,
+        )
+        _apply_annotated_tm(dest, annotated, provider_id, accum)
+
+
+def _collect_provider_contributions(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
 ) -> None:
-    """Phase 2: process anchors, file mappings, delete/create-only files.
+    """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
     This mutates the provided accumulators in-place.
     """
@@ -142,15 +194,14 @@ def _process_phase_two(
         inst = cast('_ProviderBase', inst)
 
         own_ctx = provider_contexts.get(provider_id, {})
-        process_anchors(inst, own_ctx, accum.merged_anchors)
-        # compute file mappings once per provider and forward the result to the
-        # helpers.  this avoids three separate calls to
-        # `inst.create_file_mappings()` and decouples the helpers from the
-        # provider API (making future adapter removal easier).
+        val = inst.create_anchors(own_ctx)
+        if val:
+            if not isinstance(val, dict):
+                msg = 'create_anchors() must return a dict'
+                raise TypeError(msg)
+            accum.merged_anchors.update(cast('dict[str, str]', val))
         fm = inst.create_file_mappings(own_ctx)
-        process_file_mappings(provider_id, fm, accum)
-        process_delete_files(fm, accum.delete_set, provider_id, accum.history)
-        process_create_only_files(fm, accum.create_only_set)
+        _process_provider_fm(provider_id, fm, accum)
 
 
 def _build_all_providers_list(
@@ -451,7 +502,7 @@ def _run_three_phase(
     # in the returned `Providers` object include any project-supplied values.
     _apply_provider_overrides(provider_contexts, provider_overrides)
 
-    _process_phase_two(module_cache, provider_contexts, accum)
+    _collect_provider_contributions(module_cache, provider_contexts, accum)
 
     return Providers(
         anchors=accum.merged_anchors,
