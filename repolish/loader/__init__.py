@@ -7,7 +7,6 @@ reference from the rest of the codebase.
 
 from repolish.loader._log import logger
 from repolish.loader.models import (
-    Accumulators,
     Action,
     BaseContext,
     Decision,
@@ -21,7 +20,6 @@ from repolish.loader.models import (
 from repolish.loader.orchestrator import create_providers
 
 __all__ = [
-    'Accumulators',
     'Action',
     'BaseContext',
     'Decision',

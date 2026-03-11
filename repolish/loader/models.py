@@ -338,11 +338,17 @@ def build_file_records(
 
 @dataclass
 class Accumulators:
-    """Internal accumulator used during two-phase provider merging.
+    """Mutable workspace used while collecting contributions from all providers.
 
-    Collects anchors, file mappings, create-only sets, delete sets and the
-    provenance history before converting to the public `Providers` model.
-    All fields default to empty so callers can construct with `Accumulators()`.
+    `_collect_provider_contributions` iterates over every loaded provider,
+    calls `create_anchors` and `create_file_mappings`, and accumulates the
+    results here.  The fields are written into a `Providers` instance once
+    collection is complete.
+
+    `merged_anchors` aggregates the per-provider anchor dicts: each call to
+    `create_anchors()` can contribute new keys; later providers win on
+    conflicts.  All fields default to empty so callers can construct with
+    `Accumulators()`.
     """
 
     merged_anchors: dict[str, str] = field(default_factory=dict)

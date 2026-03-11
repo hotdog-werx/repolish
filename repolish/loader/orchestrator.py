@@ -4,12 +4,11 @@ from inspect import isclass
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
+from repolish.loader import Provider as _ProviderBase
 from repolish.loader import (
-    Accumulators,
     ProviderEntry,
     Providers,
 )
-from repolish.loader import Provider as _ProviderBase
 from repolish.loader._log import logger
 from repolish.loader.context import (
     apply_context_overrides,
@@ -20,6 +19,7 @@ from repolish.loader.exchange import (
     gather_received_inputs,
 )
 from repolish.loader.models import (
+    Accumulators,
     Action,
     BaseContext,
     Decision,

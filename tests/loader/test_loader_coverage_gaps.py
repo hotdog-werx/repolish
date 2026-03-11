@@ -10,7 +10,6 @@ from repolish import ProviderEntry
 from repolish.config import RepolishConfig, ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
 from repolish.loader import (
-    Accumulators,
     BaseContext,
     create_providers,
 )
@@ -19,7 +18,7 @@ from repolish.loader.exchange import (
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.loader.models import GlobalContext
+from repolish.loader.models import Accumulators, GlobalContext
 from repolish.loader.orchestrator import (
     _apply_overrides_to_model,
     _build_all_providers_list,
