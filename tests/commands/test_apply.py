@@ -187,6 +187,43 @@ def test_apply_command_runs_with_valid_provider(
     assert rv == 0
 
 
+def test_apply_returns_1_when_render_fails(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """command() returns 1 and logs render_failed when render_template raises RuntimeError."""
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    fake_config = RepolishConfig(config_dir=tmp_path)
+
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch('repolish.commands.apply.stage_templates').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = Providers(
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.render_template',
+    ).side_effect = RuntimeError(
+        "template rendering errors:\npyproject.toml: 'some_unknown' is undefined",
+    )
+
+    rv = run_repolish(cfg_path, check_only=False)
+    assert rv == 1
+
+
 def test_check_only_with_diffs_returns_2(
     tmp_path: Path,
     mocker: MockerFixture,

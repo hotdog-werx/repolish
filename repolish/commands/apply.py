@@ -235,7 +235,15 @@ def command(config_path: Path, *, check_only: bool) -> int:
     preprocess_templates(setup_input, providers, base_dir)
 
     # Render templates using Jinja2
-    render_template(setup_input, providers, setup_output)
+    render_error: str | None = None
+    try:
+        render_template(setup_input, providers, setup_output)
+    except RuntimeError as exc:
+        render_error = str(exc)
+    if render_error is not None:
+        errors = [line for line in render_error.splitlines() if line and not line.endswith(':')]
+        logger.error('render_failed', errors=errors)
+        return 1
 
     # Run any configured post-processing commands in the rendered output dir
     post_cwd = setup_output / 'repolish'

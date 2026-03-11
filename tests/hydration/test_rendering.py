@@ -1,9 +1,7 @@
 from pathlib import Path
 from textwrap import dedent
-from unittest.mock import patch
 
 import pytest
-from jinja2 import TemplateSyntaxError, UndefinedError
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
@@ -289,10 +287,10 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
 
 
 def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
-    """Missing variables should raise `UndefinedError` with StrictUndefined.
+    """Missing variables are collected and raised together as a RuntimeError.
 
-    The raised exception message is enhanced with the path of the template so
-    users know exactly which file failed to render.
+    All failing templates are reported at once so the user sees every problem
+    in a single pass rather than getting stopped on the first bad file.
     """
     tpl = tmp_path / 'tpl-missing-var'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
@@ -308,27 +306,15 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     providers = Providers()
     preprocess_templates(setup_input, providers, base_dir)
 
-    # patch logger so we can introspect which context was used during failure
-    with (
-        patch('repolish.hydration.rendering.logger') as mock_logger,
-        pytest.raises(UndefinedError) as exc,
-    ):
+    with pytest.raises(RuntimeError) as exc:
         render_template(setup_input, providers, setup_output)
-    # message should include the original Jinja error and note which file was
-    # being rendered.
     msg = str(exc.value)
-    assert 'while rendering' in msg
     assert 'no_such_var' in msg
-
-    # ensure our patched logger was invoked with the failing context
-    assert mock_logger.exception.called
-    call = mock_logger.exception.call_args
-    assert 'context' in call.kwargs
-    assert isinstance(call.kwargs['context'], dict)
+    assert 'README.md' in msg
 
 
 def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
-    """Malformed Jinja in a path component should raise TemplateSyntaxError."""
+    """Malformed Jinja in a path component is collected and raised as a RuntimeError."""
     tpl = tmp_path / 'tpl-bad-path'
     bad_dir = tpl / 'repolish' / '{{bad'
     bad_dir.mkdir(parents=True, exist_ok=True)
@@ -341,12 +327,13 @@ def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
     providers = Providers()
     preprocess_templates(setup_input, providers, base_dir)
 
-    with pytest.raises(TemplateSyntaxError):
+    with pytest.raises(RuntimeError) as exc:
         render_template(setup_input, providers, setup_output)
+    assert 'path syntax error' in str(exc.value)
 
 
 def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
-    """Malformed Jinja in file *content* should raise TemplateSyntaxError and hit logger."""
+    """Malformed Jinja in file *content* is collected and raised as a RuntimeError."""
     tpl = tmp_path / 'tpl-bad-content'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
 
@@ -363,7 +350,7 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
     providers = Providers()
     preprocess_templates(setup_input, providers, base_dir)
 
-    with pytest.raises(TemplateSyntaxError):
+    with pytest.raises(RuntimeError):
         render_template(setup_input, providers, setup_output)
 
 

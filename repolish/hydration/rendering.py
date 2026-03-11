@@ -69,6 +69,7 @@ def render_with_jinja(ctx: RenderContext) -> None:
     # `providers` is available on `ctx` and only used
     # indirectly via helpers; no need to create a local variable here.
     skip_templates = ctx.skip_templates
+    render_errors: list[tuple[str, str]] = []
 
     template_root = setup_input / 'repolish'
 
@@ -98,27 +99,52 @@ def render_with_jinja(ctx: RenderContext) -> None:
             provider=ctx.providers.template_sources.get(rel_str),
         )
 
-        try:
-            rendered_rel = _render_path_parts(env, rel, ctx_to_use)
-        except TemplateSyntaxError as exc:
-            logger.exception(
-                'template_path_syntax_error',
-                file=str(src),
-                error=str(exc),
-            )
-            raise
+        error = _render_file(env, src, rel, ctx_to_use, setup_output)
+        if error is not None:
+            render_errors.append((rel_str, error))
 
-        dest = setup_output / 'repolish' / rendered_rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
+    if render_errors:
+        lines = [f'{f}: {m}' for f, m in render_errors]
+        raise RuntimeError('template rendering errors:\n' + '\n'.join(lines))
 
-        try:
-            txt = src.read_text(encoding='utf-8')
-        except (OSError, UnicodeDecodeError):
-            copy2(src, dest)
-            continue
 
+def _render_file(
+    env: Environment,
+    src: Path,
+    rel: Path,
+    ctx_to_use: dict,
+    setup_output: Path,
+) -> str | None:
+    """Render one staged template file into *setup_output*.
+
+    Returns an error string when the file cannot be rendered, or ``None``
+    when rendering succeeds.  Binary files are copied unchanged.
+    """
+    try:
+        rendered_rel = _render_path_parts(env, rel, ctx_to_use)
+    except TemplateSyntaxError as exc:
+        logger.error(  # noqa: TRY400
+            'template_path_syntax_error',
+            file=str(src),
+            error=str(exc),
+        )
+        return f'path syntax error: {exc}'
+
+    dest = setup_output / 'repolish' / rendered_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        txt = src.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError):
+        copy2(src, dest)
+        return None
+
+    try:
         rendered_txt = _jinja_render(env, txt, ctx_to_use, filename=src)
-        dest.write_text(rendered_txt, encoding='utf-8')
+    except (UndefinedError, TemplateSyntaxError) as exc:
+        return str(exc)
+    dest.write_text(rendered_txt, encoding='utf-8')
+    return None
 
 
 def _ctx_for_pid(pid: str | None, providers: Providers) -> dict:
@@ -177,26 +203,21 @@ def _jinja_render(
     try:
         return env.from_string(txt).render(**ctx)
     except TemplateSyntaxError as exc:
-        # syntax errors are usually programmer mistakes; log the template
-        # text and context to make reproduction easier.
-        logger.exception(
+        # syntax errors indicate bad template markup; log file and message so
+        # the caller can surface a clean error without a verbose context dump.
+        logger.error(  # noqa: TRY400
             'template_content_syntax_error',
             file=str(filename),
             error=str(exc),
-            template=txt,
-            context=ctx,
         )
         raise
-    except UndefinedError as exc:  # pragma: no cover - exercised by tests
-        # undefined variables often indicate missing keys. include the
-        # context and template in the log so users can inspect exactly what
-        # was available on the failing platform (e.g. Windows CI).
-        logger.exception(
+    except UndefinedError as exc:
+        # undefined variables indicate a missing context key; log the file
+        # path so the error location is clear without dumping the full context.
+        logger.error(  # noqa: TRY400
             'template_content_undefined_error',
             file=str(filename),
             error=str(exc),
-            template=txt,
-            context=ctx,
         )
         msg = f'{exc} (while rendering {filename})'
         raise UndefinedError(msg) from exc
@@ -221,7 +242,12 @@ def render_template(
     providers: Providers,
     setup_output: Path,
 ) -> None:
-    """Dispatch rendering to Jinja2."""
+    """Dispatch rendering to Jinja2.
+
+    Errors from both the Jinja pass and the mapping pass are collected and
+    raised together as a single :class:`RuntimeError` so callers see all
+    failures at once rather than stopping at the first bad template.
+    """
     skip_templates = _collect_skip_templates(providers)
 
     # build a RenderContext once; the same object drives both
@@ -233,11 +259,22 @@ def render_template(
         skip_templates=skip_templates,
     )
 
-    render_with_jinja(render_ctx)
+    all_errors: list[str] = []
+
+    try:
+        render_with_jinja(render_ctx)
+    except RuntimeError as exc:
+        all_errors.append(str(exc))
 
     # Materialize TemplateMapping entries, rendering each with the declaring
     # provider's own context merged with any mapping-level extra_context.
-    _process_template_mappings(render_ctx)
+    try:
+        _process_template_mappings(render_ctx)
+    except RuntimeError as exc:
+        all_errors.append(str(exc))
+
+    if all_errors:
+        raise RuntimeError('\n'.join(all_errors))
 
 
 def _load_and_validate_template(
@@ -312,10 +349,9 @@ def _render_single_mapping(
             render_ctx,
             filename=template_file,
         )
-    except UndefinedError as exc:  # pragma: no cover - error path covered by new tests
-        # add details about the template and destination so the user can
-        # easily locate the problematic mapping.
-        logger.exception(
+    except UndefinedError as exc:
+        # log the template and destination path so the error is easy to locate.
+        logger.error(  # noqa: TRY400
             'mapping_template_undefined_error',
             template=str(template_file),
             dest=dest_path,
