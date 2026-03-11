@@ -15,7 +15,11 @@ from repolish.hydration import (
     render_template,
     rich_print_diffs,
 )
-from repolish.loader.models import Providers, build_file_records
+from repolish.loader.models import (
+    Providers,
+    build_file_records,
+    get_global_context,
+)
 from repolish.misc import ctx_to_dict
 from repolish.utils import run_post_process
 from repolish.version import __version__
@@ -178,15 +182,26 @@ def command(config_path: Path, *, check_only: bool) -> int:
         alias_to_pid,
     )
 
-    # per-provider: typed context + how many files each provider owns
+    # global context is the same for every provider — log it once
+    logger.info(
+        'global_context',
+        context={'repolish': get_global_context().model_dump()},
+        note='available to all providers',
+    )
+
+    # per-provider: typed context (repolish key omitted — see global_context) + file count
     logger.info(
         'providers_context',
         providers=[
             {
                 'alias': alias,
-                'context': ctx_to_dict(
-                    providers.provider_contexts.get(alias_to_pid[alias]),
-                ),
+                'context': {
+                    k: v
+                    for k, v in ctx_to_dict(
+                        providers.provider_contexts.get(alias_to_pid[alias]),
+                    ).items()
+                    if k != 'repolish'
+                },
                 'file_count': sum(1 for r in providers.file_records if r.owner == alias),
             }
             for alias in aliases
