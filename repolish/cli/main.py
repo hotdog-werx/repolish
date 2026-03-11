@@ -9,6 +9,7 @@ from repolish.cli.apply import apply
 from repolish.cli.link import link
 from repolish.cli.lint import lint
 from repolish.cli.preview import preview
+from repolish.cli.scaffold import scaffold
 from repolish.cli.utils import setup_logging
 from repolish.version import __version__
 
@@ -40,3 +41,4 @@ app.command()(apply)
 app.command()(preview)
 app.command()(link)
 app.command()(lint)
+app.command()(scaffold)

@@ -1,0 +1,85 @@
+from repolish import Provider, ProviderEntry, TemplateMapping
+
+from {{ package_name }}.repolish.models import (
+    {{ context_class }},
+    {{ inputs_class }},
+)
+
+
+class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
+    """{{ class_name }} repolish provider."""
+
+    def create_context(self) -> {{ context_class }}:
+        """Return the initial context for this provider.
+
+        Populate any fields that can be derived without input from
+        other providers.  Values may be refined later in
+        ``finalize_context`` once cross-provider data is available.
+        """
+        return {{ context_class }}()
+
+    def provide_inputs(
+        self,
+        own_context: {{ context_class }},
+        all_providers: list[ProviderEntry],
+        provider_index: int,
+    ) -> list[{{ inputs_class }}]:
+        """Broadcast data to other providers that declare a matching input schema.
+
+        Return a list of ``{{ inputs_class }}`` instances.  The loader routes
+        each item to every provider whose ``get_inputs_schema()`` matches
+        ``{{ inputs_class }}``.  Return an empty list if this provider has
+        nothing to share.
+        """
+        return []
+
+    def finalize_context(
+        self,
+        own_context: {{ context_class }},
+        received_inputs: list[{{ inputs_class }}],
+        all_providers: list[ProviderEntry],
+        provider_index: int,
+    ) -> {{ context_class }}:
+        """Merge inputs received from other providers into this context.
+
+        ``received_inputs`` contains every ``{{ inputs_class }}`` payload
+        delivered to this provider by upstream ``provide_inputs`` calls.
+        Inspect the list, update ``own_context`` as needed, and return it.
+        If this provider does not consume inputs from others, just return
+        ``own_context`` unchanged.
+        """
+        return own_context
+
+    def get_inputs_schema(self) -> type[{{ inputs_class }}]:
+        """Declare the Pydantic model class this provider accepts as input.
+
+        The loader uses this to route payloads emitted by other providers'
+        ``provide_inputs`` to this provider's ``finalize_context``.
+        """
+        return {{ inputs_class }}
+
+    def create_file_mappings(
+        self,
+        context: {{ context_class }},
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Map destination paths to template sources.
+
+        Keys are POSIX paths relative to the consumer repo root.  Values can
+        be:
+        - a string  → path to the source template inside ``resources/templates``
+        - a ``TemplateMapping``  → for CREATE_ONLY, DELETE, or KEEP semantics
+        - ``None``   → omit the file (no-op)
+        """
+        return {}
+
+    def create_anchors(
+        self,
+        context: {{ context_class }},
+    ) -> dict[str, str]:
+        """Supply anchor replacement values for this provider's templates.
+
+        Anchors are named placeholders inside template files that are replaced
+        before Jinja rendering.  Return a mapping of anchor name to
+        replacement string.  Return an empty dict if no anchors are needed.
+        """
+        return {}
