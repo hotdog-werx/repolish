@@ -47,7 +47,7 @@ def test_auto_link_on_missing_provider(tmp_path: Path, case: TCase):
     raw_config = RepolishConfigFile(
         providers={'base': ProviderConfig(cli='some-link-cli')},
     )
-    raw_config.config_file = config_file  # type: ignore[assignment]
+    raw_config.config_file = config_file
 
     with (
         mock.patch(

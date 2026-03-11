@@ -204,6 +204,46 @@ def _make_provider(tmp_path: Path, src: str, templates: dict[str, str]) -> Path:
             expected_exit_code=0,
         ),
         LintCase(
+            name='computed_attr_access_not_flagged',
+            # obj.method().attr: the Getattr whose .node is a Call returns None
+            # from _resolve_chain and is silently dropped - no false positive.
+            repolish_py=_CLASS_PROVIDER_BASE,
+            templates={'out.txt': '{{ package_name.strip().upper() }}\n'},
+            expected_exit_code=0,
+        ),
+        LintCase(
+            name='optional_nested_model_native_syntax_valid',
+            # Native `Author | None` stores as types.UnionType on Python 3.11.
+            # Dotted access through this field exercises the types.UnionType
+            # branch of _unwrap_optional.
+            repolish_py=dedent("""\
+                from pydantic import BaseModel
+                from repolish import BaseContext, Provider, BaseInputs
+
+                class Author(BaseModel):
+                    name: str = 'anon'
+
+                class Ctx(BaseContext):
+                    author: Author | None = None
+
+                class MyProvider(Provider[Ctx, BaseInputs]):
+                    def create_context(self) -> Ctx:
+                        return Ctx(author=Author())
+            """),
+            templates={
+                'out.txt': '{% if author %}{{ author.name }}{% endif %}\n',
+            },
+            expected_exit_code=0,
+        ),
+        LintCase(
+            name='render_error_non_undefined',
+            # {{ 1 / 0 }} parses fine but raises ZeroDivisionError at render
+            # time, exercising the generic `except Exception` branch.
+            repolish_py=_CLASS_PROVIDER_BASE,
+            templates={'out.txt': '{{ 1 / 0 }}\n'},
+            expected_exit_code=1,
+        ),
+        LintCase(
             name='optional_nested_model_field_access_valid',
             # Dotted access through an Optional[NestedModel] field exercises
             # _unwrap_optional via the typing.Union branch so the inner model
@@ -223,7 +263,9 @@ def _make_provider(tmp_path: Path, src: str, templates: dict[str, str]) -> Path:
                     def create_context(self) -> Ctx:
                         return Ctx(author=Author())
             """),
-            templates={'out.txt': '{% if author %}{{ author.name }}{% endif %}\n'},
+            templates={
+                'out.txt': '{% if author %}{{ author.name }}{% endif %}\n',
+            },
             expected_exit_code=0,
         ),
     ],

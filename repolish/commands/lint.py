@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from rich.console import Console
 
 from repolish.loader import create_providers
-from repolish.loader.models import BaseContext
+from repolish.loader.models import Providers
 from repolish.preprocessors.core import replace_text
 
 logger = get_logger(__name__)
@@ -88,7 +88,7 @@ def _resolve_chain(node: jinja2.nodes.Node) -> str | None:
     if isinstance(node, jinja2.nodes.Getattr):
         parent = _resolve_chain(node.node)
         return f'{parent}.{node.attr}' if parent is not None else None
-    return None  # pragma: no cover - find_all only yields Name/Getattr nodes
+    return None  # _resolve_chain recurses into .node which may be a Call or similar
 
 
 def _collect_chains(ast: jinja2.nodes.Template) -> set[str]:
@@ -125,7 +125,7 @@ def _unwrap_optional(annotation: object) -> object:
     # Python 3.10+ native union syntax (X | None) - Pydantic v2 normalises field
     # annotations to typing.Union before storing, so this branch is a defensive
     # fallback for non-Pydantic annotation objects passed directly.
-    if isinstance(annotation, types.UnionType):  # pragma: no cover
+    if isinstance(annotation, types.UnionType):
         args = [a for a in get_args(annotation) if a is not type(None)]
         return args[0] if len(args) == 1 else annotation
     return annotation
@@ -181,7 +181,7 @@ def _validate_chain(
 def _check_chains(
     chains: set[str],
     ctx_dict: dict[str, object],
-    ctx_type: type[BaseModel] | None,
+    ctx_type: type[BaseModel],
     template: str,
 ) -> list[LintIssue]:
     """Return issues for all access chains that cannot be resolved in *ctx_dict*."""
@@ -197,10 +197,9 @@ def _check_chains(
                 ),
             )
             continue
-        if ctx_type is not None:
-            issue = _validate_chain(chain, ctx_type, template)
-            if issue is not None:
-                issues.append(issue)
+        issue = _validate_chain(chain, ctx_type, template)
+        if issue is not None:
+            issues.append(issue)
     return issues
 
 
@@ -212,7 +211,7 @@ def _check_chains(
 def _lint_template(
     tpl_path: Path,
     tpl_root: Path,
-    ctx_type: type[BaseModel] | None,
+    ctx_type: type[BaseModel],
     ctx_dict: dict[str, object],
     env: jinja2.Environment,
 ) -> TemplateResult:
@@ -249,7 +248,7 @@ def _lint_template(
         env.from_string(cleaned).render(ctx_dict)
     except jinja2.UndefinedError as exc:
         result.render_error = str(exc)
-    except Exception as exc:  # noqa: BLE001 - surface any render failure  # pragma: no cover
+    except Exception as exc:  # noqa: BLE001 - surface any render failure
         result.render_error = f'render error: {exc}'
 
     return result
@@ -261,25 +260,17 @@ def _lint_template(
 
 
 def _resolve_context(
-    providers: object,
+    providers: Providers,
     pid: str,
-) -> tuple[dict[str, object], type[BaseModel] | None]:
-    """Extract context dict and concrete type from the loaded providers object."""
-    from repolish.loader.models import Providers  # noqa: PLC0415 - avoid TC circular
+) -> tuple[dict[str, object], type[BaseModel]]:
+    """Extract context dict and concrete type from the loaded providers object.
 
-    if not isinstance(
-        providers,
-        Providers,
-    ):  # pragma: no cover - always a Providers instance
-        return {}, None
-    ctx = providers.provider_contexts.get(pid)
-    if ctx is None:  # pragma: no cover - create_providers always populates contexts
-        logger.warning('no_context_found', pid=pid)
-        return {}, None
-    if isinstance(ctx, BaseContext):
-        return ctx.model_dump(), type(ctx)
-    # Legacy dict context from module-style provider adapter
-    return dict(ctx), None  # type: ignore[arg-type]  # pragma: no cover
+    The loader guarantees that every pid in module_cache has an entry in
+    provider_contexts after finalize_provider_contexts runs, so ctx is always
+    a BaseContext instance here.
+    """
+    ctx = providers.provider_contexts[pid]
+    return ctx.model_dump(), type(ctx)
 
 
 def _report_results(
@@ -344,6 +335,8 @@ def command(provider_dir: Path) -> int:
     # Load provider and get finalized context (no inputs - single-provider run)
     try:
         providers = create_providers([str(provider_dir)])
+        pid = provider_dir.as_posix()
+        ctx_dict, ctx_type = _resolve_context(providers, pid)
     except RuntimeError as exc:
         console.print(f'[red]Failed to load provider: {exc}[/red]')
         logger.warning(
@@ -353,11 +346,9 @@ def command(provider_dir: Path) -> int:
         )
         return 1
 
-    pid = provider_dir.as_posix()
-    ctx_dict, ctx_type = _resolve_context(providers, pid)
     logger.info(
         'lint_context_loaded',
-        ctx_type=ctx_type.__name__ if ctx_type else 'dict',
+        ctx_type=ctx_type.__name__,
         keys=list(ctx_dict.keys()),
     )
 
