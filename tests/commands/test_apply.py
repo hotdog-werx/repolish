@@ -6,7 +6,13 @@ from pytest_mock import MockerFixture
 
 from repolish.commands.apply import command as run_repolish
 from repolish.loader import Providers
-from repolish.loader.models import Action, Decision, FileMode, TemplateMapping
+from repolish.loader.models import (
+    Action,
+    BaseContext,
+    Decision,
+    FileMode,
+    TemplateMapping,
+)
 
 
 def write_file(p: Path, content: str) -> None:
@@ -346,3 +352,79 @@ def test_apply_with_delete_files(
 
     rv = run_repolish(cfg_path, check_only=False)
     assert rv == 0
+
+
+def test_template_sources_translated_from_alias_to_pid(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """stage_templates returns alias as the source value; apply must translate to pid.
+
+    When render_template is called the providers.template_sources values must be
+    full provider directory paths (pids), not the short alias strings.  A mismatch
+    causes _ctx_for_pid to return {} and every template variable becomes undefined.
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'template_a'
+    pid = provider_dir.as_posix()
+
+    fake_config = SimpleNamespace(
+        providers_order=['template_a'],
+        providers={'template_a': SimpleNamespace(target_dir=provider_dir)},
+        template_overrides=None,
+        config_dir=tmp_path,
+        anchors={},
+        post_process=[],
+        delete_files=[],
+    )
+
+    providers = Providers(provider_contexts={pid: BaseContext()})
+
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    # stage_templates returns alias ('template_a') as the source value — the
+    # raw output before the alias→pid translation in apply.command().
+    mocker.patch('repolish.commands.apply.stage_templates').return_value = (
+        tmp_path / 'staging',
+        {'pyproject.toml': 'template_a', 'Dockerfile': 'template_a'},
+    )
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = providers
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.apply_generated_output',
+    ).return_value = None
+
+    captured: dict[str, object] = {}
+
+    def fake_render_template(
+        setup_input: Path,
+        p: Providers,
+        setup_output: Path,
+    ) -> None:
+        captured['template_sources'] = dict(p.template_sources)
+
+    mocker.patch(
+        'repolish.commands.apply.render_template',
+        side_effect=fake_render_template,
+    )
+
+    rv = run_repolish(cfg_path, check_only=False)
+    assert rv == 0
+
+    # aliases must have been translated to pids before render_template is called
+    assert captured['template_sources'] == {
+        'pyproject.toml': pid,
+        'Dockerfile': pid,
+    }

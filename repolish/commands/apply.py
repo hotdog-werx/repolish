@@ -160,7 +160,10 @@ def command(config_path: Path, *, check_only: bool) -> int:
     # staging must happen before we can report per-provider template ownership
     base_dir, setup_input, setup_output = prepare_staging(config)
     sources = _create_staged_template(setup_input, config)
-    providers.template_sources = sources
+    # stage_templates records alias as the provider id; provider_contexts is
+    # keyed by the full directory path (pid).  Translate here so rendering
+    # can look up the right context.
+    providers.template_sources = {rel: alias_to_pid.get(alias, alias) for rel, alias in sources.items()}
     providers.file_records = build_file_records(
         providers,
         pid_to_alias,
