@@ -5,6 +5,11 @@ import pytest
 from pydantic import BaseModel
 
 from repolish.hydration.rendering import _load_and_validate_template
+from repolish.loader.exchange import (
+    _retrieve_instance_inputs,
+    _validate_raw_inputs,
+    finalize_provider_contexts,
+)
 from repolish.loader.models import (
     BaseContext,
     BaseInputs,
@@ -14,11 +19,6 @@ from repolish.loader.models import (
 )
 from repolish.loader.models import (
     Provider as _ProviderBase,
-)
-from repolish.loader.three_phase import (
-    _retrieve_instance_inputs,
-    _validate_raw_inputs,
-    finalize_provider_contexts,
 )
 
 

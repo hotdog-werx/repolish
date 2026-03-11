@@ -15,6 +15,10 @@ from repolish.loader import (
     create_providers,
 )
 from repolish.loader import Provider as _ProviderBase
+from repolish.loader.exchange import (
+    finalize_provider_contexts,
+    gather_received_inputs,
+)
 from repolish.loader.models import GlobalContext
 from repolish.loader.orchestrator import (
     _apply_overrides_to_model,
@@ -22,10 +26,6 @@ from repolish.loader.orchestrator import (
     _collect_provider_contributions,
     _process_provider_fm,
     _synthesize_provider_context_for_pid,
-)
-from repolish.loader.three_phase import (
-    finalize_provider_contexts,
-    gather_received_inputs,
 )
 from repolish.misc import ctx_keys, ctx_to_dict
 
@@ -143,7 +143,7 @@ def test_build_all_providers_list_swallows_broken_schema() -> None:
     assert 'bp' not in provider_contexts
 
 
-# ---- three_phase helpers ---------------------------------------------------
+# ---- exchange helpers ------------------------------------------------------
 
 
 def test_ctx_to_dict_behaves_consistently():
@@ -192,19 +192,16 @@ def test_gather_received_inputs_variants() -> None:
             input_type=None,
         ),
     ]
-    has_recipient_after = [False]
     # calling gather_received_inputs directly
     got = gather_received_inputs(
         module_cache,
         instances,
         provider_contexts,
         all_providers_list,
-        has_recipient_after,
     )
     assert got == {}
 
     # now provider with recipient after and a collect function
-    has_recipient_after = [True]
 
     def send(ctx: dict, allp: list, idx: int) -> list:
         return [{'foo': 1}]
@@ -215,7 +212,6 @@ def test_gather_received_inputs_variants() -> None:
         instances,
         provider_contexts,
         all_providers_list,
-        has_recipient_after,
     )
     # unresolved recipient dropped, so result remains empty
     assert got == {}
@@ -227,7 +223,7 @@ def test_overrides_affect_inputs(
 ):
     """Providers should see config overrides when computing inputs.
 
-    This test exercises the full three-phase workflow and ensures that
+    This test exercises the full provider exchange workflow and ensures that
     contexts passed into `provide_inputs` and `finalize_context` are
     always Pydantic models.  previous iterations accidentally allowed
     dictionaries to leak through which broke class-based providers once

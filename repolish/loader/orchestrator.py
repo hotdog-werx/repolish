@@ -14,6 +14,11 @@ from repolish.loader._log import logger
 from repolish.loader.context import (
     apply_context_overrides,
 )
+from repolish.loader.exchange import (
+    build_provider_metadata,
+    finalize_provider_contexts,
+    gather_received_inputs,
+)
 from repolish.loader.models import (
     Action,
     BaseContext,
@@ -24,12 +29,6 @@ from repolish.loader.models import (
     get_global_context,
 )
 from repolish.loader.module import get_module
-from repolish.loader.three_phase import (
-    build_provider_metadata,
-    compute_recipient_flags,
-    finalize_provider_contexts,
-    gather_received_inputs,
-)
 
 
 def _find_provider_class(
@@ -361,8 +360,8 @@ def _apply_provider_overrides(
 
 
 @dataclass(frozen=True)
-class RunThreePhaseContext:
-    """Typed container for optional runtime parameters used by the three-phase provider runner."""
+class PipelineOptions:
+    """Typed container for optional runtime parameters for the provider pipeline."""
 
     context_overrides: dict[str, object] | None = None
     provider_overrides: dict[str, dict[str, object]] | None = None
@@ -421,18 +420,12 @@ def _populate_provider_context(
         )
 
 
-def _run_three_phase(
+def _run_provider_pipeline(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
-    options: RunThreePhaseContext | None = None,
+    options: PipelineOptions | None = None,
 ) -> Providers:
-    """Execute phase-2/3 logic and return final Providers object.
-
-    The original implementation accepted multiple separate arguments and had
-    accumulated complexity.  Bundling optional parameters into `options`
-    and extracting helpers reduces the function's signature and cognitive
-    complexity while preserving behaviour.
-    """
+    """Run the full provider pipeline and return the final Providers object."""
     accum = Accumulators()
 
     # gather metadata and basic helper structures
@@ -478,8 +471,6 @@ def _run_three_phase(
         instances,
         provider_contexts,
         all_providers_list,
-        # old flag still passed for compatibility but ignored
-        compute_recipient_flags(instances),
     )
 
     # finalize provider contexts based on collected inputs
@@ -557,10 +548,10 @@ def create_providers(
     # the isinstance guard and cause create_context() to be skipped).
     provider_contexts: dict[str, BaseContext] = {}
 
-    return _run_three_phase(
+    return _run_provider_pipeline(
         module_cache,
         provider_contexts,
-        RunThreePhaseContext(
+        PipelineOptions(
             global_context=global_ctx_obj,
             context_overrides=context_overrides,
             provider_overrides=provider_overrides,

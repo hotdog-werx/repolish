@@ -398,7 +398,7 @@ def test_create_providers_records_provider_contexts(tmp_path: Path):
     assert ctx1.get('b') == 42
 
 
-def test_three_phase_input_routing_and_finalize(tmp_path: Path):
+def test_provider_exchange_input_routing_and_finalize(tmp_path: Path):
     """Phase 2/3: provider A sends inputs to provider B and B finalizes context."""
     # Provider A -> sends an input to provider B
     p_a = tmp_path / 'prov_a'
