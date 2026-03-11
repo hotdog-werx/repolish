@@ -44,6 +44,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
         providers=resolved_providers,
         providers_order=config.providers_order,
         template_overrides=config.template_overrides,
+        paused_files=config.paused_files,
     )
 
 

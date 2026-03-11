@@ -43,6 +43,15 @@ class RepolishConfigFile(BaseModel):
             'reference a defined provider alias.'
         ),
     )
+    paused_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            'Temporary list of POSIX-style file paths that repolish should '
+            'ignore. Use this to opt out of provider management for specific '
+            'files while a provider is being fixed or updated. Remove entries '
+            'once the underlying provider issue is resolved.'
+        ),
+    )
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,
         description='Provider configurations for resource linking and orchestration',
@@ -139,5 +148,12 @@ class RepolishConfig(BaseModel):
         description=(
             'Mapping of glob patterns to provider aliases after resolution. '
             'Inherited directly from `RepolishConfigFile.template_overrides`.'
+        ),
+    )
+    paused_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            'Temporary list of files repolish will not touch. '
+            'Inherited directly from `RepolishConfigFile.paused_files`.'
         ),
     )

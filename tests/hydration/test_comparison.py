@@ -292,3 +292,48 @@ def test_binary_files_different_produce_diff_entry(tmp_path: Path) -> None:
     diffs = check_generated_output(setup_output, providers, base_dir)
     assert len(diffs) == 1
     assert diffs[0][0] == 'logo.png'
+
+
+def test_check_skips_paused_regular_file(tmp_path: Path) -> None:
+    """A file listed in paused_files produces no diff even when content differs."""
+    setup_output = tmp_path / 'out'
+    rendered = setup_output / 'repolish' / 'config.toml'
+    rendered.parent.mkdir(parents=True)
+    rendered.write_text('provider = true')
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    (base_dir / 'config.toml').write_text('developer = true')
+
+    providers = Providers(delete_files=[], delete_history={})
+
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        paused_files=frozenset({'config.toml'}),
+    )
+    assert diffs == []
+
+
+def test_check_skips_paused_deletion(tmp_path: Path) -> None:
+    """A file in both delete_files and paused_files is not reported as PRESENT_BUT_SHOULD_BE_DELETED."""
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    (base_dir / 'legacy.txt').write_text('old')
+
+    providers = Providers(
+        delete_files=[Path('legacy.txt')],
+        delete_history={},
+    )
+
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        paused_files=frozenset({'legacy.txt'}),
+    )
+    assert diffs == []

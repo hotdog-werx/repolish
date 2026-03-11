@@ -139,6 +139,8 @@ def apply_generated_output(
     setup_output: Path,
     providers: Providers,
     base_dir: Path,
+    *,
+    paused_files: frozenset[str] = frozenset(),
 ) -> None:
     """Copy generated files into the project root and apply deletions.
 
@@ -146,6 +148,7 @@ def apply_generated_output(
         setup_output: Path to the rendered output directory.
         providers: Providers object with delete_files list and file_mappings.
         base_dir: Base directory where the project root is located.
+        paused_files: POSIX-style paths that repolish must not touch this run.
 
     Returns None. Exceptions during per-file operations are raised to caller.
     """
@@ -161,7 +164,7 @@ def apply_generated_output(
     )
 
     # Build skip set: include create-only files that already exist in the project
-    skip_sources = mapped_sources.copy()
+    skip_sources = mapped_sources | paused_files
     for rel_str in create_only_files_set:
         target_exists = (base_dir / rel_str).exists()
         if target_exists:
@@ -198,7 +201,18 @@ def apply_generated_output(
     )
 
     # Now apply deletions at the project root as the final step
-    for rel in providers.delete_files:
+    _apply_deletions(providers.delete_files, base_dir, paused_files)
+
+
+def _apply_deletions(
+    delete_files: list,
+    base_dir: Path,
+    paused_files: frozenset[str],
+) -> None:
+    """Delete provider-declared files from the project root, skipping paused ones."""
+    for rel in delete_files:
+        if rel.as_posix() in paused_files:
+            continue
         target = base_dir / rel
         if target.exists():
             if target.is_dir():

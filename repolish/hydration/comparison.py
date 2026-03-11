@@ -241,6 +241,8 @@ def check_generated_output(
     setup_output: Path,
     providers: Providers,
     base_dir: Path,
+    *,
+    paused_files: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Compare generated output to project files and report diffs and deletions.
 
@@ -255,7 +257,7 @@ def check_generated_output(
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     # Build skip set: include create-only files that already exist in the project
-    skip_files = mapped_sources | delete_files_set
+    skip_files = mapped_sources | delete_files_set | paused_files
     for rel_str in create_only_files_set:
         if (base_dir / rel_str).exists():
             skip_files.add(rel_str)
@@ -284,6 +286,8 @@ def check_generated_output(
     # provider-declared deletions: if a path is expected deleted but exists in
     # the project, surface that so devs know to run repolish
     for rel in providers.delete_files:
+        if rel.as_posix() in paused_files:
+            continue
         proj_target = base_dir / rel
         if proj_target.exists():
             diffs.append((rel.as_posix(), 'PRESENT_BUT_SHOULD_BE_DELETED'))

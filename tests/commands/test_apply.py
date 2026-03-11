@@ -1,10 +1,10 @@
 import textwrap
 from pathlib import Path
-from types import SimpleNamespace
 
 from pytest_mock import MockerFixture
 
 from repolish.commands.apply import command as run_repolish
+from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.loader import Providers
 from repolish.loader.models import (
     Action,
@@ -79,15 +79,11 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     cfg_path = tmp_path / 'repolish.yaml'
     cfg_path.write_text('')
 
-    # fake resolved configuration object
-    fake_config = SimpleNamespace(
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
         providers_order=['missing'],
         providers={},
         template_overrides={'foo': 'bar'},
-        config_dir=tmp_path,
-        anchors={},
-        post_process=[],
-        delete_files=[],
     )
 
     mocker.patch(
@@ -152,14 +148,15 @@ def test_apply_command_runs_with_valid_provider(
     cfg_path.write_text('')
 
     provider_dir = tmp_path / 'prov_a'
-    fake_config = SimpleNamespace(
-        providers_order=['prov_a'],
-        providers={'prov_a': SimpleNamespace(target_dir=provider_dir)},
-        template_overrides=None,
+    fake_config = RepolishConfig(
         config_dir=tmp_path,
-        anchors={},
-        post_process=[],
-        delete_files=[],
+        providers_order=['prov_a'],
+        providers={
+            'prov_a': ResolvedProviderInfo(
+                alias='prov_a',
+                target_dir=provider_dir,
+            ),
+        },
     )
 
     mocker.patch(
@@ -202,15 +199,7 @@ def test_check_only_with_diffs_returns_2(
     cfg_path = tmp_path / 'repolish.yaml'
     cfg_path.write_text('')
 
-    fake_config = SimpleNamespace(
-        providers_order=None,
-        providers={},
-        template_overrides=None,
-        config_dir=tmp_path,
-        anchors={},
-        post_process=[],
-        delete_files=[],
-    )
+    fake_config = RepolishConfig(config_dir=tmp_path)
 
     mocker.patch(
         'repolish.commands.apply.load_config',
@@ -244,7 +233,7 @@ def test_check_only_with_diffs_returns_2(
 def _base_mocks(
     mocker: MockerFixture,
     tmp_path: Path,
-    fake_config: object,
+    fake_config: RepolishConfig,
     providers: Providers,
 ) -> None:
     """Wire up the standard set of mocks used by the two coverage tests below."""
@@ -286,14 +275,14 @@ def test_apply_with_template_mapping_in_file_mappings(
     cfg_path.write_text('')
 
     provider_dir = tmp_path / 'prov_a'
-    fake_config = SimpleNamespace(
-        providers_order=None,
-        providers={'prov_a': SimpleNamespace(target_dir=provider_dir)},
-        template_overrides=None,
+    fake_config = RepolishConfig(
         config_dir=tmp_path,
-        anchors={},
-        post_process=[],
-        delete_files=[],
+        providers={
+            'prov_a': ResolvedProviderInfo(
+                alias='prov_a',
+                target_dir=provider_dir,
+            ),
+        },
     )
 
     providers = Providers(
@@ -329,14 +318,14 @@ def test_apply_with_delete_files(
     cfg_path.write_text('')
 
     provider_dir = tmp_path / 'prov_a'
-    fake_config = SimpleNamespace(
-        providers_order=None,
-        providers={'prov_a': SimpleNamespace(target_dir=provider_dir)},
-        template_overrides=None,
+    fake_config = RepolishConfig(
         config_dir=tmp_path,
-        anchors={},
-        post_process=[],
-        delete_files=[],
+        providers={
+            'prov_a': ResolvedProviderInfo(
+                alias='prov_a',
+                target_dir=provider_dir,
+            ),
+        },
     )
 
     providers = Providers(
@@ -370,14 +359,15 @@ def test_template_sources_translated_from_alias_to_pid(
     provider_dir = tmp_path / 'template_a'
     pid = provider_dir.as_posix()
 
-    fake_config = SimpleNamespace(
-        providers_order=['template_a'],
-        providers={'template_a': SimpleNamespace(target_dir=provider_dir)},
-        template_overrides=None,
+    fake_config = RepolishConfig(
         config_dir=tmp_path,
-        anchors={},
-        post_process=[],
-        delete_files=[],
+        providers_order=['template_a'],
+        providers={
+            'template_a': ResolvedProviderInfo(
+                alias='template_a',
+                target_dir=provider_dir,
+            ),
+        },
     )
 
     providers = Providers(provider_contexts={pid: BaseContext()})
@@ -427,4 +417,67 @@ def test_template_sources_translated_from_alias_to_pid(
     assert captured['template_sources'] == {
         'pyproject.toml': pid,
         'Dockerfile': pid,
+    }
+
+
+def test_paused_files_logged_as_warning(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """When paused_files is non-empty a warning is emitted listing the files."""
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'template_a'
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers_order=['template_a'],
+        providers={
+            'template_a': ResolvedProviderInfo(
+                alias='template_a',
+                target_dir=provider_dir,
+            ),
+        },
+        paused_files=['src/generated.py', 'README.md'],
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch('repolish.commands.apply.stage_templates').return_value = (
+        tmp_path / 'staging',
+        {},
+    )
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = Providers(
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch('repolish.commands.apply.render_template').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check_generated_output',
+    ).return_value = []
+    mocker.patch(
+        'repolish.commands.apply.apply_generated_output',
+    ).return_value = None
+
+    mock_logger = mocker.patch('repolish.commands.apply.logger')
+
+    run_repolish(cfg_path, check_only=False)
+
+    warning_calls = [
+        call for call in mock_logger.warning.call_args_list if call.args and call.args[0] == 'files_paused'
+    ]
+    assert warning_calls, 'expected a files_paused warning'
+    assert set(warning_calls[0].kwargs['files']) == {
+        'src/generated.py',
+        'README.md',
     }

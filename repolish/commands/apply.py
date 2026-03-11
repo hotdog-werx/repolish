@@ -208,6 +208,14 @@ def command(config_path: Path, *, check_only: bool) -> int:
         suggestion='see .repolish/_ for extra information on each provider',
     )
 
+    paused = frozenset(config.paused_files)
+    if paused:
+        logger.warning(
+            'files_paused',
+            files=sorted(paused),
+            suggestion='remove entries from paused_files once the provider is fixed',
+        )
+
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, base_dir)
 
@@ -219,7 +227,12 @@ def command(config_path: Path, *, check_only: bool) -> int:
     run_post_process(config.post_process, post_cwd)
 
     if check_only:
-        diffs = check_generated_output(setup_output, providers, base_dir)
+        diffs = check_generated_output(
+            setup_output,
+            providers,
+            base_dir,
+            paused_files=paused,
+        )
         if diffs:
             logger.error(
                 'check_results',
@@ -228,5 +241,10 @@ def command(config_path: Path, *, check_only: bool) -> int:
             rich_print_diffs(diffs)
         return 2 if diffs else 0
 
-    apply_generated_output(setup_output, providers, base_dir)
+    apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        paused_files=paused,
+    )
     return 0

@@ -193,3 +193,53 @@ def test_apply_deletes_directory_in_delete_files(tmp_path: Path) -> None:
     apply_generated_output(setup_output, providers, base_dir)
 
     assert not dir_to_delete.exists()
+
+
+def test_apply_skips_paused_regular_file(tmp_path: Path) -> None:
+    """A file listed in paused_files is not overwritten by apply."""
+    setup_output = tmp_path / 'setup-output'
+    rendered = setup_output / 'repolish' / 'managed.txt'
+    rendered.parent.mkdir(parents=True)
+    rendered.write_text('provider version')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'managed.txt').write_text('developer version')
+
+    providers = Providers(file_mappings={}, create_only_files=[])
+
+    apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        paused_files=frozenset({'managed.txt'}),
+    )
+
+    # developer's local copy must be untouched
+    assert (base_dir / 'managed.txt').read_text() == 'developer version'
+
+
+def test_apply_skips_paused_deletion(tmp_path: Path) -> None:
+    """A file listed in both delete_files and paused_files is not deleted."""
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    kept = base_dir / 'keep_me.txt'
+    kept.write_text('important')
+
+    providers = Providers(
+        delete_files=[Path('keep_me.txt')],
+        file_mappings={},
+        create_only_files=[],
+    )
+
+    apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        paused_files=frozenset({'keep_me.txt'}),
+    )
+
+    assert kept.exists()
