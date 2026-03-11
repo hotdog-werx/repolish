@@ -93,6 +93,28 @@ def _resolve_single_provider(
     # Try to load provider info from JSON file (if linked)
     provider_info = load_provider_info(alias, config_dir)
 
+    if provider_info is None and provider_config.cli:
+        logger.warning(
+            'provider_directory_missing',
+            alias=alias,
+            suggestion='provider directory not found; attempting to link via cli',
+            cli=provider_config.cli,
+        )
+        from repolish.linker import (  # noqa: PLC0415 - deferred to avoid circular import: resolution → linker → config.__init__ → loader → resolution
+            process_provider,
+        )
+
+        exit_code = process_provider(alias, provider_config, config_dir)
+        if exit_code == 0:
+            provider_info = load_provider_info(alias, config_dir)
+        else:
+            logger.warning(
+                'provider_auto_link_failed',
+                alias=alias,
+                cli=provider_config.cli,
+                exit_code=exit_code,
+            )
+
     if provider_info:
         # Use info from linked provider
         target_dir = _resolve_path(provider_info.target_dir, config_dir)
