@@ -15,9 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-repolish = "repolish.cli.main:main"
-repolish-debugger = "repolish.cli.standalone.preview_cli:app"
-repolish-link = "repolish.cli.standalone.link_cli:app"
+repolish = "repolish.cli.main:app.meta"
 
 [dependency-groups]
 dev = [

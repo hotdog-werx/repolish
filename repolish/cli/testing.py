@@ -35,10 +35,6 @@ class CliRunner:
         assert result.exit_code == 0
         assert 'Usage' in result.output
 
-    If the app has a registered ``@app.meta.default`` handler the runner calls
-    ``app.meta(args)`` so that shared meta-parameters (e.g. ``--verbose``) are
-    honoured.  Otherwise ``app(args)`` is used directly.
-
     Rich console output is captured via an in-memory :class:`~rich.console.Console`
     so that the ``result.output`` field contains the full text written to either
     *stdout* or *stderr* during the invocation.

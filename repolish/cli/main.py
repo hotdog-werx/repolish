@@ -36,11 +36,6 @@ def _meta(
     app(tokens)
 
 
-def main() -> None:  # pragma: no cover - real process entry point, not exercised in tests
-    """Entry point for the repolish CLI."""
-    app.meta()
-
-
 app.command()(apply)
 app.command()(preview)
 app.command()(link)
