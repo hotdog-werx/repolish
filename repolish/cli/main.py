@@ -3,6 +3,7 @@ from hotlog import verbosity_option
 
 from repolish.cli.apply import apply
 from repolish.cli.link import link
+from repolish.cli.lint import lint
 from repolish.cli.preview import preview
 from repolish.cli.utils import setup_logging
 from repolish.version import __version__
@@ -39,3 +40,4 @@ def main_callback(
 app.command()(apply)
 app.command()(preview)
 app.command()(link)
+app.command()(lint)
