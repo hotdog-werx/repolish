@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 
 
-def create_cookiecutter_template(
+def stage_templates(
     staging_dir: Path,
     # `list` is invariant, so a union of two list types rejects callers that
     # supply `list[tuple[str, Path]]` even though that form is perfectly
@@ -14,11 +14,10 @@ def create_cookiecutter_template(
     *,
     template_overrides: dict[str, str] | None = None,
 ) -> tuple[Path, dict[str, str]]:
-    """Create a cookiecutter template in a staging directory.
+    """Merge provider template directories into a single staging tree.
 
-    This function merges a sequence of provider template directories into a
-    single staging template. If the same file exists in multiple directories,
-    the later entry wins (i.e. last provider overrides earlier ones).
+    Each provider contributes a `repolish/` subdirectory; files are merged in
+    order so the last provider wins when the same path appears more than once.
 
     When `template_overrides` is provided the merging behaviour is altered
     on a per-file basis. The mapping keys are shell-style glob patterns

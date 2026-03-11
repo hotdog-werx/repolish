@@ -86,7 +86,7 @@ def _check_regular_files(
 
     Args:
         output_files: List of files in the template output.
-        setup_output: Path to the cookiecutter output directory.
+        setup_output: Path to the rendered output directory.
         skip_files: Set of file paths to skip (mapped sources + delete files + create-only existing files).
         base_dir: Base directory where the project root is located.
         preserve: Whether to preserve line endings during comparison.

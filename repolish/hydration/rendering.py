@@ -40,11 +40,8 @@ def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
     rendered_parts: list[str] = []
     for part in rel.parts:
         # Render path component (supports templated directory/filenames).
-        # Provide merged context both as top-level variables and under the
-        # `cookiecutter` name so templates can migrate away from the
-        # `cookiecutter.` prefix gradually.
         tpl = env.from_string(part)
-        rendered = tpl.render(**ctx, cookiecutter=ctx)
+        rendered = tpl.render(**ctx)
         rendered_parts.append(rendered)
     return Path(*rendered_parts)
 
@@ -52,11 +49,10 @@ def _render_path_parts(env: Environment, rel: Path, ctx: dict) -> Path:
 def render_with_jinja(ctx: RenderContext) -> None:
     """Render staged templates with Jinja2.
 
-    The merged context is exposed under the `cookiecutter` namespace so
-    existing templates continue to work unchanged.  For any file that can be
-    traced back to a migrated provider (the provenance map is recorded during
-    staging), rendering uses that provider's own captured context instead of
-    the merged context.
+    Templates are rendered with the provider's own captured context.
+    When a file can be traced back to its declaring provider via the provenance
+    map recorded during staging, that provider's context is used; otherwise
+    rendering falls back to an empty context.
 
     Args:
         ctx: A `RenderContext` instance containing all material needed for
@@ -176,12 +172,10 @@ def _jinja_render(
     """Render `txt` with `env` and `ctx`.
 
     Errors during rendering are logged and wrapped with `filename` so the
-    caller gets actionable messages. `ctx` becomes available both as
-    top-level variables and under the `cookiecutter` name for backward
-    compatibility with existing templates.
+    caller gets actionable messages. `ctx` is exposed as top-level Jinja variables.
     """
     try:
-        return env.from_string(txt).render(**ctx, cookiecutter=ctx)
+        return env.from_string(txt).render(**ctx)
     except TemplateSyntaxError as exc:
         # syntax errors are usually programmer mistakes; log the template
         # text and context to make reproduction easier.

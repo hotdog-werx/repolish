@@ -21,7 +21,7 @@ def _apply_regular_files(
 
     Args:
         output_files: List of files in the template output.
-        setup_output: Path to the cookiecutter output directory.
+        setup_output: Path to the rendered output directory.
         skip_sources: Set of file paths to skip (file_mappings sources + existing create-only files).
         base_dir: Base directory where the project root is located.
     """
@@ -143,7 +143,7 @@ def apply_generated_output(
     """Copy generated files into the project root and apply deletions.
 
     Args:
-        setup_output: Path to the cookiecutter output directory.
+        setup_output: Path to the rendered output directory.
         providers: Providers object with delete_files list and file_mappings.
         base_dir: Base directory where the project root is located.
 

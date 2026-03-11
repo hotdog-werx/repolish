@@ -147,7 +147,7 @@ def test_safe_file_read_directory(tmp_path: Path):
         ReplaceTextTestCase(
             id='pyproject_keep_version',
             template=dedent("""\
-                name: {{cookiecutter.repo.owner}}
+                name: {{repo.owner}}
                 ## repolish-regex[keep-version]: ^version:\\s*(.+)$
                 version: 0.0.0
             """),
@@ -258,7 +258,7 @@ def test_safe_file_read_directory(tmp_path: Path):
             id='pyproject_test',
             template=dedent("""\
                 [tool.poetry]
-                name = "{{ cookiecutter.package_name }}"
+                name = "{{ package_name }}"
                 version = "0.1.0"
 
                 ## repolish-regex[keep-description]: ^description =\\s(.+)$
@@ -278,7 +278,7 @@ def test_safe_file_read_directory(tmp_path: Path):
             anchors={'extra-deps': 'requests = "^5.30"'},
             expected_equal=dedent("""\
                 [tool.poetry]
-                name = "{{ cookiecutter.package_name }}"
+                name = "{{ package_name }}"
                 version = "0.1.0"
 
                 description = "Local project description"

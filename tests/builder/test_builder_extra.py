@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from repolish.builder import create_cookiecutter_template
+from repolish.builder import stage_templates
 
 
-def test_create_cookiecutter_template_handles_missing_repolish(
+def test_stage_templates_handles_missing_repolish(
     tmp_path: Path,
 ) -> None:
     # Template dir without a repolish/ subdir should not raise and staging
@@ -12,7 +12,7 @@ def test_create_cookiecutter_template_handles_missing_repolish(
     template.mkdir()
     staging = tmp_path / 'staging'
 
-    staging_path, _ = create_cookiecutter_template(staging, [template])
+    staging_path, _ = stage_templates(staging, [template])
     assert staging_path.exists()
     # no repolish project files copied — staging/repolish dir should not exist
     assert not (staging_path / 'repolish').exists()
@@ -27,7 +27,7 @@ def test_copy_template_dir_handles_directories(tmp_path: Path) -> None:
     (rep / 'nested.txt').write_text('hello')
 
     staging = tmp_path / 'staging'
-    _, _ = create_cookiecutter_template(staging, [template])
+    _, _ = stage_templates(staging, [template])
 
     copied_dir = staging / 'repolish' / 'subdir'
     assert copied_dir.exists()
@@ -47,7 +47,7 @@ def test_jinja_extension_stripped_from_filenames(tmp_path: Path) -> None:
     (rep / 'regular.txt').write_text('no jinja')
 
     staging = tmp_path / 'staging'
-    _, _ = create_cookiecutter_template(staging, [template])
+    _, _ = stage_templates(staging, [template])
 
     project_dir = staging / 'repolish'
 
@@ -66,7 +66,7 @@ def test_jinja_extension_stripped_from_filenames(tmp_path: Path) -> None:
     assert (project_dir / 'regular.txt').exists()
 
 
-def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
+def test_stage_templates_with_overrides(tmp_path: Path) -> None:
     """Provider-specific overrides prevent later provider from overwriting a file pinned to an earlier provider."""
     # provider1 defines a common file and a unique file
     p1 = tmp_path / 'p1'
@@ -85,7 +85,7 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
     staging = tmp_path / 'staging'
 
     # without overrides, later provider wins
-    _, _ = create_cookiecutter_template(
+    _, _ = stage_templates(
         staging,
         [('p1', p1), ('p2', p2)],
     )
@@ -94,7 +94,7 @@ def test_create_cookiecutter_template_with_overrides(tmp_path: Path) -> None:
 
     # with an override pinning the common file to p1
     staging2 = tmp_path / 'staging2'
-    _, _ = create_cookiecutter_template(
+    _, _ = stage_templates(
         staging2,
         [('p1', p1), ('p2', p2)],
         template_overrides={'common.txt': 'p1'},
@@ -121,7 +121,7 @@ def test_template_sources_are_posix_ids(tmp_path: Path) -> None:
     staging = tmp_path / 'staging'
     # provide an explicit alias containing backslashes to mimic a Windows path
     alias = 'C:\\windows\\path'
-    _, sources = create_cookiecutter_template(staging, [(alias, p)])
+    _, sources = stage_templates(staging, [(alias, p)])
 
     # every provider id in the returned map should be POSIX-formatted
     for v in sources.values():

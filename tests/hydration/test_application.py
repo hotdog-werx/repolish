@@ -16,7 +16,7 @@ def test_apply_creates_file_when_missing(tmp_path: Path):
     repolish_dir = setup_output / 'repolish'
     repolish_dir.mkdir(parents=True)
 
-    # Template provides regular rendered file (already processed by cookiecutter)
+    # Template provides regular rendered file (already processed by Jinja)
     (repolish_dir / 'src' / 'pkg').mkdir(parents=True)
     (repolish_dir / 'src' / 'pkg' / '__init__.py').write_text(
         '# Initial content',

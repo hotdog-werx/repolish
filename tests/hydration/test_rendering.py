@@ -7,7 +7,7 @@ from jinja2 import TemplateSyntaxError, UndefinedError
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
-from repolish.builder import create_cookiecutter_template
+from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
 from repolish.hydration.rendering import (
     RenderContext,
@@ -27,13 +27,13 @@ def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
     tpl = tmp_path / name
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     # Create a templated directory name + templated file content
-    templated_dir = tpl / 'repolish' / '{{cookiecutter.package_name}}'
+    templated_dir = tpl / 'repolish' / '{{package_name}}'
     templated_dir.mkdir(parents=True, exist_ok=True)
     (templated_dir / 'README.md.jinja').write_text(
         dedent("""
-        # {{ cookiecutter.package_name }}
+        # {{ package_name }}
 
-        Description: {{ cookiecutter.description }}
+        Description: {{ description }}
         """),
         encoding='utf-8',
     )
@@ -41,17 +41,17 @@ def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
 
 
 def test_render_template_renders_with_jinja(tmp_path: Path):
-    """Templates should always be rendered using Jinja2 after cookiecutter removal."""
+    """Templates are rendered using Jinja2 with top-level context variables."""
     tpl = tmp_path / 'tpl'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     (tpl / 'repolish' / 'foo.jinja').write_text(
-        'value={{ cookiecutter.value }}',
+        'value={{ value }}',
         encoding='utf-8',
     )
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     class ValueCtx(BaseContext):
         value: str = 'hello'
@@ -126,24 +126,22 @@ def test_choose_ctx_for_file_normalizes_windows_pid(
     )
 
 
-def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
-    """Merged provider context should be available as top-level variables.
-
-    This allows templates to drop the `cookiecutter.` prefix during migration.
-    """
+def test_render_with_jinja_exposes_context_as_top_level_variables(
+    tmp_path: Path,
+):
+    """Provider context fields are available directly as top-level Jinja variables."""
     tpl = tmp_path / 'tpl-top-level'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
 
-    # Use both cookiecutter.package_name and package_name in content and path
     (tpl / 'repolish' / '{{package_name}}').mkdir(parents=True, exist_ok=True)
     (tpl / 'repolish' / '{{package_name}}' / 'README.md.jinja').write_text(
-        'name: {{ cookiecutter.package_name }}\nalt: {{ package_name }}\n',
+        'name: {{ package_name }}\n',
         encoding='utf-8',
     )
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    _, _ = create_cookiecutter_template(setup_input, [tpl])
+    _, _ = stage_templates(setup_input, [tpl])
 
     class PackageCtx(BaseContext):
         package_name: str = 'acme'
@@ -160,7 +158,6 @@ def test_render_with_jinja_exposes_merged_context_top_level(tmp_path: Path):
     assert out_file.exists()
     text = out_file.read_text(encoding='utf-8')
     assert 'name: acme' in text
-    assert 'alt: acme' in text
 
 
 def test_render_with_file_mappings_generates_multiple_files(
@@ -180,7 +177,7 @@ def test_render_with_file_mappings_generates_multiple_files(
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
 
-    _, _ = create_cookiecutter_template(setup_input, [tpl])
+    _, _ = stage_templates(setup_input, [tpl])
 
     class ItemCtx(BaseModel):
         file_number: int
@@ -229,7 +226,7 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
 
-    _, _ = create_cookiecutter_template(setup_input, [tpl])
+    _, _ = stage_templates(setup_input, [tpl])
 
     providers = Providers(
         file_mappings={
@@ -278,7 +275,7 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
 
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers()
 
@@ -300,13 +297,13 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     tpl = tmp_path / 'tpl-missing-var'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     (tpl / 'repolish' / 'README.md.jinja').write_text(
-        '{{ cookiecutter.no_such_var }}\n',
+        '{{ no_such_var }}\n',
         encoding='utf-8',
     )
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers()
     preprocess_templates(setup_input, providers, base_dir)
@@ -333,13 +330,13 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
 def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
     """Malformed Jinja in a path component should raise TemplateSyntaxError."""
     tpl = tmp_path / 'tpl-bad-path'
-    bad_dir = tpl / 'repolish' / '{{cookiecutter.bad'
+    bad_dir = tpl / 'repolish' / '{{bad'
     bad_dir.mkdir(parents=True, exist_ok=True)
     (bad_dir / 'README.md.jinja').write_text('# ok\n', encoding='utf-8')
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers()
     preprocess_templates(setup_input, providers, base_dir)
@@ -355,13 +352,13 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
 
     # malformed Jinja (unclosed variable) in file content
     (tpl / 'repolish' / 'README.md.jinja').write_text(
-        '{{ cookiecutter.broken ',
+        '{{ broken ',
         encoding='utf-8',
     )
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers()
     preprocess_templates(setup_input, providers, base_dir)
@@ -380,13 +377,13 @@ def test_template_mapping_undefined_errors_are_collected(tmp_path: Path):
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     # template refers to a variable that will never be provided
     (tpl / 'repolish' / 'a.jinja').write_text(
-        '{{ cookiecutter.a }}\n',
+        '{{ a }}\n',
         encoding='utf-8',
     )
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers(
         file_mappings={
@@ -416,7 +413,7 @@ def test_render_template_prunes_missing_and_unreadable_mapping(tmp_path: Path):
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     # mapping points to a missing template -> should be removed after render
     providers = Providers(
@@ -439,7 +436,7 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers(
         file_mappings={
@@ -466,17 +463,17 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
     assert providers.file_mappings['good.txt'] == 'good.txt'
 
 
-def test_render_template_raises_when_templatemappings_and_cookiecutter_enabled(
+def test_render_template_mappings_work_with_jinja(
     tmp_path: Path,
 ):
-    """Public API: TemplateMapping entries are incompatible with cookiecutter rendering."""
+    """Public API: TemplateMapping entries are rendered via Jinja."""
     tpl = tmp_path / 'tpl'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     (tpl / 'repolish' / 'item.jinja').write_text('X', encoding='utf-8')
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers(
         file_mappings={'x.txt': TemplateMapping('item', None)},
@@ -496,7 +493,7 @@ def test_process_template_mappings_skips_string_entries(tmp_path: Path):
 
     config = RepolishConfig(config_dir=tmp_path)
     base_dir, setup_input, setup_output = prepare_staging(config)
-    create_cookiecutter_template(setup_input, [tpl])
+    stage_templates(setup_input, [tpl])
 
     providers = Providers(
         file_mappings={

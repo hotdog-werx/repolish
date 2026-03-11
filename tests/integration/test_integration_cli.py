@@ -21,7 +21,7 @@ def make_template(
     repo_name_var: str = 'repolish',
 ) -> Path:
     tpl_dir = base / name
-    # cookiecutter root contains a directory with the repo name
+    # template root contains a directory with the repo name
     repo_dir = tpl_dir / repo_name_var
     (repo_dir).mkdir(parents=True, exist_ok=True)
     # file_a.md with an anchor
@@ -200,7 +200,7 @@ class P(Provider[Ctx, BaseModel]):
     )
     monkeypatch.chdir(tmp_path)
 
-    # patch render_template so we don't require a valid cookiecutter project
+    # patch render_template so we don't require actual templates on disk
     mocker.patch(
         'repolish.commands.apply.render_template',
     ).return_value = None

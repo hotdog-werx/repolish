@@ -1,9 +1,10 @@
 import json
+from collections import Counter
 from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.builder import create_cookiecutter_template
+from repolish.builder import stage_templates
 from repolish.config import RepolishConfig, load_config
 from repolish.hydration import (
     apply_generated_output,
@@ -33,12 +34,12 @@ def _create_staged_template(
 
     Returns:
         A mapping from merged-template-relative-path to the provider id that
-        supplied it.  Tests previously patched `create_cookiecutter_template`
+        supplied it.  Tests previously patched `stage_templates`
         and expected no return value; to keep them working we normalise the
         result here.
     """
     template_dirs = _gather_template_directories(config)
-    result = create_cookiecutter_template(
+    result = stage_templates(
         setup_input,
         template_dirs,
         template_overrides=config.template_overrides,
@@ -59,7 +60,7 @@ def _gather_template_directories(
     Providers drive the result; the `directories` field no longer exists.
     If `providers_order` is given we honour it, otherwise we use dict key order.
     The return type now uses the same element-level union as
-    :func:`create_cookiecutter_template` so `ci-checks` won't complain about
+    :func:`stage_templates` so `ci-checks` won't complain about
     invariant lists.  Callers need not change.
     """
     # each entry may be a plain Path or an (alias, Path) pair
@@ -174,7 +175,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
         alias_to_pid,
     )
 
-    # per-provider: typed context + file decisions
+    # per-provider: typed context + how many files each provider owns
     logger.info(
         'providers_context',
         providers=[
@@ -183,15 +184,20 @@ def command(config_path: Path, *, check_only: bool) -> int:
                 'context': ctx_to_dict(
                     providers.provider_contexts.get(alias_to_pid[alias]),
                 ),
-                'files': _collect_provider_files(providers, alias),
+                'file_count': sum(1 for r in providers.file_records if r.owner == alias),
             }
             for alias in aliases
             if alias in alias_to_pid
         ],
     )
-    # global cross-provider file ownership summary
+    # global cross-provider file ownership summary with aggregated breakdowns
+    _mode_counts = Counter(r.mode.value for r in providers.file_records)
+    _owner_counts = Counter(r.owner for r in providers.file_records)
     logger.info(
         'files_summary',
+        total=len(providers.file_records),
+        by_mode=dict(_mode_counts),
+        by_owner=dict(_owner_counts),
         files=_build_files_summary(providers),
     )
     logger.info(

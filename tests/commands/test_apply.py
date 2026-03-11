@@ -103,7 +103,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         recorded['overrides'] = template_overrides
 
     mocker.patch(
-        'repolish.commands.apply.create_cookiecutter_template',
+        'repolish.commands.apply.stage_templates',
         fake_create,
     )
 
@@ -165,7 +165,7 @@ def test_apply_command_runs_with_valid_provider(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.create_cookiecutter_template',
+        'repolish.commands.apply.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.build_final_providers',
@@ -215,7 +215,7 @@ def test_check_only_with_diffs_returns_2(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.create_cookiecutter_template',
+        'repolish.commands.apply.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.build_final_providers',
@@ -235,19 +235,34 @@ def test_check_only_with_diffs_returns_2(
     assert rv == 2
 
 
-def _base_mocks(mocker: MockerFixture, tmp_path: Path, fake_config: object, providers: Providers) -> None:
+def _base_mocks(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    fake_config: object,
+    providers: Providers,
+) -> None:
     """Wire up the standard set of mocks used by the two coverage tests below."""
-    mocker.patch('repolish.commands.apply.load_config').return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
     mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
         tmp_path,
         tmp_path / 'in',
         tmp_path / 'out',
     )
-    mocker.patch('repolish.commands.apply.create_cookiecutter_template').return_value = None
-    mocker.patch('repolish.commands.apply.build_final_providers').return_value = providers
-    mocker.patch('repolish.commands.apply.preprocess_templates').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.stage_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = providers
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
     mocker.patch('repolish.commands.apply.render_template').return_value = None
-    mocker.patch('repolish.commands.apply.apply_generated_output').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.apply_generated_output',
+    ).return_value = None
 
 
 def test_apply_with_template_mapping_in_file_mappings(
