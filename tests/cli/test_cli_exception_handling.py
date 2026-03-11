@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
+import pytest_mock
 
 from repolish.cli.main import app
+from repolish.cli.testing import CliRunner
 
 runner = CliRunner()
 
@@ -78,3 +79,17 @@ def test_cli_exception_handling(
 
     if case.error_has:
         assert case.error_has in str(exc_info.value)
+
+
+def test_run_cli_command_non_zero_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """run_cli_command raises SystemExit when the command returns a non-zero code."""
+    mocker.patch('repolish.cli.apply.command', return_value=1)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['apply'])
+
+    assert result.exit_code == 1

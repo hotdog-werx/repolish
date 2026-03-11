@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_mock
-from typer.testing import CliRunner
 
+from repolish.cli.testing import CliRunner
 from repolish.linker import Symlink
 from repolish.linker.decorator import resource_linker, resource_linker_cli
 from tests.linker.conftest import (

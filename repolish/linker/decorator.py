@@ -5,13 +5,14 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
-import typer
+import cyclopts
+from cyclopts import Parameter
 from hotlog import (
     configure_logging,
     get_logger,
     resolve_verbosity,
-    verbosity_option,
 )
 
 from repolish.config import ProviderInfo, ProviderSymlink
@@ -19,16 +20,6 @@ from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
 
 logger = get_logger(__name__)
-
-# Module-level Typer option singletons to avoid B008
-_FORCE_OPTION = typer.Option(
-    default=False,
-    help='Force recreation even if target already exists and is correct',
-)
-_INFO_OPTION = typer.Option(
-    default=False,
-    help='Output JSON with source/target information instead of linking',
-)
 
 
 @dataclass
@@ -176,25 +167,42 @@ def resource_linker(
     resolved_source_dir = package_root / Path(default_source_dir)
     default_target_base_path = Path(default_target_base)
 
-    def decorator(func: Callable) -> typer.Typer:
-        link_app = typer.Typer(add_completion=False)
-
-        @link_app.command(
+    def decorator(func: Callable) -> cyclopts.App:
+        link_app = cyclopts.App(
             help=f'Link {library_name} resources to your project.',
         )
+
+        @link_app.default
         def _command(
             *,
-            source_dir: Path = typer.Option(  # noqa: B008
-                resolved_source_dir,
-                help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
-            ),
-            target_dir: Path = typer.Option(  # noqa: B008
-                default_target_base_path / library_name,
-                help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
-            ),
-            force: bool = _FORCE_OPTION,
-            info: bool = _INFO_OPTION,
-            verbose: int = verbosity_option,
+            source_dir: Annotated[
+                Path,
+                Parameter(
+                    help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
+                ),
+            ] = resolved_source_dir,
+            target_dir: Annotated[
+                Path,
+                Parameter(
+                    help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
+                ),
+            ] = default_target_base_path / library_name,
+            force: Annotated[
+                bool,
+                Parameter(
+                    help='Force recreation even if target already exists and is correct',
+                ),
+            ] = False,
+            info: Annotated[
+                bool,
+                Parameter(
+                    help='Output JSON with source/target information instead of linking',
+                ),
+            ] = False,
+            verbose: Annotated[
+                int,
+                Parameter(name=['-v', '--verbose'], count=True),
+            ] = 0,
         ) -> None:
             verbosity = resolve_verbosity(verbose=verbose)
             configure_logging(verbosity=verbosity)
@@ -233,7 +241,7 @@ def resource_linker(
                 func()
             except Exception as e:
                 logger.exception('linking_failed', error=str(e))
-                raise typer.Exit(1) from None
+                raise SystemExit(1) from None
 
         return link_app
 
@@ -246,7 +254,7 @@ def resource_linker_cli(
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
-) -> typer.Typer:
+) -> cyclopts.App:
     """Create a resource linker CLI function.
 
     This is a simpler alternative to the @resource_linker decorator.
@@ -261,7 +269,7 @@ def resource_linker_cli(
             Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
 
     Returns:
-        A callable that runs the resource linking CLI
+        A :class:`cyclopts.App` that runs the resource linking CLI.
 
     Example:
         In your CLI module (e.g., mylib/cli.py):
@@ -290,8 +298,7 @@ def resource_linker_cli(
     # Create a function with auto-generated success message
     def _success_message() -> None:
         """Auto-generated success message."""
-        # typer.echo writes to the current sys.stdout so CliRunner captures it.
-        typer.echo(
+        print(  # noqa: T201
             f'- {default_source_dir} from {detected_library_name} are now available',
         )
 

@@ -2,9 +2,9 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from repolish.cli.main import app
+from repolish.cli.testing import CliRunner
 
 runner = CliRunner()
 

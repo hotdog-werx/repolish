@@ -1,27 +1,27 @@
 from pathlib import Path
+from typing import Annotated
 
-import typer
+from cyclopts import Parameter
 
 from repolish.cli.utils import run_cli_command
 from repolish.commands.apply import command
 
-# Module-level constants for Typer options to avoid B008
-DEFAULT_CONFIG = Path('repolish.yaml')
-CONFIG_OPTION = typer.Option(
-    DEFAULT_CONFIG,
-    '--config',
-    help='Path to the repolish YAML configuration file',
-)
-CHECK_OPTION = typer.Option(
-    default=False,
-    help='Load config and create context (dry-run check)',
-)
+_DEFAULT_CONFIG = Path('repolish.yaml')
 
 
 def apply(
-    config: Path = CONFIG_OPTION,
+    config: Annotated[
+        Path,
+        Parameter(
+            name=['--config', '-c'],
+            help='Path to the repolish YAML configuration file',
+        ),
+    ] = _DEFAULT_CONFIG,
     *,
-    check: bool = CHECK_OPTION,
+    check: Annotated[
+        bool,
+        Parameter(help='Load config and create context (dry-run check)'),
+    ] = False,
 ) -> None:
     """Apply templates to project."""
     run_cli_command(lambda: command(config, check_only=check))

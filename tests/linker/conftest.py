@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Any, TypedDict
 
+import cyclopts
 import pytest
 import pytest_mock
-import typer
 
 from repolish.config import ProviderInfo
 from repolish.linker.decorator import resource_linker
@@ -26,8 +26,8 @@ class MockedPackageDict(TypedDict):
     mock_link_resources: Any
 
 
-# Callable alias for the typer app returned by the resource_linker decorator.
-BasicLinkCliFixture = typer.Typer
+# Type alias for the cyclopts App returned by the resource_linker decorator.
+BasicLinkCliFixture = cyclopts.App
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def mocked_package(tmp_path: Path, mocker: pytest_mock.MockerFixture):
 
 
 @pytest.fixture
-def basic_link_cli(mocked_package: dict[str, Any]) -> typer.Typer:
+def basic_link_cli(mocked_package: dict[str, Any]) -> cyclopts.App:
     """Fixture that returns a basic decorated link_cli function."""
 
     @resource_linker(
