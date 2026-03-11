@@ -3,9 +3,6 @@ from tests.providers_inputs.shared import CtxA, InputA
 
 
 class ProviderA(Provider[CtxA, InputA]):
-    def get_provider_name(self):
-        return 'a'
-
     def create_context(self):
         return CtxA()
 

@@ -30,9 +30,6 @@ def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # n
             readme_ext: str = 'txt'
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 
@@ -67,9 +64,6 @@ def test_create_file_mappings_accepts_pydantic_extra_context(tmp_path: Path):
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 
@@ -104,9 +98,6 @@ def test_template_mapping_file_mode_create_only_includes_in_create_only(
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 
@@ -137,9 +128,6 @@ def test_template_mapping_file_mode_delete_marks_for_deletion(tmp_path: Path):
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 

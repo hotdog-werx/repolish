@@ -45,9 +45,6 @@ class DummyProvider(_ProviderBase):
     def __init__(self, name: str = 'dummy') -> None:
         self._name = name
 
-    def get_provider_name(self) -> str:
-        return self._name
-
     def create_context(self) -> BaseModel | dict:
         return {}
 
@@ -62,9 +59,6 @@ def test_process_file_mappings_skips_none_values() -> None:
     """
 
     class Minimal(_ProviderBase):
-        def get_provider_name(self) -> str:
-            return 'm'
-
         def create_context(self) -> dict:
             return {}
 
@@ -78,13 +72,7 @@ def test_process_file_mappings_skips_none_values() -> None:
                 'b.txt': 'tmpl',
             }
 
-    acc2 = Accumulators(
-        merged_anchors={},
-        merged_file_mappings={},
-        create_only_set=set(),
-        delete_set=set(),
-        history={},
-    )
+    acc2 = Accumulators()
     fm = Minimal().create_file_mappings({})
     process_file_mappings('m', fm, acc2)
     assert acc2.merged_file_mappings == {'b.txt': 'tmpl'}
@@ -94,13 +82,7 @@ def test_process_file_mappings_skips_none_values() -> None:
 
 
 def test_process_phase_two_skips_missing_instance():
-    acc = Accumulators(
-        merged_anchors={},
-        merged_file_mappings={},
-        create_only_set=set(),
-        delete_set=set(),
-        history={},
-    )
+    acc = Accumulators()
     # module_cache entry with no instance
     _process_phase_two([('p', {})], {}, acc)
     # nothing should have changed
@@ -124,7 +106,8 @@ def test_synthesize_provider_context_skips_already_populated() -> None:
 
     class Sentinel(DummyProvider):
         def create_context(self) -> BaseContext:
-            raise AssertionError('create_context must not be called')
+            msg = 'create_context must not be called'
+            raise AssertionError(msg)
 
     existing = BaseContext()
     provider_contexts: dict[str, BaseContext] = {'p': existing}
@@ -137,25 +120,22 @@ def test_synthesize_provider_context_skips_already_populated() -> None:
     assert provider_contexts['p'] is existing
 
 
-def test_build_all_providers_list_swallows_broken_schema_and_name() -> None:
-    """Exception branches for `get_inputs_schema`, `get_provider_name`, and
-    `create_context` are all swallowed.
+def test_build_all_providers_list_swallows_broken_schema() -> None:
+    """Exception branches for `get_inputs_schema` and `create_context` are swallowed.
 
     A provider that raises in any of those methods must not abort the build:
     * `get_inputs_schema` raising -> `input_type=None`
-    * `get_provider_name` raising -> `name=None`
     * `create_context` raising  -> provider_contexts is left unchanged
     """
 
     class BrokenProvider(DummyProvider):
-        def get_inputs_schema(self) -> type[BaseModel]:  # type: ignore[override]
-            raise RuntimeError('broken schema')
+        def get_inputs_schema(self) -> type[BaseModel]:
+            msg = 'broken get_inputs_schema'
+            raise RuntimeError(msg)
 
-        def get_provider_name(self) -> str:
-            raise RuntimeError('broken name')
-
-        def create_context(self) -> BaseContext:  # type: ignore[override]
-            raise RuntimeError('broken create_context')
+        def create_context(self) -> BaseContext:
+            msg = 'broken create_context'
+            raise RuntimeError(msg)
 
     inst = BrokenProvider()
     module_cache = [('bp', {})]
@@ -169,7 +149,6 @@ def test_build_all_providers_list_swallows_broken_schema_and_name() -> None:
     assert len(result) == 1
     entry = result[0]
     assert entry.input_type is None
-    assert entry.name is None
     assert entry.provider_id == 'bp'
 
     # create_context raising must not add an entry to provider_contexts
@@ -226,7 +205,6 @@ def test_gather_received_inputs_variants() -> None:
     all_providers_list = [
         ProviderEntry(
             provider_id='p1',
-            name=None,
             alias='p1',
             context={},
             input_type=None,
@@ -289,9 +267,6 @@ class Ctx(BaseContext):
 
 
 class Sender(Provider[Ctx, Msg]):
-    def get_provider_name(self):
-        return 'sender'
-
     def create_context(self):
         # include a nested model to exercise dot-notation overrides
         return Ctx(foo='original', repo=Repo(owner='me', name='init'))
@@ -315,9 +290,6 @@ class RecCtx(BaseContext):
 
 
 class Receiver(Provider[RecCtx, Msg]):
-    def get_provider_name(self):
-        return 'receiver'
-
     def create_context(self):
         return RecCtx()
 
@@ -411,9 +383,6 @@ class IntCtx(BaseContext):
 
 
 class P(Provider[IntCtx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p'
-
     def create_context(self):
         return IntCtx()
 """
@@ -459,9 +428,6 @@ class SimpleCtx(BaseContext):
 
 
 class P(Provider[SimpleCtx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p'
-
     def create_context(self):
         return SimpleCtx()
 """
@@ -508,9 +474,6 @@ class Ctx(BaseContext):
 
 
 class P(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p'
-
     def create_context(self):
         return Ctx()
 """

@@ -37,9 +37,6 @@ class ProviderCase:
                         a: int = 0
 
                     class MyProvider(Provider[Ctx, BaseInputs]):
-                        def get_provider_name(self):
-                            return 'my_provider'
-
                         def create_context(self):
                             return Ctx(a=1)
 
@@ -70,9 +67,6 @@ class ProviderCase:
                         keep: bool = False
 
                     class ProviderOne(Provider[Ctx, BaseInputs]):
-                        def get_provider_name(self):
-                            return 'provider_one'
-
                         def create_context(self):
                             return Ctx(a=1, keep=True)
 
@@ -95,9 +89,6 @@ class ProviderCase:
                         a: int = 0
 
                     class ProviderTwo(Provider[Ctx, BaseInputs]):
-                        def get_provider_name(self):
-                            return 'provider_two'
-
                         def create_context(self):
                             return Ctx(a=2)
 
@@ -127,9 +118,6 @@ class ProviderCase:
                         pass
 
                     class MyProvider(Provider[Ctx, BaseInputs]):
-                        def get_provider_name(self):
-                            return 'my_provider'
-
                         def create_context(self):
                             return Ctx()
 
@@ -200,16 +188,10 @@ def test_multiple_provider_classes_with_all(tmp_path: Path):
             which: str = 'B'
 
         class A(Provider):
-            def get_provider_name(self):
-                return 'A'
-
             def create_context(self):
                 return ACtx()
 
         class B(Provider):
-            def get_provider_name(self):
-                return 'B'
-
             def create_context(self):
                 return BCtx()
 
@@ -222,7 +204,7 @@ def test_multiple_provider_classes_with_all(tmp_path: Path):
     pid = next(iter(providers.provider_contexts.keys()))
     ctx = providers.provider_contexts[pid]
     assert hasattr(ctx, 'which')
-    assert ctx.which == 'A'  # type: ignore[union-attr]
+    assert ctx.which == 'A'
 
 
 def test_multiple_providers_all_conflict(tmp_path: Path):
@@ -239,16 +221,10 @@ def test_multiple_providers_all_conflict(tmp_path: Path):
         from repolish.loader.models import Provider, ProviderEntry
 
         class A(Provider):
-            def get_provider_name(self):
-                return 'A'
-
             def create_context(self):
                 return {'which': 'A'}
 
         class B(Provider):
-            def get_provider_name(self):
-                return 'B'
-
             def create_context(self):
                 return {'which': 'B'}
 
@@ -277,9 +253,6 @@ class Ctx(BaseContext):
     pass
 
 class Checker(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'pname'
-
     def create_context(self):
         return Ctx()
 
@@ -323,8 +296,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseModel]):
-    def get_provider_name(self):
-        return 'p'
     def create_context(self):
         return Ctx()
 """,
@@ -359,14 +330,10 @@ class Ctx(BaseModel):
     pass
 
 class One(Provider[Ctx, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'one'
     def create_context(self) -> Ctx:
         return Ctx()
 
 class Two(Provider[Ctx, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'two'
     def create_context(self) -> Ctx:
         return Ctx()
 """,
@@ -389,9 +356,6 @@ def test_create_providers_records_provider_contexts(tmp_path: Path):
             a: int = 0
 
         class ProviderA(Provider[CtxA, BaseInputs]):
-            def get_provider_name(self):
-                return 'provider_a'
-
             def create_context(self):
                 return CtxA(a=1)
 
@@ -407,9 +371,6 @@ def test_create_providers_records_provider_contexts(tmp_path: Path):
             b: int = 0
 
         class ProviderB(Provider[CtxB, BaseInputs]):
-            def get_provider_name(self):
-                return 'provider_b'
-
             def create_context(self):
                 return CtxB(b=42)
 
@@ -451,9 +412,6 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
                 val: int = 1
 
             class AProvider(Provider[AContext, BaseInputs]):
-                def get_provider_name(self) -> str:
-                    return 'prov-a'
-
                 def create_context(self) -> AContext:
                     return AContext()
 
@@ -479,9 +437,6 @@ def test_three_phase_input_routing_and_finalize(tmp_path: Path):
                 register_component: str
 
             class BProvider(Provider[BContext, BInputs]):
-                def get_provider_name(self) -> str:
-                    return 'prov-b'
-
                 def create_context(self) -> BContext:
                     return BContext()
 
@@ -545,8 +500,6 @@ class MyCtx(BaseContext):
     value: int = 1
 
 class MyProvider(Provider[MyCtx, BaseInputs]):
-    def get_provider_name(self):
-        return 'foo'
     def create_context(self) -> MyCtx:
         return MyCtx()
 """,
@@ -613,8 +566,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'foo'
     def create_context(self) -> Ctx:
         return Ctx()
 """,
@@ -776,9 +727,6 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
                 name: str = 'from-class'
 
             class MyProvider(Provider[Ctx, BaseInputs]):
-                def get_provider_name(self) -> str:
-                    return 'my'
-
                 def create_context(self) -> Ctx:
                     return Ctx(name='created-by-class')
             """,

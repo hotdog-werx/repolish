@@ -24,9 +24,6 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
             preferred_source: str = 'provider_a'
 
         class A(Provider[ACtx, BaseInputs]):
-            def get_provider_name(self):
-                return 'prov_a'
-
             def create_context(self):
                 return ACtx()
 
@@ -50,9 +47,6 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
             merge_strategy: str = 'unknown'
 
         class B(Provider[BCtx, PrefInput]):
-            def get_provider_name(self):
-                return 'prov_b'
-
             def create_context(self):
                 return BCtx()
 

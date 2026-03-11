@@ -23,9 +23,6 @@ from repolish.loader.three_phase import (
 
 
 class BadInst(_ProviderBase[BaseContext, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'i'
-
     def create_context(self) -> BaseContext:
         raise ValueError
 
@@ -59,9 +56,6 @@ def test_validate_raw_inputs_wrong_model() -> None:
 
 def test_finalize_provider_contexts_error_path() -> None:
     class F(_ProviderBase):
-        def get_provider_name(self) -> str:
-            return 'f'
-
         def create_context(self) -> BaseContext:
             return BaseContext()
 

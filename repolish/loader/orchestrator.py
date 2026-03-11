@@ -6,10 +6,8 @@ from typing import Any, cast
 
 from repolish.loader import (
     Accumulators,
-    Decision,
     ProviderEntry,
     Providers,
-    TemplateMapping,
 )
 from repolish.loader import Provider as _ProviderBase
 from repolish.loader._log import logger
@@ -171,7 +169,6 @@ def _build_all_providers_list(
     for idx, (pid, _mod) in enumerate(module_cache):
         schema = None
         inst = instances[idx]
-        name: str | None = None
         alias: str | None = None
         inst_type: type[Any] | None = None
         ctx_obj = provider_contexts.get(pid)
@@ -183,13 +180,8 @@ def _build_all_providers_list(
             except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
                 # DO LATER: consider logging this error so providers can diagnose their broken schema
                 schema = None
-            # `name` is the provider's own name; `alias` is the
-            # configuration key (here we mirror provider_id since that's what
-            # create_providers passes).
-            try:
-                name = inst.get_provider_name()
-            except Exception:  # noqa: BLE001 - avoid failing the build on a broken provider
-                name = None
+            # `alias` is the configuration key (here we mirror provider_id
+            # since that's what create_providers passes).
             alias = pid
             inst_type = type(inst)
 
@@ -205,7 +197,6 @@ def _build_all_providers_list(
         all_providers_list.append(
             ProviderEntry(
                 provider_id=pid,
-                name=name,
                 alias=alias,
                 inst_type=inst_type,
                 context=ctx_obj or BaseContext(),
@@ -391,13 +382,7 @@ def _run_three_phase(
     and extracting helpers reduces the function's signature and cognitive
     complexity while preserving behaviour.
     """
-    # initialize accumulators that were previously defined at the top of
-    # `create_providers`.
-    merged_anchors: dict[str, str] = {}
-    merged_file_mappings: dict[str, str | TemplateMapping] = {}
-    create_only_set: set[Path] = set()
-    delete_set: set[Path] = set()
-    history: dict[str, list[Decision]] = {}
+    accum = Accumulators()
 
     # gather metadata and basic helper structures
     instances = build_provider_metadata(module_cache)
@@ -466,13 +451,6 @@ def _run_three_phase(
     # in the returned `Providers` object include any project-supplied values.
     _apply_provider_overrides(provider_contexts, provider_overrides)
 
-    accum = Accumulators(
-        merged_anchors=merged_anchors,
-        merged_file_mappings=merged_file_mappings,
-        create_only_set=create_only_set,
-        delete_set=delete_set,
-        history=history,
-    )
     _process_phase_two(module_cache, provider_contexts, accum)
 
     return Providers(

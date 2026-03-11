@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from hotlog import get_logger
@@ -13,7 +14,7 @@ from repolish.hydration import (
     render_template,
     rich_print_diffs,
 )
-from repolish.loader.models import Providers
+from repolish.loader.models import Providers, build_file_records
 from repolish.misc import ctx_to_dict
 from repolish.utils import run_post_process
 from repolish.version import __version__
@@ -82,106 +83,132 @@ def _gather_template_directories(
     return template_dirs
 
 
-def _compute_migrated_list(
+def _alias_pid_maps(
+    config: RepolishConfig,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Return (alias→pid, pid→alias) maps built from config.providers."""
+    alias_to_pid = {alias: info.target_dir.as_posix() for alias, info in config.providers.items()}
+    return alias_to_pid, {v: k for k, v in alias_to_pid.items()}
+
+
+def _ordered_aliases(config: RepolishConfig) -> list[str]:
+    """Return provider aliases in the configured or default order."""
+    return config.providers_order or list(config.providers.keys())
+
+
+def _collect_provider_files(
+    providers: Providers,
+    alias: str,
+) -> list[dict[str, str]]:
+    """Return sorted list of {path, mode} for files this provider contributes."""
+    return [{'path': r.path, 'mode': r.mode.value} for r in providers.file_records if r.owner == alias]
+
+
+def _build_files_summary(
+    providers: Providers,
+) -> list[dict[str, str]]:
+    """Return sorted list of {path, owner, mode} summarising all managed files."""
+    return [{'path': r.path, 'owner': r.owner, 'mode': r.mode.value} for r in providers.file_records]
+
+
+def _write_provider_debug_files(
+    base_dir: Path,
     config: RepolishConfig,
     providers: Providers,
-) -> list[dict[str, object]]:
-    """Return an ordered list of migrated provider contexts.
+    alias_to_pid: dict[str, str],
+) -> None:
+    """Write per-provider context and file decisions to .repolish/_/.
 
-    Each entry includes the provider alias (if known), the template directory
-    used as the loader provider id, and the context that provider captured.
-    The ordering respects `config.providers_order` when provided, and then
-    appends any other migrated providers.
+    Each provider gets a `provider-context.<alias>.json` file containing its
+    typed context and the list of files it controls.  Written after staging so
+    `template_sources` is already populated.
     """
-    # build quick lookups to avoid nested loops
-    alias_to_pid: dict[str, str] = {}
-    for alias, info in config.providers.items():
-        alias_to_pid[alias] = info.target_dir.as_posix()
+    debug_dir = base_dir / '.repolish' / '_'
+    debug_dir.mkdir(parents=True, exist_ok=True)
 
-    def pid_for_alias(alias: str) -> str | None:
-        return alias_to_pid.get(alias)
-
-    result: list[dict[str, object]] = []
-    seen: set[str] = set()
-
-    # honour explicit ordering first
-    for alias in config.providers_order or []:
-        pid = pid_for_alias(alias)
+    for alias in _ordered_aliases(config):
+        pid = alias_to_pid.get(alias)
         if not pid:
             continue
-        result.append(
-            {
-                'alias': alias,
-                'directory': pid,
-                'context': ctx_to_dict(providers.provider_contexts.get(pid)),
-            },
+        ctx = providers.provider_contexts.get(pid)
+        data: dict[str, object] = {
+            'alias': alias,
+            'context': ctx_to_dict(ctx),
+            'files': _collect_provider_files(providers, alias),
+        }
+        out_path = debug_dir / f'provider-context.{alias}.json'
+        out_path.write_text(
+            json.dumps(data, indent=2, default=str),
+            encoding='utf-8',
         )
-        seen.add(pid)
-
-    return result
-
-
-def _log_final_providers_event(
-    config: RepolishConfig,
-    providers: Providers,
-    migrated_list: list[dict[str, object]],
-) -> None:
-    """Emit the `final_providers_generated` logger event.
-
-    Extracts fields from `config` and `providers` to keep the call site
-    concise.
-    """
-    logger.info(
-        'final_providers_generated',
-        template_directories=[str(p[1] if isinstance(p, tuple) else p) for p in _gather_template_directories(config)],
-        context={'providers': migrated_list},
-        delete_paths=[p.as_posix() for p in providers.delete_files],
-        delete_history={
-            key: [{'source': d.source, 'action': d.action.value} for d in decisions]
-            for key, decisions in providers.delete_history.items()
-        },
-    )
 
 
 def command(config_path: Path, *, check_only: bool) -> int:
     """Run repolish with the given config and options."""
-    # Logging is already configured in the callback
-
-    # Log the running version early so CI logs always show which repolish wrote the output
-    logger.info('running_repolish', version=__version__)
+    logger.info('repolish_started', version=__version__)
 
     config = load_config(config_path)
     providers = build_final_providers(config)
+    alias_to_pid, pid_to_alias = _alias_pid_maps(config)
+    config_pid = config.config_dir.as_posix()
+    aliases = _ordered_aliases(config)
 
-    # compute contexts for logging
-    migrated_list = _compute_migrated_list(config, providers)
-    _log_final_providers_event(
-        config,
-        providers,
-        migrated_list,
-    )
+    # earliest possible signal: which providers are in play
+    logger.info('providers_loaded', providers=aliases)
 
-    # Prepare staging and template
+    # staging must happen before we can report per-provider template ownership
     base_dir, setup_input, setup_output = prepare_staging(config)
     sources = _create_staged_template(setup_input, config)
-    # attach file provenance map so rendering can pick per-file context
     providers.template_sources = sources
+    providers.file_records = build_file_records(
+        providers,
+        pid_to_alias,
+        config_pid,
+    )
+
+    # write per-provider debug JSON to .repolish/_/provider-context.<alias>.json
+    _write_provider_debug_files(
+        base_dir,
+        config,
+        providers,
+        alias_to_pid,
+    )
+
+    # per-provider: typed context + file decisions
+    logger.info(
+        'providers_context',
+        providers=[
+            {
+                'alias': alias,
+                'context': ctx_to_dict(
+                    providers.provider_contexts.get(alias_to_pid[alias]),
+                ),
+                'files': _collect_provider_files(providers, alias),
+            }
+            for alias in aliases
+            if alias in alias_to_pid
+        ],
+    )
+    # global cross-provider file ownership summary
+    logger.info(
+        'files_summary',
+        files=_build_files_summary(providers),
+    )
+    logger.info(
+        'providers_ready',
+        suggestion='see .repolish/_ for extra information on each provider',
+    )
 
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, base_dir)
 
-    # Render templates using Jinja2 (cookiecutter support removed).
+    # Render templates using Jinja2
     render_template(setup_input, providers, setup_output)
 
-    # Run any configured post-processing commands (formatters, linters, etc.)
-    # Run them in the generated output directory so tools operate on the files
-    # that will be checked or applied. If a command fails, surface an error
-    # and exit non-zero so CI will fail.
-    # run post_process within the rendered project folder inside setup_output
+    # Run any configured post-processing commands in the rendered output dir
     post_cwd = setup_output / 'repolish'
     run_post_process(config.post_process, post_cwd)
 
-    # Decide whether to check or apply generated output
     if check_only:
         diffs = check_generated_output(setup_output, providers, base_dir)
         if diffs:
@@ -192,6 +219,5 @@ def command(config_path: Path, *, check_only: bool) -> int:
             rich_print_diffs(diffs)
         return 2 if diffs else 0
 
-    # apply into project
     apply_generated_output(setup_output, providers, base_dir)
     return 0

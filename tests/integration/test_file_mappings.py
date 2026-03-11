@@ -29,7 +29,6 @@ def test_apply_generated_output_with_file_mappings(tmp_path: Path):
 
     # Create providers with file_mappings
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={
@@ -72,7 +71,6 @@ def test_apply_skips_repolish_prefix_files_not_in_mappings(tmp_path: Path):
     (repolish_dir / 'regular.txt').write_text('regular')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},  # Empty mappings
@@ -107,7 +105,6 @@ def test_check_generated_output_with_file_mappings(tmp_path: Path):
     (base_dir / 'config.yml').write_text('old content')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.config.yml'},
@@ -136,7 +133,6 @@ def test_check_reports_missing_mapped_source(tmp_path: Path):
     base_dir.mkdir()
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.missing.yml'},
@@ -166,7 +162,6 @@ def test_check_reports_missing_mapped_destination(tmp_path: Path):
     # Destination does NOT exist
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.config.yml'},
@@ -198,9 +193,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p_a'
-
     def create_context(self):
         return Ctx()
 
@@ -216,9 +208,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p_b'
-
     def create_context(self):
         return Ctx()
 
@@ -251,9 +240,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p_a'
-
     def create_context(self):
         return Ctx()
 
@@ -268,9 +254,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self):
-        return 'p_b'
-
     def create_context(self):
         return Ctx()
 
@@ -300,7 +283,6 @@ def test_check_skips_regular_file_when_used_as_mapping_source(tmp_path: Path):
 
     # Map it to a different destination
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'final-config.yml': 'template-config.yml'},
@@ -333,7 +315,6 @@ def test_check_no_diff_when_mapped_files_identical(tmp_path: Path):
     (base_dir / 'config.yml').write_text('identical content')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.config.yml'},
@@ -361,7 +342,6 @@ def test_apply_warns_when_mapped_source_missing(
     base_dir.mkdir()
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.missing.yml'},
@@ -396,7 +376,6 @@ def test_apply_skips_regular_file_when_used_as_mapping_source(tmp_path: Path):
 
     # Map it to a different destination
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'final-config.yml': 'template-config.yml'},
@@ -442,7 +421,6 @@ def test_nested_conditional_files_in_subdirectories(tmp_path: Path):
 
     # Map only one of the conditional files
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={

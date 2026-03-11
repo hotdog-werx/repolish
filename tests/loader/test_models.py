@@ -22,9 +22,6 @@ def test_provider_is_abstract_and_requires_methods():
 
 def test_minimal_provider_defaults_and_behavior():
     class MinimalProvider(Provider[_TContext, _TInputs]):
-        def get_provider_name(self) -> str:
-            return 'minimal'
-
         def create_context(self) -> _TContext:
             return _TContext(v=42)
 
@@ -42,9 +39,6 @@ def test_minimal_provider_defaults_and_behavior():
 
 def test_provider_can_override_optional_methods():
     class OptProvider(Provider[_TContext, _TInputs]):
-        def get_provider_name(self) -> str:
-            return 'opt'
-
         def create_context(self) -> _TContext:
             return _TContext()
 

@@ -24,9 +24,6 @@ def test_config_level_provenance(tmp_path: Path):
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 
@@ -96,9 +93,6 @@ def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
             foo: str = 'orig'
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
     """),

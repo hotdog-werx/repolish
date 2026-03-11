@@ -27,7 +27,6 @@ def test_apply_regular_files_still_overwritten(tmp_path: Path):
 
     # Only __init__.py is create-only
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -62,7 +61,6 @@ def test_check_skips_create_only_when_exists(tmp_path: Path):
     (base_dir / 'pkg' / '__init__.py').write_text('# User content')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -92,7 +90,6 @@ def test_check_reports_create_only_when_missing(tmp_path: Path):
     (base_dir / 'pkg').mkdir()
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -128,7 +125,6 @@ def test_check_reports_regular_file_diff(tmp_path: Path):
 
     # Only __init__.py is create-only
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -163,7 +159,6 @@ def test_create_only_with_file_mappings(tmp_path: Path):
     (base_dir / 'regular.py').write_text('# Existing')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={'mapped.py': '_repolish.special.py'},
@@ -195,7 +190,6 @@ def test_create_only_missing_gets_created(tmp_path: Path):
 
     # File doesn't exist
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -229,7 +223,6 @@ def test_create_only_files_with_delete_files_conflict(tmp_path: Path):
 
     # File is in both create_only_files and delete_files
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[Path('config.yml')],
         file_mappings={},
@@ -259,7 +252,6 @@ def test_check_create_only_with_delete_conflict(tmp_path: Path):
     (base_dir / 'config.yml').write_text('# Different')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[Path('config.yml')],
         file_mappings={},
@@ -300,7 +292,6 @@ def test_multiple_create_only_files(tmp_path: Path):
     # pkg2 and pkg3 don't exist (should be created)
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -343,7 +334,6 @@ def test_create_only_with_file_mapping_skips_when_exists(tmp_path: Path):
     )
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={
@@ -378,7 +368,6 @@ def test_create_only_with_file_mapping_creates_when_missing(tmp_path: Path):
     # Destination file doesn't exist yet
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={
@@ -417,7 +406,6 @@ def test_check_skips_create_only_file_mapping_when_exists(tmp_path: Path):
     )
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={

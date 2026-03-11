@@ -18,16 +18,13 @@ from repolish.loader.models import (
 from tests.providers_inputs.shared import CtxA, InputA
 
 
-def test_provider_input_schema_instantiation() -> None:  # noqa: C901
+def test_provider_input_schema_instantiation() -> None:
     """Helpers correctly locate the schema and instantiate a blank input."""
 
     class SomeInputs(BaseModel):
         foo: str = 'x'
 
     class SomeProvider(Provider[BaseContext, SomeInputs]):
-        def get_provider_name(self) -> str:
-            return 'some'
-
         def create_context(self) -> BaseContext:
             return BaseContext()
 
@@ -43,9 +40,6 @@ def test_provider_input_schema_instantiation() -> None:  # noqa: C901
 
     # unknown provider class returns None
     class Other(Provider[BaseContext, BaseModel]):
-        def get_provider_name(self) -> str:
-            return 'other'
-
         def create_context(self) -> BaseContext:
             return BaseContext()
 
@@ -67,9 +61,6 @@ def test_provider_input_schema_instantiation() -> None:  # noqa: C901
 
     # unknown provider class returns None
     class Other(Provider[BaseContext, BaseModel]):
-        def get_provider_name(self) -> str:
-            return 'other'
-
         def create_context(self) -> BaseContext:
             return BaseContext()
 
@@ -91,30 +82,22 @@ def test_get_provider_context_lookup() -> None:
         value: int = 42
 
     class Prov1(Provider[Ctx, BaseModel]):
-        def get_provider_name(self) -> str:
-            return 'prov1'
-
         def create_context(self) -> Ctx:
             return Ctx()
 
     class Prov2(Provider[BaseContext, BaseModel]):
-        def get_provider_name(self) -> str:
-            return 'prov2'
-
         def create_context(self) -> BaseContext:
             return BaseContext()
 
     entries: list[ProviderEntry] = [
         ProviderEntry(
             provider_id='p1',
-            name='prov1',
             alias='alias1',
             inst_type=Prov1,
             context=Ctx(),
         ),
         ProviderEntry(
             provider_id='p2',
-            name='prov2',
             alias='alias2',
             inst_type=Prov2,
             context=BaseContext(),
@@ -142,9 +125,6 @@ def test_provider_inputs_module_filtering() -> None:
     # receive; it does not constrain what the method returns. the loader will
     # match emitted values to recipients' schemas.
     class Btest(Provider[Dummy, InputA]):
-        def get_provider_name(self) -> str:
-            return 'btest'
-
         def create_context(self) -> Dummy:
             return Dummy()
 
@@ -176,7 +156,6 @@ def test_provider_inputs_module_filtering() -> None:
         [
             ProviderEntry(
                 provider_id='a',
-                name=None,
                 alias='a',
                 context={},
                 input_type=InputA,

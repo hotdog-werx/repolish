@@ -126,9 +126,6 @@ def test_integration_emoji_encoding(
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'emoji'
-
             def create_context(self):
                 return Ctx()
         """),
@@ -185,8 +182,6 @@ class Ctx(BaseContext):
     pass
 
 class P(Provider[Ctx, BaseModel]):
-    def get_provider_name(self):
-        return 'p'
     def create_context(self):
         return Ctx()
 """,
@@ -214,7 +209,7 @@ class P(Provider[Ctx, BaseModel]):
     assert rv == 0
     captured = capsys.readouterr()
     out = captured.out
-    assert 'final_providers_generated' in out
+    assert 'providers_context' in out
     # ensure context section appears
     assert 'context' in out
     assert 'providers' in out
@@ -245,9 +240,6 @@ def test_cli_provider_order_with_overrides(
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p1'
-
             def create_context(self):
                 return Ctx()
         """),
@@ -266,9 +258,6 @@ def test_cli_provider_order_with_overrides(
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p2'
-
             def create_context(self):
                 return Ctx()
         """),

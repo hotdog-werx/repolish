@@ -28,7 +28,6 @@ def test_check_skips_file_when_marked_for_deletion(tmp_path: Path):
 
     # User marks it for deletion
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[Path('config.yml')],
         file_mappings={},
@@ -61,7 +60,6 @@ def test_check_skips_mapped_file_when_marked_for_deletion(tmp_path: Path):
 
     # File mapping maps it, but also marked for deletion
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[Path('final-config.yml')],
         file_mappings={'final-config.yml': '_repolish.config.yml'},
@@ -98,7 +96,6 @@ def test_apply_handles_file_then_delete(tmp_path: Path):
 
     # User marks it for deletion (wins over template)
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[Path('config.yml')],
         file_mappings={},

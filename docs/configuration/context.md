@@ -62,10 +62,9 @@ accepts one parameter, the loader will pass the merged context dict.
 ### Class-based providers (opt-in)
 
 New providers may be implemented as classes by subclassing
-`repolish.loader.models.Provider`. Only `get_provider_name()` and
-`create_context()` are required; other hooks such as `provide_inputs()` and
-`finalize_context()` are optional and have sensible defaults so module-style
-providers remain supported.
+`repolish.loader.models.Provider`. Only `create_context()` is required; other
+hooks such as `provide_inputs()` and `finalize_context()` are optional and have
+sensible defaults so module-style providers remain supported.
 
 The `Provider` class is generic in two parameters: the first describes the
 context model produced by `create_context()`, and the second is the **input
@@ -96,9 +95,6 @@ class MyCtx(BaseContext):
     feature_flag: bool = False
 
 class MyProvider(Provider[MyCtx, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'my-provider'
-
     def create_context(self) -> MyCtx:
         return MyCtx(feature_flag=True)
 ```

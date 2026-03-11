@@ -103,9 +103,6 @@ class Ctx(BaseModel):
     license: str = 'MIT'
 
 class MyProvider(Provider[Ctx, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'my-provider'
-
     def create_context(self) -> Ctx:
         return Ctx(shared_prefix='acme', license='Apache-2.0')
 

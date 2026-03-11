@@ -49,7 +49,6 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
 
     # Prepare a minimal providers object for preprocessing
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         delete_history={},
@@ -92,7 +91,6 @@ def test_preprocess_templates_writes_file_when_anchor_content_changes(
     )
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         delete_history={},

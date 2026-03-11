@@ -12,15 +12,12 @@ class MyContext(BaseModel):
     name: str = 'default'
 
 class MyProvider(Provider[MyContext, BaseModel]):
-    def get_provider_name(self) -> str:
-        return 'my-provider'
-
     def create_context(self) -> MyContext:
         return MyContext(name='overridden')
 
 Notes:
 -----
-- Only `get_provider_name()` and `create_context()` are required.
+- Only `create_context()` is required; all other methods are optional.
 - Optional methods have sensible defaults so subclasses implement only
   the behaviour they need.
 """
@@ -29,7 +26,7 @@ from __future__ import annotations
 
 import datetime
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path  # noqa: TC003 - used in Providers model with pydantic
 from typing import Any, Generic, TypeVar, cast
@@ -186,6 +183,21 @@ class TemplateMapping:
     source_provider: str | None = None
 
 
+@dataclass(frozen=True)
+class FileRecord:
+    """Resolved disposition for a single managed file.
+
+    `path` is the POSIX destination path.
+    `mode` is the effective FileMode (REGULAR, CREATE_ONLY, DELETE, KEEP).
+    `owner` is the config alias of the provider that controls this file,
+    or 'config' for entries driven by config.delete_files.
+    """
+
+    path: str
+    mode: FileMode
+    owner: str
+
+
 class Providers(BaseModel):
     """Structured provider contributions collected from all loaded providers.
 
@@ -222,21 +234,124 @@ class Providers(BaseModel):
     # renderer can later look up which provider owns a given template and
     # decide whether to use the provider's own context.
     template_sources: dict[str, str] = Field(default_factory=dict)
+    # unified file disposition list; populated by `build_file_records` after
+    # staging is complete.  empty until that function is called.
+    file_records: list[FileRecord] = Field(default_factory=list)
 
 
-class Accumulators(BaseModel):
+def _records_from_template_sources(
+    template_sources: dict[str, str],
+    create_only_posix: set[str],
+    pid_to_alias: dict[str, str],
+) -> dict[str, FileRecord]:
+    """Return FileRecord entries from staged template sources."""
+    files: dict[str, FileRecord] = {}
+    for rel_path, pid in template_sources.items():
+        owner = pid_to_alias.get(pid, pid)
+        mode = FileMode.CREATE_ONLY if rel_path in create_only_posix else FileMode.REGULAR
+        files[rel_path] = FileRecord(path=rel_path, mode=mode, owner=owner)
+    return files
+
+
+def _records_from_file_mappings(
+    file_mappings: dict[str, str | TemplateMapping],
+    pid_to_alias: dict[str, str],
+) -> dict[str, FileRecord]:
+    """Return FileRecord entries from explicit file_mappings."""
+    files: dict[str, FileRecord] = {}
+    for dest, src in file_mappings.items():
+        if isinstance(src, TemplateMapping):
+            raw_pid = src.source_provider or ''
+            owner = pid_to_alias.get(raw_pid, raw_pid or 'unknown')
+            files[dest] = FileRecord(path=dest, mode=src.file_mode, owner=owner)
+        else:
+            files[dest] = FileRecord(
+                path=dest,
+                mode=FileMode.REGULAR,
+                owner='unknown',
+            )
+    return files
+
+
+def _records_from_delete_files(
+    delete_files: list[Path],
+    delete_history: dict[str, list[Decision]],
+    pid_to_alias: dict[str, str],
+    config_pid: str,
+) -> dict[str, FileRecord]:
+    """Return FileRecord entries for paths scheduled for deletion."""
+    files: dict[str, FileRecord] = {}
+    for rel in delete_files:
+        path_str = rel.as_posix()
+        decisions = delete_history.get(path_str, [])
+        if decisions:
+            last_src = decisions[-1].source
+            owner = 'config' if last_src == config_pid else pid_to_alias.get(last_src, last_src)
+        else:
+            owner = 'unknown'
+        files[path_str] = FileRecord(
+            path=path_str,
+            mode=FileMode.DELETE,
+            owner=owner,
+        )
+    return files
+
+
+def build_file_records(
+    providers: Providers,
+    pid_to_alias: dict[str, str],
+    config_pid: str,
+) -> list[FileRecord]:
+    """Build the unified file disposition list from all provider contributions.
+
+    Call once after staging (when `template_sources` is populated).  The
+    result is stored on `providers.file_records` so downstream helpers can
+    read a single authoritative source instead of recombining multiple fields.
+
+    Ownership rules:
+    - regular/create_only: driven by `template_sources`
+    - mapping modes: taken from `TemplateMapping.file_mode`
+    - delete: last `Decision` in `delete_history`; source == config_pid -> owner 'config'
+    """
+    create_only_posix = {p.as_posix() for p in providers.create_only_files}
+    files: dict[str, FileRecord] = {}
+    files.update(
+        _records_from_template_sources(
+            providers.template_sources,
+            create_only_posix,
+            pid_to_alias,
+        ),
+    )
+    files.update(
+        _records_from_file_mappings(providers.file_mappings, pid_to_alias),
+    )
+    files.update(
+        _records_from_delete_files(
+            providers.delete_files,
+            providers.delete_history,
+            pid_to_alias,
+            config_pid,
+        ),
+    )
+    return sorted(files.values(), key=lambda r: r.path)
+
+
+@dataclass
+class Accumulators:
     """Internal accumulator used during two-phase provider merging.
 
-    This mirrors the runtime mutable containers used by the orchestrator to
-    collect anchors, file mappings, create-only sets, delete sets and the
+    Collects anchors, file mappings, create-only sets, delete sets and the
     provenance history before converting to the public `Providers` model.
+    All fields default to empty so callers can construct with `Accumulators()`.
     """
 
-    merged_anchors: dict[str, str]
-    merged_file_mappings: dict[str, str | TemplateMapping]
-    create_only_set: set[Path]
-    delete_set: set[Path]
-    history: dict[str, list[Decision]]
+    merged_anchors: dict[str, str] = field(default_factory=dict)
+    merged_file_mappings: dict[str, str | TemplateMapping] = field(
+        default_factory=dict,
+    )
+    create_only_set: set[Path] = field(default_factory=set)
+    delete_set: set[Path] = field(default_factory=set)
+    history: dict[str, list[Decision]] = field(default_factory=dict)
 
 
 # --- end moved types ------------------------------------------------------------
@@ -256,8 +371,6 @@ InputT = TypeVar('InputT', bound=BaseModel)
 # than the former 3-tuple and uses concise names:
 #
 # `provider_id` (str) - unique loader-assigned identifier
-# `name` (str|None) - canonical name returned by
-#     :meth:`Provider.get_provider_name`
 # `alias` (str|None) - name under which the provider was registered in the
 #     configuration; usually a directory name or config key
 # `inst_type` (type|None) - concrete type of the provider instance
@@ -281,9 +394,6 @@ class ProviderEntry(BaseModel):
     ----------
     provider_id:
         unique identifier (usually the filesystem path) assigned by the loader.
-    name:
-        canonical name returned by :meth:`Provider.get_provider_name`
-        (`None` if the provider instance could not be created).
     alias:
         configuration alias (the key/name used in the repolish.yaml or the
         directory name).  this may differ from `name` when providers
@@ -304,11 +414,6 @@ class ProviderEntry(BaseModel):
     """
 
     provider_id: str
-    # canonical provider name returned by :meth:`Provider.get_provider_name`
-    # (formerly called `alias`).  this is the "/real" name of the
-    # provider implementation and may differ from the key used in project
-    # configuration.
-    name: str | None = None
     # alias as specified in the project configuration file.  for
     # providers created via `create_providers` this will typically equal
     # the directory name or the config key; in many cases it is identical to
@@ -323,15 +428,11 @@ class ProviderEntry(BaseModel):
 class Provider(ABC, Generic[ContextT, InputT]):
     """Abstract base class for class-based providers.
 
-    Subclass this when implementing a new provider. Only `get_provider_name`
-    and `create_context` are required; other methods are optional and have
-    default implementations to preserve backwards compatibility with the
-    existing loader behaviour.
+    Subclass this when implementing a new provider. Only `create_context`
+    is required; all other methods are optional and have default
+    implementations to preserve backwards compatibility with the existing
+    loader behaviour.
     """
-
-    @abstractmethod
-    def get_provider_name(self) -> str:
-        """Return the canonical provider identifier (alias/library-name)."""
 
     @abstractmethod
     def create_context(self) -> ContextT:

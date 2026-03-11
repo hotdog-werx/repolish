@@ -23,9 +23,6 @@ def test_create_anchors_wrong_type_raises(tmp_path: Path):
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 
@@ -47,9 +44,6 @@ def test_delete_files_negation_and_history(tmp_path: Path):
             pass
 
         class P1(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p1'
-
             def create_context(self):
                 return Ctx()
 
@@ -65,9 +59,6 @@ def test_delete_files_negation_and_history(tmp_path: Path):
             pass
 
         class P2(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p2'
-
             def create_context(self):
                 return Ctx()
 
@@ -101,9 +92,6 @@ def test_file_mappings_none_values_are_filtered(tmp_path: Path):
             pass
 
         class P(Provider[Ctx, BaseInputs]):
-            def get_provider_name(self):
-                return 'p'
-
             def create_context(self):
                 return Ctx()
 

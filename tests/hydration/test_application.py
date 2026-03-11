@@ -27,7 +27,6 @@ def test_apply_creates_file_when_missing(tmp_path: Path):
 
     # File doesn't exist yet
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -64,7 +63,6 @@ def test_apply_skips_file_when_exists(tmp_path: Path):
     existing_file.write_text('# Existing content')
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -96,7 +94,6 @@ def test_apply_file_mapping_copy(tmp_path: Path):
     base_dir.mkdir()
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={
@@ -126,7 +123,6 @@ def test_apply_file_mapping_copy_without_prefix(tmp_path: Path):
     base_dir.mkdir()
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={
@@ -156,7 +152,6 @@ def test_mapping_without_source_logs_warning(
     base_dir.mkdir()
 
     providers = Providers(
-        context={},
         anchors={},
         delete_files=[],
         file_mappings={
@@ -190,7 +185,6 @@ def test_apply_deletes_directory_in_delete_files(tmp_path: Path) -> None:
     (dir_to_delete / 'sub' / 'file.txt').write_text('stale')
 
     providers = Providers(
-        context={},
         delete_files=[Path('old_cache')],
         file_mappings={},
         create_only_files=[],

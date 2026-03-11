@@ -10,9 +10,6 @@ class CtxC(BaseContext):
 
 
 class ProviderC(Provider[CtxC, InputA]):
-    def get_provider_name(self):
-        return 'c'
-
     def create_context(self) -> CtxC:
         return CtxC()
 

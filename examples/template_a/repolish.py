@@ -17,10 +17,6 @@ class Ctx(BaseContext):
 class TemplateAProvider(Provider[Ctx, BaseModel]):
     """Class-based example provider for the `template_a` example."""
 
-    def get_provider_name(self) -> str:
-        """Return the provider identifier for this example."""
-        return 'template_a'
-
     def create_context(self) -> Ctx:
         """Return this provider's Pydantic context model."""
         return Ctx()
