@@ -17,6 +17,7 @@ from repolish.hydration import (
 )
 from repolish.loader.models import (
     Providers,
+    TemplateMapping,
     build_file_records,
     get_global_context,
 )
@@ -27,9 +28,29 @@ from repolish.version import __version__
 logger = get_logger(__name__)
 
 
+def _collect_excluded_sources(
+    file_mappings: dict[str, str | TemplateMapping],
+) -> set[str]:
+    """Collect all explicit source template paths from file_mappings.
+
+    When a provider explicitly maps a source template via ``create_file_mappings``,
+    that file should not also be auto-staged at its natural position in the
+    provider's ``repolish/`` tree — the developer has already decided where it
+    goes (possibly with a different destination name).
+    """
+    excluded: set[str] = set()
+    for src in file_mappings.values():
+        if isinstance(src, str):
+            excluded.add(src)
+        elif src.source_template is not None:
+            excluded.add(src.source_template)
+    return excluded
+
+
 def _create_staged_template(
     setup_input: Path,
     config: RepolishConfig,
+    excluded_sources: set[str] | None = None,
 ) -> dict[str, str]:
     """Build template directory list from `config` and create staging.
 
@@ -47,6 +68,7 @@ def _create_staged_template(
         setup_input,
         template_dirs,
         template_overrides=config.template_overrides,
+        excluded_sources=excluded_sources,
     )
     # result may be either Path (legacy) or (Path, sources) tuple
     if isinstance(result, tuple) and len(result) == 2:
@@ -163,7 +185,11 @@ def command(config_path: Path, *, check_only: bool) -> int:
 
     # staging must happen before we can report per-provider template ownership
     base_dir, setup_input, setup_output = prepare_staging(config)
-    sources = _create_staged_template(setup_input, config)
+    sources = _create_staged_template(
+        setup_input,
+        config,
+        excluded_sources=_collect_excluded_sources(providers.file_mappings),
+    )
     # stage_templates records alias as the provider id; provider_contexts is
     # keyed by the full directory path (pid).  Translate here so rendering
     # can look up the right context.

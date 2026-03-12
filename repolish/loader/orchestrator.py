@@ -103,7 +103,7 @@ def _maybe_instantiate_provider(
         raise RuntimeError(msg)
 
     inst = cls()
-    inst.templates_root = Path(module_dict.get('__file__', '.')).resolve().parent
+    inst.templates_root = Path(str(module_dict.get('__file__', '.'))).resolve().parent
     module_dict['_repolish_provider_instance'] = inst
 
 

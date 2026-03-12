@@ -129,3 +129,36 @@ def test_template_sources_are_posix_ids(tmp_path: Path) -> None:
         assert '/' in v  # simple sanity check
     # the alias should have been normalised (slashes flipped)
     assert next(iter(sources.values())) == alias.replace('\\', '/')
+
+
+def test_excluded_sources_skips_explicitly_mapped_templates(
+    tmp_path: Path,
+) -> None:
+    """Files listed in excluded_sources are not auto-staged at their natural positions.
+
+    A provider that explicitly maps 'workflows/ci.yaml' in create_file_mappings
+    does not want that template also showing up at 'workflows/ci.yaml' in the
+    staging tree — the developer controls the destination themselves.
+    """
+    tpl = tmp_path / 'prov'
+    rep = tpl / 'repolish'
+    rep.mkdir(parents=True)
+    (rep / 'workflows').mkdir()
+    (rep / 'workflows' / 'ci.yaml.jinja').write_text('ci: {{ var }}')
+    (rep / 'README.md').write_text('readme')
+
+    staging = tmp_path / 'staging'
+    # exclude the workflows/ci.yaml source — it is claimed by a file mapping
+    _, sources = stage_templates(
+        staging,
+        [tpl],
+        excluded_sources={'workflows/ci.yaml'},
+    )
+
+    staged = staging / 'repolish'
+    # README was not excluded — should be staged normally
+    assert (staged / 'README.md').exists()
+    # ci.yaml was excluded — should NOT appear at its natural position
+    assert not (staged / 'workflows' / 'ci.yaml').exists()
+    # sources should not mention the excluded file
+    assert 'workflows/ci.yaml' not in sources

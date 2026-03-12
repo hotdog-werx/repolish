@@ -13,6 +13,7 @@ def stage_templates(
     template_directories: list[Path | tuple[str | None, Path]],
     *,
     template_overrides: dict[str, str] | None = None,
+    excluded_sources: set[str] | None = None,
 ) -> tuple[Path, dict[str, str]]:
     """Merge provider template directories into a single staging tree.
 
@@ -27,6 +28,12 @@ def stage_templates(
     the file is skipped, preventing later providers from overriding the
     specified source.
 
+    When `excluded_sources` is provided, any file whose path (relative to the
+    provider's ``repolish/`` directory, with ``.jinja`` stripped) appears in
+    the set is skipped.  This prevents a template that a provider has
+    explicitly placed in ``create_file_mappings`` from also being auto-copied
+    to its natural staging position.
+
     Args:
         staging_dir: Path to the staging directory to create the templates.
         template_directories: Sequence of either Path objects or
@@ -35,6 +42,8 @@ def stage_templates(
             any overrides.
         template_overrides: Optional mapping of glob patterns to provider
             aliases controlling per-file override behaviour.
+        excluded_sources: Optional set of POSIX source-template paths (without
+            the ``.jinja`` suffix) that should be excluded from auto-staging.
 
     Returns:
         The Path to the staging directory containing the combined templates.
@@ -61,6 +70,7 @@ def stage_templates(
             staging_dir,
             alias=alias,
             overrides=template_overrides,
+            excluded_sources=excluded_sources,
             sources=sources,
         )
     return staging_dir, sources
@@ -120,12 +130,36 @@ def _copy_item_to_dest(
         shutil.copy2(item, dest)
 
 
-def _copy_template_dir(
+def _should_skip_item(
+    item: Path,
+    rel_str: str,
+    *,
+    alias: str | None,
+    overrides: dict[str, str] | None,
+    excluded_sources: set[str] | None,
+) -> bool:
+    """Return True if *item* should be skipped during staging.
+
+    A file is skipped when:
+    - It is governed by ``overrides`` and the current provider's alias is not
+      the selected one for that path.
+    - It appears in ``excluded_sources`` (the provider has explicitly mapped
+      it in ``create_file_mappings`` and controls the destination itself).
+    """
+    if alias is not None:
+        selected = _selected_override_alias(rel_str, overrides)
+        if selected is not None and selected != alias:
+            return True
+    return excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources
+
+
+def _copy_template_dir(  # noqa: PLR0913
     template_dir: Path,
     staging_dir: Path,
     *,
     alias: str | None = None,
     overrides: dict[str, str] | None = None,
+    excluded_sources: set[str] | None = None,
     sources: dict[str, str],
 ) -> None:
     """Copy the contents of a template directory into the staging directory.
@@ -134,11 +168,9 @@ def _copy_template_dir(
     the project layout files. These will be copied over to the staging dir under
     the staging directory root.
 
-    When `overrides` is provided and `alias` is not None, files whose
-    relative path matches a pattern in the overrides mapping *and* whose
-    override alias differs from `alias` will be skipped.  This prevents later
-    providers from overwriting a file that has been pinned to an earlier
-    provider.
+    Files are skipped when overrides pin them to a different provider alias,
+    or when they appear in ``excluded_sources`` (explicitly mapped via
+    ``create_file_mappings``).
     """
     repolish_dir = template_dir / 'repolish'
     if not (repolish_dir.exists() and repolish_dir.is_dir()):
@@ -146,15 +178,15 @@ def _copy_template_dir(
 
     dest_root = staging_dir / 'repolish'
     for item in repolish_dir.rglob('*'):
-        rel = item.relative_to(repolish_dir)
-        rel_str = rel.as_posix()
-
-        # respect overrides if configured and alias provided
-        if alias is not None:
-            selected = _selected_override_alias(rel_str, overrides)
-            if selected is not None and selected != alias:
-                continue
-
+        rel_str = item.relative_to(repolish_dir).as_posix()
+        if _should_skip_item(
+            item,
+            rel_str,
+            alias=alias,
+            overrides=overrides,
+            excluded_sources=excluded_sources,
+        ):
+            continue
         _copy_item_to_dest(
             item,
             repolish_dir,
