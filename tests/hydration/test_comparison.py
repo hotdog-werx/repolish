@@ -337,3 +337,36 @@ def test_check_skips_paused_deletion(tmp_path: Path) -> None:
         paused_files=frozenset({'legacy.txt'}),
     )
     assert diffs == []
+
+
+def test_check_skips_suppressed_sources(tmp_path: Path) -> None:
+    """Files in suppressed_sources produce no diff even when staged content differs.
+
+    A provider returning {dest: None} from create_file_mappings has opted out
+    of managing that path.  check_generated_output must not surface it as a
+    change that needs to be applied.
+    """
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish' / '.github' / 'workflows').mkdir(parents=True)
+    suppressed = setup_output / 'repolish' / '.github' / 'workflows' / '_ci-checks.yaml'
+    suppressed.write_text('provider version')
+    (setup_output / 'repolish' / 'README.md').write_text('readme')
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    # project has a different version of the suppressed file — should not matter
+    (base_dir / '.github' / 'workflows').mkdir(parents=True)
+    (base_dir / '.github' / 'workflows' / '_ci-checks.yaml').write_text('local version')
+    (base_dir / 'README.md').write_text('readme')
+
+    providers = Providers(
+        delete_files=[],
+        delete_history={},
+        suppressed_sources={'.github/workflows/_ci-checks.yaml'},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+
+    # suppressed path must produce no diff
+    assert not any('.github/workflows/_ci-checks.yaml' in d[0] for d in diffs)
+    assert diffs == []

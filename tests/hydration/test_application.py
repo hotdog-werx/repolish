@@ -243,3 +243,36 @@ def test_apply_skips_paused_deletion(tmp_path: Path) -> None:
     )
 
     assert kept.exists()
+
+
+def test_apply_skips_suppressed_sources(tmp_path: Path) -> None:
+    """Files listed in suppressed_sources are not copied even when staged.
+
+    A provider that returns {dest: None} from create_file_mappings is opting
+    out of managing that path.  The file may still be present in setup_output
+    (it was staged so file_mappings copy logic can reach it) but it must NOT
+    be written to the project directory by apply_generated_output.
+    """
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish' / '.github' / 'workflows').mkdir(parents=True)
+    # file is staged (builder copied it) but provider said None
+    suppressed = setup_output / 'repolish' / '.github' / 'workflows' / '_ci-checks.yaml'
+    suppressed.write_text('ci content')
+    # another regular file that should still be applied
+    (setup_output / 'repolish' / 'README.md').write_text('readme')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = Providers(
+        file_mappings={},
+        create_only_files=[],
+        suppressed_sources={'.github/workflows/_ci-checks.yaml'},
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    # suppressed file must NOT be written to project
+    assert not (base_dir / '.github' / 'workflows' / '_ci-checks.yaml').exists()
+    # regular file is unaffected
+    assert (base_dir / 'README.md').exists()

@@ -257,7 +257,7 @@ def check_generated_output(
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     # Build skip set: include create-only files that already exist in the project
-    skip_files = mapped_sources | delete_files_set | paused_files
+    skip_files = mapped_sources | delete_files_set | paused_files | providers.suppressed_sources
     for rel_str in create_only_files_set:
         if (base_dir / rel_str).exists():
             skip_files.add(rel_str)

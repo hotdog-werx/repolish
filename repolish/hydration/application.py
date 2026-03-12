@@ -164,7 +164,8 @@ def apply_generated_output(
     )
 
     # Build skip set: include create-only files that already exist in the project
-    skip_sources = mapped_sources | paused_files
+    # Also skip sources that providers explicitly suppressed via a None mapping.
+    skip_sources = mapped_sources | paused_files | providers.suppressed_sources
     for rel_str in create_only_files_set:
         target_exists = (base_dir / rel_str).exists()
         if target_exists:
