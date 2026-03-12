@@ -1,3 +1,8 @@
-from .version import __version__
+from importlib.metadata import PackageNotFoundError, version as _v
+
+try:
+    __version__ = _v('{{ repo_name }}')
+except PackageNotFoundError:
+    __version__ = '0.0.0.dev0'
 
 __all__ = ['__version__']

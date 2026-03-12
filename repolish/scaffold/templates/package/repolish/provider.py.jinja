@@ -81,7 +81,7 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         - ``None``   → omit the file (no-op)
 
         Use ``self.templates_root`` to discover templates dynamically, e.g.:
-            workflows = (self.templates_root / '.github' / 'workflows').glob('*.yaml')
+            workflows = (self.templates_root / 'repolish' / '.github' / 'workflows').glob('*.yaml')
         """
         return {}
 
