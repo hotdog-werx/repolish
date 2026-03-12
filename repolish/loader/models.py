@@ -30,7 +30,7 @@ from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generic, TypeVar, cast, get_args, get_origin
+from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel, Field
 
@@ -382,6 +382,29 @@ ContextT = TypeVar('ContextT', bound=BaseContext)
 InputT = TypeVar('InputT', bound=BaseModel)
 
 
+def _get_provider_generic_args(cls: type) -> tuple[type | None, type | None]:
+    """Return (context_cls, input_cls) extracted from ``cls`` generics.
+
+    Inspects ``__orig_bases__`` on the class and returns the first and
+    second type arguments from the parameterized ``Provider`` base if
+    present.  Missing values are returned as ``None``.  This helper is used
+    by ``Provider.create_context`` and ``Provider.get_inputs_schema`` so
+    the inference logic is centralised and easier to test.
+    """
+    from typing import get_args, get_origin  # noqa: PLC0415 - used only here
+
+    bases = getattr(cls, '__orig_bases__', ())
+    if not bases:
+        return None, None
+    base = bases[0]
+    if get_origin(base) is not Provider:
+        return None, None
+    args = get_args(base)
+    ctx = args[0] if len(args) >= 1 else None
+    inp = args[1] if len(args) >= 2 else None
+    return ctx, inp
+
+
 # `ProviderEntry` is the object passed to provider hooks such as
 # `provide_inputs` and `finalize_context`.  it carries richer metadata
 # than the former 3-tuple and uses concise names:
@@ -486,16 +509,9 @@ class Provider(ABC, Generic[ContextT, InputT]):
         :class:`BaseContext` so the loader can merge the global ``repolish``
         data into it.
         """
-        ctx_cls = None
-        bases = getattr(self.__class__, '__orig_bases__', ())
-        if bases:
-            base = bases[0]
-            if get_origin(base) is Provider:
-                args = get_args(base)
-                if args:
-                    ctx_cls = args[0]
-
-        if ctx_cls is None:
+        # reuse helper to obtain generic args
+        ctx_cls, _ = _get_provider_generic_args(self.__class__)
+        if ctx_cls is None or not isinstance(ctx_cls, type) or not issubclass(ctx_cls, BaseContext):
             logger.warning(
                 'provider_context_inference_failed',
                 provider=self.__class__.__name__,
@@ -503,7 +519,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
             return BaseContext()  # type: ignore[return-value]
 
         try:
-            return ctx_cls()
+            return ctx_cls()  # type: ignore[return-value]
         except Exception as exc:  # noqa: BLE001 - we log and continue
             logger.warning(
                 'provider_context_instantiation_failed',
@@ -565,18 +581,28 @@ class Provider(ABC, Generic[ContextT, InputT]):
     def get_inputs_schema(self) -> type[InputT] | None:
         """Return the Pydantic model class for this provider's *input* type.
 
-        - If non-'None', other providers may create instances of this class
-          and return them from `provide_inputs()` using this
-          provider's name as the key.
-        - If 'None' (the default) this provider is not eligible to receive
-          inputs; calls to `provide_inputs()` may still supply
-          values for other recipients.
+        The loader uses this schema to route payloads emitted by other
+        providers' ``provide_inputs`` calls.  Historically every
+        provider had to implement this method, even when the declared
+        type was nothing more than ``BaseInputs``.  The default
+        implementation now inspects the second generic argument and
+        returns it if it is a subclass of :class:`BaseInputs` other than
+        ``BaseInputs`` itself.  This lets simple providers omit the
+        boilerplate entirely.
 
-        This method is primarily used by the loader/orchestrator to perform
-        optional runtime validation and to expose the schema for tooling
-        (e.g. CLI help).  Providers that override `provide_inputs`
-        should usually also override this method so the contract is explicit.
+        If inference fails or the argument is the generic ``BaseInputs``
+        type ``None`` is returned, meaning the provider does not
+        declare a specific input schema.
+
+        Providers that need a nonstandard schema or that return values of
+        a different type should continue to override this method.
         """
+        # use helper to fetch both parameters
+        _, inp_cls = _get_provider_generic_args(self.__class__)
+        if inp_cls is None:
+            return None
+        if isinstance(inp_cls, type) and issubclass(inp_cls, BaseInputs) and inp_cls is not BaseInputs:
+            return inp_cls
         return None
 
     # File operations helpers - optional

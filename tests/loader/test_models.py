@@ -5,7 +5,12 @@ import pytest
 from pydantic import BaseModel
 
 from repolish.loader import logger
-from repolish.loader.models import BaseContext, Provider
+from repolish.loader.models import (
+    BaseContext,
+    BaseInputs,
+    Provider,
+    _get_provider_generic_args,
+)
 
 
 class _TContext(BaseContext):
@@ -62,6 +67,47 @@ def test_provider_can_override_optional_methods():
 
     p = OptProvider()
     assert p.get_inputs_schema() is _TInputs
+
+
+def test_inputs_schema_inference():
+    """Schema is inferred from the generic argument when it's not BaseInputs."""
+
+    class Custom(BaseInputs):
+        foo: str = 'x'
+
+    class Infer(Provider[_TContext, Custom]):
+        pass
+
+    inst = Infer()
+    assert inst.get_inputs_schema() is Custom
+
+    # generic BaseInputs should still return None
+    class NoSchema(Provider[_TContext, BaseInputs]):
+        pass
+
+    assert NoSchema().get_inputs_schema() is None
+
+
+def test_get_generic_args_helper():
+    # returns both parameters when present
+    class A(Provider[_TContext, _TInputs]):
+        pass
+
+    ctx_cls, inp_cls = _get_provider_generic_args(A)
+    assert ctx_cls is _TContext
+    assert inp_cls is _TInputs
+
+    class B(Provider[_TContext, BaseInputs]):
+        pass
+
+    ctx2, inp2 = _get_provider_generic_args(B)
+    assert ctx2 is _TContext
+    assert inp2 is BaseInputs
+
+    class C:
+        pass
+
+    assert _get_provider_generic_args(C) == (None, None)
 
 
 def test_default_context_inference():
