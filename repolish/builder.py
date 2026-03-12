@@ -99,13 +99,15 @@ def _copy_item_to_dest(
     dest_root: Path,
     *,
     alias: str | None,
-    sources: dict[str, str],
+    sources: dict[str, str] | None,
 ) -> None:
     """Copy a single filesystem entry from `repolish_dir` to `dest_root`.
 
     Handles directory creation and strips a trailing `.jinja` suffix from
-    destination filenames.  Also records the provider id for the final
-    relative path in `sources`.
+    destination filenames.  When `sources` is not ``None``, also records the
+    provider id for the final relative path in it; pass ``None`` to stage the
+    file without registering it as an auto-staged template (used for files that
+    are claimed by ``create_file_mappings``).
     """
     rel = item.relative_to(repolish_dir)
     if rel.suffix == '.jinja':
@@ -121,7 +123,8 @@ def _copy_item_to_dest(
     # the string uses forward slashes regardless of platform.
     pid = pid.replace('\\', '/')
     pid = Path(pid).as_posix()
-    sources[rel.as_posix()] = pid
+    if sources is not None:
+        sources[rel.as_posix()] = pid
 
     if item.is_dir():
         dest.mkdir(parents=True, exist_ok=True)
@@ -131,26 +134,25 @@ def _copy_item_to_dest(
 
 
 def _should_skip_item(
-    item: Path,
+    _item: Path,
     rel_str: str,
     *,
     alias: str | None,
     overrides: dict[str, str] | None,
-    excluded_sources: set[str] | None,
 ) -> bool:
-    """Return True if *item* should be skipped during staging.
+    """Return True if *item* should be fully skipped during staging.
 
-    A file is skipped when:
-    - It is governed by ``overrides`` and the current provider's alias is not
-      the selected one for that path.
-    - It appears in ``excluded_sources`` (the provider has explicitly mapped
-      it in ``create_file_mappings`` and controls the destination itself).
+    A file is skipped when it is governed by ``overrides`` and the current
+    provider's alias is not the selected one for that path.  Files that appear
+    in ``excluded_sources`` are handled separately: they are still copied into
+    the staging tree (so file_mappings can find them) but are not registered in
+    ``sources``.
     """
     if alias is not None:
         selected = _selected_override_alias(rel_str, overrides)
         if selected is not None and selected != alias:
             return True
-    return excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources
+    return False
 
 
 def _copy_template_dir(  # noqa: PLR0913
@@ -179,13 +181,14 @@ def _copy_template_dir(  # noqa: PLR0913
     dest_root = staging_dir / 'repolish'
     for item in repolish_dir.rglob('*'):
         rel_str = item.relative_to(repolish_dir).as_posix()
-        if _should_skip_item(
-            item,
-            rel_str,
-            alias=alias,
-            overrides=overrides,
-            excluded_sources=excluded_sources,
-        ):
+        # Override mismatch: a different provider owns this file — skip entirely.
+        if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
+            continue
+        # Explicitly mapped source: stage the file so file_mappings can find it
+        # in setup_output, but do NOT register it in sources so it is not
+        # treated as an auto-staged template.
+        if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
+            _copy_item_to_dest(item, repolish_dir, dest_root, alias=alias, sources=None)
             continue
         _copy_item_to_dest(
             item,
