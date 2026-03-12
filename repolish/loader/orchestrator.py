@@ -392,7 +392,12 @@ def _synthesize_provider_context_for_pid(
     try:
         # create_context is generic but its bound by BaseContext
         ctx = cast('BaseContext', inst.create_context())
-    except Exception:  # noqa: BLE001 - don't let one provider stop the run
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        logger.warning(
+            'provider_create_context_raised',
+            provider=pid,
+            error=str(exc),
+        )
         return
 
     if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):

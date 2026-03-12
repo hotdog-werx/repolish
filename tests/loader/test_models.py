@@ -4,6 +4,7 @@ from unittest import mock
 import pytest
 from pydantic import BaseModel
 
+from repolish.loader import logger
 from repolish.loader.models import BaseContext, Provider
 
 
@@ -15,13 +16,26 @@ class _TInputs(BaseModel):
     name: str = 'x'
 
 
-def test_provider_is_abstract_and_requires_methods():
-    # Cannot instantiate base Provider directly (abstract methods missing)
-    with pytest.raises(TypeError):
-        Provider()
+def test_provider_is_abstract_and_requires_methods(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The base Provider class is concrete; a bare instance returns a
+    # generic BaseContext and logs a warning rather than failing.
+    mock_warn = mock.MagicMock()
+    monkeypatch.setattr(logger, 'warning', mock_warn)
+
+    p = Provider[_TContext, _TInputs]()
+    ctx = p.create_context()
+    assert isinstance(ctx, BaseContext)
+
+    # logger.warning should have been called with the event name as first arg
+    assert mock_warn.call_count == 1
+    assert 'provider_context_inference_failed' in str(mock_warn.call_args[0][0])
 
 
 def test_minimal_provider_defaults_and_behavior():
+    # when the subclass supplies a simple context model with defaults the
+    # explicit override remains supported and behaves as before
     class MinimalProvider(Provider[_TContext, _TInputs]):
         def create_context(self) -> _TContext:
             return _TContext(v=42)
@@ -48,6 +62,43 @@ def test_provider_can_override_optional_methods():
 
     p = OptProvider()
     assert p.get_inputs_schema() is _TInputs
+
+
+def test_default_context_inference():
+    """Providers with a concrete context type get a default instance."""
+
+    class Inferred(Provider[_TContext, _TInputs]):
+        # no override of create_context; default implementation should kick in
+        pass
+
+    # note: _TContext already defaults to v=1
+    p = Inferred()
+    ctx = p.create_context()
+    assert isinstance(ctx, _TContext)
+    assert ctx.v == 1
+
+
+def test_inference_failure_shows_hint(monkeypatch: pytest.MonkeyPatch):
+    # when the inferred context class requires arguments the default
+    # implementation will catch the error, emit a warning, and return a
+    # bare BaseContext rather than raise.
+    class NeedsArg(BaseContext):
+        def __init__(self, foo: int) -> None:
+            super().__init__()
+            self.foo = foo
+
+    class BadProvider(Provider[NeedsArg, _TInputs]):
+        pass
+
+    mock_warn = mock.MagicMock()
+    monkeypatch.setattr(logger, 'warning', mock_warn)
+
+    ctx = BadProvider().create_context()
+    assert isinstance(ctx, BaseContext)
+    assert mock_warn.call_count == 1
+    assert 'provider_context_instantiation_failed' in str(
+        mock_warn.call_args[0][0],
+    )
 
 
 def test_basecontext_includes_repolish_field():

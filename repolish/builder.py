@@ -188,7 +188,13 @@ def _copy_template_dir(  # noqa: PLR0913
         # in setup_output, but do NOT register it in sources so it is not
         # treated as an auto-staged template.
         if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
-            _copy_item_to_dest(item, repolish_dir, dest_root, alias=alias, sources=None)
+            _copy_item_to_dest(
+                item,
+                repolish_dir,
+                dest_root,
+                alias=alias,
+                sources=None,
+            )
             continue
         _copy_item_to_dest(
             item,

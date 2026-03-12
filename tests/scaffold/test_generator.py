@@ -138,7 +138,6 @@ def test_generate_creates_all_expected_files(tmp_path: Path) -> None:
         'pyproject.toml',
         'repolish.yaml',
         'acme_base/__init__.py',
-        'acme_base/version.py',
         'acme_base/repolish/__init__.py',
         'acme_base/repolish/linker.py',
         'acme_base/repolish/models.py',

@@ -90,6 +90,13 @@ fully compatible with the loader (the loader will instantiate the class and
 expose the same module-level factory hooks so existing consumers continue to
 work).
 
+Most providers simply need a trivial context object with default values. In such
+cases you can omit `create_context()` entirely; the base class now inspects the
+generic type parameter and constructs a default instance for you. (If inference
+ever fails – e.g. the class is declared in an unusual way – Repolish will log a
+warning and fall back to an empty `BaseContext`; no error is raised.) Override
+the method only when you need to pass arguments or perform extra initialization.
+
 ```py
 # repolish.py (class-based final form)
 from pydantic import BaseModel

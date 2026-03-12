@@ -18,9 +18,12 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
     def create_context(self) -> {{ context_class }}:
         """Return the initial context for this provider.
 
-        Populate any fields that can be derived without input from
-        other providers.  Values may be refined later in
-        ``finalize_context`` once cross-provider data is available.
+        The base :class:`~repolish.loader.models.Provider` implementation
+        will attempt to construct the context automatically using the
+        no-argument constructor of the type parameter.  This stub is
+        provided mostly for documentation; you can safely remove it if the
+        model has sensible defaults.  Override the method when you need to
+        pass explicit arguments or perform other initialization.
         """
         return {{ context_class }}()
 

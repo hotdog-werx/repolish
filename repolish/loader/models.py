@@ -1,7 +1,8 @@
 """Loader-side Provider base class and shared data models.
 
-This module defines the abstract base class for class-based providers
-as well as all shared data models used by the loader and orchestrator.
+This module defines the base class for class-based providers (it is no
+longer strictly abstract) as well as all shared data models used by the
+loader and orchestrator.
 
 Short example
 --------------
@@ -25,13 +26,15 @@ Notes:
 from __future__ import annotations
 
 import datetime
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar, cast, get_args, get_origin
 
 from pydantic import BaseModel, Field
+
+from repolish.loader._log import logger
 
 
 class GithubRepo(BaseModel):
@@ -439,12 +442,19 @@ class ProviderEntry(BaseModel):
 
 
 class Provider(ABC, Generic[ContextT, InputT]):
-    """Abstract base class for class-based providers.
+    """Base class for class-based providers.
 
-    Subclass this when implementing a new provider. Only `create_context`
-    is required; all other methods are optional and have default
-    implementations to preserve backwards compatibility with the existing
-    loader behaviour.
+    Subclass this when implementing a new provider.  Prior to 0.?? the
+    class was *abstract* and required every subclass to implement
+    ``create_context``; in practice most implementations simply returned a
+    default-constructed Pydantic model.  The default implementation now
+    attempts to infer the context type from the generic arguments and
+    instantiate it automatically, allowing new providers to omit the
+    boilerplate unless custom initialization is required.
+
+    Only ``create_context`` is effectively required; all other methods are
+    optional and have sensible defaults so consumers only implement the
+    behaviour they actually need.
 
     Attributes:
         templates_root: Absolute path to the directory containing this
@@ -457,16 +467,50 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
     templates_root: Path = Path()
 
-    @abstractmethod
     def create_context(self) -> ContextT:
-        """Create and return this provider's context model.
+        """Return this provider's initial context object.
 
-        The returned model *must* inherit from :class:`BaseContext`.
-        This ensures the loader can merge the global ``repolish`` data into
-        the object; providers returning a plain ``BaseModel`` will lose that
-        information and will trigger a type-checking error under stricter
-        tooling.
+        The default implementation looks at the subclass' generic
+        parameters and calls the first type argument without any parameters.
+        Because nearly all providers are declared like
+        ``class Foo(Provider[SomeContext, SomeInput])`` this succeeds without
+        any additional work.  If we cannot infer a usable type or if
+        instantiation fails we simply return a bare :class:`BaseContext`.
+        Errors are logged rather than raised so provider loading can
+        continue; authors who need a real context should override the
+        method themselves.
+
+        Providers that need to pass arguments to their context constructor
+        or otherwise perform nontrivial setup should still override this
+        method explicitly.  The returned object *must* inherit from
+        :class:`BaseContext` so the loader can merge the global ``repolish``
+        data into it.
         """
+        ctx_cls = None
+        bases = getattr(self.__class__, '__orig_bases__', ())
+        if bases:
+            base = bases[0]
+            if get_origin(base) is Provider:
+                args = get_args(base)
+                if args:
+                    ctx_cls = args[0]
+
+        if ctx_cls is None:
+            logger.warning(
+                'provider_context_inference_failed',
+                provider=self.__class__.__name__,
+            )
+            return BaseContext()  # type: ignore[return-value]
+
+        try:
+            return ctx_cls()
+        except Exception as exc:  # noqa: BLE001 - we log and continue
+            logger.warning(
+                'provider_context_instantiation_failed',
+                provider=self.__class__.__name__,
+                error=str(exc),
+            )
+            return BaseContext()  # type: ignore[return-value]
 
     def provide_inputs(
         self,

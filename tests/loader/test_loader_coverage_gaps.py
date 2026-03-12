@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,6 +13,7 @@ from repolish.hydration.context import build_final_providers
 from repolish.loader import (
     BaseContext,
     create_providers,
+    logger,
 )
 from repolish.loader import Provider as _ProviderBase
 from repolish.loader.exchange import (
@@ -65,7 +67,11 @@ def test_process_provider_fm_skips_none_values() -> None:
 def test_process_provider_fm_none_populates_suppressed_sources() -> None:
     """A None-valued mapping entry is added to suppressed_sources, not file_mappings."""
     acc = Accumulators()
-    _process_provider_fm('m', {'.github/workflows/_ci-checks.yaml': None, 'other.txt': 'tmpl'}, acc)
+    _process_provider_fm(
+        'm',
+        {'.github/workflows/_ci-checks.yaml': None, 'other.txt': 'tmpl'},
+        acc,
+    )
     assert '.github/workflows/_ci-checks.yaml' in acc.suppressed_sources
     assert '.github/workflows/_ci-checks.yaml' not in acc.merged_file_mappings
     assert acc.merged_file_mappings == {'other.txt': 'tmpl'}
@@ -110,7 +116,10 @@ def test_synthesize_provider_context_skips_already_populated() -> None:
     assert provider_contexts['p'] is existing
 
 
-def test_build_all_providers_list_swallows_broken_schema() -> None:
+def test_build_all_providers_list_swallows_broken_schema(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Exception branches for `get_inputs_schema` and `create_context` are swallowed.
 
     A provider that raises in any of those methods must not abort the build:
@@ -142,12 +151,17 @@ def test_build_all_providers_list_swallows_broken_schema() -> None:
     assert entry.provider_id == 'bp'
 
     # create_context raising must not add an entry to provider_contexts
+    mock_warn = mock.MagicMock()
+    monkeypatch.setattr(logger, 'warning', mock_warn)
+
     _synthesize_provider_context_for_pid(
         inst,
         'bp',
         provider_contexts,
         GlobalContext(),
     )
+    assert mock_warn.call_count == 1
+    assert 'provider_create_context_raised' in str(mock_warn.call_args[0][0])
     assert 'bp' not in provider_contexts
 
 

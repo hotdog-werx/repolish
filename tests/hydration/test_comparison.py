@@ -356,7 +356,9 @@ def test_check_skips_suppressed_sources(tmp_path: Path) -> None:
     base_dir.mkdir()
     # project has a different version of the suppressed file — should not matter
     (base_dir / '.github' / 'workflows').mkdir(parents=True)
-    (base_dir / '.github' / 'workflows' / '_ci-checks.yaml').write_text('local version')
+    (base_dir / '.github' / 'workflows' / '_ci-checks.yaml').write_text(
+        'local version',
+    )
     (base_dir / 'README.md').write_text('readme')
 
     providers = Providers(
