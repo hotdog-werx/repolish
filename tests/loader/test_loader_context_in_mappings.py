@@ -145,3 +145,33 @@ def test_template_mapping_file_mode_delete_marks_for_deletion(tmp_path: Path):
     # Should be recorded in delete_files and not present in file_mappings
     assert Path('old.txt') in {Path(p) for p in providers.delete_files}
     assert 'old.txt' not in providers.file_mappings
+
+
+def test_provider_templates_root_is_injected(tmp_path: Path) -> None:
+    """templates_root is set to the provider directory before any hooks are called."""
+    src = dedent(
+        """
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context=None):
+                # expose templates_root as the mapping value so the test can inspect it
+                return {'__templates_root__': str(self.templates_root)}
+        """,
+    )
+
+    provider_dir = tmp_path / 'myprov'
+    provider_dir.mkdir()
+    (provider_dir / 'repolish.py').write_text(src)
+
+    providers = create_providers([str(provider_dir)])
+
+    assert providers.file_mappings.get('__templates_root__') == str(
+        provider_dir.resolve(),
+    )

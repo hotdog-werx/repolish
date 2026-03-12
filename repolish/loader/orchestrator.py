@@ -102,7 +102,9 @@ def _maybe_instantiate_provider(
         msg = 'provider module does not export a Provider subclass'
         raise RuntimeError(msg)
 
-    module_dict['_repolish_provider_instance'] = cls()
+    inst = cls()
+    inst.templates_root = Path(module_dict.get('__file__', '.')).resolve().parent
+    module_dict['_repolish_provider_instance'] = inst
 
 
 def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:

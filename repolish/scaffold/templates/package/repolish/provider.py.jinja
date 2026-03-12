@@ -76,6 +76,9 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
         - a string  → path to the source template inside ``resources/templates``
         - a ``TemplateMapping``  → for CREATE_ONLY, DELETE, or KEEP semantics
         - ``None``   → omit the file (no-op)
+
+        Use ``self.templates_root`` to discover templates dynamically, e.g.:
+            workflows = (self.templates_root / '.github' / 'workflows').glob('*.yaml')
         """
         return {}
 

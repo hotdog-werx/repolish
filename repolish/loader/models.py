@@ -28,7 +28,7 @@ import datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path  # noqa: TC003 - used in Providers model with pydantic
+from pathlib import Path
 from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel, Field
@@ -438,7 +438,17 @@ class Provider(ABC, Generic[ContextT, InputT]):
     is required; all other methods are optional and have default
     implementations to preserve backwards compatibility with the existing
     loader behaviour.
+
+    Attributes:
+        templates_root: Absolute path to the directory containing this
+            provider's ``repolish.py`` and templates.  Injected by the
+            repolish loader before any hooks are called; use it inside any
+            method to discover template files dynamically, e.g.::
+
+                list((self.templates_root / '.github' / 'workflows').glob('*.yaml'))
     """
+
+    templates_root: Path = Path()
 
     @abstractmethod
     def create_context(self) -> ContextT:
@@ -527,10 +537,12 @@ class Provider(ABC, Generic[ContextT, InputT]):
         """Optional: return `file_mappings`-style dict for this provider.
 
         The merged provider context (a 'ContextT' instance) is passed when
-        available.  Providing a typed argument instead of a plain 'dict' makes
-        migration to the new class API cleaner and enables IDE autocomplete.
-        Default implementation ignores the argument and returns an empty
-        mapping.
+        available.  Use ``self.templates_root`` to discover template files
+        dynamically, e.g.::
+
+            list((self.templates_root / '.github' / 'workflows').glob('*.yaml'))
+
+        Default implementation returns an empty mapping.
         """
         return {}
 
