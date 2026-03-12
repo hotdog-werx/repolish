@@ -442,3 +442,38 @@ def test_nested_conditional_files_in_subdirectories(tmp_path: Path):
     # (they are conditional and should only be copied via mappings)
     assert not (base_dir / '.github' / 'workflows' / '_repolish.github-ci.yml').exists()
     assert not (base_dir / '.github' / 'workflows' / '_repolish.gitlab-ci.yml').exists()
+
+
+def test_none_mapped_entry_populates_suppressed_sources(tmp_path: Path) -> None:
+    """A None value in create_file_mappings populates suppressed_sources, not file_mappings.
+
+    This prevents the file from being auto-staged at its natural position —
+    the provider explicitly opted out of managing it this run.
+    """
+    template = tmp_path / 'prov'
+    template.mkdir()
+    (template / 'repolish.py').write_text("""
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {
+            '.github/workflows/_ci-checks.yaml': None,
+            'other.txt': '_repolish.other.txt',
+        }
+""")
+
+    providers = create_providers([str(template)])
+
+    # None entry must NOT appear in file_mappings
+    assert '.github/workflows/_ci-checks.yaml' not in providers.file_mappings
+    # None entry MUST appear in suppressed_sources
+    assert '.github/workflows/_ci-checks.yaml' in providers.suppressed_sources
+    # Non-None entries are unaffected
+    assert 'other.txt' in providers.file_mappings

@@ -234,6 +234,10 @@ class Providers(BaseModel):
     # renderer can later look up which provider owns a given template and
     # decide whether to use the provider's own context.
     template_sources: dict[str, str] = Field(default_factory=dict)
+    # template paths that providers explicitly suppressed via a None mapping
+    # in create_file_mappings.  These are excluded from auto-staging so the
+    # builder does not copy them to the consumer's working tree.
+    suppressed_sources: set[str] = Field(default_factory=set)
     # unified file disposition list; populated by `build_file_records` after
     # staging is complete.  empty until that function is called.
     file_records: list[FileRecord] = Field(default_factory=list)
@@ -358,6 +362,9 @@ class Accumulators:
     create_only_set: set[Path] = field(default_factory=set)
     delete_set: set[Path] = field(default_factory=set)
     history: dict[str, list[Decision]] = field(default_factory=dict)
+    # destination paths that providers explicitly mapped to None — these
+    # should not be auto-staged even though no file_mappings entry exists.
+    suppressed_sources: set[str] = field(default_factory=set)
 
 
 # --- end moved types ------------------------------------------------------------

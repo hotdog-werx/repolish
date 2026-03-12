@@ -188,7 +188,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
     sources = _create_staged_template(
         setup_input,
         config,
-        excluded_sources=_collect_excluded_sources(providers.file_mappings),
+        excluded_sources=_collect_excluded_sources(providers.file_mappings) | providers.suppressed_sources,
     )
     # stage_templates records alias as the provider id; provider_contexts is
     # keyed by the full directory path (pid).  Translate here so rendering

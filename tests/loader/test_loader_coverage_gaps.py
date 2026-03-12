@@ -62,6 +62,15 @@ def test_process_provider_fm_skips_none_values() -> None:
     assert acc.merged_file_mappings == {'b.txt': 'tmpl'}
 
 
+def test_process_provider_fm_none_populates_suppressed_sources() -> None:
+    """A None-valued mapping entry is added to suppressed_sources, not file_mappings."""
+    acc = Accumulators()
+    _process_provider_fm('m', {'.github/workflows/_ci-checks.yaml': None, 'other.txt': 'tmpl'}, acc)
+    assert '.github/workflows/_ci-checks.yaml' in acc.suppressed_sources
+    assert '.github/workflows/_ci-checks.yaml' not in acc.merged_file_mappings
+    assert acc.merged_file_mappings == {'other.txt': 'tmpl'}
+
+
 def test_collect_provider_contributions_skips_missing_instance():
     acc = Accumulators()
     # module_cache entry with no instance

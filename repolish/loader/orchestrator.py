@@ -164,6 +164,9 @@ def _process_provider_fm(
     """
     for dest, src in fm.items():
         if src is None:
+            # the provider explicitly opted out of this template path; record
+            # it so the builder can exclude it from auto-staging.
+            accum.suppressed_sources.add(dest)
             continue
         if isinstance(src, str):
             accum.merged_file_mappings[dest] = src
@@ -504,6 +507,7 @@ def _run_provider_pipeline(
         create_only_files=list(accum.create_only_set),
         delete_history=accum.history,
         provider_contexts=provider_contexts,
+        suppressed_sources=accum.suppressed_sources,
     )
 
 
