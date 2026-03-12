@@ -2,6 +2,8 @@
 
 import inspect
 import json
+import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,12 +16,17 @@ from hotlog import (
     get_logger,
     resolve_verbosity,
 )
+from rich.console import Console
 
 from repolish.config import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
 
 logger = get_logger(__name__)
+
+# Disable colors during tests (similar to hotlog's get_console behavior)
+_force_terminal = 'pytest' not in sys.modules and not any(k.startswith('PYTEST_') for k in os.environ)
+console = Console(force_terminal=_force_terminal)
 
 
 @dataclass
@@ -251,7 +258,7 @@ def resource_linker(
 def resource_linker_cli(
     *,
     library_name: str | None = None,
-    default_source_dir: str = 'resources',
+    default_source_dir: str = 'resources/templates',
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
 ) -> cyclopts.App:
@@ -263,7 +270,7 @@ def resource_linker_cli(
     Args:
         library_name: Name of the library (used for default target subdirectory).
             If not provided, auto-detects from the caller's top-level package name.
-        default_source_dir: Path to resources relative to package root (default: 'resources').
+        default_source_dir: Path to resources relative to package root (default: 'resources/templates').
         default_target_base: Default base directory for the target (default: .repolish)
         default_symlinks: List of Symlink objects defining default symlinks from provider resources.
             Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
@@ -298,8 +305,9 @@ def resource_linker_cli(
     # Create a function with auto-generated success message
     def _success_message() -> None:
         """Auto-generated success message."""
-        print(  # noqa: T201
-            f'- {default_source_dir} from {detected_library_name} are now available',
+        console.print(
+            f'- [bold cyan]{default_source_dir}[/bold cyan] from '
+            f'[bold green]{detected_library_name}[/bold green] are now available',
         )
 
     # Apply the decorator to create the CLI
