@@ -48,11 +48,14 @@ def _derive_context(name: str) -> ScaffoldContext:
                     class_name='WorkspaceProvider',
                     context_class='WorkspaceProviderContext',
                     inputs_class='WorkspaceProviderInputs')
+    >>> _derive_context('codeguide_workspace')  # underscores normalized to dashes
+    ScaffoldContext(repo_name='codeguide-workspace', ...)
     """
-    package_name = name.replace('-', '_')
+    repo_name = name.replace('_', '-').lower()
+    package_name = repo_name.replace('-', '_')
     short_prefix = package_name.split('_')[-1].capitalize()
     return ScaffoldContext(
-        repo_name=name,
+        repo_name=repo_name,
         package_name=package_name,
         short_prefix=short_prefix,
         class_name=f'{short_prefix}Provider',

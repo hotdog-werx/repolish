@@ -187,3 +187,14 @@ def test_generate_provider_py_contains_all_methods(tmp_path: Path) -> None:
     assert 'from my_lib.repolish.models import' in provider_py
     assert 'LibProviderContext' in provider_py
     assert 'LibProviderInputs' in provider_py
+
+
+def test_generate_normalizes_underscores_to_dashes_in_repo_name(
+    tmp_path: Path,
+) -> None:
+    """Passing underscores in the name normalizes repo_name to dashes for the CLI script key."""
+    generate('codeguide_zensical', tmp_path)
+    pyproject = (tmp_path / 'pyproject.toml').read_text()
+    # script key must use dashes, not underscores
+    assert 'codeguide-zensical-link' in pyproject
+    assert 'codeguide_zensical-link' not in pyproject
