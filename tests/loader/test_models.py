@@ -9,6 +9,7 @@ from repolish.loader.models import (
     BaseContext,
     BaseInputs,
     Provider,
+    ProviderInfo,
     _get_provider_generic_args,
 )
 
@@ -145,6 +146,26 @@ def test_inference_failure_shows_hint(monkeypatch: pytest.MonkeyPatch):
     assert 'provider_context_instantiation_failed' in str(
         mock_warn.call_args[0][0],
     )
+
+
+@pytest.mark.parametrize(
+    ('version', 'expected'),
+    [
+        ('1.2.3', 1),
+        ('v2.0.0', 2),
+        ('', None),
+        ('not-a-version', None),  # non-numeric major → ValueError
+        ('.', None),  # empty split result → ValueError
+    ],
+    ids=['numeric', 'v-prefix', 'empty', 'non-numeric', 'dot-only'],
+)
+def test_provider_info_major_version(
+    version: str,
+    expected: int | None,
+) -> None:
+    """major_version parses the integer major or returns None on bad input."""
+    info = ProviderInfo(version=version)
+    assert info.major_version == expected
 
 
 def test_basecontext_includes_repolish_field():

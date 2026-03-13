@@ -19,6 +19,7 @@ from repolish.loader import (
     Providers,
     TemplateMapping,
 )
+from repolish.loader.models import ProviderInfo
 
 
 def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
@@ -498,3 +499,40 @@ def test_process_template_mappings_skips_string_entries(tmp_path: Path):
     assert (setup_output / 'repolish' / '_repolish.mapped.txt').exists()
     # the string entry is untouched in file_mappings (not normalized to dest path)
     assert providers.file_mappings['plain.txt'] == 'item'
+
+
+def test_provider_info_bad_version_renders_none_not_crash(
+    tmp_path: Path,
+) -> None:
+    """A non-parseable version string makes major_version None in templates.
+
+    Jinja2 renders None as the literal string "None" rather than raising;
+    this test pins that behaviour so we know bad version strings are silent
+    rather than breaking the rendering pipeline.
+    """
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'info.txt.jinja').write_text(
+        'major={{ _provider.major_version }}\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    ctx = BaseContext()
+    ctx._provider_data = ProviderInfo(alias='mypkg', version='not-a-version')
+
+    providers = Providers(
+        provider_contexts={'p': ctx},
+        template_sources={'info.txt': 'p'},
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+    render_template(setup_input, providers, setup_output)
+
+    out = setup_output / 'repolish' / 'info.txt'
+    assert out.exists()
+    # None serialises to the string "None" in Jinja2 — no crash, no empty string
+    assert out.read_text(encoding='utf-8').strip() == 'major=None'
