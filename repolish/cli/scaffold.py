@@ -18,7 +18,10 @@ def scaffold(
     *,
     package: Annotated[
         str,
-        Parameter(name=['--package', '-p'], help='Python package name, e.g. codeguide_workspace.'),
+        Parameter(
+            name=['--package', '-p'],
+            help='Python package name, e.g. codeguide_workspace.',
+        ),
     ],
     prefix: Annotated[
         str | None,

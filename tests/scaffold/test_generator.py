@@ -182,7 +182,8 @@ def test_generate_provider_py_contains_all_methods(tmp_path: Path) -> None:
     ):
         assert method in provider_py
     # uses absolute import, not relative
-    assert 'from typing import override' in provider_py
+    assert 'from repolish import' in provider_py
+    assert 'override' in provider_py
     assert 'BaseInputs' in provider_py
     assert 'from my_lib.repolish.models import' in provider_py
     assert 'LibProviderContext' in provider_py

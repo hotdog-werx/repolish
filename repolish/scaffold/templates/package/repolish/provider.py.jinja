@@ -1,9 +1,4 @@
-try:
-    from typing import override
-except ImportError:
-    from typing_extensions import override
-
-from repolish import BaseInputs, Provider, ProviderEntry, TemplateMapping
+from repolish import BaseInputs, Provider, ProviderEntry, TemplateMapping, override
 
 from {{ package_name }}.repolish.models import (
     {{ context_class }},

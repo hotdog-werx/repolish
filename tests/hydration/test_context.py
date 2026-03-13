@@ -97,7 +97,11 @@ def test_provider_alias_available_in_create_context(tmp_path: Path):
             'post_process': [],
             'delete_files': [],
             'providers': {
-                'myalias': ResolvedProviderInfo(alias='myalias', target_dir=prov, symlinks=[]),
+                'myalias': ResolvedProviderInfo(
+                    alias='myalias',
+                    target_dir=prov,
+                    symlinks=[],
+                ),
             },
         },
     )

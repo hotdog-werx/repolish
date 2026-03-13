@@ -34,7 +34,10 @@ class ScaffoldContext:
     inputs_class: str
 
 
-def _derive_context(package_name: str, prefix: str | None = None) -> ScaffoldContext:
+def _derive_context(
+    package_name: str,
+    prefix: str | None = None,
+) -> ScaffoldContext:
     """Derive all class names from an explicit package name.
 
     ``prefix``, when supplied, overrides the short prefix used to form class
@@ -86,7 +89,11 @@ def _collect_templates() -> list[Path]:
     return [p.relative_to(_TEMPLATES_DIR) for p in _TEMPLATES_DIR.rglob('*.jinja')]
 
 
-def generate(package_name: str, output_dir: Path, prefix: str | None = None) -> list[Path]:
+def generate(
+    package_name: str,
+    output_dir: Path,
+    prefix: str | None = None,
+) -> list[Path]:
     """Render all scaffold templates into *output_dir*.
 
     Args:
