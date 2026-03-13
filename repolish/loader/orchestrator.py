@@ -25,6 +25,7 @@ from repolish.loader.models import (
     Decision,
     FileMode,
     GlobalContext,
+    ProviderInfo,
     TemplateMapping,
     get_global_context,
 )
@@ -403,6 +404,14 @@ def _synthesize_provider_context_for_pid(
     if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):
         ctx = ctx.model_copy(update={'repolish': global_context})
 
+    # inject provider identity so templates can reference {{ _provider.alias }}
+    # and {{ _provider.version }} without the provider having to do it manually.
+    if isinstance(ctx, BaseContext):
+        ctx._provider_data = ProviderInfo(
+            alias=getattr(inst, 'alias', ''),
+            version=getattr(inst, 'version', ''),
+        )
+
     provider_contexts[pid] = ctx
 
 
@@ -430,6 +439,23 @@ def _populate_provider_context(
         )
 
 
+def _set_provider_metadata(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    alias_map: dict[str, str],
+) -> None:
+    """Set alias and version on every provider instance before any hooks run.
+
+    Version is read from the module's __version__ when present; falls back to
+    an empty string for local / un-installed providers.
+    """
+    for _idx, (_pid, _mod) in enumerate(module_cache):
+        _inst = instances[_idx]
+        if _inst is not None:
+            _inst.alias = alias_map.get(_pid, _pid)
+            _inst.version = _mod.get('__version__', '') or ''
+
+
 def _run_provider_pipeline(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
@@ -441,13 +467,10 @@ def _run_provider_pipeline(
     # gather metadata and basic helper structures
     instances = build_provider_metadata(module_cache)
 
-    # set alias on every provider instance before any hooks (including
-    # create_context) are called so ``self.alias`` is already correct.
+    # set alias and version on every provider instance before any hooks
+    # (including create_context) are called.
     _alias_map = {} if options is None or options.alias_map is None else options.alias_map
-    for _idx, (_pid, _mod) in enumerate(module_cache):
-        _inst = instances[_idx]
-        if _inst is not None:
-            _inst.alias = _alias_map.get(_pid, _pid)
+    _set_provider_metadata(module_cache, instances, _alias_map)
 
     global_context = options.global_context if options is not None else GlobalContext()
     _populate_provider_context(

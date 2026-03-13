@@ -120,6 +120,8 @@ def test_integration_emoji_encoding(
     write_file(
         repolish_py,
         textwrap.dedent("""\
+        __version__ = '99.2.3'
+
         from repolish import BaseContext, Provider, BaseInputs
 
         class Ctx(BaseContext):
@@ -129,6 +131,12 @@ def test_integration_emoji_encoding(
             def create_context(self):
                 return Ctx()
         """),
+    )
+
+    # template that renders the injected major version
+    write_file(
+        repo_dir / 'version.txt.jinja',
+        '{{ _provider.major_version }}\n',
     )
 
     # write config file
@@ -158,6 +166,10 @@ def test_integration_emoji_encoding(
     content = result_file.read_text(encoding='utf-8')
     assert '🐛 Bug Fixes' in content
     assert '🚀 Features' in content
+
+    version_file = tmp_path / 'version.txt'
+    assert version_file.exists()
+    assert version_file.read_text(encoding='utf-8').strip() == '99'
 
 
 def test_integration_migration_flag_in_event(

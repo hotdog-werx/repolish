@@ -9,6 +9,7 @@ from .loader.models import (
     FileMode,
     Provider,
     ProviderEntry,
+    ProviderInfo,
     TemplateMapping,
     get_provider_context,
 )
@@ -19,6 +20,7 @@ __all__ = [
     'FileMode',
     'Provider',
     'ProviderEntry',
+    'ProviderInfo',
     'TemplateMapping',
     'get_provider_context',
     'override',

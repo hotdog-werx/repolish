@@ -32,7 +32,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Generic, TypeVar, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, computed_field
 
 from repolish.loader._log import logger
 
@@ -105,6 +105,29 @@ def get_global_context() -> GlobalContext:
     )
 
 
+class ProviderInfo(BaseModel):
+    """Runtime metadata injected into every provider context by the loader.
+
+    Available in templates as ``{{ _provider.alias }}``, ``{{ _provider.version }}``
+    and ``{{ _provider.major_version }}``.  All fields default to empty/None so
+    providers that don't need the information aren't forced to handle it.
+    """
+
+    alias: str = ''
+    version: str = ''
+
+    @computed_field
+    @property
+    def major_version(self) -> int | None:
+        """Integer major version parsed from ``version``, or None if unavailable."""
+        if not self.version:
+            return None
+        try:
+            return int(self.version.split('.')[0].lstrip('v'))
+        except (ValueError, IndexError):
+            return None
+
+
 class BaseContext(BaseModel):
     """Minimal, empty context type for providers.
 
@@ -120,6 +143,13 @@ class BaseContext(BaseModel):
     """
 
     repolish: GlobalContext = Field(default_factory=GlobalContext)
+    _provider_data: ProviderInfo = PrivateAttr(default_factory=ProviderInfo)
+
+    @computed_field
+    @property
+    def _provider(self) -> ProviderInfo:
+        """Provider metadata injected by the loader (alias, version, major_version)."""
+        return self._provider_data
 
 
 class BaseInputs(BaseModel):
@@ -490,6 +520,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
     templates_root: Path = Path()
     alias: str = ''  # config key assigned by the loader before any hooks run
+    version: str = ''  # package version; auto-detected by the loader when possible
 
     def create_context(self) -> ContextT:
         """Return this provider's initial context object.
