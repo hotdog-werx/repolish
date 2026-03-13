@@ -22,8 +22,8 @@ class NameCase:
     [
         NameCase(
             name='hyphenated',
-            repo_name='codeguide-workspace',
-            package_name='codeguide_workspace',
+            repo_name='devkit-workspace',
+            package_name='devkit_workspace',
             short_prefix='Workspace',
             class_name='WorkspaceProvider',
             context_class='WorkspaceProviderContext',
@@ -49,8 +49,8 @@ class NameCase:
         ),
         NameCase(
             name='acronym_suffix',
-            repo_name='codeguide-iac',
-            package_name='codeguide_iac',
+            repo_name='devkit-iac',
+            package_name='devkit_iac',
             short_prefix='Iac',
             class_name='IacProvider',
             context_class='IacProviderContext',
@@ -194,8 +194,8 @@ def test_generate_normalizes_underscores_to_dashes_in_repo_name(
     tmp_path: Path,
 ) -> None:
     """Passing underscores in the name normalizes repo_name to dashes for the CLI script key."""
-    generate('codeguide_zensical', tmp_path)
+    generate('devkit_zensical', tmp_path)
     pyproject = (tmp_path / 'pyproject.toml').read_text()
     # script key must use dashes, not underscores
-    assert 'codeguide-zensical-link' in pyproject
-    assert 'codeguide_zensical-link' not in pyproject
+    assert 'devkit-zensical-link' in pyproject
+    assert 'devkit_zensical-link' not in pyproject

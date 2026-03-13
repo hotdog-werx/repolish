@@ -22,7 +22,7 @@ class ScaffoldContext:
 
     ``short_prefix`` is the title-cased last segment of the package name and
     forms the common prefix for all generated class names.  For example, a
-    package named ``codeguide_iac`` yields ``short_prefix='Iac'`` and the
+    package named ``devkit_iac`` yields ``short_prefix='Iac'`` and the
     classes ``IacProvider``, ``IacProviderContext``, ``IacProviderInputs``.
     """
 
@@ -45,11 +45,11 @@ def _derive_context(
 
     Examples:
     --------
-    >>> _derive_context('codeguide_workspace')
-    ScaffoldContext(repo_name='codeguide-workspace', package_name='codeguide_workspace',
+    >>> _derive_context('devkit_workspace')
+    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit_workspace',
                     short_prefix='Workspace', ...)
-    >>> _derive_context('codeguide_workspace', prefix='workspace')
-    ScaffoldContext(repo_name='codeguide-workspace', package_name='codeguide_workspace',
+    >>> _derive_context('devkit_workspace', prefix='workspace')
+    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit_workspace',
                     short_prefix='Workspace', ...)
     """
     pkg = package_name.replace('-', '_').lower()
@@ -97,7 +97,7 @@ def generate(
     """Render all scaffold templates into *output_dir*.
 
     Args:
-        package_name: Python package name (e.g. ``codeguide_workspace``).
+        package_name: Python package name (e.g. ``devkit_workspace``).
         output_dir: Directory to write files into.  Created automatically.
         prefix: Optional class-name prefix override.  Defaults to the last
             ``_``-segment of ``package_name``.
