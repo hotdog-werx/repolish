@@ -9,14 +9,15 @@ runner = CliRunner()
 def test_scaffold_help() -> None:
     result = runner.invoke(app, ['scaffold', '--help'])
     assert result.exit_code == 0
-    assert 'NAME' in result.output
-    assert '--output-dir' in result.output
+    assert 'DIRECTORY' in result.output
+    assert '--package' in result.output
+    assert '--prefix' in result.output
 
 
 def test_scaffold_creates_files(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ['scaffold', 'my-provider', '--output-dir', str(tmp_path)],
+        ['scaffold', str(tmp_path), '--package', 'my_provider'],
     )
     assert result.exit_code == 0
     assert (tmp_path / 'pyproject.toml').exists()
@@ -26,11 +27,11 @@ def test_scaffold_creates_files(tmp_path: Path) -> None:
 def test_scaffold_idempotent(tmp_path: Path) -> None:
     runner.invoke(
         app,
-        ['scaffold', 'my-provider', '--output-dir', str(tmp_path)],
+        ['scaffold', str(tmp_path), '--package', 'my_provider'],
     )
     result = runner.invoke(
         app,
-        ['-v', 'scaffold', 'my-provider', '--output-dir', str(tmp_path)],
+        ['-v', 'scaffold', str(tmp_path), '--package', 'my_provider'],
     )
     assert result.exit_code == 0
     assert 'nothing to write' in result.output

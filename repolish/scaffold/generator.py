@@ -34,29 +34,28 @@ class ScaffoldContext:
     inputs_class: str
 
 
-def _derive_context(name: str) -> ScaffoldContext:
-    """Derive all class names from a repo/provider name.
+def _derive_context(package_name: str, prefix: str | None = None) -> ScaffoldContext:
+    """Derive all class names from an explicit package name.
 
-    The ``short_prefix`` is the title-cased last segment of the package name.
+    ``prefix``, when supplied, overrides the short prefix used to form class
+    names.  If omitted the last ``_``-segment of ``package_name`` is used.
 
     Examples:
     --------
-    >>> _derive_context('codeguide-workspace')
-    ScaffoldContext(repo_name='codeguide-workspace',
-                    package_name='codeguide_workspace',
-                    short_prefix='Workspace',
-                    class_name='WorkspaceProvider',
-                    context_class='WorkspaceProviderContext',
-                    inputs_class='WorkspaceProviderInputs')
-    >>> _derive_context('codeguide_workspace')  # underscores normalized to dashes
-    ScaffoldContext(repo_name='codeguide-workspace', ...)
+    >>> _derive_context('codeguide_workspace')
+    ScaffoldContext(repo_name='codeguide-workspace', package_name='codeguide_workspace',
+                    short_prefix='Workspace', ...)
+    >>> _derive_context('codeguide_workspace', prefix='workspace')
+    ScaffoldContext(repo_name='codeguide-workspace', package_name='codeguide_workspace',
+                    short_prefix='Workspace', ...)
     """
-    repo_name = name.replace('_', '-').lower()
-    package_name = repo_name.replace('-', '_')
-    short_prefix = package_name.split('_')[-1].capitalize()
+    pkg = package_name.replace('-', '_').lower()
+    repo_name = pkg.replace('_', '-')
+    raw_prefix = prefix if prefix else pkg.split('_')[-1]
+    short_prefix = raw_prefix.capitalize()
     return ScaffoldContext(
         repo_name=repo_name,
-        package_name=package_name,
+        package_name=pkg,
         short_prefix=short_prefix,
         class_name=f'{short_prefix}Provider',
         context_class=f'{short_prefix}ProviderContext',
@@ -87,17 +86,20 @@ def _collect_templates() -> list[Path]:
     return [p.relative_to(_TEMPLATES_DIR) for p in _TEMPLATES_DIR.rglob('*.jinja')]
 
 
-def generate(name: str, output_dir: Path) -> list[Path]:
+def generate(package_name: str, output_dir: Path, prefix: str | None = None) -> list[Path]:
     """Render all scaffold templates into *output_dir*.
 
     Args:
-        name: Provider/repo name (e.g. ``codeguide-workspace``).
+        package_name: Python package name (e.g. ``codeguide_workspace``).
         output_dir: Directory to write files into.  Created automatically.
+        prefix: Optional class-name prefix override.  Defaults to the last
+            ``_``-segment of ``package_name``.
 
     Returns:
         List of paths that were written (skipped files are not included).
     """
-    ctx = _derive_context(name)
+    ctx = _derive_context(package_name, prefix)
+    output_dir.mkdir(parents=True, exist_ok=True)
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES_DIR)),
         keep_trailing_newline=True,

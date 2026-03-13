@@ -11,23 +11,34 @@ logger = get_logger(__name__)
 
 
 def scaffold(
-    name: str,
-    *,
-    output_dir: Annotated[
+    directory: Annotated[
         Path,
-        Parameter(name=['--output-dir', '-o']),
-    ] = Path(),
+        Parameter(help='Destination directory (created if it does not exist).'),
+    ],
+    *,
+    package: Annotated[
+        str,
+        Parameter(name=['--package', '-p'], help='Python package name, e.g. codeguide_workspace.'),
+    ],
+    prefix: Annotated[
+        str | None,
+        Parameter(
+            name=['--prefix'],
+            help='Class-name prefix override (defaults to the last segment of --package).',
+        ),
+    ] = None,
 ) -> None:
     """Scaffold a new repolish provider package.
 
-    NAME is the provider/repo name (e.g. 'codeguide-workspace').
-    Package name and class name are derived automatically.
+    DIRECTORY is where pyproject.toml, README.md, repolish.yaml and the
+    package directory will be placed.  Use '.' for the current directory.
     Existing files are never overwritten.
     """
 
     def _run() -> int:
-        dest = output_dir.resolve()
-        written = generate(name, dest)
+        cwd = Path.cwd()
+        dest = (cwd / directory).resolve()
+        written = generate(package, dest, prefix)
         if not written:
             logger.info(
                 'scaffold: nothing to write — all files already exist',
@@ -35,7 +46,11 @@ def scaffold(
             )
             return 0
         for path in written:
-            logger.info('scaffold: created', path=str(path.relative_to(dest)))
+            try:
+                rel = path.relative_to(cwd)
+            except ValueError:
+                rel = path
+            logger.info('scaffold: created', path=str(rel))
         logger.info('scaffold: done', count=len(written), dest=str(dest))
         return 0
 
