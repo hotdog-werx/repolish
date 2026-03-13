@@ -15,7 +15,7 @@ class AllProviders(BaseModel):
     to include additional provider metadata or configuration.
 
     Aliases map user-friendly names to provider folder names within .repolish/.
-    Example: {"aliases": {"base": "codeguide", "py": "python-tools"}}
+    Example: {"aliases": {"base": "devkit", "py": "python-tools"}}
     """
 
     aliases: dict[str, str] = Field(
@@ -72,6 +72,14 @@ class ProviderInfo(BaseModel):
     library_name: str | None = Field(
         default=None,
         description='Name of the provider library (optional)',
+    )
+    project_name: str = Field(
+        default='',
+        description='Project name as declared in pyproject.toml [project] name (e.g. "devkit-workspace")',
+    )
+    package_name: str = Field(
+        default='',
+        description='Python package name (import name) for the provider (e.g. "devkit_workspace")',
     )
     symlinks: list[ProviderSymlink] = Field(
         default_factory=list,

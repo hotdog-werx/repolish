@@ -25,6 +25,7 @@ from repolish.loader.orchestrator import (
     _apply_overrides_to_model,
     _build_all_providers_list,
     _collect_provider_contributions,
+    _detect_package_names,
     _process_provider_fm,
     _synthesize_provider_context_for_pid,
 )
@@ -514,3 +515,35 @@ def test_finalize_provider_contexts_edge_cases() -> None:
     inst = Setter()
     finalize_provider_contexts([('p', {})], [inst], {}, cast('dict', ctxs), [])
     assert ctxs == {'p': {'called': True}}
+
+
+def test_detect_package_names_resolves_project_name() -> None:
+    """When packages_distributions returns a hit, project_name is populated."""
+    mod = {'__package__': 'mypkg.sub'}
+    with mock.patch(
+        'repolish.loader.orchestrator.packages_distributions',
+        return_value={'mypkg': ['my-pkg-dist']},
+    ):
+        pkg, project = _detect_package_names(mod)
+    assert pkg == 'mypkg'
+    assert project == 'my-pkg-dist'
+
+
+def test_detect_package_names_logs_on_metadata_error() -> None:
+    """When packages_distributions raises, the exception is logged and empty strings returned."""
+    mod = {'__package__': 'mypkg'}
+    with (
+        mock.patch(
+            'repolish.loader.orchestrator.packages_distributions',
+            side_effect=Exception('metadata boom'),
+        ),
+        mock.patch('repolish.loader.orchestrator.logger') as mock_logger,
+    ):
+        pkg, project = _detect_package_names(mod)
+    assert pkg == 'mypkg'
+    assert project == ''
+    mock_logger.debug.assert_called_once_with(
+        'package_distributions_lookup_failed',
+        package='mypkg',
+        error='metadata boom',
+    )

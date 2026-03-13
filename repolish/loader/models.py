@@ -115,6 +115,8 @@ class ProviderInfo(BaseModel):
 
     alias: str = ''
     version: str = ''
+    package_name: str = ''
+    project_name: str = ''
 
     @computed_field
     @property
@@ -521,6 +523,8 @@ class Provider(ABC, Generic[ContextT, InputT]):
     templates_root: Path = Path()
     alias: str = ''  # config key assigned by the loader before any hooks run
     version: str = ''  # package version; auto-detected by the loader when possible
+    package_name: str = ''  # top-level Python package (import name), e.g. "devkit_workspace"
+    project_name: str = ''  # distribution name from pyproject.toml [project] name, e.g. "devkit-workspace"
 
     def create_context(self) -> ContextT:
         """Return this provider's initial context object.
