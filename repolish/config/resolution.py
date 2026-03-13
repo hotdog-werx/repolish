@@ -9,6 +9,7 @@ from repolish.config.models import (
     RepolishConfigFile,
     ResolvedProviderInfo,
 )
+from repolish.config.models.metadata import ProviderInfo
 from repolish.config.providers import load_provider_info
 
 logger = get_logger(__name__)
@@ -75,6 +76,73 @@ def _resolve_providers(
     return resolved_providers
 
 
+def _try_auto_link(
+    alias: str,
+    provider_config: ProviderConfig,
+    config_dir: Path,
+) -> ProviderInfo | None:
+    """Attempt to auto-link via the provider CLI and reload the info file."""
+    from repolish.linker import (  # noqa: PLC0415 - deferred to avoid circular import
+        process_provider,
+    )
+
+    logger.warning(
+        'provider_directory_missing',
+        alias=alias,
+        suggestion='provider directory not found; attempting to link via cli',
+        cli=provider_config.cli,
+    )
+    exit_code = process_provider(alias, provider_config, config_dir)
+    if exit_code == 0:
+        return load_provider_info(alias, config_dir)
+    logger.warning(
+        'provider_auto_link_failed',
+        alias=alias,
+        cli=provider_config.cli,
+        exit_code=exit_code,
+    )
+    return None
+
+
+def _resolved_from_info(
+    alias: str,
+    provider_config: ProviderConfig,
+    provider_info: ProviderInfo,
+    config_dir: Path,
+) -> ResolvedProviderInfo:
+    """Build a ResolvedProviderInfo from a loaded ProviderInfo JSON file."""
+    target_dir = _resolve_path(provider_info.target_dir, config_dir)
+    if provider_info.templates_dir:
+        target_dir = target_dir / provider_info.templates_dir
+    symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
+    return ResolvedProviderInfo(
+        alias=alias,
+        target_dir=target_dir,
+        library_name=provider_info.library_name,
+        symlinks=symlinks,
+        context=provider_config.context,
+        context_overrides=provider_config.context_overrides or None,
+    )
+
+
+def _resolved_from_directory(
+    alias: str,
+    provider_config: ProviderConfig,
+    config_dir: Path,
+) -> ResolvedProviderInfo:
+    """Build a ResolvedProviderInfo from a direct directory config entry."""
+    target_dir = _resolve_path(provider_config.directory, config_dir)  # type: ignore[arg-type]
+    symlinks = provider_config.symlinks if provider_config.symlinks is not None else []
+    return ResolvedProviderInfo(
+        alias=alias,
+        target_dir=target_dir,
+        library_name=None,
+        symlinks=symlinks,
+        context=provider_config.context,
+        context_overrides=provider_config.context_overrides or None,
+    )
+
+
 def _resolve_single_provider(
     alias: str,
     provider_config: ProviderConfig,
@@ -90,59 +158,22 @@ def _resolve_single_provider(
     Returns:
         Resolved provider info, or None if cannot be resolved
     """
-    # Try to load provider info from JSON file (if linked)
     provider_info = load_provider_info(alias, config_dir)
 
     if provider_info is None and provider_config.cli:
-        logger.warning(
-            'provider_directory_missing',
-            alias=alias,
-            suggestion='provider directory not found; attempting to link via cli',
-            cli=provider_config.cli,
-        )
-        from repolish.linker import (  # noqa: PLC0415 - deferred to avoid circular import: resolution → linker → config.__init__ → loader → resolution
-            process_provider,
-        )
-
-        exit_code = process_provider(alias, provider_config, config_dir)
-        if exit_code == 0:
-            provider_info = load_provider_info(alias, config_dir)
-        else:
-            logger.warning(
-                'provider_auto_link_failed',
-                alias=alias,
-                cli=provider_config.cli,
-                exit_code=exit_code,
-            )
+        provider_info = _try_auto_link(alias, provider_config, config_dir)
 
     if provider_info:
-        # Use info from linked provider
-        target_dir = _resolve_path(provider_info.target_dir, config_dir)
-        # Use user-specified symlinks if provided, otherwise use provider defaults
-        symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
-        return ResolvedProviderInfo(
-            alias=alias,
-            # `target_dir` should already point at templates root
-            target_dir=target_dir,
-            library_name=provider_info.library_name,
-            symlinks=symlinks,
-            context=provider_config.context,
-            context_overrides=provider_config.context_overrides or None,
+        return _resolved_from_info(
+            alias,
+            provider_config,
+            provider_info,
+            config_dir,
         )
+
     if provider_config.directory:
-        # Use direct directory from config
-        target_dir = _resolve_path(provider_config.directory, config_dir)
-        # For directory providers, use user symlinks or empty list as default
-        symlinks = provider_config.symlinks if provider_config.symlinks is not None else []
-        return ResolvedProviderInfo(
-            alias=alias,
-            target_dir=target_dir,
-            library_name=None,
-            symlinks=symlinks,
-            context=provider_config.context,
-            context_overrides=provider_config.context_overrides or None,
-        )
-    # Neither info file nor directory config
+        return _resolved_from_directory(alias, provider_config, config_dir)
+
     logger.warning(
         'provider_not_resolved',
         alias=alias,

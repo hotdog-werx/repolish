@@ -63,6 +63,14 @@ class ProviderInfo(BaseModel):
     source_dir: str = Field(
         description='Directory where provider resources originate (e.g., in site-packages)',
     )
+    templates_dir: str = Field(
+        default='',
+        description=(
+            'Subdirectory within source_dir / target_dir where repolish.py and templates live.'
+            ' When set, the loader uses target_dir / templates_dir as the provider root.'
+            ' Defaults to empty string (repolish.py is at the root of source_dir).'
+        ),
+    )
     # Deprecated: providers now specify the template root directly via
     # `target_dir`.  Historically we allowed a separate
     # ``templates_dir`` within the provider folder, but configuration and

@@ -499,7 +499,7 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     saved_info = json.loads(info_file.read_text())
     assert saved_info['library_name'] == 'mylib'
     assert saved_info['target_dir'] == str(tmp_path / '.repolish' / 'mylib')
-    assert 'templates_dir' not in saved_info
+    assert saved_info['templates_dir'] == ''
     assert len(saved_info['symlinks']) == 2
     assert saved_info['symlinks'][0]['source'] == 'configs/.editorconfig'
     assert saved_info['symlinks'][0]['target'] == '.editorconfig'

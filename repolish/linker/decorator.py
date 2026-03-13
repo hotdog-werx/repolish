@@ -116,6 +116,7 @@ def resource_linker(
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
+    templates_dir: str = '',
     _caller_frame: inspect.FrameInfo | None = None,
 ) -> Callable:
     """Decorator to create a CLI for linking library resources.
@@ -131,6 +132,9 @@ def resource_linker(
         default_target_base: Default base directory for the target (default: .repolish)
         default_symlinks: List of Symlink objects defining default symlinks from provider resources.
             Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
+        templates_dir: Subdirectory within source_dir where repolish.py and templates live.
+            Recorded in provider-info JSON so the loader resolves the correct templates root.
+            Defaults to empty string (repolish.py sits directly in source_dir).
 
     Example:
         ```python
@@ -228,6 +232,7 @@ def resource_linker(
                     target_dir=str(target_dir.absolute()),
                     source_dir=str(source_dir.absolute()),
                     library_name=library_name,
+                    templates_dir=templates_dir,
                     symlinks=provider_symlinks,
                 )
                 print(json.dumps(info_obj.model_dump(mode='json'), indent=2))  # noqa: T201
@@ -260,9 +265,10 @@ def resource_linker(
 def resource_linker_cli(
     *,
     library_name: str | None = None,
-    default_source_dir: str = 'resources/templates',
+    default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
+    templates_dir: str = 'templates',
 ) -> cyclopts.App:
     """Create a resource linker CLI function.
 
@@ -272,10 +278,13 @@ def resource_linker_cli(
     Args:
         library_name: Name of the library (used for default target subdirectory).
             If not provided, auto-detects from the caller's top-level package name.
-        default_source_dir: Path to resources relative to package root (default: 'resources/templates').
+        default_source_dir: Path to resources relative to package root (default: 'resources').
         default_target_base: Default base directory for the target (default: .repolish)
         default_symlinks: List of Symlink objects defining default symlinks from provider resources.
             Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
+        templates_dir: Subdirectory within source_dir where repolish.py and templates live
+            (default: 'templates').  Recorded in provider-info JSON so the loader can locate
+            the provider entry point at target_dir/templates_dir/repolish.py.
 
     Returns:
         A :class:`cyclopts.App` that runs the resource linking CLI.
@@ -319,6 +328,7 @@ def resource_linker_cli(
         default_source_dir=default_source_dir,
         default_target_base=default_target_base,
         default_symlinks=default_symlinks,
+        templates_dir=templates_dir,
         _caller_frame=caller_frame,
     )
 

@@ -9,7 +9,7 @@ from repolish.config.models import (
     ProviderInfo,
     RepolishConfigFile,
 )
-from repolish.config.resolution import resolve_config
+from repolish.config.resolution import _resolved_from_info, resolve_config
 
 
 @dataclass
@@ -62,3 +62,48 @@ def test_auto_link_on_missing_provider(tmp_path: Path, case: TCase):
         result = resolve_config(raw_config)
 
     assert list(result.providers.keys()) == case.expected_aliases
+
+
+@dataclass
+class TemplatesDirCase:
+    name: str
+    templates_dir: str
+    expected_suffix: str
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        TemplatesDirCase(
+            name='templates_dir_appended',
+            templates_dir='templates',
+            expected_suffix='.repolish/mylib/templates',
+        ),
+        TemplatesDirCase(
+            name='templates_dir_empty_no_append',
+            templates_dir='',
+            expected_suffix='.repolish/mylib',
+        ),
+    ],
+    ids=lambda c: c.name,
+)
+def test_resolved_from_info_templates_dir(
+    tmp_path: Path,
+    case: TemplatesDirCase,
+):
+    """_resolved_from_info appends templates_dir to target_dir when set."""
+    provider_info = ProviderInfo(
+        target_dir='.repolish/mylib',
+        source_dir=str(tmp_path / 'mylib' / 'resources'),
+        templates_dir=case.templates_dir,
+    )
+    provider_config = ProviderConfig(cli='mylib-link')
+
+    result = _resolved_from_info(
+        'mylib',
+        provider_config,
+        provider_info,
+        tmp_path,
+    )
+
+    assert result.target_dir == (tmp_path / case.expected_suffix).resolve()

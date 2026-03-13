@@ -378,7 +378,7 @@ def test_resource_linker_cli_info_mode(
     assert result.exit_code == 0
     info = json.loads(result.output)
     assert info['library_name'] == 'mylib'
-    assert 'templates_dir' not in info
+    assert info['templates_dir'] == 'templates'
     assert 'source_dir' in info
     assert 'target_dir' in info
     assert 'are now available' not in result.output

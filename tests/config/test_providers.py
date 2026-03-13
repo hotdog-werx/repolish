@@ -122,6 +122,4 @@ def test_load_provider_info(tmp_path: Path, case: LoadProviderInfoCase):
     else:
         assert result is not None
         assert result.target_dir == case.expected_target_dir
-        # the old ``templates_dir`` field is ignored/removed
-        assert not hasattr(result, 'templates_dir')
         assert result.library_name == case.expected_library_name
