@@ -1,6 +1,5 @@
 import copy
 from dataclasses import dataclass, field
-from importlib.metadata import packages_distributions
 from inspect import isclass
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -31,6 +30,7 @@ from repolish.loader.models import (
     get_global_context,
 )
 from repolish.loader.module import get_module
+from repolish.misc import resolve_package_names
 
 
 def _find_provider_class(
@@ -443,34 +443,6 @@ def _populate_provider_context(
         )
 
 
-def _detect_package_names(mod: dict) -> tuple[str, str]:
-    """Return (package_name, project_name) for a provider module dict.
-
-    ``package_name`` is the top-level Python import name derived from
-    ``__package__`` (e.g. ``devkit_workspace``).
-    ``project_name`` is the distribution name as declared in
-    ``pyproject.toml [project] name`` (e.g. ``devkit-workspace``),
-    looked up via ``importlib.metadata``.
-    Returns a pair of empty strings for local / un-installed providers.
-    """
-    pkg = (mod.get('__package__') or '').split('.')[0]
-    if not pkg:
-        return '', ''
-    project = ''
-    try:
-        dist_map = packages_distributions()
-        dists = dist_map.get(pkg, [])
-        if dists:
-            project = dists[0]
-    except Exception as exc:  # noqa: BLE001 - metadata lookup is best-effort
-        logger.debug(
-            'package_distributions_lookup_failed',
-            package=pkg,
-            error=str(exc),
-        )
-    return pkg, project
-
-
 def _set_provider_metadata(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
@@ -480,15 +452,15 @@ def _set_provider_metadata(
 
     Version is read from the module's __version__ when present; falls back to
     an empty string for local / un-installed providers.
-    package_name and project_name are derived from __package__ and
-    importlib.metadata respectively.
+    package_name and project_name are derived from __package__ via
+    :func:`repolish.misc.resolve_package_names`.
     """
     for _idx, (_pid, _mod) in enumerate(module_cache):
         _inst = instances[_idx]
         if _inst is not None:
             _inst.alias = alias_map.get(_pid, _pid)
             _inst.version = _mod.get('__version__', '') or ''
-            _pkg, _proj = _detect_package_names(_mod)
+            _pkg, _proj = resolve_package_names(_mod.get('__package__'))
             _inst.package_name = _pkg
             _inst.project_name = _proj
 

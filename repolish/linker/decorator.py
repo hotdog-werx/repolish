@@ -21,6 +21,7 @@ from rich.console import Console
 from repolish.config import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
+from repolish.misc import resolve_package_names
 
 logger = get_logger(__name__)
 
@@ -43,8 +44,10 @@ class Symlink:
 def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
     """Auto-detect library name from the caller's package.
 
-    Converts package name to library name by replacing underscores with dashes
-    (Python packages use _, but repo/project names conventionally use -).
+    Uses :func:`repolish.misc.resolve_package_names` to look up the
+    distribution name via ``importlib.metadata``.  Falls back to converting
+    underscores to dashes in the top-level package name when the distribution
+    name cannot be resolved (e.g. for editable installs without metadata).
 
     Args:
         caller_frame: Frame info of the caller
@@ -66,15 +69,14 @@ def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
         msg = 'Could not determine library name from caller module'
         raise ResourceLinkerError(msg)
 
-    package_name = caller_module.__package__
-    if package_name:  # pragma: no cover
-        # Use the top-level package name, converting underscores to dashes
-        return package_name.split('.')[0].replace('_', '-')
+    package_attr = caller_module.__package__
+    if not package_attr:  # pragma: no cover
+        msg = 'Could not determine library name: caller module has no package'
+        raise ResourceLinkerError(msg)
 
-    # This fallback is nearly impossible to trigger - a module with __package__ attribute
-    # set to None/empty is not a standard Python module scenario that developers can control.
-    msg = 'Could not determine library name: caller module has no package'  # pragma: no cover
-    raise ResourceLinkerError(msg)  # pragma: no cover
+    pkg, project = resolve_package_names(package_attr)
+    # prefer the distribution name; fall back to underscore→dash conversion
+    return project if project else pkg.replace('_', '-')
 
 
 def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
