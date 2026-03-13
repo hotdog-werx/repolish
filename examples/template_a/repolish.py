@@ -12,6 +12,7 @@ class Ctx(BaseContext):
     """Example provider context for the `template_a` example."""
 
     package_name: str = 'my-project'
+    alias: str = ''
 
 
 class TemplateAProvider(Provider[Ctx, BaseModel]):
@@ -19,7 +20,7 @@ class TemplateAProvider(Provider[Ctx, BaseModel]):
 
     def create_context(self) -> Ctx:
         """Return this provider's Pydantic context model."""
-        return Ctx()
+        return Ctx(alias=self.alias)
 
     def create_file_mappings(
         self,

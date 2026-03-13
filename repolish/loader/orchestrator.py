@@ -441,6 +441,14 @@ def _run_provider_pipeline(
     # gather metadata and basic helper structures
     instances = build_provider_metadata(module_cache)
 
+    # set alias on every provider instance before any hooks (including
+    # create_context) are called so ``self.alias`` is already correct.
+    _alias_map = {} if options is None or options.alias_map is None else options.alias_map
+    for _idx, (_pid, _mod) in enumerate(module_cache):
+        _inst = instances[_idx]
+        if _inst is not None:
+            _inst.alias = _alias_map.get(_pid, _pid)
+
     global_context = options.global_context if options is not None else GlobalContext()
     _populate_provider_context(
         module_cache,

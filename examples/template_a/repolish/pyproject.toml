@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "{{ package_name }}"
+name = "{{ package_name }} - {{ alias }}"
 version = "0.1.0"
 
 ## repolish-regex[keep-description]: ^description =\s(.+)$

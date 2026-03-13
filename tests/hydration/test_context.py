@@ -73,6 +73,41 @@ def test_config_level_provenance(tmp_path: Path):
     assert isinstance(providers.provider_contexts, dict)
 
 
+def test_provider_alias_available_in_create_context(tmp_path: Path):
+    """Provider.alias is set to the config key before create_context runs."""
+    prov = tmp_path / 'prov'
+    prov.mkdir()
+    (prov / 'repolish.py').write_text(
+        dedent("""
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            alias: str = ''
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx(alias=self.alias)
+        """),
+    )
+
+    cfg = RepolishConfig.model_validate(
+        {
+            'config_dir': tmp_path,
+            'anchors': {},
+            'post_process': [],
+            'delete_files': [],
+            'providers': {
+                'myalias': ResolvedProviderInfo(alias='myalias', target_dir=prov, symlinks=[]),
+            },
+        },
+    )
+
+    providers = build_final_providers(cfg)
+    ctx = providers.provider_contexts.get(prov.as_posix())
+    assert ctx is not None
+    assert getattr(ctx, 'alias', None) == 'myalias'
+
+
 def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
     """Overrides resolve correctly when the provider resources live in a sub-directory.
 

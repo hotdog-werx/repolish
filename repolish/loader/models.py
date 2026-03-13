@@ -489,6 +489,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
     """
 
     templates_root: Path = Path()
+    alias: str = ''  # config key assigned by the loader before any hooks run
 
     def create_context(self) -> ContextT:
         """Return this provider's initial context object.

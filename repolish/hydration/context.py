@@ -81,7 +81,9 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     # type is union because create_providers accepts either plain strings or
     # (alias,path) tuples.  we only provide strings here, hence the explicit
     # annotation to satisfy the type checker.
-    dirs: list[str | tuple[str, str]] = list(alias_to_pid.values())
+    # pass (alias, pid) tuples so the loader can assign the config key to
+    # Provider.alias before create_context is called.
+    dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
     providers = create_providers(
         dirs,
         provider_overrides=provider_overrides,
