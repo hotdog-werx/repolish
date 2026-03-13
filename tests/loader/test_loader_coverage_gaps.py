@@ -326,6 +326,7 @@ class Receiver(Provider[RecCtx, Msg]):
             'sender': ResolvedProviderInfo(
                 alias='sender',
                 target_dir=Path(sdir),
+                resources_dir=Path(sdir),
                 context=None,
                 context_overrides={
                     'foo': 'overridden',
@@ -335,6 +336,7 @@ class Receiver(Provider[RecCtx, Msg]):
             'receiver': ResolvedProviderInfo(
                 alias='receiver',
                 target_dir=Path(rdir),
+                resources_dir=Path(rdir),
             ),
         },
     )

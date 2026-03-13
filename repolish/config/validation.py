@@ -66,8 +66,8 @@ def _validate_provider_symlinks(config: RepolishConfig) -> None:
 
     for alias, provider in config.providers.items():
         for symlink in provider.symlinks:
-            # Construct the full source path: target_dir / source
-            source_path = provider.target_dir / symlink.source
+            # Symlink sources are relative to the resources root, not the templates subdir
+            source_path = provider.resources_dir / symlink.source
 
             if not source_path.exists():
                 missing_sources.append(

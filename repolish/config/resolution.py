@@ -111,13 +111,13 @@ def _resolved_from_info(
     config_dir: Path,
 ) -> ResolvedProviderInfo:
     """Build a ResolvedProviderInfo from a loaded ProviderInfo JSON file."""
-    target_dir = _resolve_path(provider_info.target_dir, config_dir)
-    if provider_info.templates_dir:
-        target_dir = target_dir / provider_info.templates_dir
+    resources_dir = _resolve_path(provider_info.target_dir, config_dir)
+    target_dir = resources_dir / provider_info.templates_dir if provider_info.templates_dir else resources_dir
     symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
     return ResolvedProviderInfo(
         alias=alias,
         target_dir=target_dir,
+        resources_dir=resources_dir,
         library_name=provider_info.library_name,
         symlinks=symlinks,
         context=provider_config.context,
@@ -136,6 +136,7 @@ def _resolved_from_directory(
     return ResolvedProviderInfo(
         alias=alias,
         target_dir=target_dir,
+        resources_dir=target_dir,
         library_name=None,
         symlinks=symlinks,
         context=provider_config.context,

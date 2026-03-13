@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Any
 
 from pydantic import (
     BaseModel,
@@ -8,7 +7,7 @@ from pydantic import (
     model_validator,
 )
 
-from repolish.config.models.provider import ProviderConfig
+from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
 from repolish.exceptions import ConfigValidationError
 
 
@@ -68,8 +67,8 @@ class RepolishConfigFile(BaseModel):
     @classmethod
     def normalize_provider_configs(
         cls,
-        value: dict[str, Any],
-    ) -> dict[str, Any]:
+        value: dict[str, object],
+    ) -> dict[str, object]:
         """Normalize provider configurations from shorthand string to full ProviderConfig.
 
         Supports shorthand syntax where the value is just the CLI command:
@@ -87,7 +86,7 @@ class RepolishConfigFile(BaseModel):
         Returns:
             Normalized provider configurations (dict or ProviderConfig objects)
         """
-        normalized: dict[str, Any] = {}
+        normalized: dict[str, object] = {}
         for name, config in value.items():
             if isinstance(config, str):
                 # Shorthand: treat string as CLI command
@@ -135,7 +134,7 @@ class RepolishConfig(BaseModel):
         default_factory=list,
         description='List of POSIX-style paths to delete after generation',
     )
-    providers: dict[str, Any] = Field(
+    providers: dict[str, ResolvedProviderInfo] = Field(
         default_factory=dict,
         description='Fully resolved provider information',
     )

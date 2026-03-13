@@ -94,6 +94,14 @@ class ResolvedProviderInfo(BaseModel):
     target_dir: Path = Field(
         description='Fully resolved directory where provider resources are linked (must contain repolish.py).',
     )
+    resources_dir: Path = Field(
+        description=(
+            'Fully resolved root of the linked resources directory. '
+            'Equal to target_dir when templates_dir is empty; otherwise the parent '
+            'that contains both the templates subdirectory and other resource folders '
+            'such as configs/.'
+        ),
+    )
     library_name: str | None = Field(
         default=None,
         description='Name of the provider library (optional)',

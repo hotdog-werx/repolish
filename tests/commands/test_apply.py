@@ -156,6 +156,7 @@ def test_apply_command_runs_with_valid_provider(
             'prov_a': ResolvedProviderInfo(
                 alias='prov_a',
                 target_dir=provider_dir,
+                resources_dir=provider_dir,
             ),
         },
     )
@@ -319,6 +320,7 @@ def test_apply_with_template_mapping_in_file_mappings(
             'prov_a': ResolvedProviderInfo(
                 alias='prov_a',
                 target_dir=provider_dir,
+                resources_dir=provider_dir,
             ),
         },
     )
@@ -362,6 +364,7 @@ def test_apply_with_delete_files(
             'prov_a': ResolvedProviderInfo(
                 alias='prov_a',
                 target_dir=provider_dir,
+                resources_dir=provider_dir,
             ),
         },
     )
@@ -404,6 +407,7 @@ def test_template_sources_translated_from_alias_to_pid(
             'template_a': ResolvedProviderInfo(
                 alias='template_a',
                 target_dir=provider_dir,
+                resources_dir=provider_dir,
             ),
         },
     )
@@ -474,6 +478,7 @@ def test_paused_files_logged_as_warning(
             'template_a': ResolvedProviderInfo(
                 alias='template_a',
                 target_dir=provider_dir,
+                resources_dir=provider_dir,
             ),
         },
         paused_files=['src/generated.py', 'README.md'],
