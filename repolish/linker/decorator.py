@@ -110,6 +110,59 @@ def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
     return current
 
 
+def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to construct the ProviderInfo
+    target_dir: Path,
+    source_dir: Path,
+    library_name: str,
+    templates_dir: str,
+    pkg_name: str,
+    proj_name: str,
+    default_symlinks: list[Symlink] | None,
+) -> ProviderInfo:
+    """Construct the ProviderInfo object emitted by the ``--info`` flag."""
+    provider_symlinks = [
+        ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in (default_symlinks or [])
+    ]
+    return ProviderInfo(
+        target_dir=str(target_dir.absolute()),
+        source_dir=str(source_dir.absolute()),
+        library_name=library_name,
+        templates_dir=templates_dir,
+        package_name=pkg_name,
+        project_name=proj_name,
+        symlinks=provider_symlinks,
+    )
+
+
+def _link_and_notify(
+    source_dir: Path,
+    target_dir: Path,
+    *,
+    force: bool,
+    library_name: str,
+    func: Callable,
+) -> None:
+    """Run link_resources and call the success callback, or raise SystemExit on failure."""
+    try:
+        is_symlink = link_resources(
+            source_dir=source_dir,
+            target_dir=target_dir,
+            force=force,
+        )
+        link_type = 'symlink' if is_symlink else 'copy'
+        logger.info(
+            'resources_linked',
+            library_name=library_name,
+            link_type=link_type,
+            target=str(target_dir),
+            _display_level=1,
+        )
+        func()
+    except Exception as e:
+        logger.exception('linking_failed', error=str(e))
+        raise SystemExit(1) from None
+
+
 def resource_linker(
     *,
     library_name: str | None = None,
@@ -171,12 +224,13 @@ def resource_linker(
     caller_frame = _caller_frame if _caller_frame is not None else inspect.stack()[1]
     package_root = _get_package_root(caller_frame)
 
-    # Auto-compute library_name if not provided
-    if library_name is None:
-        library_name = _auto_detect_library_name(caller_frame)
+    # Resolve package/project names from the caller's package once so they
+    # are available both for library_name detection and for ProviderInfo.
+    caller_module = inspect.getmodule(caller_frame.frame)
+    _package_attr = getattr(caller_module, '__package__', '') or ''
+    _pkg_name, _proj_name = resolve_package_names(_package_attr)
+    library_name = library_name or _proj_name or _pkg_name.replace('_', '-')
 
-    # Resolve source dir relative to package root
-    # Convert to Path to handle both forward slashes (Unix) and backslashes (Windows)
     resolved_source_dir = package_root / Path(default_source_dir)
     default_target_base_path = Path(default_target_base)
 
@@ -217,45 +271,26 @@ def resource_linker(
                 Parameter(name=['-v', '--verbose'], count=True),
             ] = 0,
         ) -> None:
-            verbosity = resolve_verbosity(verbose=verbose)
-            configure_logging(verbosity=verbosity)
-
+            configure_logging(verbosity=resolve_verbosity(verbose=verbose))
             if info:
-                provider_symlinks = [
-                    ProviderSymlink(
-                        source=Path(s.source),
-                        target=Path(s.target),
-                    )
-                    for s in (default_symlinks or [])
-                ]
-                info_obj = ProviderInfo(
-                    target_dir=str(target_dir.absolute()),
-                    source_dir=str(source_dir.absolute()),
-                    library_name=library_name,
-                    templates_dir=templates_dir,
-                    symlinks=provider_symlinks,
+                info_obj = _build_provider_info(
+                    target_dir,
+                    source_dir,
+                    library_name,
+                    templates_dir,
+                    _pkg_name,
+                    _proj_name,
+                    default_symlinks,
                 )
                 print(json.dumps(info_obj.model_dump(mode='json'), indent=2))  # noqa: T201
-                return
-
-            try:
-                is_symlink = link_resources(
-                    source_dir=source_dir,
-                    target_dir=target_dir,
+            else:
+                _link_and_notify(
+                    source_dir,
+                    target_dir,
                     force=force,
-                )
-                link_type = 'symlink' if is_symlink else 'copy'
-                logger.info(
-                    'resources_linked',
                     library_name=library_name,
-                    link_type=link_type,
-                    target=str(target_dir),
-                    _display_level=1,
+                    func=func,
                 )
-                func()
-            except Exception as e:
-                logger.exception('linking_failed', error=str(e))
-                raise SystemExit(1) from None
 
         return link_app
 

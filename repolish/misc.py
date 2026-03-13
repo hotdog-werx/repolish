@@ -1,5 +1,7 @@
+import json
 from importlib.metadata import packages_distributions
-from pathlib import PurePosixPath
+from importlib.util import find_spec
+from pathlib import Path, PurePosixPath
 from typing import cast
 
 from hotlog import get_logger
@@ -8,12 +10,48 @@ from pydantic import BaseModel
 logger = get_logger(__name__)
 
 
+def _source_path_from_dist(dist: object) -> Path | None:  # pragma: no cover
+    """Return the resolved ``file://`` source path from ``direct_url.json``, or ``None``."""
+    read = getattr(dist, 'read_text', lambda _: None)
+    raw = read('direct_url.json')
+    if not raw:
+        return None
+    url = json.loads(raw).get('url', '')
+    return Path(url[7:]).resolve() if url.startswith('file://') else None
+
+
+def _project_name_from_direct_url(pkg: str) -> str:  # pragma: no cover
+    """Resolve distribution name for an editable install via ``direct_url.json``.
+
+    ``packages_distributions()`` often omits packages installed with
+    ``pip install -e .``.  As a fallback we iterate all known distributions,
+    find any whose ``direct_url.json`` points at a source directory that
+    contains the package, and return that distribution's metadata name.
+    Returns an empty string when no matching distribution is found.
+    """
+    from importlib.metadata import distributions  # noqa: PLC0415
+
+    spec = find_spec(pkg)
+    if not spec or not spec.submodule_search_locations:
+        return ''
+    pkg_path = Path(next(iter(spec.submodule_search_locations))).resolve()
+    for dist in distributions():
+        try:
+            source = _source_path_from_dist(dist)
+            if source and pkg_path.is_relative_to(source):
+                return getattr(dist, 'name', '') or ''
+        except Exception:  # noqa: BLE001, S110 - best-effort scan
+            pass
+    return ''
+
+
 def resolve_package_names(package_attr: str | None) -> tuple[str, str]:
     """Return ``(package_name, project_name)`` for a ``__package__`` attribute value.
 
     ``package_name`` is the top-level Python import name (e.g. ``codeguide_workspace``).
     ``project_name`` is the distribution name from ``pyproject.toml [project] name``
-    resolved via :func:`importlib.metadata.packages_distributions`
+    resolved first via :func:`importlib.metadata.packages_distributions`, then
+    via :func:`_project_name_from_direct_url` as a fallback for editable installs
     (e.g. ``codeguide-workspace``).  Returns a pair of empty strings when
     ``package_attr`` is ``None``/empty.  Metadata lookup failures are logged
     at ``DEBUG`` level and cause ``project_name`` to be returned as ``''``.
@@ -32,6 +70,8 @@ def resolve_package_names(package_attr: str | None) -> tuple[str, str]:
             package=pkg,
             error=str(exc),
         )
+    if not project:
+        project = _project_name_from_direct_url(pkg)
     return pkg, project
 
 
