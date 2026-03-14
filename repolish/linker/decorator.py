@@ -171,6 +171,8 @@ def resource_linker(
     default_symlinks: list[Symlink] | None = None,
     templates_dir: str = '',
     _caller_frame: inspect.FrameInfo | None = None,
+    _pkg_name: str = '',
+    _proj_name: str = '',
 ) -> Callable:
     """Decorator to create a CLI for linking library resources.
 
@@ -188,6 +190,10 @@ def resource_linker(
         templates_dir: Subdirectory within source_dir where repolish.py and templates live.
             Recorded in provider-info JSON so the loader resolves the correct templates root.
             Defaults to empty string (repolish.py sits directly in source_dir).
+        _caller_frame: Internal — caller frame injected by :func:`resource_linker_cli`.
+        _pkg_name: Internal — pre-resolved module name; skips :func:`resolve_package_identity`
+            when provided by :func:`resource_linker_cli`.
+        _proj_name: Internal — pre-resolved distribution name; same as above.
 
     Example:
         ```python
@@ -225,10 +231,13 @@ def resource_linker(
 
     # Resolve package identity once; use it for both the package root and
     # the library name so resolve_package_identity is not called twice.
+    # When called from resource_linker_cli, _pkg_name/_proj_name are already
+    # resolved and forwarded here to avoid a second lookup.
     caller_module = inspect.getmodule(caller_frame.frame)
-    _package_attr = getattr(caller_module, '__package__', '') or ''
     _caller_file = Path(getattr(caller_module, '__file__', '') or '').resolve()
-    _pkg_name, _proj_name = resolve_package_identity(_package_attr)
+    if not _pkg_name:
+        _package_attr = getattr(caller_module, '__package__', '') or ''
+        _pkg_name, _proj_name = resolve_package_identity(_package_attr)
     package_root = _get_package_root(_pkg_name, _caller_file)
     library_name = library_name or _proj_name or _pkg_name.replace('_', '-')
 
@@ -371,6 +380,8 @@ def resource_linker_cli(
         default_symlinks=default_symlinks,
         templates_dir=templates_dir,
         _caller_frame=caller_frame,
+        _pkg_name=_pkg,
+        _proj_name=_proj,
     )
 
     # Get the wrapped function and return it
