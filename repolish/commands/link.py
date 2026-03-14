@@ -3,7 +3,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfigFile, load_config_file
-from repolish.linker import process_provider
+from repolish.linker.health import ensure_providers_ready
 
 logger = get_logger(__name__)
 
@@ -24,15 +24,12 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
 
 
 def command(config_path: Path) -> int:
-    """Run repolish-link with the given config."""
-    # Logging is already configured in the link function
-
+    """Run repolish link with the given config."""
     logger.info(
         'loading_config',
         config_file=str(config_path),
         _display_level=1,
     )
-    # Load raw config (don't resolve) to access provider CLI commands
     config = load_config_file(config_path)
 
     if not config.providers:
@@ -46,24 +43,20 @@ def command(config_path: Path) -> int:
         _display_level=1,
     )
 
-    # Process each provider
-    for provider_name in provider_names:
-        if provider_name not in config.providers:
-            logger.warning(
-                'provider_not_found_in_order',
-                provider=provider_name,
-                _display_level=1,
-            )
-            continue
+    result = ensure_providers_ready(
+        provider_names,
+        config.providers,
+        config_path.resolve().parent,
+        force=True,
+    )
 
-        provider_config = config.providers[provider_name]
-        exit_code = process_provider(
-            provider_name,
-            provider_config,
-            config_path.resolve().parent,
+    if result.failed:
+        logger.warning(
+            'some_providers_not_linked',
+            failed=result.failed,
+            _display_level=1,
         )
-        if exit_code != 0:
-            return exit_code
+        return 1
 
     logger.info('all_providers_linked', _display_level=1)
     return 0

@@ -42,26 +42,24 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
     logger.debug('provider_alias_saved', alias=alias, folder=folder_name)
 
 
-def save_provider_info(
+def write_provider_info_file(
     provider_name: str,
     provider_info: ProviderInfo,
     config_dir: Path,
 ) -> None:
-    """Save provider info to .repolish/_/provider-info.[alias].json.
+    """Write the provider-info JSON file to ``.repolish/_/provider-info.<alias>.json``.
 
-    This allows repolish to auto-build directories from providers_order.
-    Also saves an alias mapping so the provider can be referenced by its config name.
+    This is the single place that controls how provider info is persisted.  It
+    does **not** write an alias mapping — call :func:`save_provider_info` when
+    the alias mapping is also needed (i.e. resources live under ``.repolish/``).
 
     Args:
-        provider_name: Alias name of the provider
-        provider_info: Provider information from the CLI --info output
-        config_dir: Directory containing the repolish.yaml file
+        provider_name: Alias name of the provider.
+        provider_info: Provider information to persist.
+        config_dir: Directory containing the ``repolish.yaml`` file.
     """
-    resources_dir = Path(provider_info.resources_dir)
-    repolish_dir = config_dir / '.repolish' / '_'
-    repolish_dir.mkdir(parents=True, exist_ok=True)
-
     info_file = get_provider_info_path(provider_name, config_dir)
+    info_file.parent.mkdir(parents=True, exist_ok=True)
 
     logger.debug(
         'saving_provider_info',
@@ -70,12 +68,34 @@ def save_provider_info(
         info=provider_info.model_dump(mode='json'),
     )
 
+    with open_utf8(info_file, 'w') as f:
+        json.dump(provider_info.model_dump(mode='json'), f, indent=2)
+
+
+def save_provider_info(
+    provider_name: str,
+    provider_info: ProviderInfo,
+    config_dir: Path,
+) -> None:
+    """Save provider info and its alias mapping.
+
+    Writes the provider-info JSON file (via :func:`write_provider_info_file`)
+    and records the alias → folder mapping in ``.all-providers.json``.  The
+    ``resources_dir`` recorded in *provider_info* **must** live under
+    ``<config_dir>/.repolish/``; use :func:`write_provider_info_file` directly
+    when that assumption does not hold (e.g. local ``provider_root`` paths).
+
+    Args:
+        provider_name: Alias name of the provider.
+        provider_info: Provider information from the CLI ``--info`` output.
+        config_dir: Directory containing the ``repolish.yaml`` file.
+    """
+    resources_dir = Path(provider_info.resources_dir)
+
     # Ensure resources directory exists
     resources_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save the info (use mode='json' to trigger field serializers for Path -> str conversion)
-    with open_utf8(info_file, 'w') as f:
-        json.dump(provider_info.model_dump(mode='json'), f, indent=2)
+    write_provider_info_file(provider_name, provider_info, config_dir)
 
     # Save alias mapping - extract folder name from resources_dir
     folder_name = resources_dir.relative_to(config_dir / '.repolish').parts[0]

@@ -20,6 +20,10 @@ class ApplyParams(BaseModel):
         default=False,
         description='Load config and create context (dry-run check)',
     )
+    strict: bool = Field(
+        default=False,
+        description='Exit with an error if any provider could not be registered (useful for CI)',
+    )
 
 
 _DEFAULT_APPLY_PARAMS = ApplyParams()
@@ -27,4 +31,10 @@ _DEFAULT_APPLY_PARAMS = ApplyParams()
 
 def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
     """Apply templates to project."""
-    run_cli_command(lambda: command(params.config, check_only=params.check))
+    run_cli_command(
+        lambda: command(
+            params.config,
+            check_only=params.check,
+            strict=params.strict,
+        ),
+    )

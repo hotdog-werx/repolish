@@ -5,6 +5,7 @@ from pytest_mock import MockerFixture
 
 from repolish.commands.apply import command as run_repolish
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
+from repolish.linker.health import ProviderReadinessResult
 from repolish.loader import Providers
 from repolish.loader.models import (
     Action,
@@ -138,6 +139,53 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     # verify branch behaviour: missing provider skipped (no directories available)
     assert recorded['template_dirs'] == []
     assert recorded['overrides'] == {'foo': 'bar'}
+
+
+def test_apply_warns_when_providers_not_ready(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Ensure a warning is logged when ensure_providers_ready reports failures."""
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    # Override the autouse fixture to simulate a failed provider registration.
+    mocker.patch(
+        'repolish.commands.apply.ensure_providers_ready',
+        return_value=ProviderReadinessResult(ready=[], failed=['broken_lib']),
+    )
+
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.load_config',
+    ).return_value = fake_config
+    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch('repolish.commands.apply.stage_templates').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.build_final_providers',
+    ).return_value = Providers(
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.preprocess_templates',
+    ).return_value = None
+    mocker.patch('repolish.commands.apply.render_template').return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check_generated_output',
+    ).return_value = []
+    mocker.patch(
+        'repolish.commands.apply.apply_generated_output',
+    ).return_value = None
+
+    rv = run_repolish(cfg_path, check_only=False)
+    assert rv == 0
 
 
 def test_apply_command_runs_with_valid_provider(

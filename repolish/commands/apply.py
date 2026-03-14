@@ -6,7 +6,7 @@ from hotlog import get_logger
 from rich.table import Table
 
 from repolish.builder import stage_templates
-from repolish.config import RepolishConfig, load_config
+from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.console import console
 from repolish.hydration import (
     apply_generated_output,
@@ -17,6 +17,7 @@ from repolish.hydration import (
     render_template,
     rich_print_diffs,
 )
+from repolish.linker.health import ensure_providers_ready
 from repolish.loader.models import (
     Providers,
     TemplateMapping,
@@ -191,9 +192,32 @@ def _write_provider_debug_files(
         )
 
 
-def command(config_path: Path, *, check_only: bool) -> int:
+def command(
+    config_path: Path,
+    *,
+    check_only: bool,
+    strict: bool = False,
+) -> int:
     """Run repolish with the given config and options."""
     logger.info('repolish_started', version=__version__)
+
+    # Ensure all providers are registered before resolving the config.
+    # This writes/repairs provider-info files so load_config can trust them.
+    raw_config = load_config_file(config_path)
+    config_dir = config_path.resolve().parent
+    aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
+    readiness = ensure_providers_ready(
+        aliases,
+        raw_config.providers,
+        config_dir,
+        strict=strict,
+    )
+    if readiness.failed:
+        logger.warning(
+            'providers_not_ready',
+            failed=readiness.failed,
+            note='these providers will be absent from the run',
+        )
 
     config = load_config(config_path)
     providers = build_final_providers(config)
