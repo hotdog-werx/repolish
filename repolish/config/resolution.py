@@ -126,18 +126,21 @@ def _resolved_from_info(
     )
 
 
-def _resolved_from_directory(
+def _resolved_from_static(
     alias: str,
     provider_config: ProviderConfig,
     config_dir: Path,
 ) -> ResolvedProviderInfo:
-    """Build a ResolvedProviderInfo from a direct directory config entry."""
-    provider_root = _resolve_path(provider_config.directory, config_dir)  # type: ignore[arg-type]
+    """Build a ResolvedProviderInfo from explicit provider_root (and optional resources_dir) fields."""
+    provider_root = _resolve_path(provider_config.provider_root, config_dir)  # type: ignore[arg-type]
+    resources_dir = (
+        _resolve_path(provider_config.resources_dir, config_dir) if provider_config.resources_dir else provider_root
+    )
     symlinks = provider_config.symlinks if provider_config.symlinks is not None else []
     return ResolvedProviderInfo(
         alias=alias,
         provider_root=provider_root,
-        resources_dir=provider_root,
+        resources_dir=resources_dir,
         symlinks=symlinks,
         context=provider_config.context,
         context_overrides=provider_config.context_overrides or None,
@@ -165,6 +168,12 @@ def _resolve_single_provider(
         provider_info = _try_auto_link(alias, provider_config, config_dir)
 
     if provider_info:
+        if provider_config.provider_root:
+            logger.warning(
+                'provider_root_ignored',
+                alias=alias,
+                reason='provider-info file found; provider_root is ignored',
+            )
         return _resolved_from_info(
             alias,
             provider_config,
@@ -172,8 +181,8 @@ def _resolve_single_provider(
             config_dir,
         )
 
-    if provider_config.directory:
-        return _resolved_from_directory(alias, provider_config, config_dir)
+    if provider_config.provider_root:
+        return _resolved_from_static(alias, provider_config, config_dir)
 
     logger.warning(
         'provider_not_resolved',

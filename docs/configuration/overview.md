@@ -174,7 +174,7 @@ delete_files: []
 
 For projects that use libraries with resource linking capabilities, you can
 configure provider linking through the `providers` section. This allows the
-`repolish-link` CLI to orchestrate linking across multiple libraries.
+`repolish link` command to orchestrate linking across multiple libraries.
 
 ```yaml
 providers:
@@ -350,5 +350,5 @@ errors include:
 Use `repolish --check` to validate your configuration without applying changes.
 
 **Note:** provider-based directory discovery requires that the link step has run
-at least once. `repolish-link` creates `.provider-info.json` files which allow
+at least once. `repolish link` creates `.provider-info.json` files which allow
 Repolish to locate the template directories for each provider.

@@ -32,15 +32,16 @@ Alternatively, declare a provider directly:
 ```yaml
 providers:
   mylib:
-    directory: ./templates/my-template
+    provider_root: ./templates/my-template
 
 context: {}
 anchors: {}
 delete_files: []
 ```
 
-Each entry in `directories` must point to a directory that contains either a
-`repolish.py` module or a `repolish/` template folder (or both).
+Each provider configured with `provider_root` must point to a directory that
+contains either a `repolish.py` module or a `repolish/` template folder (or
+both).
 
 ## Run a dry-run check
 

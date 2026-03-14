@@ -145,7 +145,7 @@ def test_integration_emoji_encoding(
         json.dumps(
             {
                 'providers': {
-                    'emoji': {'directory': str(tpl_dir)},
+                    'emoji': {'provider_root': str(tpl_dir)},
                 },
                 'context': {},
                 'anchors': {},
@@ -203,7 +203,7 @@ class P(Provider[Ctx, BaseModel]):
     cfg.write_text(
         json.dumps(
             {
-                'providers': {'p': {'directory': './p'}},
+                'providers': {'p': {'provider_root': './p'}},
                 'anchors': {},
                 'delete_files': [],
             },
@@ -281,8 +281,8 @@ def test_cli_provider_order_with_overrides(
             {
                 'providers_order': ['p1', 'p2'],
                 'providers': {
-                    'p1': {'directory': './p1'},
-                    'p2': {'directory': './p2'},
+                    'p1': {'provider_root': './p1'},
+                    'p2': {'provider_root': './p2'},
                 },
                 'template_overrides': {'foo.txt': 'p1'},
             },

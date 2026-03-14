@@ -157,7 +157,7 @@ def test_get_provider_names_without_order():
         providers={
             'lib1': ProviderConfig(cli='lib1-link'),
             'lib2': ProviderConfig(cli='lib2-link'),
-            'local': ProviderConfig(directory='./templates'),
+            'local': ProviderConfig(provider_root='./templates'),
         },
     )
 
@@ -363,12 +363,9 @@ def test_run_with_directory_provider(
 
     config_file = tmp_path / 'repolish.yaml'
     config_file.write_text(f"""
-directories:
-  - ./templates
-
 providers:
   local:
-    directory: {provider_dir}
+    provider_root: {provider_dir}
 """)
 
     # Create dummy template directory

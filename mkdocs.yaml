@@ -11,6 +11,7 @@ nav:
   - Configuration:
       - Overview: configuration/overview.md
       - Config File: configuration/config-file.md
+      - Providers: configuration/providers.md
       - Context: configuration/context.md
       # - Overrides: wip.md
       # - Anchors: wip.md

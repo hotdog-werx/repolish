@@ -32,27 +32,31 @@ used by configuration and in logged events. The value for each alias is a
 ```python
 class ProviderConfig(BaseModel):
     cli: str | None = None
-    directory: Path | None = None
+    provider_root: Path | None = None
+    resources_dir: Path | None = None
     symlinks: list[Symlink] | None = None
 ```
 
-Each provider entry must specify exactly one of `cli` or `directory`. The two
-fields work as follows:
+Each provider entry must specify at least one of `cli` or `provider_root`; they
+may also be combined. See the [Provider configuration](providers.md) guide for
+the full resolution rules and CLI protocol.
 
-- **`cli`** – a shell command (string) that will be executed by `repolish-link`.
+- **`cli`** – a shell command (string) that will be executed by `repolish link`.
   The command must write a `.provider-info.json` file under the
   `.repolish/<alias>` directory; this JSON describes the template directory and
   any default symlinks. Libraries that ship a link CLI (e.g., `codeguide-link`)
   follow this pattern. The CLI is invoked once per provider when you run
-  `repolish-link`; failure of one provider does not prevent the others from
+  `repolish link`; failure of one provider does not prevent the others from
   running.
 
-- **`directory`** – a path pointing at the provider’s own resource directory.
-  this directory must contain a `repolish.py` module or a `repolish/` template
-  subfolder (the loader uses the presence of either to recognize the provider).
-  the path is resolved relative to the configuration file's directory and is
-  treated as the canonical source of templates when the corresponding provider
-  has no CLI.
+- **`provider_root`** – path to the root of the provider package (the directory
+  that contains `repolish.py` and the `repolish/` template subfolder). The path
+  is resolved relative to the configuration file’s directory. Use this for
+  providers that are checked in locally rather than distributed as a package.
+
+- **`resources_dir`** – optional path to the directory from which symlinks are
+  created into the project. When omitted it defaults to `provider_root`. Specify
+  this when the symlink root lives inside a subdirectory of `provider_root`.
 
 Shorthand notation is supported in the YAML. Instead of writing::
 

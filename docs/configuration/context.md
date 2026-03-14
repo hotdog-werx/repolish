@@ -251,7 +251,7 @@ of unmigrated providers so you can continue migrating safely.
       context_overrides:
         'foo_key': 'more-specific' # dotted paths work too
     bar:
-      directory: ./local-templates
+      provider_root: ./local-templates
       context:
         bar_flag: true
   ```

@@ -46,27 +46,14 @@ class InvalidConfigCase:
             error_match='must specify at least one provider',
         ),
         InvalidConfigCase(
-            name='invalid_provider_config_no_cli_or_directory',
+            name='invalid_provider_config_no_cli_or_provider_root',
             config_data={
                 'providers': {
                     'test': {},
                 },
             },
             error_type=ProviderConfigError,
-            error_match='Either cli or directory must be provided',
-        ),
-        InvalidConfigCase(
-            name='invalid_provider_config_both_cli_and_directory',
-            config_data={
-                'providers': {
-                    'test': {
-                        'cli': 'test-link',
-                        'directory': './templates',
-                    },
-                },
-            },
-            error_type=ProviderConfigError,
-            error_match='Cannot specify both cli and directory',
+            error_match='Either cli or provider_root must be provided',
         ),
         InvalidConfigCase(
             name='providers_order_references_undefined_provider',
@@ -74,7 +61,7 @@ class InvalidConfigCase:
                 'providers_order': ['base', 'undefined'],
                 'providers': {
                     'base': {
-                        'directory': './templates',
+                        'provider_root': './templates',
                     },
                 },
             },
@@ -86,7 +73,7 @@ class InvalidConfigCase:
             config_data={
                 'providers_order': ['base'],
                 'providers': {
-                    'base': {'directory': './templates'},
+                    'base': {'provider_root': './templates'},
                 },
                 'template_overrides': {'README.md': 'undefined'},
             },
@@ -196,7 +183,7 @@ def test_load_config_with_provider_directory(
         'providers_order': ['base'],
         'providers': {
             'base': {
-                'directory': 'my-provider',
+                'provider_root': 'my-provider',
             },
         },
     }
@@ -218,7 +205,7 @@ def test_load_config_template_overrides_roundtrip(
     config_data = {
         'providers_order': ['test'],
         'providers': {
-            'test': {'directory': './templates'},
+            'test': {'provider_root': './templates'},
         },
         'template_overrides': {'README.md': 'test'},
     }
@@ -463,7 +450,7 @@ def test_load_config_all_fields(
     dir1 = template_dir('test1')
 
     config_data = {
-        'providers': {'base': {'directory': str(dir1)}},
+        'providers': {'base': {'provider_root': str(dir1)}},
         'post_process': ['black .', 'ruff check .'],
         'delete_files': ['old.txt', '!keep.txt'],
     }
@@ -492,9 +479,9 @@ def test_load_config_providers_order_optional(
     # Config WITHOUT providers_order - should use dict key order from YAML
     config_data = {
         'providers': {
-            'base': {'directory': str(target1)},
-            'python': {'directory': str(target2)},
-            'extras': {'directory': str(target3)},
+            'base': {'provider_root': str(target1)},
+            'python': {'provider_root': str(target2)},
+            'extras': {'provider_root': str(target3)},
         },
     }
     config_path = config_dir / 'repolish.yaml'

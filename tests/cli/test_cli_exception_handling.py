@@ -33,18 +33,18 @@ class CLITestCase:
                   some-provider:
                     link: some-link-cli
                 """),
-            error_has='Either cli or directory must be provided',
+            error_has='Either cli or provider_root must be provided',
         ),
         CLITestCase(
-            name='link_both_cli_and_directory',
+            name='link_resources_dir_without_provider_root',
             args=['link', '--config', '{config_path}'],
             config_content=textwrap.dedent("""\
                 providers:
                   some-provider:
+                    resources_dir: ./resources
                     cli: some-link-cli
-                    directory: ./templates
                 """),
-            error_has='Cannot specify both cli and directory',
+            error_has='resources_dir requires provider_root to be set',
         ),
         CLITestCase(
             name='preview_missing_template',

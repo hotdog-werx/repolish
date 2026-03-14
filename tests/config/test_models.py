@@ -22,8 +22,9 @@ from repolish.exceptions import ProviderConfigError
 class ProviderConfigCase:
     name: str
     cli: str | None
-    directory: str | None
+    provider_root: str | None
     should_raise: bool
+    resources_dir: str | None = None
     error_match: str | None = None
 
 
@@ -31,30 +32,37 @@ class ProviderConfigCase:
     'case',
     [
         ProviderConfigCase(
-            name='requires_cli_or_directory',
+            name='requires_cli_or_provider_root',
             cli=None,
-            directory=None,
+            provider_root=None,
             should_raise=True,
-            error_match='Either cli or directory must be provided',
+            error_match='Either cli or provider_root must be provided',
         ),
         ProviderConfigCase(
-            name='rejects_both_cli_and_directory',
+            name='accepts_both_cli_and_provider_root',
             cli='mylib-link',
-            directory='./templates',
-            should_raise=True,
-            error_match='Cannot specify both cli and directory',
+            provider_root='./templates',
+            should_raise=False,
         ),
         ProviderConfigCase(
             name='accepts_cli_only',
             cli='mylib-link',
-            directory=None,
+            provider_root=None,
             should_raise=False,
         ),
         ProviderConfigCase(
-            name='accepts_directory_only',
+            name='accepts_provider_root_only',
             cli=None,
-            directory='./templates',
+            provider_root='./templates',
             should_raise=False,
+        ),
+        ProviderConfigCase(
+            name='rejects_resources_dir_without_provider_root',
+            cli='some-cli',
+            provider_root=None,
+            resources_dir='./resources',
+            should_raise=True,
+            error_match='resources_dir requires provider_root to be set',
         ),
     ],
     ids=lambda case: case.name,
@@ -63,11 +71,19 @@ def test_provider_config_validation(case: ProviderConfigCase):
     """Test ProviderConfig validation rules."""
     if case.should_raise:
         with pytest.raises(ProviderConfigError, match=case.error_match):
-            ProviderConfig(cli=case.cli, directory=case.directory)
+            ProviderConfig(
+                cli=case.cli,
+                provider_root=case.provider_root,
+                resources_dir=case.resources_dir,
+            )
     else:
-        provider = ProviderConfig(cli=case.cli, directory=case.directory)
+        provider = ProviderConfig(
+            cli=case.cli,
+            provider_root=case.provider_root,
+            resources_dir=case.resources_dir,
+        )
         assert provider.cli == case.cli
-        assert provider.directory == case.directory
+        assert provider.provider_root == case.provider_root
 
 
 @dataclass
@@ -178,10 +194,10 @@ class ProviderShorthandCase:
     name: str
     providers_config: dict
     expected_cli: dict[str, str | None]  # provider_name -> expected cli value
-    expected_directory: dict[
+    expected_provider_root: dict[
         str,
         str | None,
-    ]  # provider_name -> expected directory value
+    ]  # provider_name -> expected provider_root value
 
 
 @pytest.mark.parametrize(
@@ -191,7 +207,7 @@ class ProviderShorthandCase:
             name='shorthand_string_cli',
             providers_config={'base': 'codeguide-link'},
             expected_cli={'base': 'codeguide-link'},
-            expected_directory={'base': None},
+            expected_provider_root={'base': None},
         ),
         ProviderShorthandCase(
             name='multiple_shorthand',
@@ -200,22 +216,22 @@ class ProviderShorthandCase:
                 'py-tools': 'pytools-link',
             },
             expected_cli={'base': 'codeguide-link', 'py-tools': 'pytools-link'},
-            expected_directory={'base': None, 'py-tools': None},
+            expected_provider_root={'base': None, 'py-tools': None},
         ),
         ProviderShorthandCase(
             name='mixed_shorthand_and_expanded',
             providers_config={
                 'base': 'codeguide-link',
-                'local': {'directory': './templates'},
+                'local': {'provider_root': './templates'},
             },
             expected_cli={'base': 'codeguide-link', 'local': None},
-            expected_directory={'base': None, 'local': './templates'},
+            expected_provider_root={'base': None, 'local': './templates'},
         ),
         ProviderShorthandCase(
             name='expanded_with_cli',
             providers_config={'base': {'cli': 'codeguide-link'}},
             expected_cli={'base': 'codeguide-link'},
-            expected_directory={'base': None},
+            expected_provider_root={'base': None},
         ),
     ],
     ids=lambda case: case.name,
@@ -231,7 +247,7 @@ def test_provider_shorthand_normalization(case: ProviderShorthandCase):
         provider = config.providers[provider_name]
         assert isinstance(provider, ProviderConfig)
         assert provider.cli == expected_cli
-        assert provider.directory == case.expected_directory[provider_name]
+        assert provider.provider_root == case.expected_provider_root[provider_name]
 
 
 def test_provider_config_context_roundtrip(tmp_path: Path):
@@ -246,7 +262,7 @@ def test_provider_config_context_roundtrip(tmp_path: Path):
     raw = RepolishConfigFile(
         providers={
             'foo': ProviderConfig(
-                directory=str(prov_dir),
+                provider_root=str(prov_dir),
                 context={'a': 1},
                 context_overrides={'a': 2, 'nested.key': 'val'},
             ),

@@ -41,12 +41,20 @@ class ProviderConfig(BaseModel):
         default=None,
         description='CLI command to call for linking (e.g., codeguide-link)',
     )
-    directory: str | None = Field(
+    provider_root: str | None = Field(
         default=None,
         description=(
-            'Path to provider resources (either a directory or location '
-            'discovered by CLI). Should point at the template root containing '
-            '`repolish.py`.'
+            'Path to the directory containing repolish.py and the repolish/ '
+            'template tree. Can be combined with cli: if an info file is found '
+            'the CLI result takes precedence; otherwise this is used as a fallback.'
+        ),
+    )
+    resources_dir: str | None = Field(
+        default=None,
+        description=(
+            'Root of the linked resources directory inside the project '
+            '(e.g. .repolish/mylib/). Defaults to provider_root when not set. '
+            'Requires provider_root to be set.'
         ),
     )
     symlinks: list[ProviderSymlink] | None = Field(
@@ -66,13 +74,18 @@ class ProviderConfig(BaseModel):
     )
 
     @model_validator(mode='after')
-    def validate_cli_or_directory(self) -> 'ProviderConfig':
-        """Ensure exactly one of cli or directory is provided."""
-        if self.cli is None and self.directory is None:
-            msg = 'Either cli or directory must be provided'
+    def validate_cli_or_provider_root(self) -> 'ProviderConfig':
+        """Ensure at least one of cli or provider_root is provided.
+
+        cli and provider_root may coexist: if a provider-info JSON file is
+        found at runtime the CLI result takes precedence; provider_root acts
+        as a static fallback when no info file is present.
+        """
+        if self.cli is None and self.provider_root is None:
+            msg = 'Either cli or provider_root must be provided'
             raise ProviderConfigError(msg)
-        if self.cli is not None and self.directory is not None:
-            msg = 'Cannot specify both cli and directory'
+        if self.resources_dir is not None and self.provider_root is None:
+            msg = 'resources_dir requires provider_root to be set'
             raise ProviderConfigError(msg)
         return self
 

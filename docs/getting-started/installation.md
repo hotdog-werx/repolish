@@ -22,8 +22,8 @@ uv add repolish
 repolish --help
 ```
 
-Both `repolish` (the main CLI) and `repolish-link` (the provider linker) are
-included in the package — no additional install steps are required.
+Both `repolish` (the main CLI, which includes `repolish link` for provider
+linking) is included in the package — no additional install steps are required.
 
 ## Next steps
 

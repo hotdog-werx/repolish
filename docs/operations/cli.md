@@ -107,7 +107,7 @@ Both commands support verbose logging levels:
     with `repolish-debugger` for understanding complex regex replacements and
     troubleshooting issues.
 
-## `repolish-link`
+## `repolish link`
 
 A command-line tool for orchestrating multiple provider link CLIs. This tool
 allows you to run link commands for multiple libraries in a single invocation,
@@ -115,7 +115,7 @@ making it easier to manage complex projects that depend on multiple resource
 providers.
 
 ```bash
-repolish-link [OPTIONS]
+repolish link [OPTIONS]
 ```
 
 #### Options
@@ -140,7 +140,7 @@ order.
 
 #### Configuration
 
-The `repolish-link` command requires a `providers` section in your
+The `repolish link` command requires a `providers` section in your
 `repolish.yaml` configuration file. Each provider defines the link CLI command
 to invoke and optional additional symlinks to create.
 
@@ -159,16 +159,21 @@ providers_order:
 #### Provider Configuration Options
 
 - `cli` (optional): The CLI command to execute for linking (mutually exclusive
-  with `directory`)
-- `directory` (optional): Direct path to provider resources (mutually exclusive
-  with `cli`)
+  with `provider_root`)
+- `provider_root` (optional): Path to the root of the provider package, i.e. the
+  directory containing `repolish.py` and the `repolish/` template folder
+  (mutually exclusive with `cli`)
+- `resources_dir` (optional): Path to the directory from which symlinks are
+  created into the project; defaults to `provider_root` when omitted
 - `symlinks` (optional): Symlinks to create from provider resources to repo
   root. Can be:
   - Omitted: Use the provider's default symlinks (if any)
   - Empty list `[]`: Disable all symlinks
   - Custom list: Override provider defaults
 
-**Note:** Each provider must specify either `cli` or `directory`, but not both.
+**Note:** Each provider must specify at least one of `cli` or `provider_root`;
+they may be combined. See
+[Provider configuration](../configuration/providers.md) for details.
 
 Each symlink entry has:
 
@@ -183,13 +188,13 @@ disable them with `symlinks: []`.
 
 ```bash
 # Link all configured providers
-repolish-link
+repolish link
 
 # Link with verbose output
-repolish-link -v
+repolish link -v
 
 # Use custom config file
-repolish-link --config my-config.yaml
+repolish link --config my-config.yaml
 ```
 
 #### Exit Codes

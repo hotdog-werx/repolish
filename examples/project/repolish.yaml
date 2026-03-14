@@ -1,6 +1,6 @@
 providers:
   template_a:
-    directory: ../template_a
+    provider_root: ../template_a
     context_overrides:
       package_name: some-package
 
