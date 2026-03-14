@@ -20,7 +20,11 @@ def scaffold(
         str,
         Parameter(
             name=['--package', '-p'],
-            help='Python package name, e.g. codeguide_workspace.',
+            help=(
+                'Python package name. '
+                'Use a simple name for flat packages (e.g. devkit_workspace) '
+                'or dot-notation for namespace packages (e.g. devkit.workspace).'
+            ),
         ),
     ],
     prefix: Annotated[

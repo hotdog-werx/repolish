@@ -435,7 +435,10 @@ def test_get_package_root_fallback_when_find_spec_returns_none(
     """_get_package_root falls back to caller_file.parent when find_spec returns None."""
     monkeypatch.chdir(tmp_path)
     mocker.patch('repolish.linker.decorator.find_spec', return_value=None)
-    mock_link = mocker.patch('repolish.linker.decorator.link_resources', return_value=True)
+    mock_link = mocker.patch(
+        'repolish.linker.decorator.link_resources',
+        return_value=True,
+    )
 
     @resource_linker(library_name='mylib')
     def link_cli() -> None:

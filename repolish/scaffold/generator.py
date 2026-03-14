@@ -24,14 +24,49 @@ class ScaffoldContext:
     forms the common prefix for all generated class names.  For example, a
     package named ``devkit_iac`` yields ``short_prefix='Iac'`` and the
     classes ``IacProvider``, ``IacProviderContext``, ``IacProviderInputs``.
+
+    ``pkg_dir`` is the filesystem path for the package directory:
+    ``Path('devkit_workspace')`` (flat) or ``Path('devkit') / 'workspace'`` (namespace).
+
+    ``namespace_root`` is the top-level namespace directory (e.g. ``devkit``)
+    for namespace packages, or ``''`` for flat packages.
+
+    ``sub_pkg`` is the importable leaf name: same as ``package_name`` for
+    flat packages, or the sub-package component (e.g. ``workspace``) for
+    namespace packages.
     """
 
     repo_name: str
     package_name: str
+    pkg_dir: Path
+    namespace_root: str
+    sub_pkg: str
     short_prefix: str
     class_name: str
     context_class: str
     inputs_class: str
+
+
+def detect_mode(pkg_name: str) -> tuple[str, str | None, str]:
+    """Detect flat vs. namespace mode from a normalised package name.
+
+    Returns ``(mode, namespace_root, sub_pkg)`` where:
+
+    - *mode* is ``'namespace'`` or ``'flat'``.
+    - *namespace_root* is the top-level namespace component (e.g. ``'devkit'``)
+      when *mode* is ``'namespace'``, otherwise ``None``.
+    - *sub_pkg* is the leaf importable name (e.g. ``'workspace'``) for
+      namespace packages, or the full flat name for flat packages.
+
+    Examples::
+
+        detect_mode('devkit_workspace')  -> ('flat', None, 'devkit_workspace')
+        detect_mode('devkit.workspace')  -> ('namespace', 'devkit', 'workspace')
+    """
+    if '.' in pkg_name:
+        parts = pkg_name.split('.', 1)
+        return 'namespace', parts[0], parts[1]
+    return 'flat', None, pkg_name
 
 
 def _derive_context(
@@ -46,19 +81,32 @@ def _derive_context(
     Examples:
     --------
     >>> _derive_context('devkit_workspace')
-    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit_workspace',
-                    short_prefix='Workspace', ...)
+    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit_workspace', ...)
+    >>> _derive_context('devkit.workspace')
+    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit.workspace', ...)
     >>> _derive_context('devkit_workspace', prefix='workspace')
-    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit_workspace',
-                    short_prefix='Workspace', ...)
+    ScaffoldContext(repo_name='devkit-workspace', package_name='devkit_workspace', ...)
     """
     pkg = package_name.replace('-', '_').lower()
-    repo_name = pkg.replace('_', '-')
-    raw_prefix = prefix if prefix else pkg.split('_')[-1]
+    # Normalise dots: keep them so 'devkit.workspace' stays a namespace name
+    mode, ns_root, sub = detect_mode(pkg)
+
+    if mode == 'namespace' and ns_root is not None:
+        repo_name = f'{ns_root}-{sub}'.replace('_', '-')
+        pkg_dir: Path = Path(ns_root) / sub
+        raw_prefix = prefix if prefix else sub.split('_')[-1]
+    else:
+        repo_name = pkg.replace('_', '-')
+        pkg_dir = Path(pkg)
+        raw_prefix = prefix if prefix else pkg.split('_')[-1]
+
     short_prefix = raw_prefix.capitalize()
     return ScaffoldContext(
         repo_name=repo_name,
         package_name=pkg,
+        pkg_dir=pkg_dir,
+        namespace_root=ns_root or '',
+        sub_pkg=sub,
         short_prefix=short_prefix,
         class_name=f'{short_prefix}Provider',
         context_class=f'{short_prefix}ProviderContext',
@@ -66,18 +114,19 @@ def _derive_context(
     )
 
 
-def _output_path(template_rel: Path, package_name: str) -> Path:
+def _output_path(template_rel: Path, pkg_dir: Path) -> Path:
     """Map a template's relative path to its rendered output path.
 
     Rules:
     - Strip the trailing ``.jinja`` extension.
-    - Replace the leading ``package`` path component with the actual
-      ``package_name`` so that ``package/repolish/models.py.jinja``
-      becomes ``{package_name}/repolish/models.py``.
+    - Replace the leading ``package`` path component with *pkg_dir* so that
+      ``package/repolish/models.py.jinja`` becomes
+      ``{pkg_dir}/repolish/models.py``.  *pkg_dir* may have multiple parts
+      for namespace packages (e.g. ``Path('devkit') / 'workspace'``).
     """
     parts = list(template_rel.parts)
     if parts[0] == 'package':
-        parts[0] = package_name
+        parts = list(pkg_dir.parts) + parts[1:]
     out = Path(*parts)
     if out.suffix == '.jinja':
         out = out.with_suffix('')
@@ -115,6 +164,8 @@ def generate(
     context_dict = {
         'repo_name': ctx.repo_name,
         'package_name': ctx.package_name,
+        'pkg_dir': ctx.pkg_dir.as_posix(),
+        'namespace_root': ctx.namespace_root,
         'short_prefix': ctx.short_prefix,
         'class_name': ctx.class_name,
         'context_class': ctx.context_class,
@@ -123,7 +174,7 @@ def generate(
 
     written: list[Path] = []
     for template_rel in sorted(_collect_templates()):
-        out_rel = _output_path(template_rel, ctx.package_name)
+        out_rel = _output_path(template_rel, ctx.pkg_dir)
         dest = output_dir / out_rel
         if dest.exists():
             continue
