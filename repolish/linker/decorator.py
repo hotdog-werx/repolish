@@ -21,7 +21,7 @@ from rich.console import Console
 from repolish.config import ProviderInfo, ProviderSymlink
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
-from repolish.misc import resolve_package_names
+from repolish.pkginfo import resolve_package_identity
 
 logger = get_logger(__name__)
 
@@ -44,7 +44,7 @@ class Symlink:
 def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
     """Auto-detect library name from the caller's package.
 
-    Uses :func:`repolish.misc.resolve_package_names` to look up the
+    Uses :func:`repolish.pkginfo.resolve_package_identity` to look up the
     distribution name via ``importlib.metadata``.  Falls back to converting
     underscores to dashes in the top-level package name when the distribution
     name cannot be resolved (e.g. for editable installs without metadata).
@@ -74,7 +74,7 @@ def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
         msg = 'Could not determine library name: caller module has no package'
         raise ResourceLinkerError(msg)
 
-    pkg, project = resolve_package_names(package_attr)
+    pkg, project = resolve_package_identity(package_attr)
     # prefer the distribution name; fall back to underscore→dash conversion
     return project if project else pkg.replace('_', '-')
 
@@ -228,7 +228,7 @@ def resource_linker(
     # are available both for library_name detection and for ProviderInfo.
     caller_module = inspect.getmodule(caller_frame.frame)
     _package_attr = getattr(caller_module, '__package__', '') or ''
-    _pkg_name, _proj_name = resolve_package_names(_package_attr)
+    _pkg_name, _proj_name = resolve_package_identity(_package_attr)
     library_name = library_name or _proj_name or _pkg_name.replace('_', '-')
 
     resolved_source_dir = package_root / Path(default_source_dir)

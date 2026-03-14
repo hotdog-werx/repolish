@@ -30,7 +30,7 @@ from repolish.loader.models import (
     get_global_context,
 )
 from repolish.loader.module import get_module
-from repolish.misc import resolve_package_names
+from repolish.pkginfo import resolve_package_identity
 
 
 def _find_provider_class(
@@ -453,14 +453,14 @@ def _set_provider_metadata(
     Version is read from the module's __version__ when present; falls back to
     an empty string for local / un-installed providers.
     package_name and project_name are derived from __package__ via
-    :func:`repolish.misc.resolve_package_names`.
+    :func:`repolish.pkginfo.resolve_package_identity`.
     """
     for _idx, (_pid, _mod) in enumerate(module_cache):
         _inst = instances[_idx]
         if _inst is not None:
             _inst.alias = alias_map.get(_pid, _pid)
             _inst.version = _mod.get('__version__', '') or ''
-            _pkg, _proj = resolve_package_names(_mod.get('__package__'))
+            _pkg, _proj = resolve_package_identity(_mod.get('__package__'))
             _inst.package_name = _pkg
             _inst.project_name = _proj
 

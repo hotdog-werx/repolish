@@ -28,7 +28,7 @@ from repolish.loader.orchestrator import (
     _process_provider_fm,
     _synthesize_provider_context_for_pid,
 )
-from repolish.misc import ctx_keys, ctx_to_dict, resolve_package_names
+from repolish.misc import ctx_keys, ctx_to_dict
 
 
 # shared message class used by generated provider modules
@@ -516,33 +516,3 @@ def test_finalize_provider_contexts_edge_cases() -> None:
     inst = Setter()
     finalize_provider_contexts([('p', {})], [inst], {}, cast('dict', ctxs), [])
     assert ctxs == {'p': {'called': True}}
-
-
-def test_resolve_package_names_resolves_project_name() -> None:
-    """When packages_distributions returns a hit, project_name is populated."""
-    with mock.patch(
-        'repolish.misc.packages_distributions',
-        return_value={'mypkg': ['my-pkg-dist']},
-    ):
-        pkg, project = resolve_package_names('mypkg.sub')
-    assert pkg == 'mypkg'
-    assert project == 'my-pkg-dist'
-
-
-def test_resolve_package_names_logs_on_metadata_error() -> None:
-    """When packages_distributions raises, the exception is logged and empty strings returned."""
-    with (
-        mock.patch(
-            'repolish.misc.packages_distributions',
-            side_effect=Exception('metadata boom'),
-        ),
-        mock.patch('repolish.misc.logger') as mock_logger,
-    ):
-        pkg, project = resolve_package_names('mypkg')
-    assert pkg == 'mypkg'
-    assert project == ''
-    mock_logger.debug.assert_called_once_with(
-        'package_distributions_lookup_failed',
-        package='mypkg',
-        error='metadata boom',
-    )
