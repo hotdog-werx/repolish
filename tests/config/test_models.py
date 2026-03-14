@@ -119,7 +119,7 @@ def test_all_providers_from_file(tmp_path: Path, case: AllProvidersCase):
 class ProviderInfoCase:
     name: str
     file_content: str | None  # None means file doesn't exist
-    expected_target_dir: str | None
+    expected_resources_dir: str | None
     expected_library_name: str | None = None
 
 
@@ -129,29 +129,31 @@ class ProviderInfoCase:
         ProviderInfoCase(
             name='missing_file',
             file_content=None,
-            expected_target_dir=None,
+            expected_resources_dir=None,
         ),
         ProviderInfoCase(
             name='invalid_json',
             file_content='{ not valid json }',
-            expected_target_dir=None,
+            expected_resources_dir=None,
         ),
         ProviderInfoCase(
             name='missing_required_field',
             file_content='{"library_name": "mylib"}',
-            expected_target_dir=None,
+            expected_resources_dir=None,
         ),
         ProviderInfoCase(
             name='valid_minimal',
-            file_content='{"target_dir": ".repolish/provider1", "source_dir": "/fake/source/provider1"}',
-            expected_target_dir='.repolish/provider1',
+            file_content='{"resources_dir": ".repolish/provider1", "site_package_dir": "/fake/source/provider1"}',
+            expected_resources_dir='.repolish/provider1',
         ),
         ProviderInfoCase(
             name='valid_with_optional_fields',
-            file_content="""{"target_dir": ".repolish/provider1",
-"source_dir": "/fake/source/provider1",
-"library_name": "mylib"}""",
-            expected_target_dir='.repolish/provider1',
+            file_content=(
+                '{"resources_dir": ".repolish/provider1",'
+                ' "site_package_dir": "/fake/source/provider1",'
+                ' "library_name": "mylib"}'
+            ),
+            expected_resources_dir='.repolish/provider1',
             expected_library_name='mylib',
         ),
     ],
@@ -166,11 +168,11 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
 
     info = ProviderInfo.from_file(info_file)
 
-    if case.expected_target_dir is None:
+    if case.expected_resources_dir is None:
         assert info is None
     else:
         assert info is not None
-        assert info.target_dir == case.expected_target_dir
+        assert info.resources_dir == case.expected_resources_dir
         assert info.library_name == case.expected_library_name
 
 

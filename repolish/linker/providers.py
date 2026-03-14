@@ -57,7 +57,7 @@ def save_provider_info(
         provider_info: Provider information from the CLI --info output
         config_dir: Directory containing the repolish.yaml file
     """
-    target_dir = Path(provider_info.target_dir)
+    resources_dir = Path(provider_info.resources_dir)
     repolish_dir = config_dir / '.repolish' / '_'
     repolish_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,15 +70,15 @@ def save_provider_info(
         info=provider_info.model_dump(mode='json'),
     )
 
-    # Ensure target directory exists
-    target_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure resources directory exists
+    resources_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the info (use mode='json' to trigger field serializers for Path -> str conversion)
     with open_utf8(info_file, 'w') as f:
         json.dump(provider_info.model_dump(mode='json'), f, indent=2)
 
-    # Save alias mapping - extract folder name from target_dir
-    folder_name = target_dir.relative_to(config_dir / '.repolish').parts[0]
+    # Save alias mapping - extract folder name from resources_dir
+    folder_name = resources_dir.relative_to(config_dir / '.repolish').parts[0]
     save_provider_alias(provider_name, folder_name, config_dir)
 
     logger.debug(
@@ -136,7 +136,7 @@ def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
     logger.info(
         'provider_linked',
         provider=provider_name,
-        target=str(provider_info.target_dir),
+        target=str(provider_info.resources_dir),
         _display_level=1,
     )
 

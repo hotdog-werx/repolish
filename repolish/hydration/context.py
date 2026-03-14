@@ -9,7 +9,7 @@ def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
     """Return a mapping of provider alias -> loader provider id (posix path)."""
     alias_to_pid: dict[str, str] = {}
     for alias, info in config.providers.items():
-        alias_to_pid[alias] = info.target_dir.as_posix()
+        alias_to_pid[alias] = info.provider_root.as_posix()
     return alias_to_pid
 
 
@@ -64,9 +64,9 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     provider_overrides: dict[str, dict[str, object]] = {}
     for alias, info in config.providers.items():
         # prefer the canonical id from `alias_to_pid`; fall back to the raw
-        # `target_dir` if something went wrong (shouldn't happen for a
+        # `provider_root` if something went wrong (shouldn't happen for a
         # resolved config, but defensive code is cheap).
-        pid = alias_to_pid.get(alias, info.target_dir.as_posix())
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
 
         merged: dict[str, object] = {}
         if info.context:

@@ -76,8 +76,8 @@ def test_resource_linker_info_mode(
     assert result.exit_code == 0
     info = json.loads(result.output)
     assert info['library_name'] == 'mylib'
-    assert 'source_dir' in info
-    assert 'target_dir' in info
+    assert 'site_package_dir' in info
+    assert 'resources_dir' in info
 
 
 def test_resource_linker_custom_target_dir(
@@ -91,7 +91,10 @@ def test_resource_linker_custom_target_dir(
 
     custom_target = tmp_path / 'custom' / 'target'
 
-    result = runner.invoke(basic_link_cli, ['--target-dir', str(custom_target)])
+    result = runner.invoke(
+        basic_link_cli,
+        ['--resources-dir', str(custom_target)],
+    )
 
     assert result.exit_code == 0
     _assert_link_resources_called(
@@ -378,11 +381,11 @@ def test_resource_linker_cli_info_mode(
     assert result.exit_code == 0
     info = json.loads(result.output)
     assert info['library_name'] == 'mylib'
-    assert info['templates_dir'] == 'templates'
+    assert info['provider_root'].endswith('templates')
     assert info['package_name'] == 'mylib'
     assert info['project_name'] == ''
-    assert 'source_dir' in info
-    assert 'target_dir' in info
+    assert 'site_package_dir' in info
+    assert 'resources_dir' in info
     assert 'are now available' not in result.output
 
 

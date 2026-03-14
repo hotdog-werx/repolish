@@ -155,7 +155,7 @@ def test_apply_command_runs_with_valid_provider(
         providers={
             'prov_a': ResolvedProviderInfo(
                 alias='prov_a',
-                target_dir=provider_dir,
+                provider_root=provider_dir,
                 resources_dir=provider_dir,
             ),
         },
@@ -319,7 +319,7 @@ def test_apply_with_template_mapping_in_file_mappings(
         providers={
             'prov_a': ResolvedProviderInfo(
                 alias='prov_a',
-                target_dir=provider_dir,
+                provider_root=provider_dir,
                 resources_dir=provider_dir,
             ),
         },
@@ -363,7 +363,7 @@ def test_apply_with_delete_files(
         providers={
             'prov_a': ResolvedProviderInfo(
                 alias='prov_a',
-                target_dir=provider_dir,
+                provider_root=provider_dir,
                 resources_dir=provider_dir,
             ),
         },
@@ -406,7 +406,7 @@ def test_template_sources_translated_from_alias_to_pid(
         providers={
             'template_a': ResolvedProviderInfo(
                 alias='template_a',
-                target_dir=provider_dir,
+                provider_root=provider_dir,
                 resources_dir=provider_dir,
             ),
         },
@@ -477,7 +477,7 @@ def test_paused_files_logged_as_warning(
         providers={
             'template_a': ResolvedProviderInfo(
                 alias='template_a',
-                target_dir=provider_dir,
+                provider_root=provider_dir,
                 resources_dir=provider_dir,
             ),
         },

@@ -82,8 +82,8 @@ def provider_setup(tmp_path: Path):
         info_file.parent.mkdir(parents=True, exist_ok=True)
 
         info_data = {
-            'target_dir': target_dir,
-            'source_dir': f'/fake/source/{alias}',
+            'resources_dir': target_dir,
+            'site_package_dir': f'/fake/source/{alias}',
             'library_name': library_name,
         }
 

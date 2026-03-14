@@ -91,14 +91,14 @@ class ResolvedProviderInfo(BaseModel):
     alias: str = Field(
         description='Provider alias name used in configuration',
     )
-    target_dir: Path = Field(
-        description='Fully resolved directory where provider resources are linked (must contain repolish.py).',
+    provider_root: Path = Field(
+        description='Fully resolved directory containing repolish.py and the repolish/ template tree.',
     )
     resources_dir: Path = Field(
         description=(
             'Fully resolved root of the linked resources directory. '
-            'Equal to target_dir when templates_dir is empty; otherwise the parent '
-            'that contains both the templates subdirectory and other resource folders '
+            'Equal to provider_root when there is no subdirectory offset; otherwise '
+            'the parent that contains provider_root as well as other resource folders '
             'such as configs/.'
         ),
     )

@@ -55,28 +55,37 @@ class ProviderInfo(BaseModel):
     """Model for .provider-info.json file structure.
 
     Contains information about a linked provider.
+
+    The three path fields capture the layout of a provider:
+
+    - ``resources_dir``: where the provider's resources live inside the project
+      (the symlink target created by the linker CLI, e.g. ``.repolish/devkit-workspace/``).
+    - ``provider_root``: the directory containing ``repolish.py`` and the
+      ``repolish/`` template tree.  May equal ``resources_dir`` when there is
+      no subdirectory offset.  Empty string means "same as resources_dir".
+    - ``site_package_dir``: absolute path to the provider's resources inside
+      its installed Python package (e.g. ``/site-packages/devkit_workspace/resources/``).
+      Informational only; empty for local / directory-only providers.
     """
 
-    target_dir: str = Field(
-        description='Directory where provider resources are linked',
-    )
-    source_dir: str = Field(
-        description='Directory where provider resources originate (e.g., in site-packages)',
-    )
-    templates_dir: str = Field(
-        default='',
+    resources_dir: str = Field(
         description=(
-            'Subdirectory within source_dir / target_dir where repolish.py and templates live.'
-            ' When set, the loader uses target_dir / templates_dir as the provider root.'
-            ' Defaults to empty string (repolish.py is at the root of source_dir).'
+            'Directory where provider resources are linked into the project (e.g. .repolish/devkit-workspace/).'
         ),
     )
-    # Deprecated: providers now specify the template root directly via
-    # `target_dir`.  Historically we allowed a separate
-    # ``templates_dir`` within the provider folder, but configuration and
-    # resolution no longer rely on this field.  The attribute is omitted from
-    # the model to keep the serialized JSON compact; older files may still
-    # contain the key and it will be ignored by the loader.
+    provider_root: str = Field(
+        default='',
+        description=(
+            'Directory containing repolish.py and the repolish/ template tree.'
+            ' Empty string means the same directory as resources_dir.'
+        ),
+    )
+    site_package_dir: str = Field(
+        default='',
+        description=(
+            'Absolute path to the provider resources inside its installed Python package. Empty for local providers.'
+        ),
+    )
     library_name: str | None = Field(
         default=None,
         description='Name of the provider library (optional)',

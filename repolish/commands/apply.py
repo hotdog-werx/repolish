@@ -106,7 +106,7 @@ def _gather_template_directories(
         info = config.providers.get(alias)
         if info is None:
             continue
-        path = info.target_dir
+        path = info.provider_root
         template_dirs.append((alias, path))
 
     # if no alias information needed (only plain Paths or ``(None, path)``
@@ -123,7 +123,7 @@ def _alias_pid_maps(
     config: RepolishConfig,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Return (alias→pid, pid→alias) maps built from config.providers."""
-    alias_to_pid = {alias: info.target_dir.as_posix() for alias, info in config.providers.items()}
+    alias_to_pid = {alias: info.provider_root.as_posix() for alias, info in config.providers.items()}
     return alias_to_pid, {v: k for k, v in alias_to_pid.items()}
 
 

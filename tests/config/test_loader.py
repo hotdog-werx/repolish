@@ -186,12 +186,11 @@ def test_load_config_with_provider_directory(
 
     # Create provider directory
     provider_dir = config_dir / 'my-provider'
-    templates_path = provider_dir / 'templates'
-    templates_path.mkdir(parents=True)
-    (templates_path / 'repolish.py').write_text(
+    provider_dir.mkdir(parents=True)
+    (provider_dir / 'repolish.py').write_text(
         'def create_context():\n    return {}\n',
     )
-    (templates_path / 'repolish').mkdir()
+    (provider_dir / 'repolish').mkdir()
 
     config_data = {
         'providers_order': ['base'],
@@ -207,9 +206,9 @@ def test_load_config_with_provider_directory(
 
     config = load_config(config_path)
 
-    # provider entry should exist and point at the templates directory
+    # provider entry should exist and point at the provider root directory
     assert 'base' in config.providers
-    assert config.providers['base'].target_dir.resolve() == provider_dir.resolve()
+    assert config.providers['base'].provider_root.resolve() == provider_dir.resolve()
 
 
 def test_load_config_template_overrides_roundtrip(
@@ -228,13 +227,9 @@ def test_load_config_template_overrides_roundtrip(
     # create the resolved provider directory structure so validation passes
     cfg_dir = config_path.parent
     provider_dir = cfg_dir / 'templates'
-    # config resolution will append another `templates` segment, so create
-    # `templates/templates` and give it a minimal repolish layout
-    real_templates = provider_dir / 'templates'
-    rep = real_templates / 'repolish'
-    rep.mkdir(parents=True)
-    # also touch a dummy repolish.py so validation is happy
-    (real_templates / 'repolish.py').write_text('')
+    # The directory config points directly at the provider root
+    (provider_dir / 'repolish').mkdir(parents=True)
+    (provider_dir / 'repolish.py').write_text('')
 
     config = load_config(config_path)
     assert config.template_overrides == {'README.md': 'test'}
@@ -264,7 +259,7 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
 
     # provider should be registered with correct info from JSON
     assert 'mylib' in config.providers
-    assert config.providers['mylib'].target_dir.resolve() == target_dir.resolve()
+    assert config.providers['mylib'].provider_root.resolve() == target_dir.resolve()
     assert config.providers['mylib'].library_name == 'my-library'
 
 
@@ -341,13 +336,13 @@ def test_load_config_with_provider_default_symlinks(
     (configs_dir / '.editorconfig').write_text('# editorconfig')
     (configs_dir / '.gitignore').write_text('# gitignore')
 
-    # Write provider info with default symlinks
+    # Should use provider's default symlinks
     info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
     info_file.write_text(
         json.dumps(
             {
-                'target_dir': str(target_dir),
-                'source_dir': '/fake/source',
+                'resources_dir': str(target_dir),
+                'site_package_dir': '/fake/source',
                 'library_name': 'test',
                 'symlinks': [
                     {
@@ -359,7 +354,6 @@ def test_load_config_with_provider_default_symlinks(
             },
         ),
     )
-
     config_data = {
         'providers_order': ['test'],
         'providers': {
@@ -399,13 +393,13 @@ def test_load_config_override_provider_symlinks_with_empty_list(
     configs_dir.mkdir()
     (configs_dir / '.editorconfig').write_text('# editorconfig')
 
-    # Write provider info with default symlinks
+    # Explicitly override with no symlinks
     info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
     info_file.write_text(
         json.dumps(
             {
-                'target_dir': str(target_dir),
-                'source_dir': '/fake/source',
+                'resources_dir': str(target_dir),
+                'site_package_dir': '/fake/source',
                 'library_name': 'test',
                 'symlinks': [
                     {
@@ -483,7 +477,7 @@ def test_load_config_all_fields(
 
     # provider must be resolved
     assert 'base' in config.providers
-    assert config.providers['base'].target_dir.resolve() == dir1.resolve()
+    assert config.providers['base'].provider_root.resolve() == dir1.resolve()
 
     # other globals still preserved
     assert config.post_process == ['black .', 'ruff check .']

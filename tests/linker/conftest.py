@@ -100,6 +100,6 @@ def basic_provider_info(tmp_path: Path) -> ProviderInfo:
     """Create a basic ProviderInfo for testing."""
     return ProviderInfo(
         library_name='mylib',
-        target_dir=str(tmp_path / '.repolish' / 'mylib'),
-        source_dir='/fake/source/mylib',
+        resources_dir=str(tmp_path / '.repolish' / 'mylib'),
+        site_package_dir='/fake/source/mylib',
     )

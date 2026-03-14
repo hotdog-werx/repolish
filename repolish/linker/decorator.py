@@ -105,8 +105,8 @@ def _get_package_root(module_name: str, caller_file: Path) -> Path:
 
 
 def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to construct the ProviderInfo
-    target_dir: Path,
-    source_dir: Path,
+    resources_dir: Path,
+    pkg_dir: Path,
     library_name: str,
     templates_dir: str,
     pkg_name: str,
@@ -117,11 +117,12 @@ def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to const
     provider_symlinks = [
         ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in (default_symlinks or [])
     ]
+    provider_root = str((resources_dir / templates_dir).absolute()) if templates_dir else ''
     return ProviderInfo(
-        target_dir=str(target_dir.absolute()),
-        source_dir=str(source_dir.absolute()),
+        resources_dir=str(resources_dir.absolute()),
+        provider_root=provider_root,
+        site_package_dir=str(pkg_dir.absolute()),
         library_name=library_name,
-        templates_dir=templates_dir,
         package_name=pkg_name,
         project_name=proj_name,
         symlinks=provider_symlinks,
@@ -129,8 +130,8 @@ def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to const
 
 
 def _link_and_notify(
-    source_dir: Path,
-    target_dir: Path,
+    pkg_dir: Path,
+    resources_dir: Path,
     *,
     force: bool,
     library_name: str,
@@ -139,8 +140,8 @@ def _link_and_notify(
     """Run link_resources and call the success callback, or raise SystemExit on failure."""
     try:
         is_symlink = link_resources(
-            source_dir=source_dir,
-            target_dir=target_dir,
+            source_dir=pkg_dir,
+            target_dir=resources_dir,
             force=force,
         )
         link_type = 'symlink' if is_symlink else 'copy'
@@ -148,7 +149,7 @@ def _link_and_notify(
             'resources_linked',
             library_name=library_name,
             link_type=link_type,
-            target=str(target_dir),
+            target=str(resources_dir),
             _display_level=1,
         )
         func()
@@ -246,15 +247,17 @@ def resource_linker(
         @link_app.default
         def _command(
             *,
-            source_dir: Annotated[
+            pkg_dir: Annotated[
                 Path,
                 Parameter(
+                    name=['--package-dir'],
                     help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
                 ),
             ] = resolved_source_dir,
-            target_dir: Annotated[
+            resources_dir: Annotated[
                 Path,
                 Parameter(
+                    name=['--resources-dir'],
                     help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
                 ),
             ] = default_target_base_path / library_name,
@@ -278,8 +281,8 @@ def resource_linker(
             configure_logging(verbosity=resolve_verbosity(verbose=verbose))
             if info:
                 info_obj = _build_provider_info(
-                    target_dir,
-                    source_dir,
+                    resources_dir,
+                    pkg_dir,
                     library_name,
                     templates_dir,
                     _pkg_name,
@@ -289,8 +292,8 @@ def resource_linker(
                 print(json.dumps(info_obj.model_dump(mode='json'), indent=2))  # noqa: T201
             else:
                 _link_and_notify(
-                    source_dir,
-                    target_dir,
+                    pkg_dir,
+                    resources_dir,
                     force=force,
                     library_name=library_name,
                     func=func,

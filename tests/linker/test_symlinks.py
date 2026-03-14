@@ -219,8 +219,8 @@ def test_create_additional_link_target_exists_without_force(
 
     provider_info = ProviderInfo(
         library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
+        resources_dir=str(provider_resources),
+        site_package_dir='/fake/source/mylib',
     )
 
     with pytest.raises(FileExistsError, match='Target already exists'):
@@ -252,8 +252,8 @@ def test_create_additional_link_replaces_target_with_force(
 
     provider_info = ProviderInfo(
         library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
+        resources_dir=str(provider_resources),
+        site_package_dir='/fake/source/mylib',
     )
 
     result = create_additional_link(
@@ -284,8 +284,8 @@ def test_create_additional_link_creates_parent_directories(
 
     provider_info = ProviderInfo(
         library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
+        resources_dir=str(provider_resources),
+        site_package_dir='/fake/source/mylib',
     )
 
     result = create_additional_link(
@@ -318,8 +318,8 @@ def test_create_additional_link_copies_when_no_symlinks(
 
     provider_info = ProviderInfo(
         library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
+        resources_dir=str(provider_resources),
+        site_package_dir='/fake/source/mylib',
     )
 
     result = create_additional_link(
@@ -356,8 +356,8 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
 
     provider_info = ProviderInfo(
         library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
+        resources_dir=str(provider_resources),
+        site_package_dir='/fake/source/mylib',
     )
 
     is_symlink = create_additional_link(

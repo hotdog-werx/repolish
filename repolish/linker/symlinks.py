@@ -201,7 +201,7 @@ def create_additional_link(
         ... )
     """
     # Resolve paths
-    provider_resources = Path(provider_info.target_dir)
+    provider_resources = Path(provider_info.resources_dir)
     source_path = provider_resources / source
     target_path = Path(target)
 

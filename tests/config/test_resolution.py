@@ -27,8 +27,8 @@ class TCase:
             name='auto_link_succeeds',
             exit_code=0,
             provider_info_on_retry=ProviderInfo(
-                target_dir='.repolish/base',
-                source_dir='/some/source',
+                resources_dir='.repolish/base',
+                site_package_dir='/some/source',
             ),
             expected_aliases=['base'],
         ),
@@ -65,37 +65,37 @@ def test_auto_link_on_missing_provider(tmp_path: Path, case: TCase):
 
 
 @dataclass
-class TemplatesDirCase:
+class ProviderRootCase:
     name: str
-    templates_dir: str
-    expected_suffix: str
+    provider_root: str  # value written to ProviderInfo.provider_root
+    expected_suffix: str  # expected suffix of the resolved provider_root path
 
 
 @pytest.mark.parametrize(
     'case',
     [
-        TemplatesDirCase(
-            name='templates_dir_appended',
-            templates_dir='templates',
+        ProviderRootCase(
+            name='explicit_provider_root',
+            provider_root='.repolish/mylib/templates',
             expected_suffix='.repolish/mylib/templates',
         ),
-        TemplatesDirCase(
-            name='templates_dir_empty_no_append',
-            templates_dir='',
+        ProviderRootCase(
+            name='empty_provider_root_uses_resources_dir',
+            provider_root='',
             expected_suffix='.repolish/mylib',
         ),
     ],
     ids=lambda c: c.name,
 )
-def test_resolved_from_info_templates_dir(
+def test_resolved_from_info_provider_root(
     tmp_path: Path,
-    case: TemplatesDirCase,
+    case: ProviderRootCase,
 ):
-    """_resolved_from_info appends templates_dir to target_dir when set."""
+    """_resolved_from_info uses provider_root directly when set; falls back to resources_dir."""
     provider_info = ProviderInfo(
-        target_dir='.repolish/mylib',
-        source_dir=str(tmp_path / 'mylib' / 'resources'),
-        templates_dir=case.templates_dir,
+        resources_dir='.repolish/mylib',
+        site_package_dir=str(tmp_path / 'mylib' / 'resources'),
+        provider_root=case.provider_root,
     )
     provider_config = ProviderConfig(cli='mylib-link')
 
@@ -106,4 +106,4 @@ def test_resolved_from_info_templates_dir(
         tmp_path,
     )
 
-    assert result.target_dir == (tmp_path / case.expected_suffix).resolve()
+    assert result.provider_root == (tmp_path / case.expected_suffix).resolve()

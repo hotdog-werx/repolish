@@ -42,7 +42,7 @@ def test_config_level_provenance(tmp_path: Path):
             'providers': {
                 'p': ResolvedProviderInfo(
                     alias='p',
-                    target_dir=prov,
+                    provider_root=prov,
                     resources_dir=prov,
                     symlinks=[],
                 ),
@@ -100,7 +100,7 @@ def test_provider_alias_available_in_create_context(tmp_path: Path):
             'providers': {
                 'myalias': ResolvedProviderInfo(
                     alias='myalias',
-                    target_dir=prov,
+                    provider_root=prov,
                     resources_dir=prov,
                     symlinks=[],
                 ),
@@ -141,7 +141,7 @@ def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
 
     info = ResolvedProviderInfo(
         alias='p',
-        target_dir=sub,
+        provider_root=sub,
         resources_dir=prov,
         symlinks=[],
         context={'foo': 'override'},
