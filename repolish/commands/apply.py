@@ -3,6 +3,8 @@ from collections import Counter
 from pathlib import Path
 
 from hotlog import get_logger
+from rich.console import Console
+from rich.table import Table
 
 from repolish.builder import stage_templates
 from repolish.config import RepolishConfig, load_config
@@ -26,6 +28,14 @@ from repolish.utils import run_post_process
 from repolish.version import __version__
 
 logger = get_logger(__name__)
+console = Console()
+
+_MODE_STYLE: dict[str, str] = {
+    'regular': 'green',
+    'create_only': 'yellow',
+    'delete': 'red',
+    'keep': 'cyan',
+}
 
 
 def _collect_excluded_sources(
@@ -131,11 +141,23 @@ def _collect_provider_files(
     return [{'path': r.path, 'mode': r.mode.value} for r in providers.file_records if r.owner == alias]
 
 
-def _build_files_summary(
-    providers: Providers,
-) -> list[dict[str, str]]:
-    """Return sorted list of {path, owner, mode} summarising all managed files."""
-    return [{'path': r.path, 'owner': r.owner, 'mode': r.mode.value} for r in providers.file_records]
+def _print_files_summary(providers: Providers) -> None:
+    """Print one Rich table per provider alias showing mode and path for each file."""
+    # Group records by owner, preserving sorted-path order (file_records is pre-sorted).
+    by_owner: dict[str, list] = {}
+    for record in providers.file_records:
+        by_owner.setdefault(record.owner, []).append(record)
+
+    for owner, records in by_owner.items():
+        title = f'{owner} ({len(records)} file{"s" if len(records) != 1 else ""})'
+        table = Table(title=title, show_header=True, header_style='bold')
+        table.add_column('Mode', style='dim', no_wrap=True)
+        table.add_column('Path')
+        for record in records:
+            mode_val = record.mode.value
+            style = _MODE_STYLE.get(mode_val, '')
+            table.add_row(f'[{style}]{mode_val}[/{style}]', record.path)
+        console.print(table)
 
 
 def _write_provider_debug_files(
@@ -234,7 +256,7 @@ def command(config_path: Path, *, check_only: bool) -> int:
             if alias in alias_to_pid
         ],
     )
-    # global cross-provider file ownership summary with aggregated breakdowns
+    # global cross-provider file ownership summary printed as rich tables
     _mode_counts = Counter(r.mode.value for r in providers.file_records)
     _owner_counts = Counter(r.owner for r in providers.file_records)
     logger.info(
@@ -242,8 +264,8 @@ def command(config_path: Path, *, check_only: bool) -> int:
         total=len(providers.file_records),
         by_mode=dict(_mode_counts),
         by_owner=dict(_owner_counts),
-        files=_build_files_summary(providers),
     )
+    _print_files_summary(providers)
     logger.info(
         'providers_ready',
         suggestion='see .repolish/_ for extra information on each provider',
