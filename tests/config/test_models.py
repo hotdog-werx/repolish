@@ -120,7 +120,6 @@ class ProviderInfoCase:
     name: str
     file_content: str | None  # None means file doesn't exist
     expected_resources_dir: str | None
-    expected_library_name: str | None = None
 
 
 @pytest.mark.parametrize(
@@ -138,7 +137,7 @@ class ProviderInfoCase:
         ),
         ProviderInfoCase(
             name='missing_required_field',
-            file_content='{"library_name": "mylib"}',
+            file_content='{"project_name": "mylib"}',
             expected_resources_dir=None,
         ),
         ProviderInfoCase(
@@ -151,10 +150,9 @@ class ProviderInfoCase:
             file_content=(
                 '{"resources_dir": ".repolish/provider1",'
                 ' "site_package_dir": "/fake/source/provider1",'
-                ' "library_name": "mylib"}'
+                ' "project_name": "mylib"}'
             ),
             expected_resources_dir='.repolish/provider1',
-            expected_library_name='mylib',
         ),
     ],
     ids=lambda case: case.name,
@@ -173,7 +171,6 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
     else:
         assert info is not None
         assert info.resources_dir == case.expected_resources_dir
-        assert info.library_name == case.expected_library_name
 
 
 @dataclass

@@ -177,8 +177,8 @@ def create_additional_link(
     This is used by repolish to create additional symlinks defined in repolish.yaml.
 
     Args:
-        provider_info: Provider information containing target_dir and library_name
-        provider_name: Name of the provider (used as fallback for library_name)
+        provider_info: Provider information containing resources_dir
+        provider_name: Name of the provider (alias from repolish.yaml)
         source: Path relative to the provider's resources (e.g., 'configs/.editorconfig')
         target: Path relative to repo root (e.g., '.editorconfig')
         force: If True, remove existing target before creating link
@@ -189,8 +189,7 @@ def create_additional_link(
     Example:
         >>> from repolish.config import ProviderInfo
         >>> provider_info = ProviderInfo(
-        ...     library_name='codeguide',
-        ...     target_dir='/path/to/project/.repolish/codeguide'
+        ...     resources_dir='/path/to/project/.repolish/codeguide'
         ... )
         >>> # Create .editorconfig -> .repolish/codeguide/configs/.editorconfig
         >>> create_additional_link(
@@ -207,7 +206,7 @@ def create_additional_link(
 
     logger.info(
         'creating_additional_link',
-        provider=provider_info.library_name or provider_name,
+        provider=provider_name,
         source=source,
         target=target,
         _display_level=1,

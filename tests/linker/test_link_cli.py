@@ -42,7 +42,6 @@ def test_run_provider_link_error_handling(
 ):
     """Test run_provider_link handles success and failure cases."""
     provider_info_data = {
-        'library_name': 'mylib',
         'resources_dir': '.repolish/mylib',
         'site_package_dir': '/fake/source/mylib',
     }
@@ -59,7 +58,6 @@ def test_run_provider_link_error_handling(
         result = run_provider_link('mylib', 'mylib-link')
 
         assert isinstance(result, ProviderInfo)
-        assert result.library_name == 'mylib'
         assert result.resources_dir == '.repolish/mylib'
         assert mock_run.call_count == 2
 
@@ -89,7 +87,6 @@ def test_run_provider_link_error_handling(
 def test_create_provider_symlinks_no_symlinks():
     """Test create_provider_symlinks handles empty symlinks list."""
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir='.repolish/mylib',
         site_package_dir='/fake/source/mylib',
     )
@@ -114,7 +111,6 @@ def test_create_provider_symlinks_creates_links(
     (config_dir / '.prettierrc').write_text('{}')
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_dir),
         site_package_dir='/fake/source/mylib',
     )
@@ -191,7 +187,6 @@ def test_process_single_provider_error_handling(
     if exception is None:
         # Success case
         provider_info = ProviderInfo(
-            library_name='mylib',
             resources_dir=str(tmp_path / '.repolish' / 'mylib'),
             site_package_dir='/fake/source/mylib',
         )
@@ -277,7 +272,6 @@ def test_process_provider_symlinks(
         symlinks=case.config_symlinks,
     )
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_dir),
         site_package_dir='/fake/source/mylib',
         symlinks=case.provider_symlinks,
@@ -339,7 +333,6 @@ providers:
     (tmp_path / 'templates' / 'repolish').mkdir()
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(tmp_path / '.repolish' / 'mylib'),
         site_package_dir='/fake/source/mylib',
     )
@@ -423,7 +416,6 @@ providers:
     (tmp_path / 'templates' / 'repolish').mkdir()
 
     provider_info = ProviderInfo(
-        library_name='lib',
         resources_dir=str(tmp_path / '.repolish' / 'lib'),
         site_package_dir='/fake/source/lib',
     )
@@ -475,7 +467,6 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(tmp_path / '.repolish' / 'mylib'),
         site_package_dir='/fake/source/mylib',
         symlinks=[
@@ -497,7 +488,6 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert info_file.exists()
 
     saved_info = json.loads(info_file.read_text())
-    assert saved_info['library_name'] == 'mylib'
     assert saved_info['resources_dir'] == str(tmp_path / '.repolish' / 'mylib')
     assert saved_info['provider_root'] == ''
     assert len(saved_info['symlinks']) == 2
@@ -514,7 +504,6 @@ def test_save_provider_info_with_alias(
 
     # Provider is called "base" in config, but resources_dir is "codeguide"
     provider_info = ProviderInfo(
-        library_name='codeguide',
         resources_dir=str(tmp_path / '.repolish' / 'codeguide'),
         site_package_dir='/fake/source/codeguide',
     )
@@ -525,8 +514,7 @@ def test_save_provider_info_with_alias(
     info_file = tmp_path / '.repolish' / '_' / 'provider-info.base.json'
     assert info_file.exists()
 
-    saved_info = json.loads(info_file.read_text())
-    assert saved_info['library_name'] == 'codeguide'
+    _ = json.loads(info_file.read_text())
 
     # Alias mapping should also be saved
     alias_file = tmp_path / '.repolish' / '_' / '.all-providers.json'
@@ -543,7 +531,6 @@ def test_run_provider_link_no_extra_save(
 ):
     """Test that run_provider_link doesn't save info (that's done by process_provider)."""
     provider_info_data = {
-        'library_name': 'mylib',
         'resources_dir': '.repolish/mylib',
         'site_package_dir': '/fake/source/mylib',
     }
@@ -557,5 +544,4 @@ def test_run_provider_link_no_extra_save(
     result = run_provider_link('mylib', 'mylib-link')
 
     assert isinstance(result, ProviderInfo)
-    assert result.library_name == 'mylib'
     assert result.resources_dir == '.repolish/mylib'

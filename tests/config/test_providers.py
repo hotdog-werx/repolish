@@ -64,7 +64,6 @@ class LoadProviderInfoCase:
     info_content: str | None  # None means file doesn't exist
     provider_alias: str
     expected_resources_dir: str | None
-    expected_library_name: str | None = None
 
 
 @pytest.mark.parametrize(
@@ -75,12 +74,10 @@ class LoadProviderInfoCase:
             info_content=(
                 '{"resources_dir": ".repolish/codeguide/resources",'
                 ' "site_package_dir": "/fake/source/codeguide",'
-                ' "provider_root": ".repolish/codeguide/resources/templates",'
-                ' "library_name": "codeguide"}'
+                ' "provider_root": ".repolish/codeguide/resources/templates"}'
             ),
             provider_alias='base',
             expected_resources_dir='.repolish/codeguide/resources',
-            expected_library_name='codeguide',
         ),
         LoadProviderInfoCase(
             name='valid_info_required_only',
@@ -89,7 +86,6 @@ class LoadProviderInfoCase:
             ),
             provider_alias='py',
             expected_resources_dir='.repolish/python-tools/res',
-            expected_library_name=None,
         ),
         LoadProviderInfoCase(
             name='file_missing',
@@ -126,4 +122,3 @@ def test_load_provider_info(tmp_path: Path, case: LoadProviderInfoCase):
     else:
         assert result is not None
         assert result.resources_dir == case.expected_resources_dir
-        assert result.library_name == case.expected_library_name

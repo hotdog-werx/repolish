@@ -102,10 +102,6 @@ class ResolvedProviderInfo(BaseModel):
             'such as configs/.'
         ),
     )
-    library_name: str | None = Field(
-        default=None,
-        description='Name of the provider library (optional)',
-    )
     symlinks: list[ProviderSymlink] = Field(
         default_factory=list,
         description='Additional symlinks to create from provider resources to repo',

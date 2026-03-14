@@ -86,10 +86,6 @@ class ProviderInfo(BaseModel):
             'Absolute path to the provider resources inside its installed Python package. Empty for local providers.'
         ),
     )
-    library_name: str | None = Field(
-        default=None,
-        description='Name of the provider library (optional)',
-    )
     project_name: str = Field(
         default='',
         description='Project name as declared in pyproject.toml [project] name (e.g. "devkit-workspace")',

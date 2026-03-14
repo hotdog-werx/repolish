@@ -218,7 +218,6 @@ def test_create_additional_link_target_exists_without_force(
     monkeypatch.chdir(tmp_path)
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_resources),
         site_package_dir='/fake/source/mylib',
     )
@@ -251,7 +250,6 @@ def test_create_additional_link_replaces_target_with_force(
     target_path.write_text('old content')
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_resources),
         site_package_dir='/fake/source/mylib',
     )
@@ -283,7 +281,6 @@ def test_create_additional_link_creates_parent_directories(
     config_file.write_text('content')
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_resources),
         site_package_dir='/fake/source/mylib',
     )
@@ -317,7 +314,6 @@ def test_create_additional_link_copies_when_no_symlinks(
     config_file.write_text('content')
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_resources),
         site_package_dir='/fake/source/mylib',
     )
@@ -355,7 +351,6 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
     mock_no_symlinks(mocker)
 
     provider_info = ProviderInfo(
-        library_name='mylib',
         resources_dir=str(provider_resources),
         site_package_dir='/fake/source/mylib',
     )

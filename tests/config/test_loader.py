@@ -239,7 +239,6 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
     """Test loading with provider that has been linked (has info file)."""
     config_dir, target_dir = provider_setup(
         'mylib',
-        library_name='my-library',
         create_templates=True,
     )
 
@@ -260,7 +259,6 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
     # provider should be registered with correct info from JSON
     assert 'mylib' in config.providers
     assert config.providers['mylib'].provider_root.resolve() == target_dir.resolve()
-    assert config.providers['mylib'].library_name == 'my-library'
 
 
 def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
@@ -343,7 +341,6 @@ def test_load_config_with_provider_default_symlinks(
             {
                 'resources_dir': str(target_dir),
                 'site_package_dir': '/fake/source',
-                'library_name': 'test',
                 'symlinks': [
                     {
                         'source': 'configs/.editorconfig',
@@ -400,7 +397,6 @@ def test_load_config_override_provider_symlinks_with_empty_list(
             {
                 'resources_dir': str(target_dir),
                 'site_package_dir': '/fake/source',
-                'library_name': 'test',
                 'symlinks': [
                     {
                         'source': 'configs/.editorconfig',

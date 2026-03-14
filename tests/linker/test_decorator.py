@@ -75,7 +75,6 @@ def test_resource_linker_info_mode(
 
     assert result.exit_code == 0
     info = json.loads(result.output)
-    assert info['library_name'] == 'mylib'
     assert 'site_package_dir' in info
     assert 'resources_dir' in info
 
@@ -380,7 +379,6 @@ def test_resource_linker_cli_info_mode(
 
     assert result.exit_code == 0
     info = json.loads(result.output)
-    assert info['library_name'] == 'mylib'
     assert info['provider_root'].endswith('templates')
     assert info['package_name'] == 'mylib'
     assert info['project_name'] == ''
@@ -421,7 +419,6 @@ def test_resource_linker_with_default_symlinks(
 
     assert result.exit_code == 0
     info = json.loads(result.output)
-    assert info['library_name'] == 'mylib'
     assert 'symlinks' in info
     assert len(info['symlinks']) == 2
     assert info['symlinks'][0]['source'] == 'configs/.editorconfig'

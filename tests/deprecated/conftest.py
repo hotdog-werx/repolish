@@ -24,7 +24,6 @@ class ProviderSetupFixture(Protocol):
         *,
         target_dir: str | None = None,
         templates_dir: str = 'templates',
-        library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]: ...
 
@@ -66,7 +65,6 @@ def provider_setup(tmp_path: Path):
         alias: str,
         *,
         target_dir: str | None = None,
-        library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]:
         config_dir = tmp_path / 'project'
@@ -84,7 +82,6 @@ def provider_setup(tmp_path: Path):
         info_data = {
             'resources_dir': target_dir,
             'site_package_dir': f'/fake/source/{alias}',
-            'library_name': library_name,
         }
 
         info_file.write_text(json.dumps(info_data))

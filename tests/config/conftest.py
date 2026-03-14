@@ -48,7 +48,6 @@ class ProviderSetupFixture(Protocol):
         alias: str,
         *,
         target_dir: str | None = None,
-        library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]:
         """Create provider setup with info file.
@@ -56,7 +55,6 @@ class ProviderSetupFixture(Protocol):
         Args:
             alias: Provider alias name
             target_dir: Relative path to target directory (created if None)
-            library_name: Optional library name
             create_templates: Whether to create actual template structure
 
         Returns:
@@ -109,7 +107,6 @@ def provider_setup(tmp_path: Path):
         alias: str,
         *,
         target_dir: str | None = None,
-        library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]:
         """Create provider setup with info file.
@@ -117,7 +114,6 @@ def provider_setup(tmp_path: Path):
         Args:
             alias: Provider alias name
             target_dir: Relative path to target directory (created if None)
-            library_name: Optional library name
             create_templates: Whether to create actual template structure
 
         Returns:
@@ -140,7 +136,6 @@ def provider_setup(tmp_path: Path):
         info_data = {
             'resources_dir': target_dir,
             'site_package_dir': f'/fake/source/{alias}',
-            'library_name': library_name,
         }
 
         info_file.write_text(json.dumps(info_data))

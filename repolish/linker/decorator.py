@@ -107,7 +107,6 @@ def _get_package_root(module_name: str, caller_file: Path) -> Path:
 def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to construct the ProviderInfo
     resources_dir: Path,
     pkg_dir: Path,
-    library_name: str,
     templates_dir: str,
     pkg_name: str,
     proj_name: str,
@@ -122,7 +121,6 @@ def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to const
         resources_dir=str(resources_dir.absolute()),
         provider_root=provider_root,
         site_package_dir=str(pkg_dir.absolute()),
-        library_name=library_name,
         package_name=pkg_name,
         project_name=proj_name,
         symlinks=provider_symlinks,
@@ -283,7 +281,6 @@ def resource_linker(
                 info_obj = _build_provider_info(
                     resources_dir,
                     pkg_dir,
-                    library_name,
                     templates_dir,
                     _pkg_name,
                     _proj_name,
