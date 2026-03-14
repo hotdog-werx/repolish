@@ -2,8 +2,6 @@
 
 import inspect
 import json
-import os
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.util import find_spec
@@ -17,18 +15,14 @@ from hotlog import (
     get_logger,
     resolve_verbosity,
 )
-from rich.console import Console
 
 from repolish.config import ProviderInfo, ProviderSymlink
+from repolish.console import console
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
 from repolish.pkginfo import resolve_package_identity
 
 logger = get_logger(__name__)
-
-# Disable colors during tests (similar to hotlog's get_console behavior)
-_force_terminal = 'pytest' not in sys.modules and not any(k.startswith('PYTEST_') for k in os.environ)
-console = Console(force_terminal=_force_terminal)
 
 
 @dataclass

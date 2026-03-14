@@ -3,11 +3,11 @@ from collections import Counter
 from pathlib import Path
 
 from hotlog import get_logger
-from rich.console import Console
 from rich.table import Table
 
 from repolish.builder import stage_templates
 from repolish.config import RepolishConfig, load_config
+from repolish.console import console
 from repolish.hydration import (
     apply_generated_output,
     build_final_providers,
@@ -28,7 +28,6 @@ from repolish.utils import run_post_process
 from repolish.version import __version__
 
 logger = get_logger(__name__)
-console = Console()
 
 _MODE_STYLE: dict[str, str] = {
     'regular': 'green',

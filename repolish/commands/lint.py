@@ -30,6 +30,7 @@ from jinja2 import select_autoescape
 from pydantic import BaseModel
 from rich.console import Console
 
+from repolish.console import console
 from repolish.loader import create_providers
 from repolish.loader.models import Providers
 from repolish.preprocessors.core import replace_text
@@ -311,7 +312,6 @@ def command(provider_dir: Path) -> int:
     Returns:
         0 when all templates are clean, 1 when any issue is found.
     """
-    console = Console()
     provider_dir = provider_dir.resolve()
     tpl_root = provider_dir / 'repolish'
 
