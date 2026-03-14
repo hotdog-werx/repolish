@@ -310,7 +310,7 @@ def resource_linker(
 def resource_linker_cli(
     *,
     library_name: str | None = None,
-    default_source_dir: str | None = None,
+    default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
     templates_dir: str = 'templates',
@@ -357,11 +357,8 @@ def resource_linker_cli(
 
     # Resolve package identity early so the success message can use the
     # detected library name before the decorator is applied.
-    _package_attr, _pkg, _proj = _auto_detect_library_name(caller_frame)
+    _, _pkg, _proj = _auto_detect_library_name(caller_frame)
     detected_library_name = library_name or _proj or _pkg.replace('_', '-')
-    if default_source_dir is None:
-        parts = (_package_attr or '').split('.')
-        default_source_dir = f'{parts[1]}/resources' if len(parts) >= 2 else 'resources'
 
     # Create a function with auto-generated success message
     def _success_message() -> None:
