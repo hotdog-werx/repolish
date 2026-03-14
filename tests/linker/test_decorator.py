@@ -425,3 +425,25 @@ def test_resource_linker_with_default_symlinks(
     assert info['symlinks'][0]['target'] == '.editorconfig'
     assert info['symlinks'][1]['source'] == 'configs/.gitignore'
     assert info['symlinks'][1]['target'] == '.gitignore'
+
+
+def test_get_package_root_fallback_when_find_spec_returns_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """_get_package_root falls back to caller_file.parent when find_spec returns None."""
+    monkeypatch.chdir(tmp_path)
+    mocker.patch('repolish.linker.decorator.find_spec', return_value=None)
+    mock_link = mocker.patch('repolish.linker.decorator.link_resources', return_value=True)
+
+    @resource_linker(library_name='mylib')
+    def link_cli() -> None:
+        pass
+
+    result = runner.invoke(link_cli, [])
+
+    assert result.exit_code == 0
+    # source_dir should be caller_file.parent / 'resources' (the fallback path)
+    call_source = mock_link.call_args.kwargs['source_dir']
+    assert call_source.name == 'resources'

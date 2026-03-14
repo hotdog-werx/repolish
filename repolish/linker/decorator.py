@@ -6,6 +6,7 @@ import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Annotated
 
@@ -41,22 +42,26 @@ class Symlink:
     target: str
 
 
-def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
-    """Auto-detect library name from the caller's package.
+def _auto_detect_library_name(
+    caller_frame: inspect.FrameInfo,
+) -> tuple[str, str, str]:
+    """Resolve package identity from the caller's frame.
 
-    Uses :func:`repolish.pkginfo.resolve_package_identity` to look up the
-    distribution name via ``importlib.metadata``.  Falls back to converting
-    underscores to dashes in the top-level package name when the distribution
-    name cannot be resolved (e.g. for editable installs without metadata).
+    Uses :func:`repolish.pkginfo.resolve_package_identity` to derive the
+    canonical module name and distribution name from the caller's
+    ``__package__`` attribute.
 
     Args:
         caller_frame: Frame info of the caller
 
     Returns:
-        Library name derived from package name
+        ``(package_attr, pkg, project)`` where *package_attr* is the raw
+        ``__package__`` value, *pkg* is the canonical module name, and
+        *project* is the distribution name (may be ``''`` if unresolvable).
 
     Raises:
-        ResourceLinkerError: If library name cannot be determined
+        ResourceLinkerError: If the caller module or its package cannot be
+            determined.
     """
     caller_module = inspect.getmodule(caller_frame.frame)
     if caller_module is None or not hasattr(
@@ -75,39 +80,34 @@ def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
         raise ResourceLinkerError(msg)
 
     pkg, project = resolve_package_identity(package_attr)
-    # prefer the distribution name; fall back to underscore→dash conversion
-    return project if project else pkg.replace('_', '-')
+    return package_attr, pkg, project
 
 
-def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
-    """Get the root directory of the package containing the caller."""
-    # Get the module where the decorator was called
-    caller_module = inspect.getmodule(caller_frame.frame)
-    if (
-        caller_module is None or not hasattr(caller_module, '__file__') or caller_module.__file__ is None
-    ):  # pragma: no cover - Edge case: module without __file__ (e.g., built-ins, interactive REPL)
-        msg = 'Could not determine package root from caller module'
-        raise ResourceLinkerError(msg)
+def _get_package_root(module_name: str, caller_file: Path) -> Path:
+    """Return the directory that is the package root for *module_name*.
 
-    caller_file = Path(caller_module.__file__).resolve()
+    Uses :func:`importlib.util.find_spec` on the fully-resolved *module_name*
+    (as returned by :func:`~repolish.pkginfo.resolve_package_identity`) so
+    that both flat packages and namespace packages are handled correctly:
 
-    # Get the package name (top-level package)
-    package_name = caller_module.__package__
-    if package_name:
-        # Split on '.' to get the top-level package
-        top_level_package = package_name.split('.')[0]
-    else:  # pragma: no cover - Fallback for standalone modules not in a package
-        # If no package, use the module's parent directory
-        return caller_file.parent
+    - Flat package ``devkit_zensical``:  spec points at ``devkit_zensical/``.
+    - Namespace package ``devkit.zensical``: spec points at
+      ``devkit/zensical/``, not the namespace root ``devkit/``.
 
-    # Walk up from the caller's file until we find the package root
-    # The package root is the directory containing the top-level package
-    current = caller_file.parent
-    while current.name != top_level_package and current.parent != current:
-        current = current.parent
+    Falls back to *caller_file*'s parent when the spec cannot be resolved
+    (e.g. standalone module not installed in the environment).
 
-    # Return the package root (the directory itself, not its parent)
-    return current
+    Args:
+        module_name: Canonical dotted module name from ``resolve_package_identity``.
+        caller_file: Resolved path of the calling module's ``__file__``,
+            used as a fallback when *module_name* cannot be found via
+            ``find_spec``.
+    """
+    if module_name:
+        spec = find_spec(module_name)
+        if spec and spec.submodule_search_locations:
+            return Path(next(iter(spec.submodule_search_locations))).resolve()
+    return caller_file.parent
 
 
 def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to construct the ProviderInfo
@@ -222,13 +222,14 @@ def resource_linker(
     # Get caller's frame to determine package root
     # Use provided frame (from resource_linker_cli) or inspect the stack
     caller_frame = _caller_frame if _caller_frame is not None else inspect.stack()[1]
-    package_root = _get_package_root(caller_frame)
 
-    # Resolve package/project names from the caller's package once so they
-    # are available both for library_name detection and for ProviderInfo.
+    # Resolve package identity once; use it for both the package root and
+    # the library name so resolve_package_identity is not called twice.
     caller_module = inspect.getmodule(caller_frame.frame)
     _package_attr = getattr(caller_module, '__package__', '') or ''
+    _caller_file = Path(getattr(caller_module, '__file__', '') or '').resolve()
     _pkg_name, _proj_name = resolve_package_identity(_package_attr)
+    package_root = _get_package_root(_pkg_name, _caller_file)
     library_name = library_name or _proj_name or _pkg_name.replace('_', '-')
 
     resolved_source_dir = package_root / Path(default_source_dir)
@@ -300,7 +301,7 @@ def resource_linker(
 def resource_linker_cli(
     *,
     library_name: str | None = None,
-    default_source_dir: str = 'resources',
+    default_source_dir: str | None = None,
     default_target_base: str = '.repolish',
     default_symlinks: list[Symlink] | None = None,
     templates_dir: str = 'templates',
@@ -345,8 +346,13 @@ def resource_linker_cli(
     # Get caller's frame for library name detection
     caller_frame = inspect.stack()[1]
 
-    # Determine library name early
-    detected_library_name = _auto_detect_library_name(caller_frame) if library_name is None else library_name
+    # Resolve package identity early so the success message can use the
+    # detected library name before the decorator is applied.
+    _package_attr, _pkg, _proj = _auto_detect_library_name(caller_frame)
+    detected_library_name = library_name or _proj or _pkg.replace('_', '-')
+    if default_source_dir is None:
+        parts = (_package_attr or '').split('.')
+        default_source_dir = f'{parts[1]}/resources' if len(parts) >= 2 else 'resources'
 
     # Create a function with auto-generated success message
     def _success_message() -> None:
