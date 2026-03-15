@@ -16,18 +16,16 @@ from repolish.loader import (
     logger,
 )
 from repolish.loader import Provider as _ProviderBase
+from repolish.loader.context import _apply_overrides_to_model
 from repolish.loader.exchange import (
-    finalize_provider_contexts,
-    gather_received_inputs,
-)
-from repolish.loader.models import Accumulators, GlobalContext
-from repolish.loader.orchestrator import (
-    _apply_overrides_to_model,
     _build_all_providers_list,
     _collect_provider_contributions,
     _process_provider_fm,
     _synthesize_provider_context_for_pid,
+    finalize_provider_contexts,
+    gather_received_inputs,
 )
+from repolish.loader.models import Accumulators, GlobalContext
 from repolish.misc import ctx_keys, ctx_to_dict
 
 
@@ -394,7 +392,7 @@ class P(Provider[IntCtx, BaseInputs]):
     mock_logger = MagicMock()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            'repolish.loader.orchestrator.logger',
+            'repolish.loader.context.logger',
             mock_logger,
         )
         providers = create_providers(
@@ -438,7 +436,7 @@ class P(Provider[SimpleCtx, BaseInputs]):
     mock_logger = MagicMock()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            'repolish.loader.orchestrator.logger',
+            'repolish.loader.context.logger',
             mock_logger,
         )
         providers = create_providers([pdir], context_overrides={'y': 'value'})

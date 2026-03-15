@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from pydantic import BaseModel as _BaseModel
@@ -8,13 +9,20 @@ from pydantic_core import ValidationError
 
 from repolish.loader._log import logger
 from repolish.loader.models import (
+    Accumulators,
+    Action,
     BaseContext,
     BaseInputs,
+    Decision,
+    FileMode,
     GlobalContext,
     ProviderEntry,
+    ProviderInfo,
+    TemplateMapping,
     get_global_context,
 )
 from repolish.loader.models import Provider as _ProviderBase
+from repolish.pkginfo import resolve_package_identity
 
 
 def build_provider_metadata(
@@ -257,3 +265,249 @@ def finalize_provider_contexts(
             provider_id,
         )
         provider_contexts[provider_id] = new_ctx
+
+
+# ---------------------------------------------------------------------------
+# Accumulator helpers (file-mapping / anchor collection)
+# ---------------------------------------------------------------------------
+
+
+def _apply_annotated_tm(
+    dest: str,
+    annotated: TemplateMapping,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Apply a fully-annotated TemplateMapping to the accumulators."""
+    path = Path(*PurePosixPath(dest).parts)
+    key = path.as_posix()
+    if annotated.file_mode == FileMode.DELETE:
+        accum.delete_set.add(path)
+        accum.merged_file_mappings.pop(dest, None)
+        accum.history.setdefault(key, []).append(
+            Decision(source=provider_id, action=Action.delete),
+        )
+    elif annotated.file_mode == FileMode.KEEP:
+        accum.delete_set.discard(path)
+        accum.history.setdefault(key, []).append(
+            Decision(source=provider_id, action=Action.keep),
+        )
+    else:
+        if annotated.file_mode == FileMode.CREATE_ONLY:
+            accum.create_only_set.add(path)
+        accum.merged_file_mappings[dest] = annotated
+
+
+def _process_provider_fm(
+    provider_id: str,
+    fm: dict[str, str | TemplateMapping | None],
+    accum: Accumulators,
+) -> None:
+    """Process one provider's file_mappings in a single pass.
+
+    Handles all modes in order: plain string sources, DELETE, KEEP,
+    CREATE_ONLY, and REGULAR entries.  Populates `merged_file_mappings`,
+    `delete_set`, `create_only_set`, and `history` on `accum`.
+    """
+    for dest, src in fm.items():
+        if src is None:
+            # the provider explicitly opted out of this template path; record
+            # it so the builder can exclude it from auto-staging.
+            accum.suppressed_sources.add(dest)
+            continue
+        if isinstance(src, str):
+            accum.merged_file_mappings[dest] = src
+            continue
+        annotated = TemplateMapping(
+            source_template=src.source_template,
+            extra_context=src.extra_context,
+            file_mode=src.file_mode,
+            source_provider=provider_id,
+        )
+        _apply_annotated_tm(dest, annotated, provider_id, accum)
+
+
+def _collect_provider_contributions(
+    module_cache: list[tuple[str, dict]],
+    provider_contexts: dict[str, BaseContext],
+    accum: Accumulators,
+) -> None:
+    """Collect anchors, file mappings, and delete/create-only decisions from all providers.
+
+    This mutates the provided accumulators in-place.
+    """
+    for provider_id, module_dict in module_cache:
+        # module_dict always has a provider instance injected by _load_module_cache
+        inst = module_dict.get('_repolish_provider_instance')
+        if not inst:
+            # should not happen, but skip defensively
+            continue
+        inst = cast('_ProviderBase', inst)
+
+        own_ctx = provider_contexts.get(provider_id, {})
+        val = inst.create_anchors(own_ctx)
+        if val:
+            if not isinstance(val, dict):
+                msg = 'create_anchors() must return a dict'
+                raise TypeError(msg)
+            accum.merged_anchors.update(cast('dict[str, str]', val))
+        fm = inst.create_file_mappings(own_ctx)
+        _process_provider_fm(provider_id, fm, accum)
+
+
+# ---------------------------------------------------------------------------
+# Provider pipeline setup helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PipelineOptions:
+    """Typed container for optional runtime parameters for the provider pipeline."""
+
+    context_overrides: dict[str, object] | None = None
+    provider_overrides: dict[str, dict[str, object]] | None = None
+    alias_map: dict[str, str] | None = None  # provider_id -> config alias
+    global_context: GlobalContext = field(default_factory=GlobalContext)
+
+
+def _build_all_providers_list(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    provider_contexts: dict[str, BaseContext],
+    *,
+    alias_map: dict[str, str] | None = None,
+) -> list[ProviderEntry]:
+    """Return the `all_providers_list` used for input routing.
+
+    Pulling this logic into a helper reduces the complexity of the
+    surrounding function and keeps the iteration simple to read.
+    """
+    all_providers_list: list[ProviderEntry] = []
+    for idx, (pid, _mod) in enumerate(module_cache):
+        schema = None
+        inst = instances[idx]
+        alias: str | None = None
+        inst_type: type[Any] | None = None
+        ctx_obj = provider_contexts.get(pid)
+        ctx_type: type[BaseContext] | None = None
+
+        if inst is not None:
+            try:
+                schema = inst.get_inputs_schema()
+            except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
+                # DO LATER: consider logging this error so providers can diagnose their broken schema
+                schema = None
+            # `alias` is the configuration key (here we mirror provider_id
+            # since that's what create_providers passes).
+            alias = pid
+            inst_type = type(inst)
+
+        # if context object is a BaseModel we remember its class
+        if isinstance(ctx_obj, BaseContext):
+            ctx_type = type(ctx_obj)
+
+        # if an alias map was provided, prefer it over the default
+        # value we computed earlier.
+        if alias_map is not None and pid in alias_map:
+            alias = alias_map[pid]
+
+        all_providers_list.append(
+            ProviderEntry(
+                provider_id=pid,
+                alias=alias,
+                inst_type=inst_type,
+                context=ctx_obj or BaseContext(),
+                context_type=ctx_type,
+                input_type=schema,
+            ),
+        )
+    return all_providers_list
+
+
+def _synthesize_provider_context_for_pid(
+    inst: _ProviderBase,
+    pid: str,
+    provider_contexts: dict[str, BaseContext],
+    global_context: GlobalContext,
+) -> None:
+    """Ensure `provider_contexts[pid]` contains a typed context for class-based providers.
+
+    Call `create_context`, fall back to existing value on error, and
+    inject the shared `GlobalContext` into provider contexts that declare
+    a `repolish` field (i.e. subclasses of `BaseContext`).
+    """
+    if isinstance(provider_contexts.get(pid), BaseContext):
+        return
+
+    try:
+        # create_context is generic but its bound by BaseContext
+        ctx = cast('BaseContext', inst.create_context())
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        logger.warning(
+            'provider_create_context_raised',
+            provider=pid,
+            error=str(exc),
+        )
+        return
+
+    if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):
+        ctx = ctx.model_copy(update={'repolish': global_context})
+
+    # inject provider identity so templates can reference {{ _provider.alias }},
+    # {{ _provider.version }}, {{ _provider.package_name }}, etc. without the
+    # provider having to do it manually.
+    if isinstance(ctx, BaseContext):
+        ctx._provider_data = ProviderInfo(
+            alias=getattr(inst, 'alias', ''),
+            version=getattr(inst, 'version', ''),
+            package_name=getattr(inst, 'package_name', ''),
+            project_name=getattr(inst, 'project_name', ''),
+        )
+
+    provider_contexts[pid] = ctx
+
+
+def _populate_provider_context(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    provider_contexts: dict[str, BaseContext],
+    global_context: GlobalContext,
+) -> None:
+    """Populate `provider_contexts` with typed context objects for each provider.
+
+    Must run before schemas are inspected or overrides applied so that
+    `provide_inputs` receives a typed context object rather than an empty
+    placeholder.
+    """
+    for idx, (pid, _mod) in enumerate(module_cache):
+        inst = instances[idx]
+        if inst is None:  # pragma: no cover - module-style providers have no class instance
+            continue
+        _synthesize_provider_context_for_pid(
+            inst,
+            pid,
+            provider_contexts,
+            global_context,
+        )
+
+
+def _set_provider_metadata(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    alias_map: dict[str, str],
+) -> None:
+    """Set alias, version, package_name and project_name on every provider instance.
+
+    Version is read from the module's __version__ when present; falls back to
+    an empty string for local / un-installed providers.
+    package_name and project_name are derived from __package__ via
+    :func:`repolish.pkginfo.resolve_package_identity`.
+    """
+    for _idx, (_pid, _mod) in enumerate(module_cache):
+        _inst = instances[_idx]
+        if _inst is not None:
+            _inst.alias = alias_map.get(_pid, _pid)
+            _inst.version = _mod.get('__version__', '') or ''
+            _pkg, _proj = resolve_package_identity(_mod.get('__package__'))
+            _inst.package_name = _pkg
+            _inst.project_name = _proj

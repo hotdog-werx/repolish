@@ -11,6 +11,7 @@ from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
 from repolish.loader import Providers, create_providers
+from repolish.loader.module import _find_provider_class as _find_provider_cls
 from tests.support import write_module
 
 
@@ -519,7 +520,7 @@ class MyProvider(Provider[MyCtx, BaseInputs]):
     module_cache = loader_mod.orchestrator._load_module_cache([str(pkg)])
     # _load_module_cache _may_ return the same module dict we imported earlier
     _, mod_dict = module_cache[0]
-    loaded_cls = loader_mod.orchestrator._find_provider_class(mod_dict)
+    loaded_cls = _find_provider_cls(mod_dict)
     assert loaded_cls is not None
     # identity should be exact (not merely subclass relationship)
     assert loaded_cls is normal_cls

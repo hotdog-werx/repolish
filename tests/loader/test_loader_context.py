@@ -1,9 +1,12 @@
 from pydantic import BaseModel, field_validator
 from pytest_mock import MockerFixture
 
-from repolish.loader.context import _apply_override, apply_context_overrides
+from repolish.loader.context import (
+    _apply_override,
+    _apply_overrides_to_model,
+    apply_context_overrides,
+)
 from repolish.loader.models import BaseContext
-from repolish.loader.orchestrator import _apply_overrides_to_model
 
 
 def test_apply_context_overrides(mocker: MockerFixture):
@@ -129,7 +132,7 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
 
     instance = M()
 
-    mock_logger = mocker.patch('repolish.loader.orchestrator.logger')
+    mock_logger = mocker.patch('repolish.loader.context.logger')
 
     # override valid field
     new = _apply_overrides_to_model(instance, {'a': 5}, provider='pid')

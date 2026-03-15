@@ -1,6 +1,9 @@
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
+from inspect import isclass
 from pathlib import Path
+
+from repolish.loader.models import Provider as _ProviderBase
 
 
 def _guess_import_name(module_path: str) -> str | None:
@@ -149,3 +152,97 @@ def get_module(module_path: str) -> dict[str, object]:
     # providers).  `_load_module_from_path` encapsulates the mechanics
     # and also registers the module under `import_name` if provided.
     return _load_module_from_path(module_path, import_name)
+
+
+def _find_provider_class(
+    module_dict: dict[str, object],
+) -> type[_ProviderBase] | None:
+    """Return the single Provider subclass exported in `module_dict`.
+
+    If the module exports no subclasses `None` is returned.  The loader
+    historically picked the *first* subclass it encountered, but this hid
+    user errors where a file accidentally defined multiple providers (e.g.
+    importing another provider class into the same module).  The caller
+    (`_maybe_instantiate_provider`) expects at most one class; if there are
+    multiple we raise a `RuntimeError` so the problem is detected right
+    away.
+
+    Keeping the detection logic isolated makes the behaviour easy to test
+    and keeps the surrounding code simple.
+    """
+    providers: list[type[_ProviderBase]] = [
+        val
+        for val in module_dict.values()
+        if isclass(val) and issubclass(val, _ProviderBase) and val is not _ProviderBase
+    ]
+
+    # If the module defines ``__all__`` we treat it as the explicit export
+    # list.  this lets authors import other provider classes for utility
+    # purposes while still exporting a single implementation.  the list may
+    # contain arbitrary names; we only consider entries that match provider
+    # class names.  if a single provider appears in ``__all__`` we return
+    # that class even if others are present at module level.  the module may
+    # still define no public providers, in which case we behave as though
+    # no subclass were exported.
+    all_list = module_dict.get('__all__')
+    if isinstance(all_list, (list, tuple)) and all_list:
+        # filter the providers down to those listed explicitly
+        filtered = [cls for cls in providers if cls.__name__ in all_list]
+        if len(filtered) == 1:
+            return filtered[0]
+        if len(filtered) > 1:
+            names = ', '.join(cls.__name__ for cls in filtered)
+            msg = f'__all__ exports multiple Provider subclasses ({names}); only one class may be exported per file'
+            raise RuntimeError(msg)
+        # if ``__all__`` is present but doesn't mention any providers we
+        # continue with the normal logic below; the user has effectively
+        # hidden all classes from export.
+
+    if not providers:
+        return None
+    if len(providers) > 1:
+        names = ', '.join(cls.__name__ for cls in providers)
+        msg = (
+            f'provider module exports multiple Provider subclasses ({names}); '
+            'only one class may be defined per file; if you meant to expose a '
+            'single implementation please add that class name to ``__all__``'
+        )
+        raise RuntimeError(msg)
+    return providers[0]
+
+
+def _maybe_instantiate_provider(
+    module_dict: dict[str, object],
+) -> None:
+    """Instantiate a Provider subclass and store the instance in `module_dict`.
+
+    The instance is stored under ``_repolish_provider_instance`` for later
+    retrieval by ``_collect_provider_contributions`` and diagnostics.  Raises
+    ``RuntimeError`` if the module does not export exactly one subclass.
+    """
+    cls = _find_provider_class(module_dict)
+    if not cls:
+        msg = 'provider module does not export a Provider subclass'
+        raise RuntimeError(msg)
+
+    inst = cls()
+    inst.templates_root = Path(str(module_dict.get('__file__', '.'))).resolve().parent
+    module_dict['_repolish_provider_instance'] = inst
+
+
+def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
+    """Load provider modules and validate them.
+
+    Returns a list of (provider_id, module_dict) tuples.
+    """
+    cache: list[tuple[str, dict]] = []
+    for directory in directories:
+        module_path = Path(directory) / 'repolish.py'
+        module_dict = get_module(str(module_path))
+        provider_id = Path(directory).as_posix()
+
+        # Detect and instantiate class-based providers
+        _maybe_instantiate_provider(module_dict)
+
+        cache.append((provider_id, module_dict))
+    return cache
