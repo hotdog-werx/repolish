@@ -6,11 +6,7 @@ from repolish.loader.context import (
     _apply_provider_overrides,
 )
 from repolish.loader.exchange import (
-    PipelineOptions,
-    _build_all_providers_list,
     _collect_provider_contributions,
-    _populate_provider_context,
-    _set_provider_metadata,
     build_provider_metadata,
     finalize_provider_contexts,
     gather_received_inputs,
@@ -23,6 +19,12 @@ from repolish.loader.models import (
     get_global_context,
 )
 from repolish.loader.module import _load_module_cache
+from repolish.loader.pipeline import (
+    PipelineOptions,
+    _build_all_providers_list,
+    _populate_provider_context,
+    _set_provider_metadata,
+)
 
 
 def _run_provider_pipeline(

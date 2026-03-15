@@ -18,14 +18,16 @@ from repolish.loader import (
 from repolish.loader import Provider as _ProviderBase
 from repolish.loader.context import _apply_overrides_to_model
 from repolish.loader.exchange import (
-    _build_all_providers_list,
     _collect_provider_contributions,
     _process_provider_fm,
-    _synthesize_provider_context_for_pid,
     finalize_provider_contexts,
     gather_received_inputs,
 )
 from repolish.loader.models import Accumulators, GlobalContext
+from repolish.loader.pipeline import (
+    _build_all_providers_list,
+    _synthesize_provider_context_for_pid,
+)
 from repolish.misc import ctx_keys, ctx_to_dict
 
 
