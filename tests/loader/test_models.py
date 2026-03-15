@@ -10,8 +10,8 @@ from repolish.loader.models import (
     BaseInputs,
     Provider,
     ProviderInfo,
-    _get_provider_generic_args,
 )
+from repolish.loader.models.provider import _get_provider_generic_args
 
 
 class _TContext(BaseContext):
