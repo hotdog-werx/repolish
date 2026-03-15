@@ -10,6 +10,7 @@ from .loader.models import (
     Provider,
     ProviderEntry,
     ProviderInfo,
+    Symlink,
     TemplateMapping,
     get_provider_context,
 )
@@ -21,6 +22,7 @@ __all__ = [
     'Provider',
     'ProviderEntry',
     'ProviderInfo',
+    'Symlink',
     'TemplateMapping',
     'get_provider_context',
     'override',

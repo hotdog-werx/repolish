@@ -115,7 +115,7 @@ def _resolved_from_info(
     provider_root = (
         _resolve_path(provider_info.provider_root, config_dir) if provider_info.provider_root else resources_dir
     )
-    symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
+    symlinks = provider_config.symlinks or []
     return ResolvedProviderInfo(
         alias=alias,
         provider_root=provider_root,

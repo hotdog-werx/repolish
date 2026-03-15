@@ -37,6 +37,19 @@ from pydantic import BaseModel, Field, PrivateAttr, computed_field
 from repolish.loader._log import logger
 
 
+@dataclass
+class Symlink:
+    """A symlink from provider resources to the project.
+
+    Used as the return type of :meth:`Provider.create_default_symlinks`.
+    Paths are plain strings; the linker resolves them relative to the
+    provider's ``resources_dir`` (source) and the project root (target).
+    """
+
+    source: str
+    target: str
+
+
 class GithubRepo(BaseModel):
     """Model representing a GitHub repository identifier.
 
@@ -669,6 +682,24 @@ class Provider(ABC, Generic[ContextT, InputT]):
         make decisions based on it.  Default: no anchors (empty dict).
         """
         return {}
+
+    def create_default_symlinks(self) -> list[Symlink]:
+        """Optional: return the default symlinks this provider wants created.
+
+        Each :class:`Symlink` has a ``source`` path (relative to the
+        provider's ``resources_dir``) and a ``target`` path (relative to the
+        project root).
+
+        These defaults can be overridden per-project in ``repolish.yaml``
+        via the ``symlinks`` key on the provider entry:
+
+        - Omit ``symlinks`` → call this method and use what it returns.
+        - ``symlinks: []`` → skip all symlinks for this provider.
+        - Explicit list → use the YAML list; this method is not called.
+
+        Default implementation returns an empty list (no symlinks).
+        """
+        return []
 
 
 # ---------------------------------------------------------------------------

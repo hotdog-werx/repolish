@@ -7,7 +7,6 @@ import pytest
 import pytest_mock
 
 from repolish.cli.testing import CliRunner
-from repolish.linker import Symlink
 from repolish.linker.decorator import resource_linker, resource_linker_cli
 from tests.linker.conftest import (
     BasicLinkCliFixture,
@@ -385,46 +384,6 @@ def test_resource_linker_cli_info_mode(
     assert 'site_package_dir' in info
     assert 'resources_dir' in info
     assert 'are now available' not in result.output
-
-
-def test_resource_linker_with_default_symlinks(
-    test_package: PackageDictFixture,
-    mocker: pytest_mock.MockerFixture,
-):
-    """Test resource_linker includes default_symlinks in --info output."""
-
-    @resource_linker(
-        library_name='mylib',
-        default_source_dir='resources',
-        default_symlinks=[
-            Symlink(
-                source='configs/.editorconfig',
-                target='.editorconfig',
-            ),
-            Symlink(
-                source='configs/.gitignore',
-                target='.gitignore',
-            ),
-        ],
-    )
-    def link_cli() -> None:
-        pass
-
-    mocker.patch(
-        'repolish.linker.decorator._get_package_root',
-        return_value=test_package['pkg_root'],
-    )
-
-    result = runner.invoke(link_cli, ['--info'])
-
-    assert result.exit_code == 0
-    info = json.loads(result.output)
-    assert 'symlinks' in info
-    assert len(info['symlinks']) == 2
-    assert info['symlinks'][0]['source'] == 'configs/.editorconfig'
-    assert info['symlinks'][0]['target'] == '.editorconfig'
-    assert info['symlinks'][1]['source'] == 'configs/.gitignore'
-    assert info['symlinks'][1]['target'] == '.gitignore'
 
 
 def test_get_package_root_fallback_when_find_spec_returns_none(

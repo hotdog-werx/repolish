@@ -3,8 +3,6 @@ from pathlib import Path
 from hotlog import get_logger
 from pydantic import BaseModel, Field, ValidationError
 
-from repolish.config.models.provider import ProviderSymlink
-
 logger = get_logger(__name__)
 
 
@@ -93,10 +91,6 @@ class ProviderInfo(BaseModel):
     package_name: str = Field(
         default='',
         description='Python package name (import name) for the provider (e.g. "devkit_workspace")',
-    )
-    symlinks: list[ProviderSymlink] = Field(
-        default_factory=list,
-        description='Default symlinks provided by the provider',
     )
 
     @classmethod

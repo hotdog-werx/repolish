@@ -309,32 +309,22 @@ def test_load_config_with_symlinks(provider_setup: ProviderSetupFixture):
     assert symlink.target == Path('.editorconfig')
 
 
-def test_load_config_with_provider_default_symlinks(
+def test_load_config_omitted_symlinks_resolves_to_empty(
     provider_setup: ProviderSetupFixture,
 ):
-    """Test that provider default symlinks are used when user doesn't specify any."""
+    """When no symlinks are specified in repolish.yaml, ResolvedProviderInfo.symlinks is empty.
+
+    Provider default symlinks are loaded at apply time via
+    Provider.create_default_symlinks(), not at config-load time.
+    """
     config_dir, target_dir = provider_setup('test', create_templates=True)
 
-    # Create the symlink source files
-    configs_dir = target_dir / 'configs'
-    configs_dir.mkdir()
-    (configs_dir / '.editorconfig').write_text('# editorconfig')
-    (configs_dir / '.gitignore').write_text('# gitignore')
-
-    # Should use provider's default symlinks
     info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
     info_file.write_text(
         json.dumps(
             {
                 'resources_dir': str(target_dir),
                 'site_package_dir': '/fake/source',
-                'symlinks': [
-                    {
-                        'source': 'configs/.editorconfig',
-                        'target': '.editorconfig',
-                    },
-                    {'source': 'configs/.gitignore', 'target': '.gitignore'},
-                ],
             },
         ),
     )
@@ -343,7 +333,7 @@ def test_load_config_with_provider_default_symlinks(
         'providers': {
             'test': {
                 'cli': 'test-link',
-                # Note: no symlinks specified - should use provider defaults
+                # No symlinks key → should resolve to [] at config time
             },
         },
     }
@@ -353,17 +343,8 @@ def test_load_config_with_provider_default_symlinks(
 
     config = load_config(config_path)
 
-    # Should use provider's default symlinks
     assert 'test' in config.providers
-    assert len(config.providers['test'].symlinks) == 2
-    assert config.providers['test'].symlinks[0].source == Path(
-        'configs/.editorconfig',
-    )
-    assert config.providers['test'].symlinks[0].target == Path('.editorconfig')
-    assert config.providers['test'].symlinks[1].source == Path(
-        'configs/.gitignore',
-    )
-    assert config.providers['test'].symlinks[1].target == Path('.gitignore')
+    assert config.providers['test'].symlinks == []
 
 
 def test_load_config_override_provider_symlinks_with_empty_list(
@@ -384,12 +365,6 @@ def test_load_config_override_provider_symlinks_with_empty_list(
             {
                 'resources_dir': str(target_dir),
                 'site_package_dir': '/fake/source',
-                'symlinks': [
-                    {
-                        'source': 'configs/.editorconfig',
-                        'target': '.editorconfig',
-                    },
-                ],
             },
         ),
     )

@@ -1,34 +1,40 @@
 """High-level provider processing orchestration."""
 
+import importlib.util
 import subprocess
 from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config import ProviderConfig, ProviderInfo
+from repolish.config import ProviderConfig
+from repolish.config.models.provider import (
+    ProviderSymlink,
+    ResolvedProviderInfo,
+)
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
+from repolish.loader.models import Provider, Symlink
 
 logger = get_logger(__name__)
 
 
 def create_provider_symlinks(
     provider_name: str,
-    provider_info: ProviderInfo,
-    symlinks: list,  # list of ProviderSymlink
+    resources_dir: Path,
+    symlinks: list[ProviderSymlink],
 ) -> None:
-    """Create additional symlinks for a provider.
+    """Create symlinks for a provider from its resources into the project root.
 
     Args:
-        provider_name: Name of the provider
-        provider_info: Provider information from the CLI --info
-        symlinks: List of symlink configurations
+        provider_name: Alias of the provider.
+        resources_dir: Absolute path to the provider's resource directory.
+        symlinks: List of symlink configurations to materialise.
     """
     if not symlinks:
         return
 
     logger.info(
-        'creating_additional_symlinks',
+        'creating_provider_symlinks',
         provider=provider_name,
         count=len(symlinks),
         _display_level=1,
@@ -40,9 +46,8 @@ def create_provider_symlinks(
             source=str(symlink.source),
             target=str(symlink.target),
         )
-
         create_additional_link(
-            provider_info=provider_info,
+            resources_dir=resources_dir,
             provider_name=provider_name,
             source=str(symlink.source),
             target=str(symlink.target),
@@ -57,36 +62,112 @@ def create_provider_symlinks(
     )
 
 
+def _symlinks_from_module(mod: object) -> list[ProviderSymlink]:
+    """Return default symlinks declared by the first ``Provider`` in *mod*."""
+    for val in vars(mod).values():
+        if isinstance(val, Provider):
+            symlinks: list[Symlink] = val.create_default_symlinks()
+            return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
+    return []
+
+
+def _load_provider_default_symlinks(
+    provider_root: Path,
+) -> list[ProviderSymlink]:
+    """Import ``repolish.py`` from *provider_root* and return its default symlinks.
+
+    Finds the ``Provider`` subclass instance in the module and calls
+    :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
+    Returns an empty list when the file is absent, has no Provider instance,
+    or raises an exception during loading.
+    """
+    repolish_py = provider_root / 'repolish.py'
+    if not repolish_py.exists():
+        return []
+    try:
+        spec = importlib.util.spec_from_file_location(
+            '_repolish_tmp_symlinks',
+            repolish_py,
+        )
+        if spec is None or spec.loader is None:  # pragma: no cover
+            return []
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return _symlinks_from_module(mod)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            'provider_default_symlinks_load_failed',
+            provider_root=str(provider_root),
+        )
+    return []
+
+
+def apply_provider_symlinks(
+    providers: dict[str, ResolvedProviderInfo],
+    providers_config: dict[str, ProviderConfig],
+    config_dir: Path,  # noqa: ARG001 - reserved for future cwd-relative resolution
+) -> None:
+    """Apply symlinks for all registered providers.
+
+    For each provider the effective symlink list is resolved as follows:
+
+    - ``symlinks`` explicitly set in ``repolish.yaml`` (including ``[]``) →
+      use that list as-is.
+    - ``symlinks`` absent (``None``) → call
+      :meth:`~repolish.loader.models.Provider.create_default_symlinks` on the
+      provider's ``Provider`` instance loaded from ``repolish.py``.
+
+    Runs before template staging so the links exist when templates reference
+    them.
+
+    Args:
+        providers: Resolved provider map from :func:`~repolish.config.load_config`.
+        providers_config: Raw provider config map from the YAML (carries the
+            ``symlinks`` override field).
+        config_dir: Directory containing ``repolish.yaml`` (reserved for
+            future use).
+    """
+    for alias, info in providers.items():
+        raw = providers_config.get(alias)
+        if raw is not None and raw.symlinks is not None:
+            # Explicit override (may be empty list to suppress all symlinks).
+            effective: list[ProviderSymlink] = list(raw.symlinks)
+        else:
+            effective = _load_provider_default_symlinks(info.provider_root)
+
+        if effective:
+            create_provider_symlinks(alias, info.resources_dir, effective)
+
+
 def process_provider(
     provider_name: str,
     provider_config: ProviderConfig,
     config_dir: Path,
 ) -> int:
-    """Process a single provider: link resources and create symlinks.
+    """Run the provider's link CLI to materialise resources under ``.repolish/``.
+
+    This function's sole responsibility is invoking the CLI that symlinks (or
+    copies) the provider's package resources into ``.repolish/<alias>/``.
+    Symlink management is handled separately by :func:`apply_provider_symlinks`.
 
     Args:
-        provider_name: Name of the provider
-        provider_config: Provider configuration
-        config_dir: Directory containing the repolish.yaml file
+        provider_name: Alias of the provider.
+        provider_config: Provider configuration from ``repolish.yaml``.
+        config_dir: Directory containing ``repolish.yaml``.
 
     Returns:
-        0 on success, 1 on failure
+        0 on success, 1 on failure.
     """
-    # Skip providers that use direct directory (no CLI to run)
     if not provider_config.cli:
         logger.info(
-            'skipping_provider_with_directory',
+            'skipping_provider_no_cli',
             provider=provider_name,
             _display_level=1,
         )
         return 0
 
-    # Run the provider's link CLI
     try:
-        provider_info = run_provider_link(
-            provider_name,
-            provider_config.cli,
-        )
+        provider_info = run_provider_link(provider_name, provider_config.cli)
     except subprocess.CalledProcessError as e:
         logger.exception(
             'provider_link_failed',
@@ -102,28 +183,5 @@ def process_provider(
         )
         return 1
 
-    # Save provider info
     save_provider_info(provider_name, provider_info, config_dir)
-
-    # Create additional symlinks based on configuration
-    # - None (default): use provider's default symlinks
-    # - Empty list []: skip symlinks entirely
-    # - Non-empty list: use specified symlinks
-    if provider_config.symlinks is None:
-        # Use provider defaults
-        symlinks_to_create = provider_info.symlinks
-    elif provider_config.symlinks:
-        # Use configured symlinks
-        symlinks_to_create = provider_config.symlinks
-    else:
-        # Empty list - skip symlinks
-        symlinks_to_create = []
-
-    if symlinks_to_create:
-        create_provider_symlinks(
-            provider_name,
-            provider_info,
-            symlinks_to_create,
-        )
-
     return 0

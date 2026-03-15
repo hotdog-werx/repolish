@@ -3,7 +3,6 @@
 import inspect
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Annotated
@@ -16,24 +15,13 @@ from hotlog import (
     resolve_verbosity,
 )
 
-from repolish.config import ProviderInfo, ProviderSymlink
+from repolish.config import ProviderInfo
 from repolish.console import console
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
 from repolish.pkginfo import resolve_package_identity
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class Symlink:
-    """A symlink from provider resources to the project.
-
-    Simple dataclass for the decorator API. Accepts strings for paths.
-    """
-
-    source: str
-    target: str
 
 
 def _auto_detect_library_name(
@@ -104,18 +92,14 @@ def _get_package_root(module_name: str, caller_file: Path) -> Path:
     return caller_file.parent
 
 
-def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to construct the ProviderInfo
+def _build_provider_info(
     resources_dir: Path,
     pkg_dir: Path,
     templates_dir: str,
     pkg_name: str,
     proj_name: str,
-    default_symlinks: list[Symlink] | None,
 ) -> ProviderInfo:
     """Construct the ProviderInfo object emitted by the ``--info`` flag."""
-    provider_symlinks = [
-        ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in (default_symlinks or [])
-    ]
     provider_root = str((resources_dir / templates_dir).absolute()) if templates_dir else ''
     return ProviderInfo(
         resources_dir=str(resources_dir.absolute()),
@@ -123,7 +107,6 @@ def _build_provider_info(  # noqa: PLR0913 - many parameters are needed to const
         site_package_dir=str(pkg_dir.absolute()),
         package_name=pkg_name,
         project_name=proj_name,
-        symlinks=provider_symlinks,
     )
 
 
@@ -161,7 +144,6 @@ def resource_linker(
     library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    default_symlinks: list[Symlink] | None = None,
     templates_dir: str = '',
     _caller_frame: inspect.FrameInfo | None = None,
     _pkg_name: str = '',
@@ -170,7 +152,9 @@ def resource_linker(
     """Decorator to create a CLI for linking library resources.
 
     This decorator wraps a function to create a simple CLI that links
-    a library's resource directory to a target location.
+    a library's resource directory into ``.repolish/<alias>/``.  That is
+    its only responsibility — symlink management is handled separately by
+    :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
 
     Args:
         library_name: Name of the library (used for default target subdirectory).
@@ -178,8 +162,6 @@ def resource_linker(
         default_source_dir: Path to resources relative to package root (default: 'resources').
             Can be overridden for custom locations (e.g., 'mylib/templates').
         default_target_base: Default base directory for the target (default: .repolish)
-        default_symlinks: List of Symlink objects defining default symlinks from provider resources.
-            Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
         templates_dir: Subdirectory within source_dir where repolish.py and templates live.
             Recorded in provider-info JSON so the loader resolves the correct templates root.
             Defaults to empty string (repolish.py sits directly in source_dir).
@@ -190,22 +172,9 @@ def resource_linker(
 
     Example:
         ```python
-        from repolish.linker import resource_linker, Symlink
+        from repolish.linker import resource_linker
 
-        # Minimal usage - auto-detects library name from package
         @resource_linker()
-        def main():
-            print("Resources linked successfully!")
-
-        # With default symlinks
-        @resource_linker(
-            library_name='custom-name',
-            default_source_dir='templates',
-            default_symlinks=[
-                Symlink(source='configs/.editorconfig', target='.editorconfig'),
-                Symlink(source='configs/.gitignore', target='.gitignore'),
-            ],
-        )
         def main():
             print("Resources linked successfully!")
 
@@ -284,7 +253,6 @@ def resource_linker(
                     templates_dir,
                     _pkg_name,
                     _proj_name,
-                    default_symlinks,
                 )
                 print(json.dumps(info_obj.model_dump(mode='json'), indent=2))  # noqa: T201
             else:
@@ -306,21 +274,21 @@ def resource_linker_cli(
     library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    default_symlinks: list[Symlink] | None = None,
     templates_dir: str = 'templates',
 ) -> cyclopts.App:
     """Create a resource linker CLI function.
 
-    This is a simpler alternative to the @resource_linker decorator.
-    Just assign it to `main` and register it in your pyproject.toml.
+    This is a simpler alternative to the ``@resource_linker`` decorator.
+    Assign the result to ``main`` and register it as a project script.
+    The CLI's sole responsibility is linking the package resources into
+    ``.repolish/<alias>/``; default symlinks are declared instead via
+    :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
 
     Args:
         library_name: Name of the library (used for default target subdirectory).
             If not provided, auto-detects from the caller's top-level package name.
         default_source_dir: Path to resources relative to package root (default: 'resources').
         default_target_base: Default base directory for the target (default: .repolish)
-        default_symlinks: List of Symlink objects defining default symlinks from provider resources.
-            Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
         templates_dir: Subdirectory within source_dir where repolish.py and templates live
             (default: 'templates').  Recorded in provider-info JSON so the loader can locate
             the provider entry point at target_dir/templates_dir/repolish.py.
@@ -331,13 +299,9 @@ def resource_linker_cli(
     Example:
         In your CLI module (e.g., mylib/cli.py):
         ```python
-        from repolish.linker import resource_linker_cli, Symlink
+        from repolish.linker import resource_linker_cli
 
-        main = resource_linker_cli(
-            default_symlinks=[
-                Symlink(source='configs/.editorconfig', target='.editorconfig'),
-            ],
-        )
+        main = resource_linker_cli()
         ```
 
         In pyproject.toml:
@@ -368,7 +332,6 @@ def resource_linker_cli(
         library_name=library_name,
         default_source_dir=default_source_dir,
         default_target_base=default_target_base,
-        default_symlinks=default_symlinks,
         templates_dir=templates_dir,
         _caller_frame=caller_frame,
         _pkg_name=_pkg,

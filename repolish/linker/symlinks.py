@@ -3,7 +3,6 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config import ProviderInfo
 from repolish.linker.validation import (
     check_copy_validity,
     validate_existing_symlink,
@@ -165,7 +164,7 @@ def link_resources(
 
 
 def create_additional_link(
-    provider_info: ProviderInfo,
+    resources_dir: Path,
     provider_name: str,
     source: str,
     target: str,
@@ -174,10 +173,8 @@ def create_additional_link(
 ) -> bool:
     """Create an additional symlink from repo to provider resources.
 
-    This is used by repolish to create additional symlinks defined in repolish.yaml.
-
     Args:
-        provider_info: Provider information containing resources_dir
+        resources_dir: Absolute path to the provider's resource directory.
         provider_name: Name of the provider (alias from repolish.yaml)
         source: Path relative to the provider's resources (e.g., 'configs/.editorconfig')
         target: Path relative to repo root (e.g., '.editorconfig')
@@ -185,23 +182,8 @@ def create_additional_link(
 
     Returns:
         True if symlink was created, False if copy was used
-
-    Example:
-        >>> from repolish.config import ProviderInfo
-        >>> provider_info = ProviderInfo(
-        ...     resources_dir='/path/to/project/.repolish/codeguide'
-        ... )
-        >>> # Create .editorconfig -> .repolish/codeguide/configs/.editorconfig
-        >>> create_additional_link(
-        ...     provider_info=provider_info,
-        ...     provider_name='codeguide',
-        ...     source='configs/.editorconfig',
-        ...     target='.editorconfig',
-        ... )
     """
-    # Resolve paths
-    provider_resources = Path(provider_info.resources_dir)
-    source_path = provider_resources / source
+    source_path = resources_dir / source
     target_path = Path(target)
 
     logger.info(

@@ -14,6 +14,7 @@ from repolish.config import (
     ProviderInfo,
     RepolishConfigFile,
 )
+from repolish.config.models.provider import ProviderSymlink
 from repolish.config.resolution import resolve_config
 from repolish.exceptions import ProviderConfigError
 
@@ -284,4 +285,17 @@ def test_provider_config_context_roundtrip(tmp_path: Path):
     assert resolved.providers['foo'].context_overrides == {
         'a': 2,
         'nested.key': 'val',
+    }
+
+
+def test_provider_symlink_json_serializes_paths_as_posix():
+    """ProviderSymlink._serialize_path emits posix strings for JSON output."""
+    symlink = ProviderSymlink(
+        source=Path('configs/.editorconfig'),
+        target=Path('.editorconfig'),
+    )
+    data = symlink.model_dump(mode='json')
+    assert data == {
+        'source': 'configs/.editorconfig',
+        'target': '.editorconfig',
     }

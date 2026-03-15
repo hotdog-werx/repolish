@@ -1,6 +1,5 @@
 import json
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -84,15 +83,10 @@ def test_run_provider_link_error_handling(
             assert isinstance(result, ProviderInfo)
 
 
-def test_create_provider_symlinks_no_symlinks():
+def test_create_provider_symlinks_no_symlinks(tmp_path: Path):
     """Test create_provider_symlinks handles empty symlinks list."""
-    provider_info = ProviderInfo(
-        resources_dir='.repolish/mylib',
-        site_package_dir='/fake/source/mylib',
-    )
-
     # Should not raise, should just return
-    create_provider_symlinks('mylib', provider_info, [])
+    create_provider_symlinks('mylib', tmp_path, [])
 
 
 def test_create_provider_symlinks_creates_links(
@@ -110,11 +104,6 @@ def test_create_provider_symlinks_creates_links(
     (config_dir / '.editorconfig').write_text('root = true')
     (config_dir / '.prettierrc').write_text('{}')
 
-    provider_info = ProviderInfo(
-        resources_dir=str(provider_dir),
-        site_package_dir='/fake/source/mylib',
-    )
-
     symlinks = [
         ProviderSymlink(
             source=Path('configs/.editorconfig'),
@@ -126,7 +115,7 @@ def test_create_provider_symlinks_creates_links(
         ),
     ]
 
-    create_provider_symlinks('mylib', provider_info, symlinks)
+    create_provider_symlinks('mylib', provider_dir, symlinks)
 
     # Verify symlinks/copies were created
     assert (tmp_path / '.editorconfig').exists()
@@ -204,89 +193,6 @@ def test_process_single_provider_error_handling(
         )
         result = process_provider('mylib', provider_config, tmp_path)
         assert result == expected_result
-
-
-@dataclass
-class SymlinkTestCase:
-    name: str
-    config_symlinks: list[ProviderSymlink] | None
-    provider_symlinks: list[ProviderSymlink]
-    should_create_link: bool
-
-
-@pytest.mark.parametrize(
-    'case',
-    [
-        SymlinkTestCase(
-            name='explicit_symlinks',
-            config_symlinks=[
-                ProviderSymlink(
-                    source=Path('config.txt'),
-                    target=Path('config.txt'),
-                ),
-            ],
-            provider_symlinks=[],
-            should_create_link=True,
-        ),
-        SymlinkTestCase(
-            name='default_symlinks',
-            config_symlinks=None,
-            provider_symlinks=[
-                ProviderSymlink(
-                    source=Path('default.txt'),
-                    target=Path('default.txt'),
-                ),
-            ],
-            should_create_link=True,
-        ),
-        SymlinkTestCase(
-            name='skip_symlinks',
-            config_symlinks=[],
-            provider_symlinks=[
-                ProviderSymlink(
-                    source=Path('default.txt'),
-                    target=Path('default.txt'),
-                ),
-            ],
-            should_create_link=False,
-        ),
-    ],
-    ids=lambda case: case.name,
-)
-def test_process_provider_symlinks(
-    case: SymlinkTestCase,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    mocker: pytest_mock.MockerFixture,
-):
-    """Test process_provider handles different symlink configurations."""
-    monkeypatch.chdir(tmp_path)
-
-    provider_dir = tmp_path / '.repolish' / 'mylib'
-    provider_dir.mkdir(parents=True)
-    (provider_dir / 'config.txt').write_text('content')
-    (provider_dir / 'default.txt').write_text('default')
-
-    provider_config = ProviderConfig(
-        cli='mylib-link',
-        symlinks=case.config_symlinks,
-    )
-    provider_info = ProviderInfo(
-        resources_dir=str(provider_dir),
-        site_package_dir='/fake/source/mylib',
-        symlinks=case.provider_symlinks,
-    )
-
-    _ = mocker.patch(
-        'repolish.linker.orchestrator.run_provider_link',
-        return_value=provider_info,
-    )
-    result = process_provider('mylib', provider_config, tmp_path)
-
-    assert result == 0
-    # Check if the expected link was created based on the test case
-    expected_file = 'config.txt' if case.config_symlinks else 'default.txt'
-    assert (tmp_path / expected_file).exists() == case.should_create_link
 
 
 def test_run_no_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -466,16 +372,6 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     provider_info = ProviderInfo(
         resources_dir=str(tmp_path / '.repolish' / 'mylib'),
         site_package_dir='/fake/source/mylib',
-        symlinks=[
-            ProviderSymlink(
-                source=Path('configs/.editorconfig'),
-                target=Path('.editorconfig'),
-            ),
-            ProviderSymlink(
-                source=Path('configs/.gitignore'),
-                target=Path('.gitignore'),
-            ),
-        ],
     )
 
     save_provider_info('mylib', provider_info, tmp_path)
@@ -487,9 +383,6 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     saved_info = json.loads(info_file.read_text())
     assert saved_info['resources_dir'] == str(tmp_path / '.repolish' / 'mylib')
     assert saved_info['provider_root'] == ''
-    assert len(saved_info['symlinks']) == 2
-    assert saved_info['symlinks'][0]['source'] == 'configs/.editorconfig'
-    assert saved_info['symlinks'][0]['target'] == '.editorconfig'
 
 
 def test_save_provider_info_with_alias(

@@ -81,11 +81,9 @@ def _register_static(
         else provider_root_abs
     )
 
-    symlinks = list(provider_config.symlinks or [])
     provider_info = ProviderInfo(
         resources_dir=str(resources_abs),
         provider_root=str(provider_root_abs),
-        symlinks=symlinks,
     )
     write_provider_info_file(alias, provider_info, config_dir)
     logger.info(

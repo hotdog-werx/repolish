@@ -18,6 +18,7 @@ from repolish.hydration import (
     rich_print_diffs,
 )
 from repolish.linker.health import ensure_providers_ready
+from repolish.linker.orchestrator import apply_provider_symlinks
 from repolish.loader.models import (
     Providers,
     TemplateMapping,
@@ -220,6 +221,10 @@ def command(
         )
 
     config = load_config(config_path)
+
+    # Apply provider symlinks before staging so any linked configs are in place.
+    apply_provider_symlinks(config.providers, raw_config.providers, config_dir)
+
     providers = build_final_providers(config)
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
     config_pid = config.config_dir.as_posix()
