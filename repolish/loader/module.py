@@ -40,6 +40,14 @@ def _guess_import_name(module_path: str) -> str | None:
             continue
 
         parts = rel.with_suffix('').parts
+
+        # Reject paths whose components are not valid Python identifiers
+        # (e.g. hidden directories like '.venv', numeric segments like
+        # 'python3.11', or 'site-packages').  Any such segment can never
+        # form a legal dotted import name.
+        if any(not p.isidentifier() for p in parts):
+            continue
+
         # File is under a sys.path entry — use the relative parts as the
         # dotted import name (e.g. pkg.sub.module).
         return '.'.join(parts)

@@ -1,0 +1,5 @@
+providers:
+  simple-provider:
+    cli: simple-provider-link
+    context_overrides:
+      greeting: 'Hello, world!'
