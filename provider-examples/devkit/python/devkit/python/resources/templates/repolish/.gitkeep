@@ -1,0 +1,2 @@
+# Jinja templates for the devkit-python provider go here.
+# Files placed in this directory will be rendered and applied to consumer repos.

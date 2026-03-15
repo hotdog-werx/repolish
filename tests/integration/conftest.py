@@ -96,7 +96,8 @@ class ProviderSpec:
     source_dir: Path
     # distribution name as declared in [project].name (e.g. 'simple-provider')
     dist_name: str
-    # dotted importable package name (e.g. 'simple_provider' or 'acme.provider_a')
+    # dotted importable package name; read from [tool.uv.build-backend] module-name
+    # when present, otherwise derived from dist_name (e.g. 'simple_provider', 'devkit.python')
     import_path: str
 
 
@@ -180,11 +181,9 @@ def _discover_providers(examples_dir: Path) -> list[ProviderSpec]:
     contains a ``[project]`` table (i.e. it is not a bare workspace root).
 
     The dist name is read from ``[project].name``.  The importable package
-    name defaults to ``dist_name.replace('-', '_')``, but can be overridden
-    for namespace packages via::
-
-        [tool.repolish-test]
-        import_path = "acme.provider_a"
+    name is read from ``[tool.uv.build-backend] module-name`` when present
+    (namespace packages such as ``devkit.python``); otherwise it falls back to
+    ``dist_name.replace('-', '_')`` which covers simple single-package layouts.
     """
     specs: list[ProviderSpec] = []
     for pyproject in sorted(examples_dir.rglob('pyproject.toml')):
@@ -192,9 +191,10 @@ def _discover_providers(examples_dir: Path) -> list[ProviderSpec]:
         if 'project' not in data:
             continue  # workspace root or non-package
         dist_name: str = data['project']['name']
-        import_path: str = data.get('tool', {}).get('repolish-test', {}).get(
-            'import_path',
-        ) or dist_name.replace('-', '_')
+        import_path: str = data.get('tool', {}).get('uv', {}).get(
+            'build-backend',
+            {},
+        ).get('module-name') or dist_name.replace('-', '_')
         specs.append(
             ProviderSpec(
                 source_dir=pyproject.parent,

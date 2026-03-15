@@ -1,0 +1,2 @@
+# Jinja templates for the devkit-workspace provider go here.
+# Files placed in this directory will be rendered and applied to consumer repos.

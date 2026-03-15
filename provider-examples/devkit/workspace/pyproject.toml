@@ -1,0 +1,22 @@
+[project]
+name = "devkit-workspace"
+description = "Repolish provider"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+version = "0.1.0"
+
+dependencies = [
+  "repolish",
+]
+
+[project.scripts]
+devkit-workspace-link = "devkit.workspace.repolish.linker:main"
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "devkit.workspace"
+module-root = "."
