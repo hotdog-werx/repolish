@@ -23,8 +23,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from repolish.cli.main import app
+from repolish.cli.testing import CliRunner
+
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+    from repolish.cli.testing import Result
 
 _EXAMPLES_DIR = Path(__file__).parent.parent.parent / 'provider-examples'
 _SIMPLE_PROVIDER_DIR = _EXAMPLES_DIR / 'simple-provider'
@@ -73,6 +78,15 @@ class Fixtures:
 
 
 fixtures = Fixtures.from_dir(_FIXTURES_DIR)
+
+_runner = CliRunner()
+
+
+def run_repolish(args: list[str], *, exit_code: int = 0) -> Result:
+    """Invoke the repolish CLI, assert the exit code, and return the result."""
+    result = _runner.invoke(app, args)
+    assert result.exit_code == exit_code, f'expected exit_code={exit_code}, got {result.exit_code}\n{result.output}'
+    return result
 
 
 @dataclass

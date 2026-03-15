@@ -16,10 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from repolish.cli.main import app
-from repolish.cli.testing import CliRunner
-
-from .conftest import fixtures
+from .conftest import fixtures, run_repolish
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,8 +24,6 @@ if TYPE_CHECKING:
     import pytest
 
     from .conftest import InstalledProviders
-
-runner = CliRunner()
 
 
 def test_apply_creates_all_files_in_fresh_project(
@@ -40,8 +35,7 @@ def test_apply_creates_all_files_in_fresh_project(
     repo = fixtures.scaffold_fresh.stage(tmp_path)
     monkeypatch.chdir(repo)
 
-    result = runner.invoke(app, ['apply'])
-    assert result.exit_code == 0
+    _ = run_repolish(['apply'])
 
     assert (repo / 'README.md').exists(), 'README.md should be created by apply'
     assert (repo / 'SETUP.md').exists(), 'SETUP.md should be seeded by apply'
@@ -56,8 +50,7 @@ def test_apply_preserves_existing_init_on_reapply(
     repo = fixtures.scaffold_existing_init.stage(tmp_path)
     monkeypatch.chdir(repo)
 
-    result = runner.invoke(app, ['apply'])
-    assert result.exit_code == 0
+    _ = run_repolish(['apply'])
 
     content = (repo / 'SETUP.md').read_text(encoding='utf-8')
     assert 'must not overwrite me' in content, 'SETUP.md is create-only and must not be overwritten by apply'
@@ -73,8 +66,7 @@ def test_apply_regular_file_is_always_updated(
     (repo / 'README.md').write_text('# stale content', encoding='utf-8')
     monkeypatch.chdir(repo)
 
-    result = runner.invoke(app, ['apply'])
-    assert result.exit_code == 0
+    _ = run_repolish(['apply'])
 
     content = (repo / 'README.md').read_text(encoding='utf-8')
     assert 'stale content' not in content, 'README.md is a regular file; apply must overwrite stale content'
@@ -89,8 +81,7 @@ def test_check_reports_missing_create_only_file(
     repo = fixtures.scaffold_fresh.stage(tmp_path)
     monkeypatch.chdir(repo)
 
-    result = runner.invoke(app, ['apply', '--check'])
-    assert result.exit_code != 0, 'check should report MISSING for SETUP.md and exit non-zero'
+    _ = run_repolish(['apply', '--check'], exit_code=2)
 
 
 def test_check_skips_create_only_file_when_already_exists(
@@ -107,12 +98,8 @@ def test_check_skips_create_only_file_when_already_exists(
     monkeypatch.chdir(repo)
 
     # First apply: seeds README.md (regular) but must not overwrite SETUP.md
-    apply_result = runner.invoke(app, ['apply'])
-    assert apply_result.exit_code == 0
+    run_repolish(['apply'])
 
     # Second run with --check: README.md now matches the template, SETUP.md is
     # create-only and exists, so there should be no diffs.
-    check_result = runner.invoke(app, ['apply', '--check'])
-    assert check_result.exit_code == 0, (
-        'check should not report a diff for SETUP.md because it is create-only and already exists'
-    )
+    _ = run_repolish(['apply', '--check'])

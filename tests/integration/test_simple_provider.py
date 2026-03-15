@@ -12,12 +12,10 @@ import json
 import subprocess
 from typing import TYPE_CHECKING
 
-from repolish.cli.main import app
-from repolish.cli.testing import CliRunner
 from repolish.config.models import ProviderInfo
 from repolish.loader.orchestrator import create_providers
 
-from .conftest import fixtures
+from .conftest import fixtures, run_repolish
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,8 +23,6 @@ if TYPE_CHECKING:
     import pytest
 
     from .conftest import InstalledProviders
-
-runner = CliRunner()
 
 
 def test_simple_provider_cli_info(
@@ -69,8 +65,7 @@ def test_repolish_apply_creates_readme(
     repo = fixtures.simple_repo.stage(tmp_path)
 
     monkeypatch.chdir(repo)
-    result = runner.invoke(app, ['apply'])
-    assert result.exit_code == 0
+    _ = run_repolish(['apply'])
 
     readme = repo / 'README.simple-provider.md'
     assert readme.exists(), 'README.simple-provider.md was not created by repolish apply'
