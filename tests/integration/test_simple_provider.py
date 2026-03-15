@@ -48,7 +48,7 @@ def test_simple_provider_loads_via_create_providers(
 ) -> None:
     """``create_providers`` can load SimpleProvider from the installed package."""
     providers = create_providers(
-        [str(installed_providers.simple_provider_root)],
+        [str(installed_providers.providers['simple-provider'].root)],
     )
     assert providers is not None
     # SimpleProvider.create_anchors returns {'simple-provider-greeting': ...}

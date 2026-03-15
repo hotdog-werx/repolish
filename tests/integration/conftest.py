@@ -17,6 +17,7 @@ import importlib.util
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,8 +33,6 @@ if TYPE_CHECKING:
     from repolish.cli.testing import Result
 
 _EXAMPLES_DIR = Path(__file__).parent.parent.parent / 'provider-examples'
-_SIMPLE_PROVIDER_DIR = _EXAMPLES_DIR / 'simple-provider'
-_SCAFFOLD_PROVIDER_DIR = _EXAMPLES_DIR / 'scaffold-provider'
 _DIST_DIR = _EXAMPLES_DIR / '.dist'
 
 _FIXTURES_DIR = Path(__file__).parent / 'fixtures'
@@ -89,16 +88,39 @@ def run_repolish(args: list[str], *, exit_code: int = 0) -> Result:
     return result
 
 
-@dataclass
+@dataclass(frozen=True)
+class ProviderSpec:
+    """Metadata extracted from a provider's pyproject.toml."""
+
+    # directory that contains pyproject.toml (used as cwd for uv build)
+    source_dir: Path
+    # distribution name as declared in [project].name (e.g. 'simple-provider')
+    dist_name: str
+    # dotted importable package name (e.g. 'simple_provider' or 'acme.provider_a')
+    import_path: str
+
+
+@dataclass(frozen=True)
+class InstalledProvider:
+    """A single provider discovered from provider-examples/ and installed for the session."""
+
+    # absolute path to <package>/resources/templates (holds repolish.py)
+    root: Path
+
+
+@dataclass(frozen=True)
 class InstalledProviders:
-    """Paths to providers installed for the test session."""
+    """All providers auto-discovered from provider-examples/ and installed for the session.
+
+    Access individual providers by their folder name (kebab-case):
+
+        installed_providers.providers['simple-provider'].root
+    """
 
     # directory containing the console-script executables for this Python
     venv_bin: Path
-    # absolute path to simple_provider's templates directory (holds repolish.py)
-    simple_provider_root: Path
-    # absolute path to scaffold_provider's templates directory (holds repolish.py)
-    scaffold_provider_root: Path
+    # keyed by provider folder name (= dist name, e.g. 'simple-provider')
+    providers: dict[str, InstalledProvider]
 
 
 def _build_wheel(source_dir: Path, out_dir: Path, package_name: str) -> Path:
@@ -151,31 +173,66 @@ def _pkg_sub_path(package_name: str, sub: str) -> Path:
     return pkg_root / sub
 
 
+def _discover_providers(examples_dir: Path) -> list[ProviderSpec]:
+    """Recursively find all installable providers under ``examples_dir``.
+
+    A directory is treated as a provider package when its ``pyproject.toml``
+    contains a ``[project]`` table (i.e. it is not a bare workspace root).
+
+    The dist name is read from ``[project].name``.  The importable package
+    name defaults to ``dist_name.replace('-', '_')``, but can be overridden
+    for namespace packages via::
+
+        [tool.repolish-test]
+        import_path = "acme.provider_a"
+    """
+    specs: list[ProviderSpec] = []
+    for pyproject in sorted(examples_dir.rglob('pyproject.toml')):
+        data = tomllib.loads(pyproject.read_text(encoding='utf-8'))
+        if 'project' not in data:
+            continue  # workspace root or non-package
+        dist_name: str = data['project']['name']
+        import_path: str = data.get('tool', {}).get('repolish-test', {}).get(
+            'import_path',
+        ) or dist_name.replace('-', '_')
+        specs.append(
+            ProviderSpec(
+                source_dir=pyproject.parent,
+                dist_name=dist_name,
+                import_path=import_path,
+            ),
+        )
+    return specs
+
+
 @pytest.fixture(scope='session', autouse=True)
 def installed_providers() -> Generator[InstalledProviders, None, None]:
-    """Build, install, and expose test providers; uninstall on teardown."""
-    simple_wheel = _build_wheel(
-        _SIMPLE_PROVIDER_DIR,
-        _DIST_DIR,
-        'simple_provider',
-    )
-    _install_wheel(simple_wheel)
-    scaffold_wheel = _build_wheel(
-        _SCAFFOLD_PROVIDER_DIR,
-        _DIST_DIR,
-        'scaffold_provider',
-    )
-    _install_wheel(scaffold_wheel)
+    """Auto-discover, build, and install all providers in provider-examples/; uninstall on teardown.
 
-    simple_root = _pkg_sub_path('simple_provider', 'resources/templates')
-    scaffold_root = _pkg_sub_path('scaffold_provider', 'resources/templates')
+    Walks provider-examples/ recursively; every ``pyproject.toml`` that
+    declares a ``[project]`` table is built as a wheel and installed.  Monorepo
+    layouts (workspace roots containing multiple sub-packages) are handled
+    transparently because each sub-package has its own ``[project]`` table.
+    """
+    specs = _discover_providers(_EXAMPLES_DIR)
+    for spec in specs:
+        # Wheel filename is derived from dist name (hyphens → underscores)
+        pkg_name = spec.dist_name.replace('-', '_')
+        wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
+        _install_wheel(wheel)
+
+    providers: dict[str, InstalledProvider] = {
+        spec.dist_name: InstalledProvider(
+            root=_pkg_sub_path(spec.import_path, 'resources/templates'),
+        )
+        for spec in specs
+    }
 
     yield InstalledProviders(
         venv_bin=Path(sys.executable).parent,
-        simple_provider_root=simple_root,
-        scaffold_provider_root=scaffold_root,
+        providers=providers,
     )
 
-    _uninstall_package('simple-provider')
-    _uninstall_package('scaffold-provider')
+    for spec in specs:
+        _uninstall_package(spec.dist_name)
     shutil.rmtree(_DIST_DIR, ignore_errors=True)
