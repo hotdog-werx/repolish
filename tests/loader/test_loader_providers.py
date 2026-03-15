@@ -738,3 +738,116 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
     providers = create_providers([str(provider_dir)])
     pid = next(iter(providers.provider_contexts.keys()))
     assert providers.provider_contexts[pid].name == 'created-by-class'  # type: ignore[union-attr]
+
+
+def test_file_mappings_merge_across_providers(tmp_path: Path) -> None:
+    """file_mappings from multiple providers are merged into one dict."""
+    template_a = tmp_path / 'template_a'
+    template_a.mkdir()
+    template_b = tmp_path / 'template_b'
+    template_b.mkdir()
+
+    (template_a / 'repolish.py').write_text("""
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'file-a.yml': '_repolish.a.yml'}
+""")
+    (template_b / 'repolish.py').write_text("""
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'file-b.yml': '_repolish.b.yml'}
+""")
+
+    providers = create_providers([str(template_a), str(template_b)])
+
+    assert providers.file_mappings == {
+        'file-a.yml': '_repolish.a.yml',
+        'file-b.yml': '_repolish.b.yml',
+    }
+
+
+def test_file_mappings_later_provider_overrides_earlier(tmp_path: Path) -> None:
+    """A later provider's mapping overrides an earlier one for the same key."""
+    template_a = tmp_path / 'template_a'
+    template_a.mkdir()
+    template_b = tmp_path / 'template_b'
+    template_b.mkdir()
+
+    (template_a / 'repolish.py').write_text("""
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'config.yml': '_repolish.option-a.yml'}
+""")
+    (template_b / 'repolish.py').write_text("""
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {'config.yml': '_repolish.option-b.yml'}
+""")
+
+    providers = create_providers([str(template_a), str(template_b)])
+
+    assert providers.file_mappings == {'config.yml': '_repolish.option-b.yml'}
+
+
+def test_none_mapped_entry_populates_suppressed_sources(tmp_path: Path) -> None:
+    """A None value in create_file_mappings populates suppressed_sources.
+
+    The key must not appear in file_mappings — the provider explicitly opted
+    out of managing that path this run.
+    """
+    template = tmp_path / 'prov'
+    template.mkdir()
+    (template / 'repolish.py').write_text("""
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, context=None):
+        return {
+            '.github/workflows/_ci-checks.yaml': None,
+            'other.txt': '_repolish.other.txt',
+        }
+""")
+
+    providers = create_providers([str(template)])
+
+    assert '.github/workflows/_ci-checks.yaml' not in providers.file_mappings
+    assert '.github/workflows/_ci-checks.yaml' in providers.suppressed_sources
+    assert 'other.txt' in providers.file_mappings

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from pytest_mock import MockerFixture
 
 from repolish.hydration.application import (
@@ -276,3 +277,59 @@ def test_apply_skips_suppressed_sources(tmp_path: Path) -> None:
     assert not (base_dir / '.github' / 'workflows' / '_ci-checks.yaml').exists()
     # regular file is unaffected
     assert (base_dir / 'README.md').exists()
+
+
+def test_apply_warns_when_mapped_source_missing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """apply_generated_output logs a warning and skips the destination.
+
+    Triggered when the source file referenced by a mapping does not exist.
+    """
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = Providers(
+        anchors={},
+        delete_files=[],
+        file_mappings={'config.yml': '_repolish.missing.yml'},
+        delete_history={},
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    captured = capsys.readouterr()
+    assert 'file_mapping_source_not_found' in captured.out
+    assert '_repolish.missing.yml' in captured.out
+    assert not (base_dir / 'config.yml').exists()
+
+
+def test_apply_skips_regular_file_used_as_mapping_source(tmp_path: Path) -> None:
+    """apply_generated_output copies the mapped destination only.
+
+    The source file must not also be copied to its original path when it
+    appears as a mapping value.
+    """
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+    (repolish_dir / 'template-config.yml').write_text('template content')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = Providers(
+        anchors={},
+        delete_files=[],
+        file_mappings={'final-config.yml': 'template-config.yml'},
+        delete_history={},
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    assert (base_dir / 'final-config.yml').read_text() == 'template content'
+    assert not (base_dir / 'template-config.yml').exists()

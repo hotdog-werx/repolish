@@ -372,3 +372,57 @@ def test_check_skips_suppressed_sources(tmp_path: Path) -> None:
     # suppressed path must produce no diff
     assert not any('.github/workflows/_ci-checks.yaml' in d[0] for d in diffs)
     assert diffs == []
+
+
+def test_check_reports_mapping_source_missing(tmp_path: Path) -> None:
+    """check_generated_output reports MAPPING_SOURCE_MISSING for a missing source.
+
+    The source file referenced by a mapping does not exist in the render output.
+    Exercises the distinct error path compared to a missing destination.
+    """
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = Providers(
+        anchors={},
+        delete_files=[],
+        file_mappings={'config.yml': '_repolish.missing.yml'},
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+
+    assert len(diffs) == 1
+    rel, msg = diffs[0]
+    assert rel == 'config.yml'
+    assert 'MAPPING_SOURCE_MISSING' in msg
+    assert '_repolish.missing.yml' in msg
+
+
+def test_check_skips_regular_file_used_as_mapping_source(tmp_path: Path) -> None:
+    """check_generated_output does not flag a non-prefixed source file as missing.
+
+    When the file appears as a mapping value it is excluded from the normal
+    check iteration and the mapped destination is compared instead.
+    """
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+    (repolish_dir / 'template-config.yml').write_text('template content')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'final-config.yml').write_text('template content')
+
+    providers = Providers(
+        anchors={},
+        delete_files=[],
+        file_mappings={'final-config.yml': 'template-config.yml'},
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+    assert len(diffs) == 0
