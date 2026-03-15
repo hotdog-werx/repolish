@@ -6,8 +6,8 @@ from repolish.loader.context import (
     _apply_provider_overrides,
 )
 from repolish.loader.exchange import (
-    _collect_provider_contributions,
     build_provider_metadata,
+    collect_provider_contributions,
     finalize_provider_contexts,
     gather_received_inputs,
 )
@@ -105,7 +105,7 @@ def _run_provider_pipeline(
     # in the returned `Providers` object include any project-supplied values.
     _apply_provider_overrides(provider_contexts, provider_overrides)
 
-    _collect_provider_contributions(module_cache, provider_contexts, accum)
+    collect_provider_contributions(module_cache, provider_contexts, accum)
 
     return Providers(
         anchors=accum.merged_anchors,

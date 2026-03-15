@@ -236,7 +236,7 @@ def build_file_records(
 class Accumulators:
     """Mutable workspace used while collecting contributions from all providers.
 
-    `_collect_provider_contributions` iterates over every loaded provider,
+    `collect_provider_contributions` iterates over every loaded provider,
     calls `create_anchors` and `create_file_mappings`, and accumulates the
     results here.  The fields are written into a `Providers` instance once
     collection is complete.

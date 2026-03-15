@@ -18,8 +18,8 @@ from repolish.loader import (
 from repolish.loader import Provider as _ProviderBase
 from repolish.loader.context import _apply_overrides_to_model
 from repolish.loader.exchange import (
-    _collect_provider_contributions,
     _process_provider_fm,
+    collect_provider_contributions,
     finalize_provider_contexts,
     gather_received_inputs,
 )
@@ -80,7 +80,7 @@ def test_process_provider_fm_none_populates_suppressed_sources() -> None:
 def test_collect_provider_contributions_skips_missing_instance():
     acc = Accumulators()
     # module_cache entry with no instance
-    _collect_provider_contributions([('p', {})], {}, acc)
+    collect_provider_contributions([('p', {})], {}, acc)
     # nothing should have changed
     assert acc.merged_anchors == {}
     assert acc.merged_file_mappings == {}

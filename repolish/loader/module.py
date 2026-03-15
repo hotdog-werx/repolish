@@ -217,7 +217,7 @@ def _maybe_instantiate_provider(
     """Instantiate a Provider subclass and store the instance in `module_dict`.
 
     The instance is stored under ``_repolish_provider_instance`` for later
-    retrieval by ``_collect_provider_contributions`` and diagnostics.  Raises
+    retrieval by ``collect_provider_contributions`` and diagnostics.  Raises
     ``RuntimeError`` if the module does not export exactly one subclass.
     """
     cls = _find_provider_class(module_dict)

@@ -325,7 +325,7 @@ def _process_provider_fm(
         _apply_annotated_tm(dest, annotated, provider_id, accum)
 
 
-def _collect_provider_contributions(
+def collect_provider_contributions(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
