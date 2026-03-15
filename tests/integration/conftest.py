@@ -31,6 +31,49 @@ _SIMPLE_PROVIDER_DIR = _EXAMPLES_DIR / 'simple-provider'
 _SCAFFOLD_PROVIDER_DIR = _EXAMPLES_DIR / 'scaffold-provider'
 _DIST_DIR = _EXAMPLES_DIR / '.dist'
 
+_FIXTURES_DIR = Path(__file__).parent / 'fixtures'
+
+
+@dataclass(frozen=True)
+class FixtureRepo:
+    """A single fixture repository directory.
+
+    Call ``stage(tmp_path)`` to copy the fixture into a temporary directory
+    and get back the destination path ready for use in a test.
+    """
+
+    path: Path
+
+    def stage(self, tmp_path: Path) -> Path:
+        """Copy the fixture into ``tmp_path`` and return the destination."""
+        return shutil.copytree(self.path, tmp_path / self.path.name)
+
+
+@dataclass(frozen=True)
+class Fixtures:
+    """Paths to all fixture repos used by integration tests.
+
+    Add a new field here whenever a new fixture directory is created under
+    ``tests/integration/fixtures/``.  Tests should import the module-level
+    ``fixtures`` singleton rather than constructing their own paths.
+    """
+
+    simple_repo: FixtureRepo
+    scaffold_fresh: FixtureRepo
+    scaffold_existing_init: FixtureRepo
+
+    @classmethod
+    def from_dir(cls, base: Path) -> Fixtures:
+        """Build a Fixtures instance from the fixtures root directory."""
+        return cls(
+            simple_repo=FixtureRepo(base / 'simple-repo'),
+            scaffold_fresh=FixtureRepo(base / 'scaffold-fresh'),
+            scaffold_existing_init=FixtureRepo(base / 'scaffold-existing-init'),
+        )
+
+
+fixtures = Fixtures.from_dir(_FIXTURES_DIR)
+
 
 @dataclass
 class InstalledProviders:

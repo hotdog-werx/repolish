@@ -9,9 +9,7 @@ Covers the three main integration surfaces for an installed provider:
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from repolish.cli.main import app
@@ -19,13 +17,16 @@ from repolish.cli.testing import CliRunner
 from repolish.config.models import ProviderInfo
 from repolish.loader.orchestrator import create_providers
 
+from .conftest import fixtures
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
     from .conftest import InstalledProviders
 
 runner = CliRunner()
-_FIXTURES_DIR = Path(__file__).parent / 'fixtures'
 
 
 def test_simple_provider_cli_info(
@@ -65,7 +66,7 @@ def test_repolish_apply_creates_readme(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``repolish apply`` on a simple-repo fixture produces the expected README."""
-    repo = shutil.copytree(_FIXTURES_DIR / 'simple-repo', tmp_path / 'repo')
+    repo = fixtures.simple_repo.stage(tmp_path)
 
     monkeypatch.chdir(repo)
     result = runner.invoke(app, ['apply'])

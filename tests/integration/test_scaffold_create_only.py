@@ -14,22 +14,21 @@ Scenarios covered:
 
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
 
+from .conftest import fixtures
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
     from .conftest import InstalledProviders
 
 runner = CliRunner()
-_FIXTURES_DIR = Path(__file__).parent / 'fixtures'
-_SCAFFOLD_FRESH = _FIXTURES_DIR / 'scaffold-fresh'
-_SCAFFOLD_EXISTING_INIT = _FIXTURES_DIR / 'scaffold-existing-init'
 
 
 def test_apply_creates_all_files_in_fresh_project(
@@ -38,7 +37,7 @@ def test_apply_creates_all_files_in_fresh_project(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Apply on a project with no prior output creates both managed files."""
-    repo = shutil.copytree(_SCAFFOLD_FRESH, tmp_path / 'repo')
+    repo = fixtures.scaffold_fresh.stage(tmp_path)
     monkeypatch.chdir(repo)
 
     result = runner.invoke(app, ['apply'])
@@ -54,7 +53,7 @@ def test_apply_preserves_existing_init_on_reapply(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Apply does not overwrite a create-only file that already exists."""
-    repo = shutil.copytree(_SCAFFOLD_EXISTING_INIT, tmp_path / 'repo')
+    repo = fixtures.scaffold_existing_init.stage(tmp_path)
     monkeypatch.chdir(repo)
 
     result = runner.invoke(app, ['apply'])
@@ -70,7 +69,7 @@ def test_apply_regular_file_is_always_updated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Apply overwrites a regular file (README.md) even when it already exists."""
-    repo = shutil.copytree(_SCAFFOLD_EXISTING_INIT, tmp_path / 'repo')
+    repo = fixtures.scaffold_existing_init.stage(tmp_path)
     (repo / 'README.md').write_text('# stale content', encoding='utf-8')
     monkeypatch.chdir(repo)
 
@@ -87,7 +86,7 @@ def test_check_reports_missing_create_only_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Check exits non-zero when a create-only file has not been seeded yet."""
-    repo = shutil.copytree(_SCAFFOLD_FRESH, tmp_path / 'repo')
+    repo = fixtures.scaffold_fresh.stage(tmp_path)
     monkeypatch.chdir(repo)
 
     result = runner.invoke(app, ['apply', '--check'])
@@ -104,7 +103,7 @@ def test_check_skips_create_only_file_when_already_exists(
     Exercises the branch in ``comparison.py`` that adds an existing create-only
     file to the skip set so it is never compared against the template.
     """
-    repo = shutil.copytree(_SCAFFOLD_EXISTING_INIT, tmp_path / 'repo')
+    repo = fixtures.scaffold_existing_init.stage(tmp_path)
     monkeypatch.chdir(repo)
 
     # First apply: seeds README.md (regular) but must not overwrite SETUP.md
