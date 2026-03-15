@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 _EXAMPLES_DIR = Path(__file__).parent.parent.parent / 'provider-examples'
 _SIMPLE_PROVIDER_DIR = _EXAMPLES_DIR / 'simple-provider'
+_SCAFFOLD_PROVIDER_DIR = _EXAMPLES_DIR / 'scaffold-provider'
 _DIST_DIR = _EXAMPLES_DIR / '.dist'
 
 
@@ -39,6 +40,8 @@ class InstalledProviders:
     venv_bin: Path
     # absolute path to simple_provider's templates directory (holds repolish.py)
     simple_provider_root: Path
+    # absolute path to scaffold_provider's templates directory (holds repolish.py)
+    scaffold_provider_root: Path
 
 
 def _build_wheel(source_dir: Path, out_dir: Path, package_name: str) -> Path:
@@ -94,15 +97,28 @@ def _pkg_sub_path(package_name: str, sub: str) -> Path:
 @pytest.fixture(scope='session', autouse=True)
 def installed_providers() -> Generator[InstalledProviders, None, None]:
     """Build, install, and expose test providers; uninstall on teardown."""
-    wheel = _build_wheel(_SIMPLE_PROVIDER_DIR, _DIST_DIR, 'simple_provider')
-    _install_wheel(wheel)
+    simple_wheel = _build_wheel(
+        _SIMPLE_PROVIDER_DIR,
+        _DIST_DIR,
+        'simple_provider',
+    )
+    _install_wheel(simple_wheel)
+    scaffold_wheel = _build_wheel(
+        _SCAFFOLD_PROVIDER_DIR,
+        _DIST_DIR,
+        'scaffold_provider',
+    )
+    _install_wheel(scaffold_wheel)
 
-    provider_root = _pkg_sub_path('simple_provider', 'resources/templates')
+    simple_root = _pkg_sub_path('simple_provider', 'resources/templates')
+    scaffold_root = _pkg_sub_path('scaffold_provider', 'resources/templates')
 
     yield InstalledProviders(
         venv_bin=Path(sys.executable).parent,
-        simple_provider_root=provider_root,
+        simple_provider_root=simple_root,
+        scaffold_provider_root=scaffold_root,
     )
 
     _uninstall_package('simple-provider')
+    _uninstall_package('scaffold-provider')
     shutil.rmtree(_DIST_DIR, ignore_errors=True)

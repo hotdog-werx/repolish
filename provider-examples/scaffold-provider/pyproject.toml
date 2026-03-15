@@ -1,0 +1,16 @@
+[project]
+name = "scaffold-provider"
+version = "0.1.0"
+description = "Multi-scenario test provider used by the repolish integration test suite"
+requires-python = ">=3.11"
+dependencies = ["repolish"]
+
+[project.scripts]
+scaffold-provider-link = "scaffold_provider.cli:main"
+
+[tool.hatch]
+build.packages = ["scaffold_provider"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

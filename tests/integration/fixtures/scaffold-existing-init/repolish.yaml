@@ -1,0 +1,3 @@
+providers:
+  scaffold-provider:
+    cli: scaffold-provider-link
