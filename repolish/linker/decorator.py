@@ -88,7 +88,11 @@ def _get_package_root(module_name: str, caller_file: Path) -> Path:
     if module_name:
         spec = find_spec(module_name)
         if spec and spec.submodule_search_locations:
-            return Path(next(iter(spec.submodule_search_locations))).resolve()
+            # Reached only when the provider package is properly installed and
+            # find_spec resolves it to a real location.  Tests mock _get_package_root
+            # directly or use fake package names that find_spec cannot resolve, so
+            # this branch is only exercised in real-world provider usage.
+            return Path(next(iter(spec.submodule_search_locations))).resolve()  # pragma: no cover
     return caller_file.parent
 
 
@@ -141,7 +145,6 @@ def _link_and_notify(
 
 def resource_linker(
     *,
-    library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     templates_dir: str = '',
@@ -156,9 +159,10 @@ def resource_linker(
     its only responsibility — symlink management is handled separately by
     :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
 
+    The library name (used for the default target subdirectory and CLI help
+    text) is auto-detected from the caller's top-level package name.
+
     Args:
-        library_name: Name of the library (used for default target subdirectory).
-            If not provided, auto-detects from the caller's top-level package name.
         default_source_dir: Path to resources relative to package root (default: 'resources').
             Can be overridden for custom locations (e.g., 'mylib/templates').
         default_target_base: Default base directory for the target (default: .repolish)
@@ -201,7 +205,7 @@ def resource_linker(
         _package_attr = getattr(caller_module, '__package__', '') or ''
         _pkg_name, _proj_name = resolve_package_identity(_package_attr)
     package_root = _get_package_root(_pkg_name, _caller_file)
-    library_name = library_name or _proj_name or _pkg_name.replace('_', '-')
+    library_name = _proj_name or _pkg_name.replace('_', '-')
 
     resolved_source_dir = package_root / Path(default_source_dir)
     default_target_base_path = Path(default_target_base)
@@ -271,7 +275,6 @@ def resource_linker(
 
 def resource_linker_cli(
     *,
-    library_name: str | None = None,
     default_source_dir: str = 'resources',
     default_target_base: str = '.repolish',
     templates_dir: str = 'templates',
@@ -284,9 +287,9 @@ def resource_linker_cli(
     ``.repolish/<alias>/``; default symlinks are declared instead via
     :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
 
+    The library name is auto-detected from the caller's top-level package name.
+
     Args:
-        library_name: Name of the library (used for default target subdirectory).
-            If not provided, auto-detects from the caller's top-level package name.
         default_source_dir: Path to resources relative to package root (default: 'resources').
         default_target_base: Default base directory for the target (default: .repolish)
         templates_dir: Subdirectory within source_dir where repolish.py and templates live
@@ -316,7 +319,7 @@ def resource_linker_cli(
     # Resolve package identity early so the success message can use the
     # detected library name before the decorator is applied.
     _, _pkg, _proj = _auto_detect_library_name(caller_frame)
-    detected_library_name = library_name or _proj or _pkg.replace('_', '-')
+    detected_library_name = _proj or _pkg.replace('_', '-')
 
     # Create a function with auto-generated success message
     def _success_message() -> None:
@@ -329,7 +332,6 @@ def resource_linker_cli(
     # Apply the decorator to create the CLI
     # Pass the caller frame so resource_linker uses the correct package context
     decorator_factory = resource_linker(
-        library_name=library_name,
         default_source_dir=default_source_dir,
         default_target_base=default_target_base,
         templates_dir=templates_dir,

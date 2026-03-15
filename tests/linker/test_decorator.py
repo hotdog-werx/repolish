@@ -59,7 +59,8 @@ def test_resource_linker_info_mode(
     """Test resource_linker --info outputs JSON."""
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
     )
     def link_cli() -> None:
@@ -130,7 +131,8 @@ def test_resource_linker_info_mode_ignores_templates_subdir(
     """`--info` output should not contain outdated templates subdir key."""
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
     )
     def link_cli() -> None:
@@ -159,7 +161,8 @@ def test_resource_linker_calls_wrapped_function(
     called: list[bool] = []
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
     )
     def link_cli() -> None:
@@ -184,7 +187,8 @@ def test_resource_linker_handles_link_error(
     monkeypatch.chdir(tmp_path)
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
     )
     def link_cli() -> None:
@@ -223,7 +227,8 @@ def test_resource_linker_custom_target_base(
     )
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
         default_target_base='.libs',
     )
@@ -249,7 +254,8 @@ def test_resource_linker_does_not_call_wrapped_in_info_mode(
     called: list[bool] = []
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
     )
     def link_cli() -> None:
@@ -270,7 +276,6 @@ def test_resource_linker_does_not_call_wrapped_in_info_mode(
 class ResourceLinkerCliCase:
     name: str
     package_name: str
-    library_name_arg: str | None
     source_dir: str
     expected_lib_name: str
     expected_msg: str
@@ -282,23 +287,13 @@ class ResourceLinkerCliCase:
         ResourceLinkerCliCase(
             name='auto_detection_with_underscore_to_dash',
             package_name='my_library',
-            library_name_arg=None,
             source_dir='resources',
             expected_lib_name='my-library',
             expected_msg='resources from my-library are now available',
         ),
         ResourceLinkerCliCase(
-            name='custom_library_name',
-            package_name='mylib',
-            library_name_arg='custom-name',
-            source_dir='resources',
-            expected_lib_name='custom-name',
-            expected_msg='resources from custom-name are now available',
-        ),
-        ResourceLinkerCliCase(
             name='custom_source_directory',
             package_name='mylib',
-            library_name_arg=None,
             source_dir='templates',
             expected_lib_name='mylib',
             expected_msg='templates from mylib are now available',
@@ -336,7 +331,6 @@ def test_resource_linker_cli(
     )
 
     main = resource_linker_cli(
-        library_name=case.library_name_arg,
         default_source_dir=case.source_dir,
     )
 
@@ -399,7 +393,7 @@ def test_get_package_root_fallback_when_find_spec_returns_none(
         return_value=True,
     )
 
-    @resource_linker(library_name='mylib')
+    @resource_linker(_pkg_name='mylib', _proj_name='mylib')
     def link_cli() -> None:
         pass
 
@@ -409,3 +403,68 @@ def test_get_package_root_fallback_when_find_spec_returns_none(
     # source_dir should be caller_file.parent / 'resources' (the fallback path)
     call_source = mock_link.call_args.kwargs['source_dir']
     assert call_source.name == 'resources'
+
+
+def test_get_package_root_fallback_when_spec_has_no_search_locations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """_get_package_root falls back to caller_file.parent when spec has no submodule_search_locations."""
+    monkeypatch.chdir(tmp_path)
+    mock_spec = mocker.MagicMock()
+    mock_spec.submodule_search_locations = []  # falsy — triggers the fallback
+    mocker.patch('repolish.linker.decorator.find_spec', return_value=mock_spec)
+    mock_link = mocker.patch(
+        'repolish.linker.decorator.link_resources',
+        return_value=True,
+    )
+
+    @resource_linker(_pkg_name='mylib', _proj_name='mylib')
+    def link_cli() -> None:
+        pass
+
+    result = runner.invoke(link_cli, [])
+
+    assert result.exit_code == 0
+    call_source = mock_link.call_args.kwargs['source_dir']
+    assert call_source.name == 'resources'
+
+
+def test_resource_linker_resolves_pkg_name_from_caller_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """resource_linker resolves _pkg_name from __package__ when not pre-supplied."""
+    monkeypatch.chdir(tmp_path)
+    pkg_root = tmp_path / 'mylib'
+    pkg_root.mkdir()
+    (pkg_root / 'resources').mkdir()
+
+    mocker.patch(
+        'repolish.linker.decorator.resolve_package_identity',
+        return_value=('mylib', 'mylib'),
+    )
+    mocker.patch(
+        'repolish.linker.decorator._get_package_root',
+        return_value=pkg_root,
+    )
+    mock_link = mocker.patch(
+        'repolish.linker.decorator.link_resources',
+        return_value=True,
+    )
+
+    # Call without _pkg_name so lines 201-202 are exercised
+    @resource_linker()
+    def link_cli() -> None:
+        pass
+
+    result = runner.invoke(link_cli, [])
+
+    assert result.exit_code == 0
+    _assert_link_resources_called(
+        mock_link,
+        pkg_root / 'resources',
+        Path('.repolish') / 'mylib',
+    )

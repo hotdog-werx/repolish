@@ -69,7 +69,8 @@ def basic_link_cli(mocked_package: dict[str, Any]) -> cyclopts.App:
     """Fixture that returns a basic decorated link_cli function."""
 
     @resource_linker(
-        library_name='mylib',
+        _pkg_name='mylib',
+        _proj_name='mylib',
         default_source_dir='resources',
     )
     def link_cli() -> None:
