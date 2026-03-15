@@ -7,7 +7,6 @@ import cyclopts
 import pytest
 import pytest_mock
 
-from repolish.config import ProviderInfo
 from repolish.linker.decorator import resource_linker
 
 
@@ -71,7 +70,7 @@ def basic_link_cli(mocked_package: dict[str, Any]) -> cyclopts.App:
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         pass
@@ -94,12 +93,3 @@ def provider_resources_setup(tmp_path: Path) -> Path:
     provider_resources = tmp_path / '.repolish' / 'mylib'
     provider_resources.mkdir(parents=True)
     return provider_resources
-
-
-@pytest.fixture
-def basic_provider_info(tmp_path: Path) -> ProviderInfo:
-    """Create a basic ProviderInfo for testing."""
-    return ProviderInfo(
-        resources_dir=str(tmp_path / '.repolish' / 'mylib'),
-        site_package_dir='/fake/source/mylib',
-    )

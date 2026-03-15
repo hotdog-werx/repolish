@@ -61,7 +61,7 @@ def test_resource_linker_info_mode(
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         pass
@@ -133,7 +133,7 @@ def test_resource_linker_info_mode_ignores_templates_subdir(
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         pass
@@ -163,7 +163,7 @@ def test_resource_linker_calls_wrapped_function(
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         called.append(True)
@@ -189,7 +189,7 @@ def test_resource_linker_handles_link_error(
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         pass
@@ -229,7 +229,7 @@ def test_resource_linker_custom_target_base(
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
         default_target_base='.libs',
     )
     def link_cli() -> None:
@@ -256,7 +256,7 @@ def test_resource_linker_does_not_call_wrapped_in_info_mode(
     @resource_linker(
         _pkg_name='mylib',
         _proj_name='mylib',
-        default_source_dir='resources',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         called.append(True)
@@ -331,7 +331,7 @@ def test_resource_linker_cli(
     )
 
     main = resource_linker_cli(
-        default_source_dir=case.source_dir,
+        resources_dir=case.source_dir,
     )
 
     result = runner.invoke(main, [])

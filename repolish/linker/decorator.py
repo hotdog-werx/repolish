@@ -92,22 +92,23 @@ def _get_package_root(module_name: str, caller_file: Path) -> Path:
             # find_spec resolves it to a real location.  Tests mock _get_package_root
             # directly or use fake package names that find_spec cannot resolve, so
             # this branch is only exercised in real-world provider usage.
-            return Path(next(iter(spec.submodule_search_locations))).resolve()  # pragma: no cover
+            return Path(
+                next(iter(spec.submodule_search_locations)),
+            ).resolve()  # pragma: no cover
     return caller_file.parent
 
 
 def _build_provider_info(
     resources_dir: Path,
     pkg_dir: Path,
-    templates_dir: str,
+    provider_root: str,
     pkg_name: str,
     proj_name: str,
 ) -> ProviderInfo:
     """Construct the ProviderInfo object emitted by the ``--info`` flag."""
-    provider_root = str((resources_dir / templates_dir).absolute()) if templates_dir else ''
     return ProviderInfo(
         resources_dir=str(resources_dir.absolute()),
-        provider_root=provider_root,
+        provider_root=str((resources_dir / provider_root).absolute()) if provider_root else '',
         site_package_dir=str(pkg_dir.absolute()),
         package_name=pkg_name,
         project_name=proj_name,
@@ -145,9 +146,9 @@ def _link_and_notify(
 
 def resource_linker(
     *,
-    default_source_dir: str = 'resources',
+    resources_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_dir: str = '',
+    provider_root: str = 'templates',
     _caller_frame: inspect.FrameInfo | None = None,
     _pkg_name: str = '',
     _proj_name: str = '',
@@ -163,12 +164,13 @@ def resource_linker(
     text) is auto-detected from the caller's top-level package name.
 
     Args:
-        default_source_dir: Path to resources relative to package root (default: 'resources').
-            Can be overridden for custom locations (e.g., 'mylib/templates').
+        resources_dir: Path to the provider resources relative to the package root
+            (default: 'resources'). Mirrors :attr:`~repolish.config.ProviderInfo.resources_dir`;
+            recorded as an absolute path in provider-info JSON.
         default_target_base: Default base directory for the target (default: .repolish)
-        templates_dir: Subdirectory within source_dir where repolish.py and templates live.
-            Recorded in provider-info JSON so the loader resolves the correct templates root.
-            Defaults to empty string (repolish.py sits directly in source_dir).
+        provider_root: Subdirectory within resources_dir where repolish.py and the template
+            tree live (default: 'templates'). Mirrors :attr:`~repolish.config.ProviderInfo.provider_root`;
+            recorded as an absolute path in provider-info JSON.
         _caller_frame: Internal — caller frame injected by :func:`resource_linker_cli`.
         _pkg_name: Internal — pre-resolved module name; skips :func:`resolve_package_identity`
             when provided by :func:`resource_linker_cli`.
@@ -207,7 +209,7 @@ def resource_linker(
     package_root = _get_package_root(_pkg_name, _caller_file)
     library_name = _proj_name or _pkg_name.replace('_', '-')
 
-    resolved_source_dir = package_root / Path(default_source_dir)
+    resolved_resources_dir = package_root / Path(resources_dir)
     default_target_base_path = Path(default_target_base)
 
     def decorator(func: Callable) -> cyclopts.App:
@@ -222,9 +224,9 @@ def resource_linker(
                 Path,
                 Parameter(
                     name=['--package-dir'],
-                    help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
+                    help=f'Source directory containing {library_name} resources (default: {resolved_resources_dir})',
                 ),
-            ] = resolved_source_dir,
+            ] = resolved_resources_dir,
             resources_dir: Annotated[
                 Path,
                 Parameter(
@@ -254,7 +256,7 @@ def resource_linker(
                 info_obj = _build_provider_info(
                     resources_dir,
                     pkg_dir,
-                    templates_dir,
+                    provider_root,
                     _pkg_name,
                     _proj_name,
                 )
@@ -275,9 +277,9 @@ def resource_linker(
 
 def resource_linker_cli(
     *,
-    default_source_dir: str = 'resources',
+    resources_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_dir: str = 'templates',
+    provider_root: str = 'templates',
 ) -> cyclopts.App:
     """Create a resource linker CLI function.
 
@@ -290,11 +292,13 @@ def resource_linker_cli(
     The library name is auto-detected from the caller's top-level package name.
 
     Args:
-        default_source_dir: Path to resources relative to package root (default: 'resources').
+        resources_dir: Path to the provider resources relative to the package root
+            (default: 'resources'). Mirrors :attr:`~repolish.config.ProviderInfo.resources_dir`.
         default_target_base: Default base directory for the target (default: .repolish)
-        templates_dir: Subdirectory within source_dir where repolish.py and templates live
-            (default: 'templates').  Recorded in provider-info JSON so the loader can locate
-            the provider entry point at target_dir/templates_dir/repolish.py.
+        provider_root: Subdirectory within resources_dir where repolish.py and the template
+            tree live (default: 'templates'). Mirrors
+            :attr:`~repolish.config.ProviderInfo.provider_root`; recorded as an absolute path
+            in provider-info JSON so the loader can locate the provider entry point.
 
     Returns:
         A :class:`cyclopts.App` that runs the resource linking CLI.
@@ -325,16 +329,16 @@ def resource_linker_cli(
     def _success_message() -> None:
         """Auto-generated success message."""
         console.print(
-            f'- [bold cyan]{default_source_dir}[/bold cyan] from '
+            f'- [bold cyan]{resources_dir}[/bold cyan] from '
             f'[bold green]{detected_library_name}[/bold green] are now available',
         )
 
     # Apply the decorator to create the CLI
     # Pass the caller frame so resource_linker uses the correct package context
     decorator_factory = resource_linker(
-        default_source_dir=default_source_dir,
+        resources_dir=resources_dir,
         default_target_base=default_target_base,
-        templates_dir=templates_dir,
+        provider_root=provider_root,
         _caller_frame=caller_frame,
         _pkg_name=_pkg,
         _proj_name=_proj,
