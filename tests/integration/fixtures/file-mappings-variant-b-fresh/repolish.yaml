@@ -1,0 +1,5 @@
+providers:
+  scaffold-provider:
+    cli: scaffold-provider-link
+    context:
+      config_variant: b

@@ -65,6 +65,10 @@ class Fixtures:
     simple_repo: FixtureRepo
     scaffold_fresh: FixtureRepo
     scaffold_existing_init: FixtureRepo
+    file_mappings_variant_a_fresh: FixtureRepo
+    file_mappings_variant_b_fresh: FixtureRepo
+    file_mappings_nested_ci_fresh: FixtureRepo
+    file_mappings_variant_a_existing: FixtureRepo
 
     @classmethod
     def from_dir(cls, base: Path) -> Fixtures:
@@ -73,6 +77,18 @@ class Fixtures:
             simple_repo=FixtureRepo(base / 'simple-repo'),
             scaffold_fresh=FixtureRepo(base / 'scaffold-fresh'),
             scaffold_existing_init=FixtureRepo(base / 'scaffold-existing-init'),
+            file_mappings_variant_a_fresh=FixtureRepo(
+                base / 'file-mappings-variant-a-fresh',
+            ),
+            file_mappings_variant_b_fresh=FixtureRepo(
+                base / 'file-mappings-variant-b-fresh',
+            ),
+            file_mappings_nested_ci_fresh=FixtureRepo(
+                base / 'file-mappings-nested-ci-fresh',
+            ),
+            file_mappings_variant_a_existing=FixtureRepo(
+                base / 'file-mappings-variant-a-existing',
+            ),
         )
 
 
