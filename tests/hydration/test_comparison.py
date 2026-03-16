@@ -402,7 +402,9 @@ def test_check_reports_mapping_source_missing(tmp_path: Path) -> None:
     assert '_repolish.missing.yml' in msg
 
 
-def test_check_skips_regular_file_used_as_mapping_source(tmp_path: Path) -> None:
+def test_check_skips_regular_file_used_as_mapping_source(
+    tmp_path: Path,
+) -> None:
     """check_generated_output does not flag a non-prefixed source file as missing.
 
     When the file appears as a mapping value it is excluded from the normal

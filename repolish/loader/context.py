@@ -158,6 +158,14 @@ def _apply_overrides_to_model(
             error=str(exc),
         )
         return ctx
+
+    # model_validate constructs a new instance and does not propagate
+    # PrivateAttr values (such as _provider_data).  Restore them explicitly
+    # so that {{ _provider.alias }}, {{ _provider.version }}, etc. remain
+    # available in templates after any context-override pass.
+    provider_data = ctx._provider_data
+    if provider_data is not None:
+        new_ctx._provider_data = provider_data
     new_data = new_ctx.model_dump()
     if new_data != data:
         dropped = {k for k in data if k not in new_data}

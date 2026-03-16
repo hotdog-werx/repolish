@@ -38,6 +38,43 @@ _DIST_DIR = _EXAMPLES_DIR / '.dist'
 _FIXTURES_DIR = Path(__file__).parent / 'fixtures'
 
 
+def init_git_repo(
+    path: Path,
+    *,
+    owner: str = 'test-owner',
+    repo: str = 'test-repo',
+) -> None:
+    """Initialise a bare-minimum git repo so git-dependent provider code doesn't fail.
+
+    Sets up ``origin`` with a GitHub HTTPS URL so ``get_owner_repo()`` can
+    parse the owner and repo name.  Uses ``--initial-branch=main`` to avoid
+    stderr noise about the default branch name changing across git versions;
+    falls back silently for older git that doesn't know the flag.
+    """
+
+    def _run(*args: str) -> None:
+        subprocess.run(  # noqa: S603
+            list(args),
+            cwd=str(path),
+            check=True,
+            capture_output=True,
+        )
+
+    try:
+        _run('git', 'init', '--initial-branch=main')
+    except subprocess.CalledProcessError:
+        _run('git', 'init')  # older git without --initial-branch
+    _run('git', 'config', 'user.email', 'test@example.com')
+    _run('git', 'config', 'user.name', 'Test User')
+    _run(
+        'git',
+        'remote',
+        'add',
+        'origin',
+        f'https://github.com/{owner}/{repo}.git',
+    )
+
+
 @dataclass(frozen=True)
 class FixtureRepo:
     """A single fixture repository directory.
@@ -48,9 +85,17 @@ class FixtureRepo:
 
     path: Path
 
-    def stage(self, tmp_path: Path) -> Path:
-        """Copy the fixture into ``tmp_path`` and return the destination."""
-        return shutil.copytree(self.path, tmp_path / self.path.name)
+    def stage(
+        self,
+        tmp_path: Path,
+        *,
+        owner: str = 'test-owner',
+        repo: str = 'test-repo',
+    ) -> Path:
+        """Copy the fixture into ``tmp_path``, init a git repo, and return the path."""
+        dest = shutil.copytree(self.path, tmp_path / self.path.name)
+        init_git_repo(dest, owner=owner, repo=repo)
+        return dest
 
 
 @dataclass(frozen=True)
@@ -65,6 +110,7 @@ class Fixtures:
     simple_repo: FixtureRepo
     scaffold_fresh: FixtureRepo
     scaffold_existing_init: FixtureRepo
+    scaffold_notice_fresh: FixtureRepo
     file_mappings_variant_a_fresh: FixtureRepo
     file_mappings_variant_b_fresh: FixtureRepo
     file_mappings_nested_ci_fresh: FixtureRepo
@@ -77,6 +123,7 @@ class Fixtures:
             simple_repo=FixtureRepo(base / 'simple-repo'),
             scaffold_fresh=FixtureRepo(base / 'scaffold-fresh'),
             scaffold_existing_init=FixtureRepo(base / 'scaffold-existing-init'),
+            scaffold_notice_fresh=FixtureRepo(base / 'scaffold-notice-fresh'),
             file_mappings_variant_a_fresh=FixtureRepo(
                 base / 'file-mappings-variant-a-fresh',
             ),

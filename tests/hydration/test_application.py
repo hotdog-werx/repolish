@@ -308,7 +308,9 @@ def test_apply_warns_when_mapped_source_missing(
     assert not (base_dir / 'config.yml').exists()
 
 
-def test_apply_skips_regular_file_used_as_mapping_source(tmp_path: Path) -> None:
+def test_apply_skips_regular_file_used_as_mapping_source(
+    tmp_path: Path,
+) -> None:
     """apply_generated_output copies the mapped destination only.
 
     The source file must not also be copied to its original path when it

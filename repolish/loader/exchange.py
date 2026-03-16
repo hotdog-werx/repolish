@@ -203,9 +203,15 @@ def _prepare_own_model(
     if isinstance(own_model, _BaseModel) and hasattr(own_model, 'repolish'):
         glob = get_global_context().model_dump()
         if glob:
+            # Pydantic's model_copy does not propagate PrivateAttr values.
+            # Capture _provider_data before copying and restore it afterwards
+            # so that templates retain {{ _provider.alias }}, {{ _provider.version }}, etc.
+            provider_data = own_model._provider_data
             own_model = own_model.model_copy(
                 update={'repolish': GlobalContext(**glob)},
             )
+            if provider_data is not None:
+                own_model._provider_data = provider_data
 
     return own_model
 

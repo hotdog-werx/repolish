@@ -7,15 +7,23 @@ through real ``repolish apply`` / ``repolish apply --check`` invocations:
 - ``SETUP.md`` is CREATE_ONLY: seeded once, never overwritten after that.
 - ``CONFIG.md`` is CREATE_ONLY but only materialised when
   ``include_optional_config: true`` is set in the consumer's ``repolish.yaml``.
+- ``NOTICE.md`` is a Jinja-rendered file that always renders from
+  ``NOTICE.md.jinja``.  Demonstrates ``{{ project_name }}`` and
+  ``{{ _provider.major_version }}`` Jinja variable access, and Unicode
+  content handling.
 - ``config.yml`` is a mapped file selected by ``config_variant`` ('a', 'b', or
   'none').  Demonstrates conditional ``_repolish.*`` source selection.
 - ``.github/workflows/ci.yml`` is a nested mapped file enabled by
   ``include_ci_workflow: true``.  Demonstrates mapping from a subdirectory.
 """
 
-from pydantic import BaseModel
-
-from repolish import BaseContext, FileMode, Provider, TemplateMapping
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    FileMode,
+    Provider,
+    TemplateMapping,
+)
 
 
 class Ctx(BaseContext):
@@ -29,7 +37,7 @@ class Ctx(BaseContext):
     include_ci_workflow: bool = False
 
 
-class ScaffoldProvider(Provider[Ctx, BaseModel]):
+class ScaffoldProvider(Provider[Ctx, BaseInputs]):
     """Multi-purpose provider covering create-only, optional mappings, and anchors."""
 
     def create_anchors(self, context: Ctx) -> dict[str, str]:
@@ -64,3 +72,8 @@ class ScaffoldProvider(Provider[Ctx, BaseModel]):
         if context.include_ci_workflow:
             mappings['.github/workflows/ci.yml'] = '.github/workflows/_repolish.ci-github.yml'
         return mappings
+
+
+__version__ = '0.1.0'
+
+__all__ = ['ScaffoldProvider', '__version__']
