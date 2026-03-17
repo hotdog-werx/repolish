@@ -22,6 +22,7 @@ from repolish import (
     BaseInputs,
     FileMode,
     Provider,
+    Symlink,
     TemplateMapping,
 )
 
@@ -72,6 +73,15 @@ class ScaffoldProvider(Provider[Ctx, BaseInputs]):
         if context.include_ci_workflow:
             mappings['.github/workflows/ci.yml'] = '.github/workflows/_repolish.ci-github.yml'
         return mappings
+
+    def create_default_symlinks(self) -> list[Symlink]:
+        """Create a few symlinks to verify they they work."""
+        return [
+            Symlink(
+                source='configs/some-config.yaml',
+                target='symlink-config.yaml',
+            ),
+        ]
 
 
 __version__ = '0.1.0'

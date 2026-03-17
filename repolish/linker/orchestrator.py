@@ -2,6 +2,7 @@
 
 import importlib.util
 import subprocess
+from inspect import isclass
 from pathlib import Path
 
 from hotlog import get_logger
@@ -63,10 +64,22 @@ def create_provider_symlinks(
 
 
 def _symlinks_from_module(mod: object) -> list[ProviderSymlink]:
-    """Return default symlinks declared by the first ``Provider`` in *mod*."""
-    for val in vars(mod).values():
+    """Return default symlinks declared by the first ``Provider`` in *mod*.
+
+    Accepts both pre-created instances (legacy) and class definitions
+    (the standard pattern used by provider authors).
+    """
+    module_vars = vars(mod).values()
+    # Prefer an explicit instance if one was placed at module level.
+    for val in module_vars:
         if isinstance(val, Provider):
             symlinks: list[Symlink] = val.create_default_symlinks()
+            return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
+    # Fall back to finding a Provider subclass and instantiating it.
+    for val in module_vars:
+        if isclass(val) and issubclass(val, Provider) and val is not Provider:
+            instance = val()
+            symlinks = instance.create_default_symlinks()
             return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
     return []
 

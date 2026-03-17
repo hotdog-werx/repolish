@@ -42,6 +42,9 @@ def test_apply_variant_a(
 
     # The tables showing the mappings should not show any unknown providers
     assert 'unknown' not in result.output
+    symlink_config = repo / 'symlink-config.yaml'
+    assert symlink_config.exists(), 'symlink-config.yaml should be created by apply'
+    assert symlink_config.is_symlink(), 'symlink-config.yaml should be a symlink'
 
     config = repo / 'config.yml'
     assert config.exists(), 'config.yml must be created by apply'
