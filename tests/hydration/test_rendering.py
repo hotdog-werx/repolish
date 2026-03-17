@@ -201,11 +201,13 @@ def test_render_with_file_mappings_generates_multiple_files(
         assert out.exists()
         assert out.read_text(encoding='utf-8').strip() == f'FILE #{i}'
 
-    # Providers.file_mappings should be normalized to string source paths so
-    # downstream code can continue to treat values as strings.
-    assert providers.file_mappings['file-1.txt'] == 'file-1.txt'
-    assert providers.file_mappings['file-2.txt'] == 'file-2.txt'
-    assert providers.file_mappings['file-3.txt'] == 'file-3.txt'
+    # After rendering, each entry is normalized to a TemplateMapping whose
+    # source_template is the destination path.  source_provider and file_mode
+    # are preserved so build_file_records can attribute files correctly.
+    for key in ('file-1.txt', 'file-2.txt', 'file-3.txt'):
+        tm = providers.file_mappings[key]
+        assert isinstance(tm, TemplateMapping)
+        assert tm.source_template == key
 
 
 def test_render_with_typed_extra_context_models(tmp_path: Path):
@@ -252,9 +254,12 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
         encoding='utf-8',
     ).strip() == 'FILE #20'
 
-    # After rendering the mapping entries are normalized to destination paths
-    assert providers.file_mappings['file-typed-1.txt'] == 'file-typed-1.txt'
-    assert providers.file_mappings['file-typed-2.txt'] == 'file-typed-2.txt'
+    # After rendering, each entry is normalized to a TemplateMapping whose
+    # source_template is the destination path.
+    for key in ('file-typed-1.txt', 'file-typed-2.txt'):
+        tm = providers.file_mappings[key]
+        assert isinstance(tm, TemplateMapping)
+        assert tm.source_template == key
 
 
 def test_render_with_jinja_copies_binary_files(tmp_path: Path):
@@ -446,9 +451,11 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
     assert 'will_delete.txt' not in providers.file_mappings
     assert 'none_src.txt' not in providers.file_mappings
     # good mapping should be rendered with the prefix but normalization
-    # still reports the unprefixed destination path.
+    # still reports the unprefixed destination path via TemplateMapping.
     assert (setup_output / 'repolish' / '_repolish.good.txt').exists()
-    assert providers.file_mappings['good.txt'] == 'good.txt'
+    tm = providers.file_mappings['good.txt']
+    assert isinstance(tm, TemplateMapping)
+    assert tm.source_template == 'good.txt'
 
 
 def test_render_template_mappings_work_with_jinja(

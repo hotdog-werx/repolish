@@ -153,7 +153,7 @@ def apply_generated_output(
     Returns None. Exceptions during per-file operations are raised to caller.
     """
     output_files = collect_output_files(setup_output)
-    mapped_sources = {v for v in providers.file_mappings.values() if isinstance(v, str)}
+    mapped_sources = {s for v in providers.file_mappings.values() if (s := get_source_str_from_mapping(v)) is not None}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     logger.info(

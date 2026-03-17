@@ -375,8 +375,14 @@ def _render_single_mapping(
 
     # Normalize mapping so downstream code still thinks the source is the
     # unprefixed destination path; the helpers in comparison/application will
-    # look for the prefixed file when they need it.
-    providers.file_mappings[dest_path] = dest_path
+    # look for the prefixed file when they need it.  Preserve source_provider
+    # and file_mode so build_file_records can still attribute the file to the
+    # correct provider instead of falling back to 'unknown'.
+    providers.file_mappings[dest_path] = TemplateMapping(
+        source_template=dest_path,
+        file_mode=mapping.file_mode,
+        source_provider=mapping.source_provider,
+    )
 
 
 def _process_template_mappings(
