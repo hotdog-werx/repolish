@@ -83,11 +83,14 @@ class FileRecord:
     `mode` is the effective FileMode (REGULAR, CREATE_ONLY, DELETE, KEEP).
     `owner` is the config alias of the provider that controls this file,
     or 'config' for entries driven by config.delete_files.
+    `source` is the source template path for explicitly-mapped files, or
+    None for auto-staged and deleted files.
     """
 
     path: str
     mode: FileMode
     owner: str
+    source: str | None = None
 
 
 class Providers(BaseModel):
@@ -170,7 +173,12 @@ def _records_from_file_mappings(
         if isinstance(src, TemplateMapping):
             raw_pid = src.source_provider or ''
             owner = pid_to_alias.get(raw_pid, raw_pid or 'unknown')
-            files[dest] = FileRecord(path=dest, mode=src.file_mode, owner=owner)
+            files[dest] = FileRecord(
+                path=dest,
+                mode=src.file_mode,
+                owner=owner,
+                source=src.source_template,
+            )
         else:
             files[dest] = FileRecord(
                 path=dest,

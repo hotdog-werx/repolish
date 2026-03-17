@@ -137,9 +137,11 @@ def _ordered_aliases(config: RepolishConfig) -> list[str]:
 def _collect_provider_files(
     providers: Providers,
     alias: str,
-) -> list[dict[str, str]]:
+) -> list[dict[str, str | None]]:
     """Return sorted list of {path, mode} for files this provider contributes."""
-    return [{'path': r.path, 'mode': r.mode.value} for r in providers.file_records if r.owner == alias]
+    return [
+        {'path': r.path, 'mode': r.mode.value, 'source': r.source} for r in providers.file_records if r.owner == alias
+    ]
 
 
 def _print_files_summary(providers: Providers) -> None:
@@ -154,10 +156,12 @@ def _print_files_summary(providers: Providers) -> None:
         table = Table(title=title, show_header=True, header_style='bold')
         table.add_column('Mode', style='dim', no_wrap=True)
         table.add_column('Path')
+        table.add_column('Source', style='dim')
         for record in records:
             mode_val = record.mode.value
             style = _MODE_STYLE.get(mode_val, '')
-            table.add_row(f'[{style}]{mode_val}[/{style}]', record.path)
+            source = record.source if record.source and record.source != record.path else ''
+            table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
         console.print(table)
 
 

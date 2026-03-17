@@ -47,7 +47,9 @@ def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # n
 
     providers = create_providers([str(provider)])
 
-    assert providers.file_mappings.get('README.txt') == 'README_template'
+    tm = providers.file_mappings.get('README.txt')
+    assert isinstance(tm, TemplateMapping)
+    assert tm.source_template == 'README_template'
 
 
 def test_create_file_mappings_accepts_pydantic_extra_context(tmp_path: Path):
@@ -172,6 +174,6 @@ def test_provider_templates_root_is_injected(tmp_path: Path) -> None:
 
     providers = create_providers([str(provider_dir)])
 
-    assert providers.file_mappings.get('__templates_root__') == str(
-        provider_dir.resolve(),
-    )
+    tm = providers.file_mappings.get('__templates_root__')
+    assert isinstance(tm, TemplateMapping)
+    assert tm.source_template == str(provider_dir.resolve())

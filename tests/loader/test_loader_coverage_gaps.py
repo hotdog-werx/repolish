@@ -51,7 +51,8 @@ def test_process_file_mappings_skips_none_values() -> None:
     """Ensure `None` mapping entries are silently skipped."""
     acc2 = Accumulators()
     _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc2)
-    assert acc2.merged_file_mappings == {'b.txt': 'tmpl'}
+    assert list(acc2.merged_file_mappings) == ['b.txt']
+    assert acc2.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore[union-attr]
 
 
 # ---- orchestrator helpers --------------------------------------------------
@@ -61,7 +62,8 @@ def test_process_provider_fm_skips_none_values() -> None:
     """Ensure `None` mapping entries are silently skipped by `_process_provider_fm`."""
     acc = Accumulators()
     _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc)
-    assert acc.merged_file_mappings == {'b.txt': 'tmpl'}
+    assert list(acc.merged_file_mappings) == ['b.txt']
+    assert acc.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore[union-attr]
 
 
 def test_process_provider_fm_none_populates_suppressed_sources() -> None:
@@ -74,7 +76,8 @@ def test_process_provider_fm_none_populates_suppressed_sources() -> None:
     )
     assert '.github/workflows/_ci-checks.yaml' in acc.suppressed_sources
     assert '.github/workflows/_ci-checks.yaml' not in acc.merged_file_mappings
-    assert acc.merged_file_mappings == {'other.txt': 'tmpl'}
+    assert list(acc.merged_file_mappings) == ['other.txt']
+    assert acc.merged_file_mappings['other.txt'].source_template == 'tmpl'  # type: ignore[union-attr]
 
 
 def test_collect_provider_contributions_skips_missing_instance():

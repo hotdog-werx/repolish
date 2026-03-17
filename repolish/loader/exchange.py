@@ -320,7 +320,15 @@ def _process_provider_fm(
             accum.suppressed_sources.add(dest)
             continue
         if isinstance(src, str):
-            accum.merged_file_mappings[dest] = src
+            # Wrap plain-string sources in a TemplateMapping so they carry
+            # source_provider.  This lets build_file_records attribute the
+            # destination file to the correct provider instead of falling
+            # back to 'unknown'.  get_source_str_from_mapping and all other
+            # consumers already handle both str and TemplateMapping values.
+            accum.merged_file_mappings[dest] = TemplateMapping(
+                source_template=src,
+                source_provider=provider_id,
+            )
             continue
         annotated = TemplateMapping(
             source_template=src.source_template,

@@ -38,7 +38,10 @@ def test_apply_variant_a(
     repo = fixtures.file_mappings_variant_a_fresh.stage(tmp_path)
     monkeypatch.chdir(repo)
 
-    run_repolish(['apply'])
+    result = run_repolish(['apply'])
+
+    # The tables showing the mappings should not show any unknown providers
+    assert 'unknown' not in result.output
 
     config = repo / 'config.yml'
     assert config.exists(), 'config.yml must be created by apply'

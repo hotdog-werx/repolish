@@ -776,10 +776,9 @@ class P(Provider[Ctx, BaseInputs]):
 
     providers = create_providers([str(template_a), str(template_b)])
 
-    assert providers.file_mappings == {
-        'file-a.yml': '_repolish.a.yml',
-        'file-b.yml': '_repolish.b.yml',
-    }
+    assert set(providers.file_mappings) == {'file-a.yml', 'file-b.yml'}
+    assert providers.file_mappings['file-a.yml'].source_template == '_repolish.a.yml'  # type: ignore[union-attr]
+    assert providers.file_mappings['file-b.yml'].source_template == '_repolish.b.yml'  # type: ignore[union-attr]
 
 
 def test_file_mappings_later_provider_overrides_earlier(tmp_path: Path) -> None:
@@ -818,7 +817,8 @@ class P(Provider[Ctx, BaseInputs]):
 
     providers = create_providers([str(template_a), str(template_b)])
 
-    assert providers.file_mappings == {'config.yml': '_repolish.option-b.yml'}
+    assert list(providers.file_mappings) == ['config.yml']
+    assert providers.file_mappings['config.yml'].source_template == '_repolish.option-b.yml'  # type: ignore[union-attr]
 
 
 def test_none_mapped_entry_populates_suppressed_sources(tmp_path: Path) -> None:

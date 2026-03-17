@@ -4,6 +4,7 @@ from textwrap import dedent
 import pytest
 
 from repolish.loader import create_providers
+from repolish.loader.models.files import TemplateMapping
 
 
 def write_provider(tmp_path: Path, src: str) -> str:
@@ -101,4 +102,6 @@ def test_file_mappings_none_values_are_filtered(tmp_path: Path):
     )
     providers = create_providers([write_provider(tmp_path, src)])
     assert 'dest.txt' not in providers.file_mappings
-    assert providers.file_mappings.get('x.txt') == 'y.txt'
+    tm = providers.file_mappings.get('x.txt')
+    assert isinstance(tm, TemplateMapping)
+    assert tm.source_template == 'y.txt'

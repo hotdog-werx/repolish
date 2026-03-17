@@ -2,6 +2,7 @@ from pathlib import Path
 from textwrap import dedent
 
 from repolish.loader import create_providers
+from repolish.loader.models.files import TemplateMapping
 
 
 def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
@@ -77,4 +78,6 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
     providers = create_providers([str(pa), str(pb)])
 
     # Provider B's mapping key should reflect the strategy derived from A's input
-    assert providers.file_mappings.get('config.merged.ours') == 'config_template'
+    tm = providers.file_mappings.get('config.merged.ours')
+    assert isinstance(tm, TemplateMapping)
+    assert tm.source_template == 'config_template'
