@@ -132,16 +132,23 @@ which one to copy based on context. This keeps filenames clean without
 
 ### How it works
 
-Files in your template directory that start with `_repolish.` are treated as
-**conditional/alternative files**. They are only copied to the project when
-explicitly referenced in `create_file_mappings()` (or a `file_mappings`
-variable) in `repolish.py`. They can be placed anywhere in the template
-directory tree.
+Every file under a provider's `repolish/` directory is **auto-staged** to the
+project at its natural path. `create_file_mappings()` maps a _destination_ path
+(the key) to a _source_ template (the value). When a source is listed in
+`file_mappings` it becomes a staging intermediate — it is rendered and written
+at the mapped destination, never at its own natural path.
+
+By convention, source-only templates are named with a `_repolish.` prefix so
+they are easy to identify and so a typo (forgetting to map them) doesn't produce
+a garbage file in the project. The prefix has no runtime special meaning; the
+exclusion from auto-staged output applies to any file that appears as a mapping
+source, regardless of name.
 
 The `file_mappings` return value is a dict where:
 
 - **Keys** are destination paths in the final project (must be unique)
-- **Values** are source paths in the template, or `None` to skip
+- **Values** are source paths in the template, a `TemplateMapping`, or `None` to
+  skip
 
 ### Example
 
@@ -151,13 +158,13 @@ Template directory structure:
 templates/my-template/
 ├── repolish.py
 └── repolish/
-    ├── README.md                          # Always copied
-    ├── _repolish.poetry-pyproject.toml    # Conditional
-    ├── _repolish.setup-pyproject.toml     # Conditional
+    ├── README.md                          # auto-staged → project/README.md
+    ├── _repolish.poetry-pyproject.toml    # mapping source only (never auto-staged)
+    ├── _repolish.setup-pyproject.toml     # mapping source only
     └── .github/
         └── workflows/
-            ├── _repolish.github-ci.yml    # Conditional (nested)
-            └── _repolish.gitlab-ci.yml    # Conditional (nested)
+            ├── _repolish.github-ci.yml    # mapping source only (nested)
+            └── _repolish.gitlab-ci.yml    # mapping source only (nested)
 ```
 
 `repolish.py`:
@@ -186,24 +193,85 @@ def create_file_mappings():
     }
 ```
 
+### Auto-staging vs. explicit mappings
+
+Every file under a provider's `repolish/` directory is **auto-staged** — copied
+to the project at its natural path automatically, without any `file_mappings`
+entry. `create_file_mappings()` is only needed when you want to redirect a
+source template to a _different_ destination path or pick between alternatives
+at runtime.
+
+When a file path appears as a **value** in `file_mappings` (i.e. as a source),
+the loader registers it as a staging intermediate: the file is rendered with the
+provider's context and written to a temporary location, then applied at the
+mapped destination. It is **not** written to its own natural path in the
+project.
+
+The `_repolish.` prefix is a convention that makes this intent explicit — a file
+named `_repolish.config-a.yml` will never end up in the project at
+`_repolish.config-a.yml` because the loader treats it as a pure staging source.
+But the prefix is not required; any file can serve as a mapping source, and it
+will be excluded from the auto-staged output regardless of its name.
+
+```
+repolish/
+├── config.yml                  # auto-staged → written to project as config.yml
+├── _repolish.config-a.yml      # NOT auto-staged → only used when mapped
+└── _repolish.config-b.yml      # NOT auto-staged → only used when mapped
+```
+
+```python
+def create_file_mappings(ctx):
+    return {
+        'config.yml': (
+            '_repolish.config-a.yml' if ctx.variant == 'a'
+            else '_repolish.config-b.yml'
+        ),
+    }
+```
+
+Here `config.yml` is both auto-staged (it exists under `repolish/`) **and** the
+destination of a mapping. The mapping wins: the auto-staged copy is replaced by
+whichever source the mapping resolves to.
+
+### `{{ _provider }}` in mapped sources
+
+Mapped source templates have full access to the provider's context, including
+`{{ _provider.alias }}`, `{{ _provider.version }}`, and
+`{{ _provider.project_name }}` — the same variables available in auto-staged
+templates.
+
 ### Key behaviours
 
-- **Conditional files** (`_repolish.` prefix) are **only** copied when
-  explicitly listed in `file_mappings`.
-- **Regular files** (no prefix) are always copied normally.
+- **Auto-staged files** (all files under `repolish/`) are copied to the project
+  at their natural path unless they are mapping sources or suppressed with
+  `None`.
+- **Mapping sources** are staging intermediates: rendered once and applied at
+  the mapped destination, never written at their own path.
+- **`_repolish.` prefix** is a naming convention signalling "this file is a
+  staging-only source". It has no special runtime effect; it simply prevents
+  accidental auto-staging at an ugly path.
 - **Destinations are unique**: you cannot map multiple sources to the same
   destination within a single provider.
 - **None values are skipped**: returning `None` means "don't copy this file".
 - **Multiple providers**: file mappings from multiple providers are merged;
   later providers override earlier ones for the same destination.
 
-`tuple`-valued mappings allow per-file extra context and are supported with the
-current Jinja-only renderer:
+`TemplateMapping` entries allow per-file extra context and typed rendering:
 
 ```python
-def create_file_mappings():
+from pydantic import BaseModel
+from repolish import TemplateMapping
+
+class PkgCtx(BaseModel):
+    extra_key: str
+
+def create_file_mappings(ctx):
     return {
-        "pyproject.toml": ("_repolish.setup-pyproject.toml", {"extra_key": "value"}),
+        'pyproject.toml': TemplateMapping(
+            '_repolish.setup-pyproject.toml',
+            PkgCtx(extra_key='value'),
+        ),
     }
 ```
 
