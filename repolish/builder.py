@@ -185,15 +185,17 @@ def _copy_template_dir(  # noqa: PLR0913
         if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
             continue
         # Explicitly mapped source: stage the file so file_mappings can find it
-        # in setup_output, but do NOT register it in sources so it is not
-        # treated as an auto-staged template.
+        # in setup_output and register it in sources so the renderer can look up
+        # the declaring provider's context (e.g. for {{ _provider }} access).
+        # build_file_records filters these out so they don't appear as managed
+        # output files.
         if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
             _copy_item_to_dest(
                 item,
                 repolish_dir,
                 dest_root,
                 alias=alias,
-                sources=None,
+                sources=sources,
             )
             continue
         _copy_item_to_dest(

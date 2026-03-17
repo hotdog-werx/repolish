@@ -134,12 +134,16 @@ def test_template_sources_are_posix_ids(tmp_path: Path) -> None:
 def test_excluded_sources_skips_explicitly_mapped_templates(
     tmp_path: Path,
 ) -> None:
-    """Files listed in excluded_sources are staged but not registered in sources.
+    """Files listed in excluded_sources are staged AND registered in sources.
 
     A provider that explicitly maps 'workflows/ci.yaml' in create_file_mappings
-    needs the file present in setup_output so _copy_mapping_file can find it,
-    but it must NOT appear in sources so it is not treated as an auto-staged
-    template (which would write it to its natural destination path).
+    needs the file present in setup_output so the renderer can find the template,
+    and it must appear in sources so the renderer can look up the declaring
+    provider's context (enabling {{ _provider }} access in the template).
+
+    The file-records display layer (build_file_records) is responsible for
+    filtering these staging intermediates out so they don't appear as managed
+    output files.
     """
     tpl = tmp_path / 'prov'
     rep = tpl / 'repolish'
@@ -160,6 +164,7 @@ def test_excluded_sources_skips_explicitly_mapped_templates(
     # README was not excluded — should be staged and registered normally
     assert (staged / 'README.md').exists()
     assert 'README.md' in sources
-    # ci.yaml was excluded — file IS staged (file_mappings needs it) but NOT in sources
+    # ci.yaml was excluded — file IS staged AND registered in sources so the
+    # renderer can look up the declaring provider's context
     assert (staged / 'workflows' / 'ci.yaml').exists()
-    assert 'workflows/ci.yaml' not in sources
+    assert 'workflows/ci.yaml' in sources

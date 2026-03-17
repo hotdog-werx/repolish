@@ -139,10 +139,21 @@ def _records_from_template_sources(
     template_sources: dict[str, str],
     create_only_posix: set[str],
     pid_to_alias: dict[str, str],
+    explicit_sources: set[str],
 ) -> dict[str, FileRecord]:
-    """Return FileRecord entries from staged template sources."""
+    """Return FileRecord entries from staged template sources.
+
+    ``explicit_sources`` is the set of source paths claimed by
+    ``create_file_mappings`` entries (both plain strings and
+    ``TemplateMapping.source_template`` values).  These files are registered in
+    ``template_sources`` so the renderer can look up the declaring provider's
+    context (enabling ``{{ _provider }}`` access), but they are staging
+    intermediates and must not appear in the file-records display.
+    """
     files: dict[str, FileRecord] = {}
     for rel_path, pid in template_sources.items():
+        if rel_path in explicit_sources:
+            continue
         owner = pid_to_alias.get(pid, pid)
         mode = FileMode.CREATE_ONLY if rel_path in create_only_posix else FileMode.REGULAR
         files[rel_path] = FileRecord(path=rel_path, mode=mode, owner=owner)
@@ -210,12 +221,23 @@ def build_file_records(
     - delete: last `Decision` in `delete_history`; source == config_pid -> owner 'config'
     """
     create_only_posix = {p.as_posix() for p in providers.create_only_files}
+    # collect all source paths explicitly claimed by file_mappings so they can
+    # be excluded from the auto-staged template records.  these paths are
+    # registered in template_sources (for provider context lookup) but are not
+    # standalone managed output files.
+    explicit_sources: set[str] = set()
+    for _src in providers.file_mappings.values():
+        if isinstance(_src, str):
+            explicit_sources.add(_src)
+        elif isinstance(_src, TemplateMapping) and _src.source_template:
+            explicit_sources.add(_src.source_template)
     files: dict[str, FileRecord] = {}
     files.update(
         _records_from_template_sources(
             providers.template_sources,
             create_only_posix,
             pid_to_alias,
+            explicit_sources,
         ),
     )
     files.update(

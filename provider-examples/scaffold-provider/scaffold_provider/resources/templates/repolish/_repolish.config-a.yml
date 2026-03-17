@@ -1,2 +1,2 @@
-# config managed by scaffold-provider
+# config managed by {{ _provider.project_name }}
 variant: option-a
