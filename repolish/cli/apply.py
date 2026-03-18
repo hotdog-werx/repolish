@@ -5,7 +5,7 @@ from cyclopts import Parameter
 from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
-from repolish.commands.apply import command
+from repolish.commands.apply import ApplyCommandOptions, apply_command
 
 
 @Parameter(name='*')
@@ -49,45 +49,15 @@ _DEFAULT_APPLY_PARAMS = ApplyParams()
 
 def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
     """Apply templates to project."""
-
-    def _run() -> int:
-        config_path = params.config.resolve()
-        config_dir = config_path.parent
-
-        # Guard: warn when running inside a monorepo member without --standalone.
-        if not params.standalone:
-            from repolish.config.monorepo import check_running_from_member  # noqa: PLC0415
-
-            root = check_running_from_member(config_dir)
-            if root is not None:
-                import sys  # noqa: PLC0415
-
-                rel = config_dir.relative_to(root) if config_dir.is_relative_to(root) else config_dir
-                print(  # noqa: T201
-                    f'error: {config_dir} is a member of the monorepo rooted at {root}.\n'
-                    f'Run `repolish apply` from the root, or use '
-                    f'`repolish apply --member {rel}` from the root.\n'
-                    f'Pass --standalone to bypass this check and run a single-pass apply here.',
-                    file=sys.stderr,
-                )
-                return 1
-
-        # --standalone: single-pass only, no monorepo orchestration.
-        if params.standalone:
-            return command(
-                config_path,
-                check_only=params.check,
+    run_cli_command(
+        lambda: apply_command(
+            ApplyCommandOptions(
+                config=params.config,
+                check=params.check,
                 strict=params.strict,
-            )
-
-        from repolish.commands.monorepo import run_monorepo  # noqa: PLC0415
-
-        return run_monorepo(
-            config_path,
-            check_only=params.check,
-            strict=params.strict,
-            member=params.member,
-            root_only=params.root_only,
-        )
-
-    run_cli_command(_run)
+                root_only=params.root_only,
+                member=params.member,
+                standalone=params.standalone,
+            ),
+        ),
+    )

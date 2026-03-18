@@ -16,3 +16,7 @@ ci-checks.sequence = [
   "check-complexity",
   "check-coverage",
 ]
+
+[tool.poe.tasks.install-devkit-providers]
+help = "install the devkit example providers in editable mode"
+cmd = "uv pip install -e provider-examples/devkit/workspace -e provider-examples/devkit/python"

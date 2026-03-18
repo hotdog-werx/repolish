@@ -20,7 +20,7 @@ class WorkspaceProvider(
     @override
     def provide_inputs(
         self,
-        own_context: WorkspaceProviderContext,  # noqa: ARG002
+        own_context: WorkspaceProviderContext,
         all_providers: list[ProviderEntry],  # noqa: ARG002
         provider_index: int,  # noqa: ARG002
     ) -> list[BaseInputs]:

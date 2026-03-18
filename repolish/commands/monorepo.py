@@ -170,19 +170,22 @@ def _run_single_pass(  # noqa: PLR0913
     are forwarded for member-to-root input routing (root pass only; ``None``
     for member passes).
     """
-    from repolish.commands.apply import command as apply_command  # noqa: PLC0415
+    from repolish.commands.apply import ApplyOptions  # noqa: PLC0415
+    from repolish.commands.apply import command as apply_command
 
     config_dir = config_path.resolve().parent
     global_ctx = _build_global_context(mono_ctx)
 
     with _chdir(config_dir):
         return apply_command(
-            config_path.resolve(),
-            check_only=check_only,
-            strict=strict,
-            global_context=global_ctx,
-            extra_provider_entries=extra_provider_entries,
-            extra_inputs=extra_inputs,
+            ApplyOptions(
+                config_path=config_path.resolve(),
+                check_only=check_only,
+                strict=strict,
+                global_context=global_ctx,
+                extra_provider_entries=extra_provider_entries,
+                extra_inputs=extra_inputs,
+            ),
         )
 
 
@@ -203,7 +206,8 @@ def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass
     4. Root pass (skipped when ``--member`` is given): inject member data.
     5. Member passes (skipped when ``--root-only``): isolated full passes.
     """
-    from repolish.commands.apply import command as apply_command  # noqa: PLC0415
+    from repolish.commands.apply import ApplyOptions  # noqa: PLC0415
+    from repolish.commands.apply import command as apply_command
 
     config_dir = config_path.resolve().parent
     raw_config = load_config_file(config_path)
@@ -216,9 +220,11 @@ def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass
     if mono_ctx is None:
         # Not a monorepo — plain single-pass run.
         return apply_command(
-            config_path.resolve(),
-            check_only=check_only,
-            strict=strict,
+            ApplyOptions(
+                config_path=config_path.resolve(),
+                check_only=check_only,
+                strict=strict,
+            ),
         )
 
     # Validate --member filter.

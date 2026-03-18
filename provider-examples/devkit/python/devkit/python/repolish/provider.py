@@ -34,7 +34,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     @override
     def provide_inputs(
         self,
-        own_context: PythonProviderContext,  # noqa: ARG002
+        own_context: PythonProviderContext,
         all_providers: list[ProviderEntry],  # noqa: ARG002
         provider_index: int,  # noqa: ARG002
     ) -> list[BaseInputs]:

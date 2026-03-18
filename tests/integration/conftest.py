@@ -151,8 +151,10 @@ _runner = CliRunner()
 def run_repolish(args: list[str], *, exit_code: int = 0) -> Result:
     """Invoke the repolish CLI, assert the exit code, and return the result."""
     result = _runner.invoke(app, args)
-    if exit_code != -1: # escape-hatch for debugging with --exit-code=-1 to skip the assertion
-        assert result.exit_code == exit_code, f'expected exit_code={exit_code}, got {result.exit_code}\n{result.output}'
+    if exit_code != -1:  # escape-hatch for debugging with --exit-code=-1 to skip the assertion
+        assert result.exit_code == exit_code, (
+            f'expected exit_code={exit_code}, got {result.exit_code}\n{result.output}'
+        )
     return result
 
 

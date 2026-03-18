@@ -1,5 +1,5 @@
 import json
-from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from hotlog import get_logger
@@ -44,6 +44,22 @@ from repolish.utils import run_post_process
 from repolish.version import __version__
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class ApplyOptions:
+    """Parameters for the apply command (framework-agnostic)."""
+
+    config_path: Path
+    check_only: bool = False
+    strict: bool = False
+    global_context: GlobalContext | None = field(default=None, repr=False)
+    extra_provider_entries: list[ProviderEntry] | None = field(
+        default=None,
+        repr=False,
+    )
+    extra_inputs: list[BaseInputs] | None = field(default=None, repr=False)
+
 
 _MODE_STYLE: dict[str, str] = {
     'regular': 'green',
@@ -274,8 +290,6 @@ def _build_provider_panel(
     role_label: str,
 ) -> Panel:
     """Build a Rich Panel for one provider with property, context, and files sections."""
-    from rich.columns import Columns  # noqa: PLC0415
-
     props = Table.grid(padding=(0, 1))
     props.add_column(style='bold cyan', no_wrap=True)
     props.add_column()
@@ -295,7 +309,12 @@ def _build_provider_panel(
 
     total = len(records) + len(owner_symlinks)
     if total:
-        files_table = Table(show_header=True, header_style='bold', box=None, padding=(0, 1))
+        files_table = Table(
+            show_header=True,
+            header_style='bold',
+            box=None,
+            padding=(0, 1),
+        )
         files_table.add_column('Mode', style='dim', no_wrap=True)
         files_table.add_column('Path')
         files_table.add_column('Source', style='dim')
@@ -303,14 +322,23 @@ def _build_provider_panel(
             mode_val = record.mode.value
             style = _MODE_STYLE.get(mode_val, '')
             source = record.source if record.source and record.source != record.path else ''
-            files_table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
+            files_table.add_row(
+                f'[{style}]{mode_val}[/{style}]',
+                record.path,
+                source,
+            )
         for sl in owner_symlinks:
-            files_table.add_row('[blue]symlink[/blue]', str(sl.target), str(sl.source))
+            files_table.add_row(
+                '[blue]symlink[/blue]',
+                str(sl.target),
+                str(sl.source),
+            )
     else:
         files_table = Text('(no files)', style='dim')
 
-    from rich.rule import Rule  # noqa: PLC0415
     from rich.console import Group  # noqa: PLC0415
+    from rich.rule import Rule  # noqa: PLC0415
+
     body = Group(
         props,
         Rule(style='dim'),
@@ -327,6 +355,7 @@ def _role_label(ctx: object) -> str:
     """Return a display label for the provider's monorepo role."""
     try:
         from repolish.loader.models import BaseContext  # noqa: PLC0415
+
         if isinstance(ctx, BaseContext):
             info = ctx._provider.monorepo
             if info.mode == 'root':
@@ -365,7 +394,7 @@ def _print_provider_panels(
         if label == 'root':
             root_aliases.append(alias)
         elif label.startswith('package:'):
-            member_name = label[len('package: '):]
+            member_name = label[len('package: ') :]
             member_aliases.setdefault(member_name, []).append(alias)
         else:
             standalone_aliases.append(alias)
@@ -477,6 +506,7 @@ def _debug_file_slug(ctx: object, alias: str) -> str:
     """
     try:
         from repolish.loader.models import BaseContext  # noqa: PLC0415
+
         if isinstance(ctx, BaseContext):
             info = ctx._provider
             mode = info.monorepo.mode
@@ -526,22 +556,21 @@ def _write_provider_debug_files(
         )
 
 
-def command(  # noqa: PLR0913
-    config_path: Path,
-    *,
-    check_only: bool,
-    strict: bool = False,
-    global_context: GlobalContext | None = None,
-    extra_provider_entries: list[ProviderEntry] | None = None,
-    extra_inputs: list[BaseInputs] | None = None,
-) -> int:
-    """Run repolish with the given config and options.
+def command(options: ApplyOptions) -> int:
+    """Run repolish with the given options.
 
-    When *global_context* is provided it is forwarded to the provider pipeline
-    (used by the monorepo orchestrator to inject a pre-built context carrying
-    ``MonorepoContext``).  *extra_provider_entries* and *extra_inputs* are
-    similarly forwarded for member-to-root input routing.
+    When *options.global_context* is provided it is forwarded to the provider
+    pipeline (used by the monorepo orchestrator to inject a pre-built context
+    carrying ``MonorepoContext``).  *extra_provider_entries* and *extra_inputs*
+    are similarly forwarded for member-to-root input routing.
     """
+    config_path = options.config_path
+    check_only = options.check_only
+    strict = options.strict
+    global_context = options.global_context
+    extra_provider_entries = options.extra_provider_entries
+    extra_inputs = options.extra_inputs
+
     logger.info('repolish_started', version=__version__)
 
     # Ensure all providers are registered before resolving the config.
@@ -606,7 +635,13 @@ def command(  # noqa: PLR0913
         alias_to_pid,
     )
 
-    _log_providers_summary(providers, aliases, alias_to_pid, resolved_symlinks, global_context)
+    _log_providers_summary(
+        providers,
+        aliases,
+        alias_to_pid,
+        resolved_symlinks,
+        global_context,
+    )
 
     paused = frozenset(config.paused_files)
     if paused:
@@ -647,3 +682,58 @@ def command(  # noqa: PLR0913
     )
     _apply_symlinks(resolved_symlinks, config.providers)
     return 0
+
+
+@dataclass
+class ApplyCommandOptions:
+    """Parameters for the apply command (framework-agnostic)."""
+
+    config: Path
+    check: bool = False
+    strict: bool = False
+    root_only: bool = False
+    member: str | None = None
+    standalone: bool = False
+
+
+def apply_command(params: ApplyCommandOptions) -> int:
+    config_path = params.config.resolve()
+    config_dir = config_path.parent
+
+    # Guard: warn when running inside a monorepo member without --standalone.
+    if not params.standalone:
+        from repolish.config.monorepo import check_running_from_member  # noqa: PLC0415
+
+        root = check_running_from_member(config_dir)
+        if root is not None:
+            import sys  # noqa: PLC0415
+
+            rel = config_dir.relative_to(root) if config_dir.is_relative_to(root) else config_dir
+            print(  # noqa: T201
+                f'error: {config_dir} is a member of the monorepo rooted at {root}.\n'
+                f'Run `repolish apply` from the root, or use '
+                f'`repolish apply --member {rel}` from the root.\n'
+                f'Pass --standalone to bypass this check and run a single-pass apply here.',
+                file=sys.stderr,
+            )
+            return 1
+
+    # --standalone: single-pass only, no monorepo orchestration.
+    if params.standalone:
+        return command(
+            ApplyOptions(
+                config_path=config_path,
+                check_only=params.check,
+                strict=params.strict,
+            ),
+        )
+
+    from repolish.commands.monorepo import run_monorepo  # noqa: PLC0415
+
+    return run_monorepo(
+        config_path,
+        check_only=params.check,
+        strict=params.strict,
+        member=params.member,
+        root_only=params.root_only,
+    )

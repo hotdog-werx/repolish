@@ -16,7 +16,7 @@ class LinkParams(BaseModel):
     """Parameters for the link command."""
 
     config: Annotated[Path, Parameter(name=['--config', '-c'])] = Field(
-        Path('repolish.yaml'),
+        default=Path('repolish.yaml'),
         description='Path to the repolish YAML configuration file',
     )
 

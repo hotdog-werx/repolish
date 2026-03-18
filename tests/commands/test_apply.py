@@ -4,6 +4,7 @@ from pathlib import Path
 from pytest_mock import MockerFixture
 
 from repolish.commands.apply import (
+    ApplyOptions,
     _print_files_summary,
 )
 from repolish.commands.apply import (
@@ -139,7 +140,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         'repolish.commands.apply.apply_generated_output',
     ).return_value = None
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
     # verify branch behaviour: missing provider skipped (no directories available)
@@ -190,7 +191,7 @@ def test_apply_warns_when_providers_not_ready(
         'repolish.commands.apply.apply_generated_output',
     ).return_value = None
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
 
@@ -239,7 +240,7 @@ def test_apply_command_runs_with_valid_provider(
         'repolish.commands.apply.apply_generated_output',
     ).return_value = None
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
 
@@ -276,7 +277,7 @@ def test_apply_returns_1_when_render_fails(
         "template rendering errors:\npyproject.toml: 'some_unknown' is undefined",
     )
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 1
 
 
@@ -319,7 +320,7 @@ def test_check_only_with_diffs_returns_2(
     ).return_value = ['some_diff']
     mocker.patch('repolish.commands.apply.rich_print_diffs').return_value = None
 
-    rv = run_repolish(cfg_path, check_only=True)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=True))
     assert rv == 2
 
 
@@ -392,7 +393,7 @@ def test_apply_with_template_mapping_in_file_mappings(
 
     _base_mocks(mocker, tmp_path, fake_config, providers)
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
 
@@ -434,7 +435,7 @@ def test_apply_with_delete_files(
 
     _base_mocks(mocker, tmp_path, fake_config, providers)
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
 
@@ -506,7 +507,7 @@ def test_template_sources_translated_from_alias_to_pid(
         side_effect=fake_render_template,
     )
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
     # aliases must have been translated to pids before render_template is called
@@ -568,7 +569,7 @@ def test_paused_files_logged_as_warning(
 
     mock_logger = mocker.patch('repolish.commands.apply.logger')
 
-    run_repolish(cfg_path, check_only=False)
+    run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
 
     warning_calls = [
         call for call in mock_logger.warning.call_args_list if call.args and call.args[0] == 'files_paused'

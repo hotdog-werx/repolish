@@ -305,11 +305,7 @@ class TestDevkitProviderCommunication:
 
         content = root_file.read_text()
         # Collect non-empty, non-header lines.
-        messages = [
-            line
-            for line in content.splitlines()
-            if line.strip() and not line.startswith('#')
-        ]
+        messages = [line for line in content.splitlines() if line.strip() and not line.startswith('#')]
 
         print('content:', content)
         # Every member provider emits one message → 2 members × 2 providers = 4.
@@ -323,6 +319,4 @@ class TestDevkitProviderCommunication:
 
         # Both members' workspace provider messages must also appear.
         workspace_msgs = [m for m in messages if 'workspace:' in m]
-        assert len(workspace_msgs) == 2, (
-            f'expected 2 workspace: messages (one per member), got {len(workspace_msgs)}'
-        )
+        assert len(workspace_msgs) == 2, f'expected 2 workspace: messages (one per member), got {len(workspace_msgs)}'
