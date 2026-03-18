@@ -39,6 +39,7 @@ nav:
       # - Diff Output: wip.md
   - Guides:
       # - Python Projects: guides/python.md
+      - Monorepo Support: guides/monorepo.md
       - Provider Patterns: guides/patterns.md
       - Resource Linker: guides/linker.md
       - Debugging Preprocessors: guides/debugger.md
