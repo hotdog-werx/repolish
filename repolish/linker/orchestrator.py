@@ -64,24 +64,12 @@ def create_provider_symlinks(
 
 
 def _symlinks_from_module(mod: object) -> list[ProviderSymlink]:
-    """Return default symlinks declared by the first ``Provider`` in *mod*.
-
-    Accepts both pre-created instances (legacy) and class definitions
-    (the standard pattern used by provider authors).
-    """
-    module_vars = vars(mod).values()
-    # Prefer an explicit instance if one was placed at module level.
-    for val in module_vars:
-        if isinstance(val, Provider):
-            symlinks: list[Symlink] = val.create_default_symlinks()
-            return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
-    # Fall back to finding a Provider subclass and instantiating it.
-    for val in module_vars:
+    """Return default symlinks declared by the ``Provider`` subclass in *mod*."""
+    for val in vars(mod).values():
         if isclass(val) and issubclass(val, Provider) and val is not Provider:
-            instance = val()
-            symlinks = instance.create_default_symlinks()
+            symlinks: list[Symlink] = val().create_default_symlinks()
             return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
-    return []
+    return []  # pragma: no cover - defensive fallback, we make sure that a provider is declared in repolish.py
 
 
 def _load_provider_default_symlinks(
@@ -107,39 +95,30 @@ def _load_provider_default_symlinks(
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return _symlinks_from_module(mod)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 # pragma: no cover - defence against broken repolish.py in a provider; hard to induce cleanly in tests
         logger.warning(
             'provider_default_symlinks_load_failed',
             provider_root=str(provider_root),
         )
-    return []
+    return []  # pragma: no cover
 
 
-def apply_provider_symlinks(
+def collect_provider_symlinks(
     providers: dict[str, ResolvedProviderInfo],
     providers_config: dict[str, ProviderConfig],
-    config_dir: Path,  # noqa: ARG001 - reserved for future cwd-relative resolution
-) -> None:
-    """Apply symlinks for all registered providers.
+) -> dict[str, list[ProviderSymlink]]:
+    """Resolve the effective symlink list per provider without creating them.
 
-    For each provider the effective symlink list is resolved as follows:
-
-    - ``symlinks`` explicitly set in ``repolish.yaml`` (including ``[]``) →
-      use that list as-is.
-    - ``symlinks`` absent (``None``) → call
-      :meth:`~repolish.loader.models.Provider.create_default_symlinks` on the
-      provider's ``Provider`` instance loaded from ``repolish.py``.
-
-    Runs before template staging so the links exist when templates reference
-    them.
+    Explicit entries in ``repolish.yaml`` take priority; absent entries fall
+    back to the defaults declared in ``repolish.py``.  Providers with no
+    effective symlinks are omitted from the result.
 
     Args:
         providers: Resolved provider map from :func:`~repolish.config.load_config`.
         providers_config: Raw provider config map from the YAML (carries the
             ``symlinks`` override field).
-        config_dir: Directory containing ``repolish.yaml`` (reserved for
-            future use).
     """
+    result: dict[str, list[ProviderSymlink]] = {}
     for alias, info in providers.items():
         raw = providers_config.get(alias)
         if raw is not None and raw.symlinks is not None:
@@ -147,9 +126,9 @@ def apply_provider_symlinks(
             effective: list[ProviderSymlink] = list(raw.symlinks)
         else:
             effective = _load_provider_default_symlinks(info.provider_root)
-
         if effective:
-            create_provider_symlinks(alias, info.resources_dir, effective)
+            result[alias] = effective
+    return result
 
 
 def process_provider(
@@ -161,7 +140,7 @@ def process_provider(
 
     This function's sole responsibility is invoking the CLI that symlinks (or
     copies) the provider's package resources into ``.repolish/<alias>/``.
-    Symlink management is handled separately by :func:`apply_provider_symlinks`.
+    Symlink management is handled separately by :func:`create_provider_symlinks`.
 
     Args:
         provider_name: Alias of the provider.

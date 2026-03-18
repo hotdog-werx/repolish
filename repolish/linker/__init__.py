@@ -7,7 +7,7 @@ from repolish.linker.health import (
     ensure_providers_ready,
 )
 from repolish.linker.orchestrator import (
-    apply_provider_symlinks,
+    collect_provider_symlinks,
     create_provider_symlinks,
     process_provider,
 )
@@ -23,7 +23,7 @@ from repolish.loader.models import Symlink
 __all__ = [
     'ProviderReadinessResult',
     'Symlink',
-    'apply_provider_symlinks',
+    'collect_provider_symlinks',
     'create_additional_link',
     'create_provider_symlinks',
     'ensure_providers_ready',

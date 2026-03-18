@@ -14,6 +14,7 @@ End-to-end scenarios (via ``repolish apply`` / ``repolish apply --check``):
 
 from __future__ import annotations
 
+from textwrap import dedent
 from typing import TYPE_CHECKING
 
 from .conftest import fixtures, run_repolish
@@ -118,7 +119,49 @@ def test_check_exits_zero_when_mapped_destination_already_seeded(
     repo = fixtures.file_mappings_variant_a_existing.stage(tmp_path)
     monkeypatch.chdir(repo)
 
+    # Apply first to establish the complete state (files + symlinks), then
+    # verify check exits zero — the project is already correct.
+    run_repolish(['apply'])
     run_repolish(['apply', '--check'])
+
+    # Replace the symlink with a plain file; check must detect it.
+    symlink = repo / 'symlink-config.yaml'
+    symlink.unlink()
+    symlink.write_text('not a symlink\n', encoding='utf-8')
+    result = run_repolish(['apply', '--check'], exit_code=2)
+    assert 'exists but is not a symlink' in result.output
+
+    # Corrupt the symlink so it points somewhere wrong; check must detect it.
+    run_repolish(['apply'])
+    symlink.unlink()
+    symlink.symlink_to(repo / 'README.md')
+    result = run_repolish(['apply', '--check'], exit_code=2)
+    assert '(expected \\u2192' in result.output
+
+    # Fix it; check must pass again (exercises the "correct symlink" branch).
+    run_repolish(['apply'])
+    run_repolish(['apply', '--check'])
+
+    # Modify repolish.yaml to add an explicit symlinks override; this exercises
+    # the collect_provider_symlinks branch that reads from config rather than
+    # falling back to repolish.py defaults.
+    repolish_yaml = repo / 'repolish.yaml'
+    repolish_yaml.write_text(
+        dedent("""\
+            providers:
+              scaffold-provider:
+                cli: scaffold-provider-link
+                context:
+                  config_variant: a
+                symlinks:
+                  - source: configs/some-config.yaml
+                    target: new-symlink-config.yaml
+        """),
+        encoding='utf-8',
+    )
+    run_repolish(['apply'])
+    run_repolish(['apply', '--check'])
+    assert (repo / 'new-symlink-config.yaml').exists(), 'new-symlink-config.yaml should be created by apply'
 
 
 def test_apply_nested_ci(

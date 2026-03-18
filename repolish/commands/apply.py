@@ -6,7 +6,13 @@ from hotlog import get_logger
 from rich.table import Table
 
 from repolish.builder import stage_templates
-from repolish.config import RepolishConfig, load_config, load_config_file
+from repolish.config import (
+    ProviderSymlink,
+    RepolishConfig,
+    ResolvedProviderInfo,
+    load_config,
+    load_config_file,
+)
 from repolish.console import console
 from repolish.hydration import (
     apply_generated_output,
@@ -18,7 +24,10 @@ from repolish.hydration import (
     rich_print_diffs,
 )
 from repolish.linker.health import ensure_providers_ready
-from repolish.linker.orchestrator import apply_provider_symlinks
+from repolish.linker.orchestrator import (
+    collect_provider_symlinks,
+    create_provider_symlinks,
+)
 from repolish.loader.models import (
     Providers,
     TemplateMapping,
@@ -144,25 +153,188 @@ def _collect_provider_files(
     ]
 
 
-def _print_files_summary(providers: Providers) -> None:
+def _build_provider_table(
+    owner: str,
+    records: list,
+    owner_symlinks: list[ProviderSymlink],
+) -> Table:
+    """Build a Rich Table for one provider showing files and symlinks."""
+    total = len(records) + len(owner_symlinks)
+    title = f'{owner} ({total} file{"s" if total != 1 else ""})'
+    table = Table(title=title, show_header=True, header_style='bold')
+    table.add_column('Mode', style='dim', no_wrap=True)
+    table.add_column('Path')
+    table.add_column('Source', style='dim')
+    for record in records:
+        mode_val = record.mode.value
+        style = _MODE_STYLE.get(mode_val, '')
+        source = record.source if record.source and record.source != record.path else ''
+        table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
+    for sl in owner_symlinks:
+        table.add_row('[blue]symlink[/blue]', str(sl.target), str(sl.source))
+    return table
+
+
+def _print_files_summary(
+    providers: Providers,
+    symlinks: dict[str, list[ProviderSymlink]] | None = None,
+) -> None:
     """Print one Rich table per provider alias showing mode and path for each file."""
-    # Group records by owner, preserving sorted-path order (file_records is pre-sorted).
     by_owner: dict[str, list] = {}
     for record in providers.file_records:
         by_owner.setdefault(record.owner, []).append(record)
 
-    for owner, records in by_owner.items():
-        title = f'{owner} ({len(records)} file{"s" if len(records) != 1 else ""})'
-        table = Table(title=title, show_header=True, header_style='bold')
-        table.add_column('Mode', style='dim', no_wrap=True)
-        table.add_column('Path')
-        table.add_column('Source', style='dim')
-        for record in records:
-            mode_val = record.mode.value
-            style = _MODE_STYLE.get(mode_val, '')
-            source = record.source if record.source and record.source != record.path else ''
-            table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
-        console.print(table)
+    _syms = symlinks if symlinks is not None else {}
+    all_owners = list(by_owner.keys())
+    for alias in _syms:
+        if alias not in all_owners:
+            all_owners.append(alias)
+
+    for owner in all_owners:
+        console.print(
+            _build_provider_table(
+                owner,
+                by_owner.get(owner, []),
+                _syms.get(owner, []),
+            ),
+        )
+
+
+def _check_one_symlink(
+    alias: str,
+    symlink: ProviderSymlink,
+    source_path: Path,
+) -> str | None:
+    """Return an issue string if the symlink is wrong/missing, else None."""
+    target_path = Path(symlink.target)
+    if target_path.is_symlink():
+        actual = target_path.readlink().resolve()
+        if actual != source_path:
+            return f'{alias}: symlink {symlink.target!s} → {actual!s} (expected → {source_path!s})'
+        return None
+    if target_path.exists():
+        return f'{alias}: {symlink.target!s} exists but is not a symlink'
+    return f'{alias}: missing symlink {symlink.target!s} → {symlink.source!s}'
+
+
+def _check_symlinks(
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+    providers: dict[str, ResolvedProviderInfo],
+) -> list[str]:
+    """Return a list of symlink issues (empty if all expected symlinks are correct)."""
+    issues: list[str] = []
+    for alias, symlinks in resolved_symlinks.items():
+        info = providers.get(alias)
+        if info is None:  # pragma: no cover - resolved_symlinks and providers share the same source dict
+            continue
+        for symlink in symlinks:
+            source_path = (info.resources_dir / symlink.source).resolve()
+            issue = _check_one_symlink(alias, symlink, source_path)
+            if issue is not None:
+                issues.append(issue)
+    return issues
+
+
+def _render_templates(
+    setup_input: Path,
+    providers: Providers,
+    setup_output: Path,
+) -> int:
+    """Render templates; return 1 on error, 0 on success."""
+    try:
+        render_template(setup_input, providers, setup_output)
+    except RuntimeError as exc:
+        errors = [line for line in str(exc).splitlines() if line and not line.endswith(':')]
+        logger.exception('render_failed', errors=errors)
+        return 1
+    return 0
+
+
+def _apply_symlinks(
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+    providers: dict[str, ResolvedProviderInfo],
+) -> None:
+    """Materialise all resolved symlinks for every provider."""
+    for alias, symlinks in resolved_symlinks.items():
+        info = providers.get(alias)
+        if info:
+            create_provider_symlinks(alias, info.resources_dir, symlinks)
+
+
+def _log_providers_summary(
+    providers: Providers,
+    aliases: list[str],
+    alias_to_pid: dict[str, str],
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+) -> None:
+    """Log global/per-provider context and print the files summary table."""
+    logger.info(
+        'global_context',
+        context={'repolish': get_global_context().model_dump()},
+        note='available to all providers',
+    )
+    logger.info(
+        'providers_context',
+        providers=[
+            {
+                'alias': alias,
+                'context': {
+                    k: v
+                    for k, v in ctx_to_dict(
+                        providers.provider_contexts.get(alias_to_pid[alias]),
+                    ).items()
+                    if k != 'repolish'
+                },
+                'file_count': sum(1 for r in providers.file_records if r.owner == alias),
+            }
+            for alias in aliases
+            if alias in alias_to_pid
+        ],
+    )
+    _mode_counts = Counter(r.mode.value for r in providers.file_records)
+    _owner_counts = Counter(r.owner for r in providers.file_records)
+    logger.info(
+        'files_summary',
+        total=len(providers.file_records),
+        by_mode=dict(_mode_counts),
+        by_owner=dict(_owner_counts),
+    )
+    _print_files_summary(providers, resolved_symlinks)
+    logger.info(
+        'providers_ready',
+        suggestion='see .repolish/_ for extra information on each provider',
+    )
+
+
+def _finish_check(  # noqa: PLR0913 - using helper function to reduce cognitive complexity of `command`
+    setup_output: Path,
+    providers: Providers,
+    base_dir: Path,
+    paused: frozenset[str],
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+    provider_infos: dict[str, ResolvedProviderInfo],
+) -> int:
+    """Run check mode: report diffs and symlink issues; return 2 if any, else 0."""
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        paused_files=paused,
+    )
+    symlink_issues = _check_symlinks(resolved_symlinks, provider_infos)
+    if diffs:
+        logger.error(
+            'check_results',
+            suggestion='run `repolish apply` to apply changes',
+        )
+        rich_print_diffs(diffs)
+    if symlink_issues:
+        logger.error(
+            'symlink_check_failed',
+            issues=symlink_issues,
+            suggestion='run `repolish apply` to fix symlinks',
+        )
+    return 2 if (diffs or symlink_issues) else 0
 
 
 def _write_provider_debug_files(
@@ -226,10 +398,11 @@ def command(
 
     config = load_config(config_path)
 
-    # Apply provider symlinks before staging so any linked configs are in place.
-    apply_provider_symlinks(config.providers, raw_config.providers, config_dir)
-
     providers = build_final_providers(config)
+    resolved_symlinks = collect_provider_symlinks(
+        config.providers,
+        raw_config.providers,
+    )
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
     config_pid = config.config_dir.as_posix()
     aliases = _ordered_aliases(config)
@@ -262,46 +435,7 @@ def command(
         alias_to_pid,
     )
 
-    # global context is the same for every provider — log it once
-    logger.info(
-        'global_context',
-        context={'repolish': get_global_context().model_dump()},
-        note='available to all providers',
-    )
-
-    # per-provider: typed context (repolish key omitted — see global_context) + file count
-    logger.info(
-        'providers_context',
-        providers=[
-            {
-                'alias': alias,
-                'context': {
-                    k: v
-                    for k, v in ctx_to_dict(
-                        providers.provider_contexts.get(alias_to_pid[alias]),
-                    ).items()
-                    if k != 'repolish'
-                },
-                'file_count': sum(1 for r in providers.file_records if r.owner == alias),
-            }
-            for alias in aliases
-            if alias in alias_to_pid
-        ],
-    )
-    # global cross-provider file ownership summary printed as rich tables
-    _mode_counts = Counter(r.mode.value for r in providers.file_records)
-    _owner_counts = Counter(r.owner for r in providers.file_records)
-    logger.info(
-        'files_summary',
-        total=len(providers.file_records),
-        by_mode=dict(_mode_counts),
-        by_owner=dict(_owner_counts),
-    )
-    _print_files_summary(providers)
-    logger.info(
-        'providers_ready',
-        suggestion='see .repolish/_ for extra information on each provider',
-    )
+    _log_providers_summary(providers, aliases, alias_to_pid, resolved_symlinks)
 
     paused = frozenset(config.paused_files)
     if paused:
@@ -315,14 +449,7 @@ def command(
     preprocess_templates(setup_input, providers, base_dir)
 
     # Render templates using Jinja2
-    render_error: str | None = None
-    try:
-        render_template(setup_input, providers, setup_output)
-    except RuntimeError as exc:
-        render_error = str(exc)
-    if render_error is not None:
-        errors = [line for line in render_error.splitlines() if line and not line.endswith(':')]
-        logger.error('render_failed', errors=errors)
+    if _render_templates(setup_input, providers, setup_output) != 0:
         return 1
 
     # Run any configured post-processing commands in the rendered output dir
@@ -330,19 +457,14 @@ def command(
     run_post_process(config.post_process, post_cwd)
 
     if check_only:
-        diffs = check_generated_output(
+        return _finish_check(
             setup_output,
             providers,
             base_dir,
-            paused_files=paused,
+            paused,
+            resolved_symlinks,
+            config.providers,
         )
-        if diffs:
-            logger.error(
-                'check_results',
-                suggestion='run `repolish apply` to apply changes',
-            )
-            rich_print_diffs(diffs)
-        return 2 if diffs else 0
 
     apply_generated_output(
         setup_output,
@@ -350,4 +472,5 @@ def command(
         base_dir,
         paused_files=paused,
     )
+    _apply_symlinks(resolved_symlinks, config.providers)
     return 0

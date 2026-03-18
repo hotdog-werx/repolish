@@ -3,8 +3,14 @@ from pathlib import Path
 
 from pytest_mock import MockerFixture
 
-from repolish.commands.apply import command as run_repolish
+from repolish.commands.apply import (
+    _print_files_summary,
+)
+from repolish.commands.apply import (
+    command as run_repolish,
+)
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
+from repolish.config.models.provider import ProviderSymlink
 from repolish.linker.health import ProviderReadinessResult
 from repolish.loader import Providers
 from repolish.loader.models import (
@@ -572,3 +578,20 @@ def test_paused_files_logged_as_warning(
         'src/generated.py',
         'README.md',
     }
+
+
+def test_print_files_summary_includes_symlink_only_provider(
+    tmp_path: Path,
+) -> None:
+    """A provider with only symlinks (no file records) still appears in the table."""
+    providers = Providers(file_records=[])
+    symlinks = {
+        'symlink-only-provider': [
+            ProviderSymlink(
+                source=Path('src/file.txt'),
+                target=Path('file.txt'),
+            ),
+        ],
+    }
+    # Should not raise; the symlink-only provider must appear in output.
+    _print_files_summary(providers, symlinks)
