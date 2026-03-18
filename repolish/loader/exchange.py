@@ -102,9 +102,17 @@ def _distribute_payloads(
     Every payload is delivered to all providers regardless of position;
     schema filtering ensures unrelated providers are not burdened with
     irrelevant objects.
+
+    Routing targets are the *local* providers only (``state.routing_list``).
+    Extra member entries in ``state.all_providers_list`` are present for
+    inspection by ``provide_inputs`` / ``finalize_context`` but must not
+    receive routed inputs — doing so would produce duplicate entries in
+    ``received_inputs`` when member entries share a ``provider_id`` with a
+    root provider.
     """
+    targets = state.routing_list if state.routing_list is not None else state.all_providers_list
     for inp in inputs_list:
-        for entry in state.all_providers_list:
+        for entry in targets:
             schema = entry.input_type
             if not schema:
                 continue
@@ -119,6 +127,13 @@ class _GatherState:
     provider_contexts: dict[str, BaseContext]
     all_providers_list: list[ProviderEntry]
     received_inputs: dict[str, list[BaseInputs]]
+    routing_list: list[ProviderEntry] | None = None
+    """Subset of ``all_providers_list`` used as routing targets.
+
+    When ``None``, ``all_providers_list`` is used directly.  Set to the
+    local (root-pass) provider entries only during a monorepo root pass so
+    that extra member entries do not cause duplicate input accumulation.
+    """
 
 
 def _collect_for_provider(
@@ -185,11 +200,26 @@ def gather_received_inputs(
     When *extra_inputs* is provided those inputs are added to the routing pool
     alongside the locally-emitted inputs.  This is how member providers' outputs
     are delivered to root providers during a monorepo root pass.
+
+    Routing is restricted to the *local* providers (those in ``module_cache``).
+    Extra member entries in ``all_providers_list`` are for inspection only and
+    must not be routing targets — doing so would produce duplicate entries in
+    ``received_inputs`` when member providers share a ``provider_id`` with a
+    root provider.
     """
+    # The first `len(module_cache)` entries in `all_providers_list` are always
+    # the local (root-pass) providers built from `module_cache`.  Extra member
+    # entries are appended *after* them by the orchestrator.  Slicing avoids
+    # the shared-`provider_id` trap: installed packages used by both root and
+    # members have identical `provider_id` strings, so filtering by pid would
+    # include duplicate member entries and cause 3× duplication in
+    # `received_inputs`.
+    routing_list = all_providers_list[: len(module_cache)]
     state = _GatherState(
         provider_contexts=provider_contexts,
         all_providers_list=all_providers_list,
         received_inputs={},
+        routing_list=routing_list,
     )
 
     for idx, (provider_id, _) in enumerate(module_cache):

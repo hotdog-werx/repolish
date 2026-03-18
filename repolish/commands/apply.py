@@ -3,7 +3,9 @@ from collections import Counter
 from pathlib import Path
 
 from hotlog import get_logger
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from repolish.builder import stage_templates
 from repolish.config import (
@@ -264,16 +266,145 @@ def _apply_symlinks(
             create_provider_symlinks(alias, info.resources_dir, symlinks)
 
 
-def _log_providers_summary(
+def _build_provider_panel(
+    alias: str,
+    ctx: object,
+    records: list,
+    owner_symlinks: list[ProviderSymlink],
+    role_label: str,
+) -> Panel:
+    """Build a Rich Panel for one provider with property, context, and files sections."""
+    from rich.columns import Columns  # noqa: PLC0415
+
+    props = Table.grid(padding=(0, 1))
+    props.add_column(style='bold cyan', no_wrap=True)
+    props.add_column()
+    props.add_row('name', alias)
+    props.add_row('role', role_label)
+
+    ctx_dict = ctx_to_dict(ctx) if ctx is not None else {}
+    ctx_display = {k: v for k, v in ctx_dict.items() if k not in ('repolish', '_provider')}
+    if ctx_display:
+        ctx_table = Table.grid(padding=(0, 1))
+        ctx_table.add_column(style='dim', no_wrap=True)
+        ctx_table.add_column()
+        for k, v in ctx_display.items():
+            ctx_table.add_row(str(k), str(v))
+    else:
+        ctx_table = Text('(no context fields)', style='dim')
+
+    total = len(records) + len(owner_symlinks)
+    if total:
+        files_table = Table(show_header=True, header_style='bold', box=None, padding=(0, 1))
+        files_table.add_column('Mode', style='dim', no_wrap=True)
+        files_table.add_column('Path')
+        files_table.add_column('Source', style='dim')
+        for record in records:
+            mode_val = record.mode.value
+            style = _MODE_STYLE.get(mode_val, '')
+            source = record.source if record.source and record.source != record.path else ''
+            files_table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
+        for sl in owner_symlinks:
+            files_table.add_row('[blue]symlink[/blue]', str(sl.target), str(sl.source))
+    else:
+        files_table = Text('(no files)', style='dim')
+
+    from rich.rule import Rule  # noqa: PLC0415
+    from rich.console import Group  # noqa: PLC0415
+    body = Group(
+        props,
+        Rule(style='dim'),
+        Text('context', style='bold'),
+        ctx_table,
+        Rule(style='dim'),
+        Text(f'files ({total})', style='bold'),
+        files_table,
+    )
+    return Panel(body, title=f'[bold]{alias}[/bold]', border_style='cyan')
+
+
+def _role_label(ctx: object) -> str:
+    """Return a display label for the provider's monorepo role."""
+    try:
+        from repolish.loader.models import BaseContext  # noqa: PLC0415
+        if isinstance(ctx, BaseContext):
+            info = ctx._provider.monorepo
+            if info.mode == 'root':
+                return 'root'
+            if info.mode == 'package' and info.member_name:
+                return f'package: {info.member_name}'
+    except Exception:  # noqa: BLE001
+        pass
+    return 'standalone'
+
+
+def _print_provider_panels(
     providers: Providers,
     aliases: list[str],
     alias_to_pid: dict[str, str],
     resolved_symlinks: dict[str, list[ProviderSymlink]],
 ) -> None:
-    """Log global/per-provider context and print the files summary table."""
+    """Print Rich panels for all providers, grouped by monorepo role."""
+    from rich.rule import Rule  # noqa: PLC0415
+
+    by_owner: dict[str, list] = {}
+    for record in providers.file_records:
+        by_owner.setdefault(record.owner, []).append(record)
+
+    _syms = resolved_symlinks or {}
+
+    # separate root providers from package-member providers and standalone
+    root_aliases: list[str] = []
+    member_aliases: dict[str, list[str]] = {}  # member_name -> [alias, ...]
+    standalone_aliases: list[str] = []
+
+    for alias in aliases:
+        pid = alias_to_pid.get(alias)
+        ctx = providers.provider_contexts.get(pid) if pid else None
+        label = _role_label(ctx)
+        if label == 'root':
+            root_aliases.append(alias)
+        elif label.startswith('package:'):
+            member_name = label[len('package: '):]
+            member_aliases.setdefault(member_name, []).append(alias)
+        else:
+            standalone_aliases.append(alias)
+
+    def _emit(group_title: str, group_aliases: list[str]) -> None:
+        console.print(Rule(f'[bold]{group_title}[/bold]', style='bright_black'))
+        for a in group_aliases:
+            pid = alias_to_pid.get(a)
+            ctx = providers.provider_contexts.get(pid) if pid else None
+            label = _role_label(ctx)
+            panel = _build_provider_panel(
+                a,
+                ctx,
+                by_owner.get(a, []),
+                _syms.get(a, []),
+                label,
+            )
+            console.print(panel)
+
+    if root_aliases:
+        _emit('Root', root_aliases)
+    for member_name, m_aliases in member_aliases.items():
+        _emit(f'Member: {member_name}', m_aliases)
+    if standalone_aliases:
+        _emit('Standalone', standalone_aliases)
+
+
+def _log_providers_summary(
+    providers: Providers,
+    aliases: list[str],
+    alias_to_pid: dict[str, str],
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+    global_context: GlobalContext | None = None,
+) -> None:
+    """Log global/per-provider context and print the provider panels."""
+    ctx = global_context if global_context is not None else get_global_context()
     logger.info(
         'global_context',
-        context={'repolish': get_global_context().model_dump()},
+        context={'repolish': ctx.model_dump()},
         note='available to all providers',
     )
     logger.info(
@@ -294,15 +425,7 @@ def _log_providers_summary(
             if alias in alias_to_pid
         ],
     )
-    _mode_counts = Counter(r.mode.value for r in providers.file_records)
-    _owner_counts = Counter(r.owner for r in providers.file_records)
-    logger.info(
-        'files_summary',
-        total=len(providers.file_records),
-        by_mode=dict(_mode_counts),
-        by_owner=dict(_owner_counts),
-    )
-    _print_files_summary(providers, resolved_symlinks)
+    _print_provider_panels(providers, aliases, alias_to_pid, resolved_symlinks)
     logger.info(
         'providers_ready',
         suggestion='see .repolish/_ for extra information on each provider',
@@ -343,6 +466,32 @@ def _finish_check(  # noqa: PLR0913 - using helper function to reduce cognitive 
     return 2 if (diffs or symlink_issues) else 0
 
 
+def _debug_file_slug(ctx: object, alias: str) -> str:
+    """Return a filename slug capturing monorepo role + provider alias.
+
+    Examples::
+
+        root.devkit-workspace
+        pkg-alpha.devkit-python
+        standalone.simple-provider
+    """
+    try:
+        from repolish.loader.models import BaseContext  # noqa: PLC0415
+        if isinstance(ctx, BaseContext):
+            info = ctx._provider
+            mode = info.monorepo.mode
+            if mode == 'root':
+                prefix = 'root'
+            elif mode == 'package' and info.monorepo.member_name:
+                prefix = info.monorepo.member_name
+            else:
+                prefix = 'standalone'
+            return f'{prefix}.{alias}'
+    except Exception:  # noqa: BLE001
+        pass
+    return f'standalone.{alias}'
+
+
 def _write_provider_debug_files(
     base_dir: Path,
     config: RepolishConfig,
@@ -351,9 +500,10 @@ def _write_provider_debug_files(
 ) -> None:
     """Write per-provider context and file decisions to .repolish/_/.
 
-    Each provider gets a `provider-context.<alias>.json` file containing its
-    typed context and the list of files it controls.  Written after staging so
-    `template_sources` is already populated.
+    Each provider gets a ``provider-context.<role>.<alias>.json`` file where
+    ``role`` is ``root``, ``standalone``, or the member package name
+    (e.g. ``pkg-alpha``).  Written after staging so ``template_sources`` is
+    already populated.
     """
     debug_dir = base_dir / '.repolish' / '_'
     debug_dir.mkdir(parents=True, exist_ok=True)
@@ -363,12 +513,13 @@ def _write_provider_debug_files(
         if not pid:
             continue
         ctx = providers.provider_contexts.get(pid)
+        slug = _debug_file_slug(ctx, alias)
         data: dict[str, object] = {
             'alias': alias,
             'context': ctx_to_dict(ctx),
             'files': _collect_provider_files(providers, alias),
         }
-        out_path = debug_dir / f'provider-context.{alias}.json'
+        out_path = debug_dir / f'provider-context.{slug}.json'
         out_path.write_text(
             json.dumps(data, indent=2, default=str),
             encoding='utf-8',
@@ -455,7 +606,7 @@ def command(  # noqa: PLR0913
         alias_to_pid,
     )
 
-    _log_providers_summary(providers, aliases, alias_to_pid, resolved_symlinks)
+    _log_providers_summary(providers, aliases, alias_to_pid, resolved_symlinks, global_context)
 
     paused = frozenset(config.paused_files)
     if paused:

@@ -31,13 +31,23 @@ class WorkspaceProvider(
         ``get_inputs_schema()`` matches the item's type.  Return an empty list
         if this provider has nothing to share.
         """
-        return []
+        mode = own_context.repolish.monorepo.mode
+        if mode == 'root':
+            # The root provider collects messages from members; it has nothing
+            # to report to itself.
+            return []
+        member_name = own_context._provider.monorepo.member_name
+        payload = WorkspaceProviderInputs(
+            add_to_member=f'workspace: This is a workspace member! {member_name}',
+            add_to_root=f'workspace: This is the root of the monorepo! {member_name}',
+        )
+        return [payload]
 
     @override
     def finalize_context(
         self,
         own_context: WorkspaceProviderContext,
-        received_inputs: list[WorkspaceProviderInputs],  # noqa: ARG002
+        received_inputs: list[WorkspaceProviderInputs],
         all_providers: list[ProviderEntry],  # noqa: ARG002
         provider_index: int,  # noqa: ARG002
     ) -> WorkspaceProviderContext:
@@ -49,16 +59,8 @@ class WorkspaceProvider(
         If this provider does not consume inputs from others, just return
         ``own_context`` unchanged.
         """
+        own_context.root_file_messages = [inp.add_to_root for inp in received_inputs if inp.add_to_root is not None]
         return own_context
-
-    @override
-    def get_inputs_schema(self) -> type[WorkspaceProviderInputs]:
-        """Declare the Pydantic model class this provider accepts as input.
-
-        The loader uses this to route payloads emitted by other providers'
-        ``provide_inputs`` to this provider's ``finalize_context``.
-        """
-        return WorkspaceProviderInputs
 
     @override
     def create_file_mappings(
@@ -76,4 +78,6 @@ class WorkspaceProvider(
         Use ``self.templates_root`` to discover templates dynamically, e.g.:
             workflows = (self.templates_root / 'repolish' / '.github' / 'workflows').glob('*.yaml')
         """
-        return {}
+        return {
+            'root_file.md': 'root_file.md',
+        }

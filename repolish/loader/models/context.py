@@ -57,6 +57,10 @@ class MemberInfo(BaseModel):
     def _serialize_path(self, v: Path) -> str:
         return v.as_posix()
 
+    @field_serializer('provider_aliases')
+    def _serialize_provider_aliases(self, v: frozenset[str]) -> list[str]:
+        return sorted(v)
+
 
 class MonorepoContext(BaseModel):
     """Monorepo topology injected into every provider context as ``repolish.monorepo``.
@@ -152,6 +156,24 @@ def get_global_context() -> GlobalContext:
     )
 
 
+class MonorepoProviderInfo(BaseModel):
+    """Monorepo identity of the provider instance, injected into ``_provider``.
+
+    Unlike ``repolish.monorepo`` (which is global and shared), these fields
+    describe *this* provider's own role in the monorepo — its mode and, when
+    running as a package member, its name and repo-relative path.
+
+    Available in templates as ``{{ _provider.monorepo.mode }}``,
+    ``{{ _provider.monorepo.member_name }}``, etc.
+    """
+
+    mode: Literal['root', 'package', 'standalone'] = 'standalone'
+    member_name: str = ''
+    """Package name of this member (from its ``pyproject.toml``), e.g. ``pkg-alpha``."""
+    member_path: str = ''
+    """Repo-relative POSIX path to this member directory, e.g. ``packages/pkg-alpha``."""
+
+
 class ProviderInfo(BaseModel):
     """Runtime metadata injected into every provider context by the loader.
 
@@ -164,6 +186,8 @@ class ProviderInfo(BaseModel):
     version: str = ''
     package_name: str = ''
     project_name: str = ''
+    monorepo: MonorepoProviderInfo = Field(default_factory=MonorepoProviderInfo)
+    """Monorepo identity: mode and, for package members, name and path."""
 
     @computed_field
     @property

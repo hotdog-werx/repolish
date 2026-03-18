@@ -1,0 +1,6 @@
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[project]
+name = "monorepo-devkit-root"
+version = "0.1.0"

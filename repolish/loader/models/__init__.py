@@ -5,8 +5,8 @@ than from the individual submodules.  The split into submodules is an
 implementation detail:
 
 - :mod:`.context` — :class:`Symlink`, :class:`GithubRepo`, :class:`GlobalContext`,
-  :func:`get_global_context`, :class:`ProviderInfo`, :class:`BaseContext`,
-  :class:`BaseInputs`, :class:`MemberInfo`, :class:`MonorepoContext`
+  :func:`get_global_context`, :class:`ProviderInfo`, :class:`MonorepoProviderInfo`,
+  :class:`BaseContext`, :class:`BaseInputs`, :class:`MemberInfo`, :class:`MonorepoContext`
 - :mod:`.files` — :class:`Action`, :class:`Decision`, :class:`FileMode`,
   :class:`TemplateMapping`, :class:`FileRecord`, :class:`Providers`,
   :class:`Accumulators`, :func:`build_file_records`
@@ -22,6 +22,7 @@ from repolish.loader.models.context import (
     GlobalContext,
     MemberInfo,
     MonorepoContext,
+    MonorepoProviderInfo,
     ProviderInfo,
     Symlink,
     get_global_context,
@@ -61,6 +62,7 @@ __all__ = [
     'InputT',
     'MemberInfo',
     'MonorepoContext',
+    'MonorepoProviderInfo',
     'Provider',
     'ProviderEntry',
     'ProviderInfo',

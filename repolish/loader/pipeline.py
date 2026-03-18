@@ -8,6 +8,7 @@ from repolish.loader.models import (
     BaseContext,
     BaseInputs,
     GlobalContext,
+    MonorepoProviderInfo,
     ProviderEntry,
     ProviderInfo,
 )
@@ -128,11 +129,25 @@ def _synthesize_provider_context_for_pid(
     # {{ _provider.version }}, {{ _provider.package_name }}, etc. without the
     # provider having to do it manually.
     if isinstance(ctx, BaseContext):
+        mono = global_context.monorepo
+        member_name = ''
+        member_path = ''
+        if mono.mode == 'package' and mono.package_dir is not None:
+            for m in mono.members:
+                if (mono.root_dir / m.path).resolve() == mono.package_dir.resolve():
+                    member_name = m.name
+                    member_path = m.path.as_posix()
+                    break
         ctx._provider_data = ProviderInfo(
             alias=getattr(inst, 'alias', ''),
             version=getattr(inst, 'version', ''),
             package_name=getattr(inst, 'package_name', ''),
             project_name=getattr(inst, 'project_name', ''),
+            monorepo=MonorepoProviderInfo(
+                mode=mono.mode,
+                member_name=member_name,
+                member_path=member_path,
+            ),
         )
 
     provider_contexts[pid] = ctx

@@ -116,6 +116,7 @@ class Fixtures:
     file_mappings_nested_ci_fresh: FixtureRepo
     file_mappings_variant_a_existing: FixtureRepo
     monorepo_basic: FixtureRepo
+    monorepo_devkit: FixtureRepo
 
     @classmethod
     def from_dir(cls, base: Path) -> Fixtures:
@@ -138,6 +139,7 @@ class Fixtures:
                 base / 'file-mappings-variant-a-existing',
             ),
             monorepo_basic=FixtureRepo(base / 'monorepo-basic'),
+            monorepo_devkit=FixtureRepo(base / 'monorepo-devkit'),
         )
 
 
@@ -149,7 +151,8 @@ _runner = CliRunner()
 def run_repolish(args: list[str], *, exit_code: int = 0) -> Result:
     """Invoke the repolish CLI, assert the exit code, and return the result."""
     result = _runner.invoke(app, args)
-    assert result.exit_code == exit_code, f'expected exit_code={exit_code}, got {result.exit_code}\n{result.output}'
+    if exit_code != -1: # escape-hatch for debugging with --exit-code=-1 to skip the assertion
+        assert result.exit_code == exit_code, f'expected exit_code={exit_code}, got {result.exit_code}\n{result.output}'
     return result
 
 

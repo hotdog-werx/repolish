@@ -276,3 +276,53 @@ class TestExplicitMembersConfig:
         assert (repo / 'packages' / 'pkg-a' / 'README.simple-provider.md').exists()
         # pkg-b is explicitly excluded.
         assert not (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
+
+
+class TestDevkitProviderCommunication:
+    def test_root_file_receives_messages_from_all_member_providers(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Member providers communicate up to the root via WorkspaceProviderInputs.
+
+        The fixture has two members (pkg-alpha and pkg-beta), each running
+        devkit-python and devkit-workspace.  Both providers emit a
+        ``WorkspaceProviderInputs`` with ``add_to_root`` set.  The root
+        WorkspaceProvider collects all of these in ``finalize_context`` and
+        writes ``root_file.md`` via an explicit ``create_file_mappings`` entry.
+
+        Expected: 4 provider messages in the file (2 members × 2 providers).
+        """
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        result = run_repolish(['apply'])
+        print(result.output)
+        root_file = repo / 'root_file.md'
+        assert root_file.exists(), 'root_file.md was not created by the workspace provider'
+
+        content = root_file.read_text()
+        # Collect non-empty, non-header lines.
+        messages = [
+            line
+            for line in content.splitlines()
+            if line.strip() and not line.startswith('#')
+        ]
+
+        print('content:', content)
+        # Every member provider emits one message → 2 members × 2 providers = 4.
+        assert len(messages) == 4, f'expected 4 provider messages, got {len(messages)}: {messages}'
+
+        # Both pkg-alpha and pkg-beta must have contributed a python: message.
+        pkg_alpha_msg = [m for m in messages if 'python:' in m and 'pkg-alpha' in m]
+        pkg_beta_msg = [m for m in messages if 'python:' in m and 'pkg-beta' in m]
+        assert pkg_alpha_msg, 'no python: message from pkg-alpha'
+        assert pkg_beta_msg, 'no python: message from pkg-beta'
+
+        # Both members' workspace provider messages must also appear.
+        workspace_msgs = [m for m in messages if 'workspace:' in m]
+        assert len(workspace_msgs) == 2, (
+            f'expected 2 workspace: messages (one per member), got {len(workspace_msgs)}'
+        )

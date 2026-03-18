@@ -2,6 +2,9 @@ from devkit.python.repolish.models import (
     PythonProviderContext,
     PythonProviderInputs,
 )
+from devkit.workspace.repolish.models import (
+    WorkspaceProviderInputs,
+)
 
 from repolish import (
     BaseInputs,
@@ -42,7 +45,13 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
         ``get_inputs_schema()`` matches the item's type.  Return an empty list
         if this provider has nothing to share.
         """
-        return []
+        member_name = own_context._provider.monorepo.member_name
+        return [
+            WorkspaceProviderInputs(
+                add_to_member=f'python: This is a workspace member! {member_name}',
+                add_to_root=f'python: This is the root of the monorepo! {member_name}',
+            ),
+        ]
 
     @override
     def finalize_context(

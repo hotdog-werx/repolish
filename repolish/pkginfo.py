@@ -54,9 +54,17 @@ def resolve_package_identity(package_attr: str | None) -> tuple[str, str]:
     top_level = package_attr.split('.')[0]
     module_name = _resolve_module_name(package_attr)
 
-    project_name = _project_from_distributions(top_level)
-    if not project_name:
-        project_name = _project_from_direct_url(module_name)
+    if module_name != top_level:
+        # Namespace sub-package: packages_distributions() only knows the shared
+        # top-level key (e.g. 'devkit') and may return the wrong distribution
+        # when multiple sub-packages share a namespace.  Use RECORD scanning.
+        project_name = _project_from_distribution_files(module_name)
+        if not project_name:
+            project_name = _project_from_direct_url(module_name)
+    else:
+        project_name = _project_from_distributions(top_level)
+        if not project_name:
+            project_name = _project_from_direct_url(module_name)
 
     return module_name, project_name
 
@@ -126,6 +134,37 @@ def _project_from_distributions(top_level: str) -> str:
             error=str(exc),
         )
         return ''
+
+
+def _project_from_distribution_files(module_name: str) -> str:
+    """Return the distribution name that owns *module_name* by scanning RECORD files.
+
+    For namespace sub-packages such as ``devkit.python``, the top-level
+    ``packages_distributions()`` lookup only returns the shared namespace root
+    (``'devkit'``) and cannot distinguish between ``devkit-python`` and
+    ``devkit-workspace``.  This function finds the distribution whose installed
+    files include a path under the module's actual directory.
+
+    Returns ``''`` when no matching distribution is found.
+    """
+    spec = _safe_find_spec(module_name)
+    if spec is None or not spec.submodule_search_locations:
+        return ''
+
+    pkg_path = Path(next(iter(spec.submodule_search_locations))).resolve()
+
+    for dist in distributions():
+        try:
+            files = dist.files
+            if files is None:
+                continue
+            for f in files:
+                if pkg_path in Path(dist.locate_file(f)).resolve().parents:
+                    return dist.metadata['Name'] or ''
+        except Exception:  # noqa: BLE001
+            pass
+
+    return ''
 
 
 def _project_from_direct_url(module_name: str) -> str:
