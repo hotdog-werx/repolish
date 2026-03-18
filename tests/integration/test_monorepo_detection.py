@@ -1,11 +1,12 @@
-"""Integration tests for monorepo detection and member discovery."""
-
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
 
 from repolish.config.models.project import MonorepoConfig
 from repolish.config.monorepo import (
@@ -66,8 +67,6 @@ class TestDetectMonorepo:
         assert result is None
 
     def test_detect_monorepo_explicit_members(self, tmp_path: Path) -> None:
-        import shutil
-
         # copy monorepo-basic into tmp_path so we can mutate independently
         dest = shutil.copytree(_MONOREPO_BASIC, tmp_path / 'monorepo-basic')
 

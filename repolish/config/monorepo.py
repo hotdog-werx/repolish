@@ -12,10 +12,14 @@ Three public helpers:
 from __future__ import annotations
 
 import tomllib
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from repolish.config.models.project import MonorepoConfig
 from repolish.loader.models.context import MemberInfo, MonorepoContext
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from repolish.config.models.project import MonorepoConfig
 
 
 def _read_uv_workspace_members(pyproject: Path) -> list[str] | None:
@@ -110,7 +114,7 @@ def detect_monorepo_from_config(
     return MonorepoContext(mode='root', root_dir=config_dir, members=members)
 
 
-def check_running_from_member(config_dir: Path) -> Path | None:
+def check_running_from_member(config_dir: Path) -> Path | None:  # noqa: C901 - TODO: extract inner loop into helper
     """Return the monorepo root if *config_dir* is a member, else ``None``.
 
     Walks parent directories until it finds a ``pyproject.toml`` with a

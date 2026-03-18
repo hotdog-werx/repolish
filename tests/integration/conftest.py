@@ -115,6 +115,7 @@ class Fixtures:
     file_mappings_variant_b_fresh: FixtureRepo
     file_mappings_nested_ci_fresh: FixtureRepo
     file_mappings_variant_a_existing: FixtureRepo
+    monorepo_basic: FixtureRepo
 
     @classmethod
     def from_dir(cls, base: Path) -> Fixtures:
@@ -136,6 +137,7 @@ class Fixtures:
             file_mappings_variant_a_existing=FixtureRepo(
                 base / 'file-mappings-variant-a-existing',
             ),
+            monorepo_basic=FixtureRepo(base / 'monorepo-basic'),
         )
 
 

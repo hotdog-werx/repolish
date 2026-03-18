@@ -29,6 +29,9 @@ from repolish.linker.orchestrator import (
     create_provider_symlinks,
 )
 from repolish.loader.models import (
+    BaseInputs,
+    GlobalContext,
+    ProviderEntry,
     Providers,
     TemplateMapping,
     build_file_records,
@@ -369,13 +372,22 @@ def _write_provider_debug_files(
         )
 
 
-def command(
+def command(  # noqa: PLR0913
     config_path: Path,
     *,
     check_only: bool,
     strict: bool = False,
+    global_context: GlobalContext | None = None,
+    extra_provider_entries: list[ProviderEntry] | None = None,
+    extra_inputs: list[BaseInputs] | None = None,
 ) -> int:
-    """Run repolish with the given config and options."""
+    """Run repolish with the given config and options.
+
+    When *global_context* is provided it is forwarded to the provider pipeline
+    (used by the monorepo orchestrator to inject a pre-built context carrying
+    ``MonorepoContext``).  *extra_provider_entries* and *extra_inputs* are
+    similarly forwarded for member-to-root input routing.
+    """
     logger.info('repolish_started', version=__version__)
 
     # Ensure all providers are registered before resolving the config.
@@ -398,7 +410,12 @@ def command(
 
     config = load_config(config_path)
 
-    providers = build_final_providers(config)
+    providers = build_final_providers(
+        config,
+        global_context=global_context,
+        extra_provider_entries=extra_provider_entries,
+        extra_inputs=extra_inputs,
+    )
     resolved_symlinks = collect_provider_symlinks(
         config.providers,
         raw_config.providers,

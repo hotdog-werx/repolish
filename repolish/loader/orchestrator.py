@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal, overload
 
 from repolish.loader import Providers
 from repolish.loader.context import (
@@ -127,6 +128,7 @@ def _run_provider_pipeline(
         received_inputs,
         provider_contexts,
         all_providers_list,
+        global_context=global_context,
     )
 
     # re-apply global overrides after finalization
@@ -153,7 +155,33 @@ def _run_provider_pipeline(
     )
 
 
+@overload
 def create_providers(
+    directories: list[str | tuple[str, str]],
+    context_overrides: dict[str, object] | None = ...,
+    *,
+    provider_overrides: dict[str, dict[str, object]] | None = ...,
+    global_context: GlobalContext | None = ...,
+    extra_provider_entries: list[ProviderEntry] | None = ...,
+    extra_inputs: list[BaseInputs] | None = ...,
+    dry_run: Literal[False] = ...,
+) -> Providers: ...
+
+
+@overload
+def create_providers(
+    directories: list[str | tuple[str, str]],
+    context_overrides: dict[str, object] | None = ...,
+    *,
+    provider_overrides: dict[str, dict[str, object]] | None = ...,
+    global_context: GlobalContext | None = ...,
+    extra_provider_entries: list[ProviderEntry] | None = ...,
+    extra_inputs: list[BaseInputs] | None = ...,
+    dry_run: Literal[True],
+) -> DryRunResult: ...
+
+
+def create_providers(  # noqa: PLR0913
     directories: list[str | tuple[str, str]],
     context_overrides: dict[str, object] | None = None,
     *,

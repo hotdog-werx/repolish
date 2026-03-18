@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel as _BaseModel
 from pydantic_core import ValidationError
@@ -21,6 +21,9 @@ from repolish.loader.models import (
     get_global_context,
 )
 from repolish.loader.models import Provider as _ProviderBase
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def build_provider_metadata(
@@ -91,7 +94,7 @@ def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
 
 
 def _distribute_payloads(
-    inputs_list: list[object],
+    inputs_list: Sequence[object],
     state: _GatherState,
 ) -> None:
     """Route a provider's outputs to every other provider.
@@ -229,6 +232,7 @@ def _validate_raw_inputs(
 def _prepare_own_model(
     provider_contexts: dict[str, BaseContext],
     provider_id: str,
+    global_context: GlobalContext | None = None,
 ) -> BaseContext:
     """Return the context object to pass to `finalize_context`.
 
@@ -239,14 +243,15 @@ def _prepare_own_model(
     own_model = provider_contexts.get(provider_id, BaseContext())
 
     if isinstance(own_model, _BaseModel) and hasattr(own_model, 'repolish'):
-        glob = get_global_context().model_dump()
+        resolved_ctx = global_context if global_context is not None else get_global_context()
+        glob = resolved_ctx.model_dump()
         if glob:
             # Pydantic's model_copy does not propagate PrivateAttr values.
             # Capture _provider_data before copying and restore it afterwards
             # so that templates retain {{ _provider.alias }}, {{ _provider.version }}, etc.
             provider_data = own_model._provider_data
             own_model = own_model.model_copy(
-                update={'repolish': GlobalContext(**glob)},
+                update={'repolish': resolved_ctx},
             )
             if provider_data is not None:
                 own_model._provider_data = provider_data
@@ -279,12 +284,13 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
         raise
 
 
-def finalize_provider_contexts(
+def finalize_provider_contexts(  # noqa: PLR0913
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     received_inputs: dict[str, list[BaseInputs]],
     provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
+    global_context: GlobalContext | None = None,
 ) -> None:
     """Mutate `provider_contexts` by running finalize_context on each instance."""
     for idx, (provider_id, _module_dict) in enumerate(module_cache):
@@ -296,7 +302,11 @@ def finalize_provider_contexts(
         inputs_schema = inst.get_inputs_schema()
         validated_inputs = _validate_raw_inputs(raw_inputs, inputs_schema)
 
-        own_model = _prepare_own_model(provider_contexts, provider_id)
+        own_model = _prepare_own_model(
+            provider_contexts,
+            provider_id,
+            global_context,
+        )
 
         new_ctx = _invoke_finalize(
             inst,
