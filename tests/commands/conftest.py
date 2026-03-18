@@ -14,10 +14,10 @@ def _patch_apply_infrastructure(mocker: MockerFixture) -> None:
     tests that only mock `load_config` don't crash on an empty / missing file.
     """
     mocker.patch(
-        'repolish.commands.apply.load_config_file',
+        'repolish.commands.apply.command.load_config_file',
         return_value=RepolishConfigFile(),
     )
     mocker.patch(
-        'repolish.commands.apply.ensure_providers_ready',
+        'repolish.commands.apply.command.ensure_providers_ready',
         return_value=ProviderReadinessResult(ready=[], failed=[]),
     )

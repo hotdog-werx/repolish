@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-import pytest_mock
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
