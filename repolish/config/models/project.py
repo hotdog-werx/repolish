@@ -11,6 +11,17 @@ from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
 from repolish.exceptions import ConfigValidationError
 
 
+class MonorepoConfig(BaseModel):
+    """Optional monorepo section in ``repolish.yaml``.
+
+    When present, enables monorepo mode.  When ``members`` is set it overrides
+    auto-detection from ``[tool.uv.workspace]`` in ``pyproject.toml``.
+    """
+
+    members: list[str] | None = None
+    """Explicit repo-relative member paths. Overrides uv workspace detection."""
+
+
 class RepolishConfigFile(BaseModel):
     """Configuration for the Repolish tool (internal YAML structure).
 
@@ -54,6 +65,13 @@ class RepolishConfigFile(BaseModel):
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,
         description='Provider configurations for resource linking and orchestration',
+    )
+    monorepo: MonorepoConfig | None = Field(
+        default=None,
+        description=(
+            'Optional monorepo configuration. When present, enables monorepo mode. '
+            'members overrides auto-detection from [tool.uv.workspace].'
+        ),
     )
     # Path to the YAML configuration file. Set when loading from disk; excluded
     # from model serialization so it doesn't appear in dumped config data.

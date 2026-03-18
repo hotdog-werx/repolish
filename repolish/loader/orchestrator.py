@@ -7,6 +7,7 @@ from repolish.loader.context import (
 )
 from repolish.loader.exchange import (
     build_provider_metadata,
+    collect_all_emitted_inputs,
     collect_provider_contributions,
     finalize_provider_contexts,
     gather_received_inputs,
@@ -14,12 +15,14 @@ from repolish.loader.exchange import (
 from repolish.loader.models import (
     Accumulators,
     BaseContext,
+    BaseInputs,
     GlobalContext,
     ProviderEntry,
     get_global_context,
 )
 from repolish.loader.module import _load_module_cache
 from repolish.loader.pipeline import (
+    DryRunResult,
     PipelineOptions,
     _build_all_providers_list,
     _populate_provider_context,
@@ -31,8 +34,15 @@ def _run_provider_pipeline(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     options: PipelineOptions | None = None,
-) -> Providers:
-    """Run the full provider pipeline and return the final Providers object."""
+) -> Providers | DryRunResult:
+    """Run the provider pipeline and return the final result.
+
+    When ``options.dry_run`` is ``True``, the pipeline stops before
+    ``collect_provider_contributions`` (no file writes) and returns a
+    :class:`DryRunResult` containing the provider contexts, all-providers list,
+    and raw emitted inputs.  All other cases return a :class:`Providers` object
+    as before.
+    """
     accum = Accumulators()
 
     # gather metadata and basic helper structures
@@ -69,6 +79,12 @@ def _run_provider_pipeline(
         alias_map=options.alias_map if options is not None else None,
     )
 
+    # Extend all_providers_list with member entries from a monorepo dry pass.
+    # This makes member providers visible to root providers via `all_providers`.
+    extra_entries = options.extra_provider_entries if options is not None else None
+    if extra_entries:
+        all_providers_list = all_providers_list + extra_entries
+
     # apply overrides before input gathering
     if context_overrides:
         _apply_overrides_to_provider_contexts(
@@ -76,13 +92,32 @@ def _run_provider_pipeline(
             context_overrides,
         )
 
+    dry_run = options is not None and options.dry_run
+    extra_inputs: list[BaseInputs] | None = options.extra_inputs if options is not None else None
+
+    if dry_run:
+        # Collect raw emitted inputs without routing — return early.
+        emitted = collect_all_emitted_inputs(
+            module_cache,
+            instances,
+            provider_contexts,
+            all_providers_list,
+        )
+        return DryRunResult(
+            provider_contexts=provider_contexts,
+            all_providers_list=all_providers_list,
+            emitted_inputs=emitted,
+        )
+
     # we no longer attempt to predict receivers; just call all providers
     # for their outgoing inputs and route them based on schemas.
+    # extra_inputs from member dry passes are injected into the routing pool.
     received_inputs = gather_received_inputs(
         module_cache,
         instances,
         provider_contexts,
         all_providers_list,
+        extra_inputs=extra_inputs,
     )
 
     # finalize provider contexts based on collected inputs
@@ -123,7 +158,11 @@ def create_providers(
     context_overrides: dict[str, object] | None = None,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = None,
-) -> Providers:
+    global_context: GlobalContext | None = None,
+    extra_provider_entries: list[ProviderEntry] | None = None,
+    extra_inputs: list[BaseInputs] | None = None,
+    dry_run: bool = False,
+) -> Providers | DryRunResult:
     """Load all template providers and merge their contributions.
 
     Merging semantics:
@@ -135,10 +174,13 @@ def create_providers(
       leading '!' (literal leading char in the original string) will act as an
       undo for that path (i.e., prevent deletion). The loader will apply
       additions/removals in provider order.
+
+    When *global_context* is ``None``, it is computed via :func:`get_global_context`.
+    When *dry_run* is ``True``, returns a :class:`DryRunResult` instead of a
+    :class:`Providers` object.
     """
-    # Compute the global context once; it is injected into every provider's
-    # `repolish` field as a typed object.
-    global_ctx_obj = get_global_context()
+    # Use the provided global context or compute it from git
+    global_ctx_obj = global_context if global_context is not None else get_global_context()
     # Normalize input directories and build an alias map for configuration
     normalized_dirs: list[str] = []
     alias_map: dict[str, str] = {}
@@ -169,5 +211,8 @@ def create_providers(
             context_overrides=context_overrides,
             provider_overrides=provider_overrides,
             alias_map=alias_map,
+            dry_run=dry_run,
+            extra_provider_entries=extra_provider_entries,
+            extra_inputs=extra_inputs,
         ),
     )

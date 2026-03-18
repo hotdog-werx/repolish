@@ -19,11 +19,13 @@ from repolish.loader.models import (
     get_provider_context,
 )
 from repolish.loader.orchestrator import create_providers
+from repolish.loader.pipeline import DryRunResult
 
 __all__ = [
     'Action',
     'BaseContext',
     'Decision',
+    'DryRunResult',
     'FileMode',
     'Provider',
     'ProviderEntry',

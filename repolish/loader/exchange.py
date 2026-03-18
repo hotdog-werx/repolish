@@ -141,13 +141,48 @@ def _collect_for_provider(
         _distribute_payloads(inputs, state)
 
 
+def collect_all_emitted_inputs(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+    provider_contexts: dict[str, BaseContext],
+    all_providers_list: list[ProviderEntry],
+) -> list[BaseInputs]:
+    """Call each provider's ``provide_inputs`` and return all outputs as a flat list.
+
+    Unlike :func:`gather_received_inputs`, this function does **not** route the
+    inputs to recipients.  It is used by the dry-pass logic to capture the raw
+    outputs before any routing occurs.
+    """
+    flat: list[BaseInputs] = []
+    for idx, (provider_id, _) in enumerate(module_cache):
+        inst = instances[idx]
+        if not inst:
+            continue
+        raw = _retrieve_instance_inputs(
+            provider_id,
+            idx,
+            inst,
+            provider_contexts,
+            all_providers_list,
+        )
+        if raw:
+            flat.extend(cast('list[BaseInputs]', raw))
+    return flat
+
+
 def gather_received_inputs(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
+    extra_inputs: list[BaseInputs] | None = None,
 ) -> dict[str, list[BaseInputs]]:
-    """Collect provider inputs and organize them by recipient provider id."""
+    """Collect provider inputs, route them, and return a by-recipient mapping.
+
+    When *extra_inputs* is provided those inputs are added to the routing pool
+    alongside the locally-emitted inputs.  This is how member providers' outputs
+    are delivered to root providers during a monorepo root pass.
+    """
     state = _GatherState(
         provider_contexts=provider_contexts,
         all_providers_list=all_providers_list,
@@ -161,6 +196,9 @@ def gather_received_inputs(
             instances[idx],
             state,
         )
+
+    if extra_inputs:
+        _distribute_payloads(extra_inputs, state)
 
     return state.received_inputs
 

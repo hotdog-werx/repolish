@@ -2,6 +2,7 @@ from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
 from repolish.loader import Action, Decision, Providers, create_providers
+from repolish.loader.models import BaseInputs, GlobalContext, ProviderEntry
 from repolish.misc import ctx_to_dict
 
 
@@ -46,7 +47,13 @@ def _apply_delete_overrides(
     return list(delete_set)
 
 
-def build_final_providers(config: RepolishConfig) -> Providers:
+def build_final_providers(
+    config: RepolishConfig,
+    *,
+    global_context: GlobalContext | None = None,
+    extra_provider_entries: list[ProviderEntry] | None = None,
+    extra_inputs: list[BaseInputs] | None = None,
+) -> Providers:
     """Build the final Providers object from all configured providers.
 
     - Loads providers from the directories referenced by configured providers.
@@ -54,6 +61,12 @@ def build_final_providers(config: RepolishConfig) -> Providers:
       so that provider hooks see project-supplied values during execution.
     - Applies `config.delete_files` entries (with '!' negation) on top of
       provider decisions and records provenance Decisions for config entries.
+
+    When *global_context* is supplied it is forwarded to ``create_providers``
+    instead of calling ``get_global_context()`` — used by the monorepo
+    orchestrator to inject a pre-built context that carries the
+    ``MonorepoContext``.  *extra_provider_entries* and *extra_inputs* are
+    forwarded to the pipeline for member-to-root input routing.
     """
     # build a per-provider override map from the project configuration.
     # the loader applies these via `_apply_provider_overrides` which uses
@@ -84,10 +97,18 @@ def build_final_providers(config: RepolishConfig) -> Providers:
     # pass (alias, pid) tuples so the loader can assign the config key to
     # Provider.alias before create_context is called.
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
-    providers = create_providers(
+    result = create_providers(
         dirs,
         provider_overrides=provider_overrides,
+        global_context=global_context,
+        extra_provider_entries=extra_provider_entries,
+        extra_inputs=extra_inputs,
     )
+
+    # build_final_providers always performs a full pass (dry_run=False),
+    # so the result is always a Providers object.
+    assert isinstance(result, Providers)  # noqa: S101 - guaranteed by dry_run=False
+    providers = result
 
     delete_files = _apply_delete_overrides(providers, config)
     providers.delete_files = delete_files

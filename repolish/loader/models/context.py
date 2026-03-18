@@ -5,14 +5,24 @@ Defines the building blocks that flow into every provider's context object:
 - :class:`GithubRepo` / :class:`GlobalContext` / :func:`get_global_context` — repo-level globals
 - :class:`ProviderInfo` — alias/version injected by the loader at runtime
 - :class:`BaseContext` / :class:`BaseInputs` — base classes for provider contexts and inputs
+- :class:`MemberInfo` / :class:`MonorepoContext` — monorepo topology exposed to providers
 """
 
 from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, Field, PrivateAttr, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    computed_field,
+    field_serializer,
+)
 
 
 @dataclass
@@ -26,6 +36,51 @@ class Symlink:
 
     source: str
     target: str
+
+
+class MemberInfo(BaseModel):
+    """Metadata about a single monorepo member directory.
+
+    Available in templates via ``{{ repolish.monorepo.members }}``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    path: Path
+    """Repo-relative path to the member directory (e.g. ``packages/core``)."""
+    name: str
+    """Package name from the member's ``pyproject.toml`` ``[project].name``."""
+    provider_aliases: frozenset[str]
+    """Provider keys declared in the member's ``repolish.yaml``."""
+
+    @field_serializer('path')
+    def _serialize_path(self, v: Path) -> str:
+        return v.as_posix()
+
+
+class MonorepoContext(BaseModel):
+    """Monorepo topology injected into every provider context as ``repolish.monorepo``.
+
+    In standalone mode all fields retain their defaults so existing providers
+    are unaffected.  When repolish detects a monorepo (or is told about one
+    via ``repolish.yaml``), this object communicates the current execution
+    role and the full list of members.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    mode: Literal['root', 'package', 'standalone'] = 'standalone'
+    root_dir: Path = Field(default_factory=Path.cwd)
+    package_dir: Path | None = None
+    members: list[MemberInfo] = Field(default_factory=list)
+
+    @field_serializer('root_dir')
+    def _serialize_root_dir(self, v: Path) -> str:
+        return v.as_posix()
+
+    @field_serializer('package_dir')
+    def _serialize_package_dir(self, v: Path | None) -> str | None:
+        return v.as_posix() if v is not None else None
 
 
 class GithubRepo(BaseModel):
@@ -67,6 +122,7 @@ class GlobalContext(BaseModel):
             datetime.UTC,
         ).year,
     )
+    monorepo: MonorepoContext = Field(default_factory=MonorepoContext)
 
 
 def get_global_context() -> GlobalContext:

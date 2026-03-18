@@ -6,6 +6,7 @@ from typing import Any, cast
 from repolish.loader._log import logger
 from repolish.loader.models import (
     BaseContext,
+    BaseInputs,
     GlobalContext,
     ProviderEntry,
     ProviderInfo,
@@ -22,6 +23,22 @@ class PipelineOptions:
     provider_overrides: dict[str, dict[str, object]] | None = None
     alias_map: dict[str, str] | None = None  # provider_id -> config alias
     global_context: GlobalContext = field(default_factory=GlobalContext)
+    dry_run: bool = False
+    """When True, skip ``collect_provider_contributions`` (no file writes)."""
+    extra_provider_entries: list[ProviderEntry] | None = None
+    """Provider entries from member dry passes injected into the root pass."""
+    extra_inputs: list[BaseInputs] | None = None
+    """Emitted inputs from member dry passes injected into the root pass routing pool."""
+
+
+@dataclass
+class DryRunResult:
+    """Data collected when ``PipelineOptions.dry_run`` is True."""
+
+    provider_contexts: dict[str, BaseContext]
+    all_providers_list: list[ProviderEntry]
+    emitted_inputs: list[BaseInputs]
+    """Flat list of all inputs emitted by all providers (before routing)."""
 
 
 def _build_all_providers_list(
