@@ -2,7 +2,7 @@ from devkit.python.repolish.models import (
     PythonProviderContext,
     PythonProviderInputs,
 )
-from devkit.workspace.repolish.models import (
+from devkit.workspace.repolish.models import (  # ty: ignore[unresolved-import]
     WorkspaceProviderInputs,
 )
 

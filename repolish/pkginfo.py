@@ -61,6 +61,14 @@ def resolve_package_identity(package_attr: str | None) -> tuple[str, str]:
         project_name = _project_from_distribution_files(module_name)
         if not project_name:
             project_name = _project_from_direct_url(module_name)
+        if not project_name:
+            # Last resort: if only one distribution claims this namespace
+            # top-level, it must be the right one (ambiguity only arises with
+            # multiple sub-packages sharing a namespace, e.g. devkit-python +
+            # devkit-workspace both under 'devkit').
+            candidates = _project_from_distributions_list(top_level)
+            if len(candidates) == 1:
+                project_name = candidates[0]
     else:
         project_name = _project_from_distributions(top_level)
         if not project_name:
@@ -124,16 +132,21 @@ def _project_from_distributions(top_level: str) -> str:
 
     Returns the first distribution name found, or ``''`` if none.
     """
+    candidates = _project_from_distributions_list(top_level)
+    return candidates[0] if candidates else ''
+
+
+def _project_from_distributions_list(top_level: str) -> list[str]:
+    """Return all distribution names associated with *top_level*."""
     try:
-        dists = packages_distributions().get(top_level, [])
-        return dists[0] if dists else ''
+        return packages_distributions().get(top_level, [])
     except Exception as exc:  # noqa: BLE001
         logger.debug(
             'packages_distributions_failed',
             top_level=top_level,
             error=str(exc),
         )
-        return ''
+        return []
 
 
 def _project_from_distribution_files(module_name: str) -> str:
@@ -159,7 +172,7 @@ def _project_from_distribution_files(module_name: str) -> str:
             if files is None:
                 continue
             for f in files:
-                if pkg_path in Path(dist.locate_file(f)).resolve().parents:
+                if pkg_path in Path(str(dist.locate_file(f))).resolve().parents:
                     return dist.metadata['Name'] or ''
         except Exception:  # noqa: BLE001
             pass
@@ -187,12 +200,20 @@ def _project_from_direct_url(module_name: str) -> str:
 
     pkg_path = Path(next(iter(pkg_spec.submodule_search_locations))).resolve()
 
+    # Collect all matching distributions and pick the most specific one
+    # (longest source path).  A broad workspace root (e.g. the repolish repo)
+    # would otherwise shadow a nested provider installed from a sub-directory.
+    best_name = ''
+    best_len = -1
     for dist in distributions():
         source = _source_path_from_dist(dist)
         if source and pkg_path.is_relative_to(source):
-            return dist.metadata['Name'] or ''
+            src_len = len(source.parts)
+            if src_len > best_len:
+                best_len = src_len
+                best_name = dist.metadata['Name'] or ''
 
-    return ''
+    return best_name
 
 
 def _source_path_from_dist(dist: Distribution) -> Path | None:

@@ -13,7 +13,7 @@ class ApplyParams(BaseModel):
     """Parameters for the apply command."""
 
     config: Annotated[Path, Parameter(name=['--config', '-c'])] = Field(
-        Path('repolish.yaml'),
+        default=Path('repolish.yaml'),
         description='Path to the repolish YAML configuration file',
     )
     check: bool = Field(
@@ -39,7 +39,7 @@ class ApplyParams(BaseModel):
         default=False,
         description=(
             'Bypass monorepo detection entirely. Run a normal single-pass repolish on the '
-            'current directory. Use this from inside a member directory to override the R10 guard.'
+            'current directory. Use this from inside a member directory to skip the monorepo guard.'
         ),
     )
 
@@ -54,7 +54,7 @@ def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
         config_path = params.config.resolve()
         config_dir = config_path.parent
 
-        # R10 guard: warn when running inside a monorepo member without --standalone.
+        # Guard: warn when running inside a monorepo member without --standalone.
         if not params.standalone:
             from repolish.config.monorepo import check_running_from_member  # noqa: PLC0415
 
