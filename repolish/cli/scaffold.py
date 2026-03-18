@@ -5,7 +5,6 @@ from cyclopts import Parameter
 from hotlog import get_logger
 
 from repolish.cli.utils import run_cli_command
-from repolish.scaffold import generate
 
 logger = get_logger(__name__)
 
@@ -43,6 +42,10 @@ def scaffold(
     """
 
     def _run() -> int:
+        # Deferred so that importing this CLI module does not eagerly load the
+        # scaffold package when a different subcommand is invoked.
+        from repolish.scaffold import generate  # noqa: PLC0415
+
         cwd = Path.cwd()
         dest = (cwd / directory).resolve()
         written = generate(package, dest, prefix)

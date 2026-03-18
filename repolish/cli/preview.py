@@ -5,7 +5,6 @@ from hotlog import get_logger
 from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
-from repolish.commands.preview import command
 
 logger = get_logger(__name__)
 
@@ -29,6 +28,10 @@ class PreviewParams(BaseModel):
 
 def preview(params: PreviewParams) -> None:
     """Preview/test templates."""
+    # Deferred so that importing this CLI module does not eagerly load the preview
+    # command tree when a different subcommand is invoked.
+    from repolish.commands.preview import command  # noqa: PLC0415
+
     run_cli_command(
         lambda: command(
             params.debug_file,

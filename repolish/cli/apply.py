@@ -5,7 +5,6 @@ from cyclopts import Parameter
 from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
-from repolish.commands.apply import ApplyCommandOptions, apply_command
 
 
 @Parameter(name='*')
@@ -49,6 +48,10 @@ _DEFAULT_APPLY_PARAMS = ApplyParams()
 
 def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
     """Apply templates to project."""
+    # Deferred so that importing this CLI module (e.g. when running `repolish lint`)
+    # does not eagerly load the entire apply command tree.
+    from repolish.commands.apply import ApplyCommandOptions, apply_command  # noqa: PLC0415
+
     run_cli_command(
         lambda: apply_command(
             ApplyCommandOptions(

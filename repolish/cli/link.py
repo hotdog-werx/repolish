@@ -6,7 +6,6 @@ from hotlog import get_logger
 from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
-from repolish.commands.link import command
 
 logger = get_logger(__name__)
 
@@ -26,4 +25,8 @@ _DEFAULT_LINK_PARAMS = LinkParams()
 
 def link(params: LinkParams = _DEFAULT_LINK_PARAMS) -> None:
     """Link provider resources to the project."""
+    # Deferred so that importing this CLI module does not eagerly load the link
+    # command tree when a different subcommand is invoked.
+    from repolish.commands.link import command  # noqa: PLC0415
+
     run_cli_command(lambda: command(params.config))
