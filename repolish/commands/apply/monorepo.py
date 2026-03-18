@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from repolish.commands.apply.options import MemberDryRunData
 from repolish.config.loader import load_config_file
 from repolish.config.monorepo import (
     detect_monorepo,
@@ -36,16 +36,6 @@ def _chdir(path: Path) -> Iterator[None]:
         yield
     finally:
         os.chdir(old)
-
-
-@dataclass
-class MemberDryRunData:
-    """Data collected from a single member's dry pass."""
-
-    member_path: str
-    """Repo-relative POSIX path to the member."""
-    provider_entries: list[ProviderEntry] = field(default_factory=list)
-    emitted_inputs: list[BaseInputs] = field(default_factory=list)
 
 
 def collect_member_data(
