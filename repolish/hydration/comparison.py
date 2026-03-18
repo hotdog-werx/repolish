@@ -74,13 +74,14 @@ def _compare_and_prepare_diff(
         return (a_raw == b_raw), [], []
 
 
-def _check_regular_files(
+def _check_regular_files(  # noqa: PLR0913
     output_files: list[Path],
     setup_output: Path,
     skip_files: set[str],
     base_dir: Path,
     *,
     preserve: bool,
+    disable_auto_staging: bool = False,
 ) -> list[tuple[str, str]]:
     """Check regular files (non-conditional, non-mapped) for diffs.
 
@@ -90,6 +91,8 @@ def _check_regular_files(
         skip_files: Set of file paths to skip (mapped sources + delete files + create-only existing files).
         base_dir: Base directory where the project root is located.
         preserve: Whether to preserve line endings during comparison.
+        disable_auto_staging: When True, auto-staged files are not expected in
+            the project and so are excluded from diff checking entirely.
 
     Returns list of (relative_path, message_or_diff).
     """
@@ -98,6 +101,9 @@ def _check_regular_files(
     for out in output_files:
         rel = out.relative_to(setup_output / 'repolish')
         rel_str = rel.as_posix()
+
+        if disable_auto_staging:
+            continue
 
         # Skip conditional files (files with _repolish. prefix anywhere in path)
         if is_conditional_file(rel_str):
@@ -243,6 +249,7 @@ def check_generated_output(
     base_dir: Path,
     *,
     paused_files: frozenset[str] = frozenset(),
+    disable_auto_staging: bool = False,
 ) -> list[tuple[str, str]]:
     """Compare generated output to project files and report diffs and deletions.
 
@@ -270,6 +277,7 @@ def check_generated_output(
             skip_files,
             base_dir,
             preserve=preserve,
+            disable_auto_staging=disable_auto_staging,
         ),
     )
 

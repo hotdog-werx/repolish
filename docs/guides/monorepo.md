@@ -2,8 +2,8 @@
 
 Repolish has first-class support for uv workspaces (monorepos). A single
 `repolish apply` from the repository root will run a coordinated multi-pass
-execution: one pass for the root and one for each workspace member that has
-its own `repolish.yaml`.
+execution: one pass for the root and one for each workspace member that has its
+own `repolish.yaml`.
 
 ## Quick start
 
@@ -33,10 +33,10 @@ order.
 Detection and execution happen in three stages:
 
 **1. Detection** — Repolish looks for `[tool.uv.workspace].members` in the root
-`pyproject.toml`. If found, it expands the glob patterns and reads each
-member's `pyproject.toml` for its package name and `repolish.yaml` for any
-declared provider aliases. The result is a `MonorepoContext` object that is
-injected into every provider during every pass.
+`pyproject.toml`. If found, it expands the glob patterns and reads each member's
+`pyproject.toml` for its package name and `repolish.yaml` for any declared
+provider aliases. The result is a `MonorepoContext` object that is injected into
+every provider during every pass.
 
 **2. Dry passes** — Before any files are written, Repolish runs each member's
 provider pipeline in dry-run mode. This collects the `ProviderEntry` list and
@@ -46,9 +46,15 @@ all emitted inputs from every member without touching the filesystem.
 
 - **Root pass** — the root `repolish.yaml` is applied. Member `ProviderEntry`
   objects and emitted inputs are made available to root providers so they can
-  read from members (see [Accessing monorepo context](#accessing-monorepo-context-in-providers)).
+  read from members (see
+  [Accessing monorepo context](#accessing-monorepo-context-in-providers)).
+  **Auto-staging is disabled during the root pass** — only files explicitly
+  returned by `create_file_mappings` are written to the root directory. This
+  prevents providers designed for member repos from accidentally littering the
+  monorepo root with member-scoped files.
 - **Member passes** — each member's `repolish.yaml` is applied independently.
-  Each member only sees its own providers in the write pass.
+  Each member only sees its own providers in the write pass. Auto-staging works
+  normally here.
 
 ## Accessing monorepo context in providers
 
@@ -62,17 +68,24 @@ class MyContext(BaseContext):
 
 The relevant sub-object is `context.repolish.monorepo`:
 
-| Field | Type | Description |
-|---|---|---|
-| `mode` | `'standalone'` \| `'root'` \| `'package'` | Execution role for this pass |
-| `root_dir` | `Path` | Absolute path to the monorepo root |
-| `package_dir` | `Path \| None` | Absolute path to the current member (None for root/standalone) |
-| `members` | `list[MemberInfo]` | All discovered members |
+| Field         | Type                                      | Description                                                    |
+| ------------- | ----------------------------------------- | -------------------------------------------------------------- |
+| `mode`        | `'standalone'` \| `'root'` \| `'package'` | Execution role for this pass                                   |
+| `root_dir`    | `Path`                                    | Absolute path to the monorepo root                             |
+| `package_dir` | `Path \| None`                            | Absolute path to the current member (None for root/standalone) |
+| `members`     | `list[MemberInfo]`                        | All discovered members                                         |
 
 `mode` defaults to `'standalone'` when no monorepo is detected, so existing
 providers work unchanged.
 
 ## Writing mode-aware providers
+
+!!! note "Root passes require explicit file mappings" Auto-staging (the
+automatic copy of every file under `provider/repolish/` to the project) is
+**disabled** for root passes. A provider running with `mode == "root"` must
+return all desired output paths from `create_file_mappings` — nothing is written
+implicitly. Auto-staging continues to work normally for `'standalone'` and
+`'package'` passes.
 
 The recommended pattern is a single dispatch on `mode` inside
 `create_file_mappings`:
@@ -87,9 +100,9 @@ def create_file_mappings(self, context):
     return self._standalone_mappings(context)
 ```
 
-You can apply the same pattern in `provide_inputs` (emit different payloads
-from root vs. member) and in `finalize_context` (consume member inputs only
-when `mode == "root"`).
+You can apply the same pattern in `provide_inputs` (emit different payloads from
+root vs. member) and in `finalize_context` (consume member inputs only when
+`mode == "root"`).
 
 ### Example: root provider consuming member inputs
 
@@ -117,18 +130,17 @@ class WorkspaceProvider(Provider):
         return context
 ```
 
-During the root pass, `finalize_context` receives all `WorkspaceInputs`
-objects collected from every member's dry pass, allowing the root to generate
-a workspace-wide summary file (e.g. a top-level `README.md` listing all
-packages).
+During the root pass, `finalize_context` receives all `WorkspaceInputs` objects
+collected from every member's dry pass, allowing the root to generate a
+workspace-wide summary file (e.g. a top-level `README.md` listing all packages).
 
 ## CLI flags
 
-| Flag | Description |
-|---|---|
-| `--root-only` | Run only the root pass; skip all member passes |
-| `--member <path-or-name>` | Run only the named member (by repo-relative path or package name); skip root pass |
-| `--standalone` | Bypass monorepo detection entirely; run a normal single-pass apply in the current directory |
+| Flag                      | Description                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------- |
+| `--root-only`             | Run only the root pass; skip all member passes                                              |
+| `--member <path-or-name>` | Run only the named member (by repo-relative path or package name); skip root pass           |
+| `--standalone`            | Bypass monorepo detection entirely; run a normal single-pass apply in the current directory |
 
 ```bash
 # Root pass only (fast CI check for root files)
@@ -144,8 +156,8 @@ repolish apply --standalone
 
 ### R10 guard
 
-Running `repolish apply` from inside a workspace member without any flags is
-an error. Repolish detects this and exits with code 1:
+Running `repolish apply` from inside a workspace member without any flags is an
+error. Repolish detects this and exits with code 1:
 
 ```
 error: packages/my-lib is a member of the monorepo rooted at /repo.
@@ -159,10 +171,10 @@ full monorepo run.
 
 ## Explicit member configuration
 
-By default, Repolish discovers members entirely from `[tool.uv.workspace]`.
-If you want to restrict which members are processed by Repolish (e.g. the
-workspace is large but only some packages are managed), declare them
-explicitly in the root `repolish.yaml`:
+By default, Repolish discovers members entirely from `[tool.uv.workspace]`. If
+you want to restrict which members are processed by Repolish (e.g. the workspace
+is large but only some packages are managed), declare them explicitly in the
+root `repolish.yaml`:
 
 ```yaml
 # repolish.yaml (root)
@@ -176,8 +188,8 @@ providers:
     cli: my-root-provider-link
 ```
 
-Only the listed paths will receive member passes. Members not listed are
-ignored even if they have a `repolish.yaml`.
+Only the listed paths will receive member passes. Members not listed are ignored
+even if they have a `repolish.yaml`.
 
 ## Debug output
 
@@ -201,5 +213,5 @@ the mode that was active:
 }
 ```
 
-Use `repolish apply --root-only` followed by inspecting `.repolish/_/` to
-verify root-pass context without running member passes.
+Use `repolish apply --root-only` followed by inspecting `.repolish/_/` to verify
+root-pass context without running member passes.

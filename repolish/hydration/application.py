@@ -16,6 +16,8 @@ def _apply_regular_files(
     setup_output: Path,
     skip_sources: set[str],
     base_dir: Path,
+    *,
+    disable_auto_staging: bool = False,
 ) -> None:
     """Copy regular files (non-conditional, non-mapped) to base_dir.
 
@@ -24,10 +26,19 @@ def _apply_regular_files(
         setup_output: Path to the rendered output directory.
         skip_sources: Set of file paths to skip (file_mappings sources + existing create-only files).
         base_dir: Base directory where the project root is located.
+        disable_auto_staging: When True, skip all auto-staged files (used for
+            monorepo root passes where every output file must be explicitly
+            declared via ``create_file_mappings``).
     """
     for out in output_files:
         rel = out.relative_to(setup_output / 'repolish')
         rel_str = rel.as_posix()
+
+        # Root monorepo pass: all auto-staging is disabled — providers must
+        # map every file explicitly via create_file_mappings.
+        if disable_auto_staging:
+            logger.debug('auto_staging_disabled_skipping_file', file=rel_str)
+            continue
 
         # Skip conditional files (files with _repolish. prefix anywhere in path)
         if is_conditional_file(rel_str):
@@ -141,6 +152,7 @@ def apply_generated_output(
     base_dir: Path,
     *,
     paused_files: frozenset[str] = frozenset(),
+    disable_auto_staging: bool = False,
 ) -> None:
     """Copy generated files into the project root and apply deletions.
 
@@ -149,6 +161,10 @@ def apply_generated_output(
         providers: Providers object with delete_files list and file_mappings.
         base_dir: Base directory where the project root is located.
         paused_files: POSIX-style paths that repolish must not touch this run.
+        disable_auto_staging: When True, only files declared in
+            ``create_file_mappings`` are written.  Auto-staged files (those
+            present in the provider's ``repolish/`` tree but not explicitly
+            mapped) are silently skipped.  Set this for monorepo root passes.
 
     Returns None. Exceptions during per-file operations are raised to caller.
     """
@@ -190,6 +206,7 @@ def apply_generated_output(
         setup_output,
         skip_sources,
         base_dir,
+        disable_auto_staging=disable_auto_staging,
     )
 
     # Process file_mappings: copy source -> destination with rename

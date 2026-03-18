@@ -46,20 +46,25 @@ class TestStandaloneModeUnchanged:
 
 
 class TestMonorepoRootPass:
-    def test_monorepo_root_pass_creates_root_files(
+    def test_monorepo_root_pass_suppresses_auto_staging(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``--root-only`` creates root-level files and leaves members untouched."""
+        """``--root-only`` runs cleanly but auto-staged files are suppressed.
+
+        Root-pass providers must use explicit ``create_file_mappings`` to write
+        files; auto-staging is intentionally disabled for root passes so that
+        providers designed for member repos don't litter the monorepo root.
+        """
         repo = fixtures.monorepo_basic.stage(tmp_path)
         monkeypatch.chdir(repo)
 
         run_repolish(['apply', '--root-only'])
 
-        # Root provider output must exist.
-        assert (repo / 'README.simple-provider.md').exists()
+        # Auto-staged file from simple-provider must NOT appear at root.
+        assert not (repo / 'README.simple-provider.md').exists()
 
         # Member directories must NOT have been touched.
         assert not (repo / 'packages' / 'pkg-a' / 'README.simple-provider.md').exists()
@@ -144,7 +149,8 @@ class TestMonorepoFullRun:
 
         run_repolish(['apply'])
 
-        assert (repo / 'README.simple-provider.md').exists()
+        # Root pass suppresses auto-staging; only member files appear.
+        assert not (repo / 'README.simple-provider.md').exists()
         assert (repo / 'packages' / 'pkg-a' / 'README.simple-provider.md').exists()
         assert (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
         # pkg-no-repolish must be untouched.

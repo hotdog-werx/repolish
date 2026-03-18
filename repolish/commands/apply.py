@@ -316,6 +316,8 @@ def _finish_check(  # noqa: PLR0913 - using helper function to reduce cognitive 
     paused: frozenset[str],
     resolved_symlinks: dict[str, list[ProviderSymlink]],
     provider_infos: dict[str, ResolvedProviderInfo],
+    *,
+    disable_auto_staging: bool = False,
 ) -> int:
     """Run check mode: report diffs and symlink issues; return 2 if any, else 0."""
     diffs = check_generated_output(
@@ -323,6 +325,7 @@ def _finish_check(  # noqa: PLR0913 - using helper function to reduce cognitive 
         providers,
         base_dir,
         paused_files=paused,
+        disable_auto_staging=disable_auto_staging,
     )
     symlink_issues = _check_symlinks(resolved_symlinks, provider_infos)
     if diffs:
@@ -481,6 +484,7 @@ def command(  # noqa: PLR0913
             paused,
             resolved_symlinks,
             config.providers,
+            disable_auto_staging=(global_context is not None and global_context.monorepo.mode == 'root'),
         )
 
     apply_generated_output(
@@ -488,6 +492,7 @@ def command(  # noqa: PLR0913
         providers,
         base_dir,
         paused_files=paused,
+        disable_auto_staging=(global_context is not None and global_context.monorepo.mode == 'root'),
     )
     _apply_symlinks(resolved_symlinks, config.providers)
     return 0
