@@ -1,14 +1,13 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from repolish.config import ProviderSymlink, RepolishConfig
 from repolish.loader.models import (
     BaseInputs,
     GlobalContext,
     ProviderEntry,
     Providers,
 )
-
-from repolish.config import RepolishConfig, ProviderSymlink
 
 
 @dataclass
@@ -36,16 +35,6 @@ class ApplyCommandOptions:
     root_only: bool = False
     member: str | None = None
     standalone: bool = False
-
-
-@dataclass
-class MemberDryRunData:
-    """Data collected from a single member's dry pass."""
-
-    member_path: str
-    """Repo-relative POSIX path to the member."""
-    provider_entries: list[ProviderEntry] = field(default_factory=list)
-    emitted_inputs: list[BaseInputs] = field(default_factory=list)
 
 
 @dataclass
@@ -91,10 +80,19 @@ class ResolvedSession:
     aliases: list[str] = field(default_factory=list)
     alias_to_pid: dict[str, str] = field(default_factory=dict, repr=False)
     pid_to_alias: dict[str, str] = field(default_factory=dict, repr=False)
-    resolved_symlinks: dict[str, list[ProviderSymlink]] = field(default_factory=dict, repr=False)
-    extra_provider_entries: list[ProviderEntry] = field(default_factory=list, repr=False)
+    resolved_symlinks: dict[str, list[ProviderSymlink]] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    extra_provider_entries: list[ProviderEntry] = field(
+        default_factory=list,
+        repr=False,
+    )
     extra_inputs: list[BaseInputs] = field(default_factory=list, repr=False)
-    provider_entries: list[ProviderEntry] = field(default_factory=list, repr=False)
+    provider_entries: list[ProviderEntry] = field(
+        default_factory=list,
+        repr=False,
+    )
     """Provider entries emitted outward by this session (cross-session routing to root)."""
     emitted_inputs: list[BaseInputs] = field(default_factory=list, repr=False)
     """Inputs emitted outward by this session's providers (cross-session routing to root)."""

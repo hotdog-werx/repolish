@@ -13,9 +13,7 @@ def collect_provider_files(
 ) -> list[dict[str, str | None]]:
     """Return sorted list of {path, mode, source} for files this provider contributes."""
     return [
-        {'path': r.path, 'mode': r.mode.value, 'source': r.source}
-        for r in providers.file_records
-        if r.owner == alias
+        {'path': r.path, 'mode': r.mode.value, 'source': r.source} for r in providers.file_records if r.owner == alias
     ]
 
 

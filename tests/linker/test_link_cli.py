@@ -14,7 +14,7 @@ from repolish.commands.link import (
 )
 from repolish.config import (
     ProviderConfig,
-    ProviderInfo,
+    ProviderFileInfo,
     ProviderSymlink,
     RepolishConfigFile,
 )
@@ -56,7 +56,7 @@ def test_run_provider_link_error_handling(
 
         result = run_provider_link('mylib', 'mylib-link')
 
-        assert isinstance(result, ProviderInfo)
+        assert isinstance(result, ProviderFileInfo)
         assert result.resources_dir == '.repolish/mylib'
         assert mock_run.call_count == 2
 
@@ -80,7 +80,7 @@ def test_run_provider_link_error_handling(
                 run_provider_link('mylib', 'mylib-link')
         else:
             result = run_provider_link('mylib', 'mylib-link')
-            assert isinstance(result, ProviderInfo)
+            assert isinstance(result, ProviderFileInfo)
 
 
 def test_create_provider_symlinks_no_symlinks(tmp_path: Path):
@@ -175,7 +175,7 @@ def test_process_single_provider_error_handling(
 
     if exception is None:
         # Success case
-        provider_info = ProviderInfo(
+        provider_info = ProviderFileInfo(
             resources_dir=str(tmp_path / '.repolish' / 'mylib'),
             site_package_dir='/fake/source/mylib',
         )
@@ -238,7 +238,7 @@ providers:
     (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
     (tmp_path / 'templates' / 'repolish').mkdir()
 
-    provider_info = ProviderInfo(
+    provider_info = ProviderFileInfo(
         resources_dir=str(tmp_path / '.repolish' / 'mylib'),
         site_package_dir='/fake/source/mylib',
     )
@@ -318,7 +318,7 @@ providers:
     (tmp_path / 'templates' / 'repolish.py').write_text('# provider')
     (tmp_path / 'templates' / 'repolish').mkdir()
 
-    provider_info = ProviderInfo(
+    provider_info = ProviderFileInfo(
         resources_dir=str(tmp_path / '.repolish' / 'lib'),
         site_package_dir='/fake/source/lib',
     )
@@ -369,7 +369,7 @@ def test_save_provider_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Test that save_provider_info saves provider info correctly."""
     monkeypatch.chdir(tmp_path)
 
-    provider_info = ProviderInfo(
+    provider_info = ProviderFileInfo(
         resources_dir=str(tmp_path / '.repolish' / 'mylib'),
         site_package_dir='/fake/source/mylib',
     )
@@ -393,7 +393,7 @@ def test_save_provider_info_with_alias(
     monkeypatch.chdir(tmp_path)
 
     # Provider is called "base" in config, but resources_dir is "codeguide"
-    provider_info = ProviderInfo(
+    provider_info = ProviderFileInfo(
         resources_dir=str(tmp_path / '.repolish' / 'codeguide'),
         site_package_dir='/fake/source/codeguide',
     )
@@ -433,5 +433,5 @@ def test_run_provider_link_no_extra_save(
 
     result = run_provider_link('mylib', 'mylib-link')
 
-    assert isinstance(result, ProviderInfo)
+    assert isinstance(result, ProviderFileInfo)
     assert result.resources_dir == '.repolish/mylib'

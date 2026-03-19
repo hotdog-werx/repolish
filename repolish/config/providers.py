@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from repolish.config.models import AllProviders, ProviderInfo
+from repolish.config.models import AllProviders, ProviderFileInfo
 
 
 def get_provider_info_path(provider_alias: str, config_dir: Path) -> Path:
@@ -38,7 +38,7 @@ def resolve_provider_alias(
 def load_provider_info(
     provider_alias: str,
     config_dir: Path,
-) -> ProviderInfo | None:
+) -> ProviderFileInfo | None:
     """Load provider info from .repolish/_/provider-info.[alias].json.
 
     Provider info files are now centralized in .repolish/_/ directory
@@ -49,7 +49,7 @@ def load_provider_info(
         config_dir: Directory containing the repolish.yaml file
 
     Returns:
-        ProviderInfo model or None if not found
+        ProviderFileInfo model or None if not found
     """
     info_file = get_provider_info_path(provider_alias, config_dir)
-    return ProviderInfo.from_file(info_file)
+    return ProviderFileInfo.from_file(info_file)

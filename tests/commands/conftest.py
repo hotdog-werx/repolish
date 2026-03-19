@@ -3,7 +3,7 @@ from pytest_mock import MockerFixture
 
 from repolish.config.models import RepolishConfigFile
 from repolish.linker.health import ProviderReadinessResult
-from repolish.loader.pipeline import DryRunResult
+from repolish.loader.models import DryRunResult
 
 
 @pytest.fixture(autouse=True)

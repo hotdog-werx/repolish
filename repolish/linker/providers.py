@@ -7,7 +7,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config import ProviderInfo
+from repolish.config import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
 from repolish.utils import open_utf8
 
@@ -44,7 +44,7 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
 
 def write_provider_info_file(
     provider_name: str,
-    provider_info: ProviderInfo,
+    provider_info: ProviderFileInfo,
     config_dir: Path,
 ) -> None:
     """Write the provider-info JSON file to ``.repolish/_/provider-info.<alias>.json``.
@@ -74,7 +74,7 @@ def write_provider_info_file(
 
 def save_provider_info(
     provider_name: str,
-    provider_info: ProviderInfo,
+    provider_info: ProviderFileInfo,
     config_dir: Path,
 ) -> None:
     """Save provider info and its alias mapping.
@@ -108,7 +108,10 @@ def save_provider_info(
     )
 
 
-def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
+def run_provider_link(
+    provider_name: str,
+    link_command: str,
+) -> ProviderFileInfo:
     """Run a provider's link CLI and return its info.
 
     Args:
@@ -143,7 +146,7 @@ def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
         check=True,
     )
     cli_info_dict = json.loads(result.stdout)
-    provider_info = ProviderInfo.model_validate(cli_info_dict)
+    provider_info = ProviderFileInfo.model_validate(cli_info_dict)
 
     # Now run the actual link command
     logger.debug('running_link_command', command=link_command)

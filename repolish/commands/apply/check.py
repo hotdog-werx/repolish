@@ -2,9 +2,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hotlog import get_logger
+
 from repolish.commands.apply.symlinks import check_symlinks
 from repolish.config import ResolvedProviderInfo
-from repolish.hydration import check_generated_output, render_template, rich_print_diffs
+from repolish.hydration import (
+    check_generated_output,
+    render_template,
+    rich_print_diffs,
+)
 from repolish.loader.models import Providers
 
 logger = get_logger(__name__)

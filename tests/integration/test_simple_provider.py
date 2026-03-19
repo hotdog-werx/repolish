@@ -1,7 +1,7 @@
 """Integration tests for the simple-provider example package.
 
 Covers the three main integration surfaces for an installed provider:
-- CLI: ``simple-provider-link --info`` returns valid ``ProviderInfo`` JSON.
+- CLI: ``simple-provider-link --info`` returns valid ``ProviderFileInfo`` JSON.
 - Loader: ``create_providers`` discovers and loads ``SimpleProvider``.
 - Apply: ``repolish apply`` renders the expected output files in a fixture repo.
 """
@@ -12,7 +12,7 @@ import json
 import subprocess
 from typing import TYPE_CHECKING
 
-from repolish.config.models import ProviderInfo
+from repolish.config.models import ProviderFileInfo
 from repolish.loader.orchestrator import create_providers
 
 from .conftest import fixtures, run_repolish
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 def test_simple_provider_cli_info(
     installed_providers: InstalledProviders,
 ) -> None:
-    """``simple-provider-link --info`` returns JSON that validates as ProviderInfo."""
+    """``simple-provider-link --info`` returns JSON that validates as ProviderFileInfo."""
     cli = installed_providers.venv_bin / 'simple-provider-link'
     result = subprocess.run(  # noqa: S603 - we're not passing user input to the shell
         [str(cli), '--info'],
@@ -37,7 +37,7 @@ def test_simple_provider_cli_info(
         check=True,
     )
     data = json.loads(result.stdout)
-    info = ProviderInfo.model_validate(data)
+    info = ProviderFileInfo.model_validate(data)
     # provider_root must point to the templates subdirectory
     assert 'templates' in info.provider_root
     assert info.site_package_dir != ''

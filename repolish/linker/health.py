@@ -15,7 +15,7 @@ from typing import cast
 
 from hotlog import get_logger
 
-from repolish.config import ProviderConfig, ProviderInfo
+from repolish.config import ProviderConfig, ProviderFileInfo
 from repolish.config.providers import load_provider_info
 from repolish.exceptions import ProviderNotReadyError
 from repolish.linker.orchestrator import process_provider
@@ -42,7 +42,7 @@ def _resolve_path(path: str, config_dir: Path) -> Path:
     return p.resolve() if p.is_absolute() else (config_dir / p).resolve()
 
 
-def _paths_valid(info: ProviderInfo) -> bool:
+def _paths_valid(info: ProviderFileInfo) -> bool:
     """Return True only when every path recorded in *info* actually exists."""
     if not Path(info.resources_dir).exists():
         return False
@@ -53,10 +53,10 @@ def _register_static(
     alias: str,
     provider_config: ProviderConfig,
     config_dir: Path,
-) -> ProviderInfo | None:
-    """Write a provider-info file from the YAML ``provider_root``/``resources_dir`` fields.
+) -> ProviderFileInfo | None:
+    """Write a provider-info file from the YAML `provider_root`/`resources_dir` fields.
 
-    Returns the written :class:`ProviderInfo`, or *None* when the path does
+    Returns the written `ProviderFileInfo`, or `None` when the path does
     not exist and registration cannot proceed.
     """
     # guaranteed by ProviderConfig validator: provider_root is set when cli is absent,
@@ -81,7 +81,7 @@ def _register_static(
         else provider_root_abs
     )
 
-    provider_info = ProviderInfo(
+    provider_info = ProviderFileInfo(
         resources_dir=str(resources_abs),
         provider_root=str(provider_root_abs),
     )

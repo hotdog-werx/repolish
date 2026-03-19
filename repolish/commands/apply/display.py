@@ -217,7 +217,7 @@ def _print_provider_panels(
         if label == 'root':
             root_aliases.append(alias)
         elif label.startswith('package:'):
-            member_name = label[len('package: '):]
+            member_name = label[len('package: ') :]
             member_aliases.setdefault(member_name, []).append(alias)
         else:
             standalone_aliases.append(alias)
@@ -228,7 +228,13 @@ def _print_provider_panels(
             pid = alias_to_pid.get(a)
             ctx = providers.provider_contexts.get(pid) if pid else None
             label = role_label(ctx)
-            panel = build_provider_panel(a, ctx, by_owner.get(a, []), _syms.get(a, []), label)
+            panel = build_provider_panel(
+                a,
+                ctx,
+                by_owner.get(a, []),
+                _syms.get(a, []),
+                label,
+            )
             console.print(panel)
 
     if root_aliases:

@@ -49,20 +49,22 @@ class AllProviders(BaseModel):
             return cls()
 
 
-class ProviderInfo(BaseModel):
-    """Model for .provider-info.json file structure.
+class ProviderFileInfo(BaseModel):
+    """On-disk record written and read by the linker for a single linked provider.
 
-    Contains information about a linked provider.
+    Persisted as `.provider-info.<alias>.json` inside the project's `.repolish/`
+    directory. Only the linker and the config resolution layer should need this
+    model; nothing in the provider-authoring or session-execution path uses it.
 
     The three path fields capture the layout of a provider:
 
-    - ``resources_dir``: where the provider's resources live inside the project
-      (the symlink target created by the linker CLI, e.g. ``.repolish/devkit-workspace/``).
-    - ``provider_root``: the directory containing ``repolish.py`` and the
-      ``repolish/`` template tree.  May equal ``resources_dir`` when there is
-      no subdirectory offset.  Empty string means "same as resources_dir".
-    - ``site_package_dir``: absolute path to the provider's resources inside
-      its installed Python package (e.g. ``/site-packages/devkit_workspace/resources/``).
+    - `resources_dir`: where the provider's resources live inside the project
+      (the symlink target created by the linker CLI, e.g. `.repolish/devkit-workspace/`).
+    - `provider_root`: the directory containing `repolish.py` and the
+      `repolish/` template tree. May equal `resources_dir` when there is
+      no subdirectory offset. Empty string means "same as resources_dir".
+    - `site_package_dir`: absolute path to the provider's resources inside
+      its installed Python package (e.g. `/site-packages/devkit_workspace/resources/`).
       Informational only; empty for local / directory-only providers.
     """
 
@@ -94,14 +96,11 @@ class ProviderInfo(BaseModel):
     )
 
     @classmethod
-    def from_file(cls, file_path: Path) -> 'ProviderInfo | None':
-        """Load provider info from JSON file.
+    def from_file(cls, file_path: Path) -> 'ProviderFileInfo | None':
+        """Load provider info from a `.provider-info.<alias>.json` file.
 
-        Args:
-            file_path: Path to .provider-info.json file
-
-        Returns:
-            ProviderInfo instance or None if file doesn't exist or is invalid
+        Returns the parsed `ProviderFileInfo`, or `None` if the file does not
+        exist or cannot be validated.
         """
         if not file_path.exists():
             logger.debug('provider_info_file_not_found', file=str(file_path))

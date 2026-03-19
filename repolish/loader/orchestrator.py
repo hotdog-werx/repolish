@@ -21,10 +21,9 @@ from repolish.loader.models import (
     ProviderEntry,
     get_global_context,
 )
+from repolish.loader.models.pipeline import DryRunResult, PipelineOptions
 from repolish.loader.module import _load_module_cache
 from repolish.loader.pipeline import (
-    DryRunResult,
-    PipelineOptions,
     _build_all_providers_list,
     _populate_provider_context,
     _set_provider_metadata,

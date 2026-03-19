@@ -11,7 +11,7 @@ import pytest
 from repolish.config import (
     AllProviders,
     ProviderConfig,
-    ProviderInfo,
+    ProviderFileInfo,
     RepolishConfigFile,
 )
 from repolish.config.models.provider import ProviderSymlink
@@ -175,13 +175,13 @@ class ProviderInfoCase:
     ids=lambda case: case.name,
 )
 def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
-    """Test ProviderInfo.from_file() behavior."""
+    """Test ProviderFileInfo.from_file() behavior."""
     info_file = tmp_path / 'info.json'
 
     if case.file_content is not None:
         info_file.write_text(case.file_content)
 
-    info = ProviderInfo.from_file(info_file)
+    info = ProviderFileInfo.from_file(info_file)
 
     if case.expected_resources_dir is None:
         assert info is None

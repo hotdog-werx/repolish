@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import pytest_mock
 
-from repolish.config import ProviderConfig, ProviderInfo
+from repolish.config import ProviderConfig, ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
 from repolish.exceptions import ProviderNotReadyError
 from repolish.linker import ensure_providers_ready, process_provider
@@ -97,7 +97,7 @@ def _write_info(
     resources_dir: Path,
     provider_root: Path,
 ) -> None:
-    info = ProviderInfo(
+    info = ProviderFileInfo(
         resources_dir=str(resources_dir),
         provider_root=str(provider_root),
     )

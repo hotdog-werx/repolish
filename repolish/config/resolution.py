@@ -9,7 +9,7 @@ from repolish.config.models import (
     RepolishConfigFile,
     ResolvedProviderInfo,
 )
-from repolish.config.models.metadata import ProviderInfo
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import load_provider_info
 
 logger = get_logger(__name__)
@@ -80,7 +80,7 @@ def _try_auto_link(
     alias: str,
     provider_config: ProviderConfig,
     config_dir: Path,
-) -> ProviderInfo | None:
+) -> ProviderFileInfo | None:
     """Attempt to auto-link via the provider CLI and reload the info file."""
     from repolish.linker import (  # noqa: PLC0415 - deferred to avoid circular import
         process_provider,
@@ -107,10 +107,10 @@ def _try_auto_link(
 def _resolved_from_info(
     alias: str,
     provider_config: ProviderConfig,
-    provider_info: ProviderInfo,
+    provider_info: ProviderFileInfo,
     config_dir: Path,
 ) -> ResolvedProviderInfo:
-    """Build a ResolvedProviderInfo from a loaded ProviderInfo JSON file."""
+    """Build a ResolvedProviderInfo from a loaded ProviderFileInfo JSON file."""
     resources_dir = _resolve_path(provider_info.resources_dir, config_dir)
     provider_root = (
         _resolve_path(provider_info.provider_root, config_dir) if provider_info.provider_root else resources_dir

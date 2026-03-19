@@ -1,13 +1,24 @@
 from hotlog import get_logger
 
-from repolish.commands.apply.check import CheckContext, _finish_check, _render_templates
+from repolish.commands.apply.check import (
+    CheckContext,
+    _finish_check,
+    _render_templates,
+)
 from repolish.commands.apply.debug import _write_provider_debug_files
 from repolish.commands.apply.display import _log_providers_summary
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
-from repolish.commands.apply.staging import _collect_excluded_sources, _create_staged_template
+from repolish.commands.apply.staging import (
+    _collect_excluded_sources,
+    _create_staged_template,
+)
 from repolish.commands.apply.symlinks import _apply_symlinks
-from repolish.hydration import apply_generated_output, prepare_staging, preprocess_templates
+from repolish.hydration import (
+    apply_generated_output,
+    prepare_staging,
+    preprocess_templates,
+)
 from repolish.loader.models import build_file_records
 from repolish.utils import run_post_process
 from repolish.version import __version__
@@ -89,15 +100,17 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
-        return _finish_check(CheckContext(
-            setup_output=setup_output,
-            providers=providers,
-            base_dir=base_dir,
-            paused=paused,
-            resolved_symlinks=resolved_symlinks,
-            provider_infos=config.providers,
-            disable_auto_staging=is_root_pass,
-        ))
+        return _finish_check(
+            CheckContext(
+                setup_output=setup_output,
+                providers=providers,
+                base_dir=base_dir,
+                paused=paused,
+                resolved_symlinks=resolved_symlinks,
+                provider_infos=config.providers,
+                disable_auto_staging=is_root_pass,
+            ),
+        )
 
     apply_generated_output(
         setup_output,

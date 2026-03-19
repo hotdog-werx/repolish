@@ -15,7 +15,7 @@ from hotlog import (
     resolve_verbosity,
 )
 
-from repolish.config import ProviderInfo
+from repolish.config import ProviderFileInfo
 from repolish.console import console
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
@@ -104,9 +104,9 @@ def _build_provider_info(
     provider_root: str,
     pkg_name: str,
     proj_name: str,
-) -> ProviderInfo:
-    """Construct the ProviderInfo object emitted by the ``--info`` flag."""
-    return ProviderInfo(
+) -> ProviderFileInfo:
+    """Construct the `ProviderFileInfo` object emitted by the `--info` flag."""
+    return ProviderFileInfo(
         resources_dir=str(resources_dir.absolute()),
         provider_root=str((resources_dir / provider_root).absolute()) if provider_root else '',
         site_package_dir=str(pkg_dir.absolute()),
@@ -165,11 +165,11 @@ def resource_linker(
 
     Args:
         resources_dir: Path to the provider resources relative to the package root
-            (default: 'resources'). Mirrors :attr:`~repolish.config.ProviderInfo.resources_dir`;
+            (default: 'resources'). Mirrors `ProviderFileInfo.resources_dir`;
             recorded as an absolute path in provider-info JSON.
         default_target_base: Default base directory for the target (default: .repolish)
         provider_root: Subdirectory within resources_dir where repolish.py and the template
-            tree live (default: 'templates'). Mirrors :attr:`~repolish.config.ProviderInfo.provider_root`;
+            tree live (default: 'templates'). Mirrors `ProviderFileInfo.provider_root`;
             recorded as an absolute path in provider-info JSON.
         _caller_frame: Internal — caller frame injected by :func:`resource_linker_cli`.
         _pkg_name: Internal — pre-resolved module name; skips :func:`resolve_package_identity`
@@ -293,11 +293,11 @@ def resource_linker_cli(
 
     Args:
         resources_dir: Path to the provider resources relative to the package root
-            (default: 'resources'). Mirrors :attr:`~repolish.config.ProviderInfo.resources_dir`.
+            (default: 'resources'). Mirrors `ProviderFileInfo.resources_dir`.
         default_target_base: Default base directory for the target (default: .repolish)
         provider_root: Subdirectory within resources_dir where repolish.py and the template
             tree live (default: 'templates'). Mirrors
-            :attr:`~repolish.config.ProviderInfo.provider_root`; recorded as an absolute path
+            `ProviderFileInfo.provider_root`; recorded as an absolute path
             in provider-info JSON so the loader can locate the provider entry point.
 
     Returns:

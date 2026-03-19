@@ -1,28 +1,40 @@
 """Context models: global template namespace, provider runtime metadata, and base classes.
 
 Defines the building blocks that flow into every provider's context object:
-- :class:`Symlink` — return type of :meth:`~repolish.loader.models.Provider.create_default_symlinks`
-- :class:`GithubRepo` / :class:`GlobalContext` / :func:`get_global_context` — repo-level globals
-- :class:`ProviderInfo` — alias/version injected by the loader at runtime
-- :class:`BaseContext` / :class:`BaseInputs` — base classes for provider contexts and inputs
-- :class:`MemberInfo` / :class:`MonorepoContext` — monorepo topology exposed to providers
+
+- `Symlink` — return type of `Provider.create_default_symlinks`
+- `GithubRepo` / `GlobalContext` / `get_global_context` — repo-level globals
+- `ProviderInfo` — alias/version injected by the loader at runtime
+- `BaseContext` / `BaseInputs` — base classes for provider contexts and inputs
+
+Workspace topology models (`MemberInfo`, `WorkspaceContext`,
+`WorkspaceProviderInfo`) live in `loader.models.workspace` and are
+re-exported here for convenience.
 """
 
 from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
     PrivateAttr,
     computed_field,
-    field_serializer,
 )
+
+from repolish.loader.models.workspace import (
+    MemberInfo,
+    WorkspaceContext,
+    WorkspaceProviderInfo,
+)
+
+__all__ = [
+    'MemberInfo',
+    'WorkspaceContext',
+    'WorkspaceProviderInfo',
+]
 
 
 @dataclass
@@ -36,55 +48,6 @@ class Symlink:
 
     source: str
     target: str
-
-
-class MemberInfo(BaseModel):
-    """Metadata about a single monorepo member directory.
-
-    Available in templates via ``{{ repolish.monorepo.members }}``.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    path: Path
-    """Repo-relative path to the member directory (e.g. ``packages/core``)."""
-    name: str
-    """Package name from the member's ``pyproject.toml`` ``[project].name``."""
-    provider_aliases: frozenset[str]
-    """Provider keys declared in the member's ``repolish.yaml``."""
-
-    @field_serializer('path')
-    def _serialize_path(self, v: Path) -> str:
-        return v.as_posix()
-
-    @field_serializer('provider_aliases')
-    def _serialize_provider_aliases(self, v: frozenset[str]) -> list[str]:
-        return sorted(v)
-
-
-class WorkspaceContext(BaseModel):
-    """Monorepo topology injected into every provider context as ``repolish.monorepo``.
-
-    In standalone mode all fields retain their defaults so existing providers
-    are unaffected.  When repolish detects a monorepo (or is told about one
-    via ``repolish.yaml``), this object communicates the current execution
-    role and the full list of members.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    mode: Literal['root', 'package', 'standalone'] = 'standalone'
-    root_dir: Path = Field(default_factory=Path.cwd)
-    package_dir: Path | None = None
-    members: list[MemberInfo] = Field(default_factory=list)
-
-    @field_serializer('root_dir')
-    def _serialize_root_dir(self, v: Path) -> str:
-        return v.as_posix()
-
-    @field_serializer('package_dir')
-    def _serialize_package_dir(self, v: Path | None) -> str | None:
-        return v.as_posix() if v is not None else None
 
 
 class GithubRepo(BaseModel):
@@ -154,24 +117,6 @@ def get_global_context() -> GlobalContext:
         repo=GithubRepo(owner=owner, name=name),
         year=datetime.datetime.now(datetime.UTC).year,
     )
-
-
-class WorkspaceProviderInfo(BaseModel):
-    """Monorepo identity of the provider instance, injected into ``_provider``.
-
-    Unlike ``repolish.monorepo`` (which is global and shared), these fields
-    describe *this* provider's own role in the monorepo — its mode and, when
-    running as a package member, its name and repo-relative path.
-
-    Available in templates as ``{{ _provider.monorepo.mode }}``,
-    ``{{ _provider.monorepo.member_name }}``, etc.
-    """
-
-    mode: Literal['root', 'package', 'standalone'] = 'standalone'
-    member_name: str = ''
-    """Package name of this member (from its ``pyproject.toml``), e.g. ``pkg-alpha``."""
-    member_path: str = ''
-    """Repo-relative POSIX path to this member directory, e.g. ``packages/pkg-alpha``."""
 
 
 class ProviderInfo(BaseModel):

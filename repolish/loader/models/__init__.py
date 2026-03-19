@@ -1,18 +1,17 @@
 """Loader models package: re-exports the full public API from all submodules.
 
-Consumers should import from ``repolish.loader.models`` (this package) rather
-than from the individual submodules.  The split into submodules is an
+Consumers should import from `repolish.loader.models` (this package) rather
+than from the individual submodules. The split into submodules is an
 implementation detail:
 
-- :mod:`.context` — :class:`Symlink`, :class:`GithubRepo`, :class:`GlobalContext`,
-  :func:`get_global_context`, :class:`ProviderInfo`, :class:`MonorepoProviderInfo`,
-  :class:`BaseContext`, :class:`BaseInputs`, :class:`MemberInfo`, :class:`MonorepoContext`
-- :mod:`.files` — :class:`Action`, :class:`Decision`, :class:`FileMode`,
-  :class:`TemplateMapping`, :class:`FileRecord`, :class:`Providers`,
-  :class:`Accumulators`, :func:`build_file_records`
-- :mod:`.provider` — :class:`ProviderEntry`, :class:`Provider`,
-  :func:`get_provider_inputs_schema`, :func:`get_provider_inputs`,
-  :func:`get_provider_context`
+- `workspace` — `MemberInfo`, `WorkspaceContext`, `WorkspaceProviderInfo`
+- `context` — `Symlink`, `GithubRepo`, `GlobalContext`, `get_global_context`,
+  `ProviderInfo`, `BaseContext`, `BaseInputs`
+- `pipeline` — `PipelineOptions`, `DryRunResult`
+- `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
+  `Providers`, `Accumulators`, `build_file_records`
+- `provider` — `ProviderEntry`, `Provider`, `get_provider_inputs_schema`,
+  `get_provider_inputs`, `get_provider_context`
 """
 
 from repolish.loader.models.context import (
@@ -20,11 +19,8 @@ from repolish.loader.models.context import (
     BaseInputs,
     GithubRepo,
     GlobalContext,
-    MemberInfo,
     ProviderInfo,
     Symlink,
-    WorkspaceContext,
-    WorkspaceProviderInfo,
     get_global_context,
 )
 from repolish.loader.models.files import (
@@ -37,6 +33,7 @@ from repolish.loader.models.files import (
     TemplateMapping,
     build_file_records,
 )
+from repolish.loader.models.pipeline import DryRunResult, PipelineOptions
 from repolish.loader.models.provider import (
     ContextT,
     InputT,
@@ -47,6 +44,11 @@ from repolish.loader.models.provider import (
     get_provider_inputs,
     get_provider_inputs_schema,
 )
+from repolish.loader.models.workspace import (
+    MemberInfo,
+    WorkspaceContext,
+    WorkspaceProviderInfo,
+)
 
 __all__ = [
     'Accumulators',
@@ -55,12 +57,15 @@ __all__ = [
     'BaseInputs',
     'ContextT',
     'Decision',
+    'DryRunResult',
     'FileMode',
     'FileRecord',
     'GithubRepo',
     'GlobalContext',
     'InputT',
     'MemberInfo',
+    'MemberInfo',
+    'PipelineOptions',
     'Provider',
     'ProviderEntry',
     'ProviderInfo',

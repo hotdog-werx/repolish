@@ -5,7 +5,12 @@ from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import collect_provider_symlinks
-from repolish.loader.models import BaseInputs, GlobalContext, ProviderEntry, get_global_context
+from repolish.loader.models import (
+    BaseInputs,
+    GlobalContext,
+    ProviderEntry,
+    get_global_context,
+)
 from repolish.loader.orchestrator import create_providers
 from repolish.misc import ctx_to_dict
 

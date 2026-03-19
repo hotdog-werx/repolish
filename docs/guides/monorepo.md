@@ -10,11 +10,11 @@ its own `repolish.yaml`.
 A **session** is a bounded group of providers that share information with each
 other. Each directory context in a repository is its own session:
 
-| Context | Session role |
-|---|---|
-| Standalone project | one session, `mode = 'standalone'` |
-| Monorepo root | one session, `mode = 'root'` |
-| Monorepo member | one session per member, `mode = 'package'` |
+| Context            | Session role                               |
+| ------------------ | ------------------------------------------ |
+| Standalone project | one session, `mode = 'standalone'`         |
+| Monorepo root      | one session, `mode = 'root'`               |
+| Monorepo member    | one session per member, `mode = 'package'` |
 
 Sessions are the unit of isolation and the unit of coordination. Providers
 within a session see each other's contexts and inputs freely. Communication
@@ -23,9 +23,9 @@ to the root session**. A member session never receives context or inputs from
 another member session — each member is fully isolated from its siblings.
 
 ```
-  member A session  ──┐
-  member B session  ──┼──▶  root session
-  member C session  ──┘       (aggregates all member data)
+member A session  ──┐
+member B session  ──┼──▶  root session
+member C session  ──┘       (aggregates all member data)
 ```
 
 This one-way channel keeps members independent and composable. The root is the
@@ -36,10 +36,10 @@ from every member).
 
 Cross-session data travels through two typed channels:
 
-| Channel | Type | Description |
-|---|---|---|
-| `provider_entries` | `list[ProviderEntry]` | The member's full provider list, available to root providers via `all_providers` |
-| `emitted_inputs` | `list[BaseInputs]` | Inputs the member emitted before routing, injected into the root's `finalize_context` |
+| Channel            | Type                  | Description                                                                           |
+| ------------------ | --------------------- | ------------------------------------------------------------------------------------- |
+| `provider_entries` | `list[ProviderEntry]` | The member's full provider list, available to root providers via `all_providers`      |
+| `emitted_inputs`   | `list[BaseInputs]`    | Inputs the member emitted before routing, injected into the root's `finalize_context` |
 
 ### The resolve/apply split
 
@@ -95,10 +95,9 @@ into every provider during every session.
 
 **2. Resolve phase** — Before any files are written, Repolish resolves each
 session's provider pipeline. This includes an internal dry pass (the resolve
-phase) that captures
-the `ProviderEntry` list and all emitted inputs from every member without
-touching the filesystem. Member session data is then injected into the root
-session's resolve step.
+phase) that captures the `ProviderEntry` list and all emitted inputs from every
+member without touching the filesystem. Member session data is then injected
+into the root session's resolve step.
 
 **3. Apply phase** — The resolved sessions are applied in sequence:
 
@@ -164,10 +163,10 @@ other members — that data simply isn't present in a member session.
 
 ### Example: root provider aggregating member metadata
 
-A common use-case is generating a workspace-wide task runner file at the root
-— for example a `poe_tasks.toml` or `Makefile` that delegates to each member.
-The root provider collects member metadata emitted during the resolve phase and
-uses it to render the aggregated file.
+A common use-case is generating a workspace-wide task runner file at the root —
+for example a `poe_tasks.toml` or `Makefile` that delegates to each member. The
+root provider collects member metadata emitted during the resolve phase and uses
+it to render the aggregated file.
 
 ```python
 class MemberInfo(BaseInputs):
@@ -205,11 +204,11 @@ could do on its own since members are isolated from each other.
 
 ## CLI flags
 
-| Flag                      | Description                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `--root-only`             | Run only the root session; skip all member sessions                                               |
-| `--member <path-or-name>` | Run only the named member session (by repo-relative path or package name); skip the root session  |
-| `--standalone`            | Bypass monorepo detection entirely; run a single-session apply in the current directory           |
+| Flag                      | Description                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------ |
+| `--root-only`             | Run only the root session; skip all member sessions                                              |
+| `--member <path-or-name>` | Run only the named member session (by repo-relative path or package name); skip the root session |
+| `--standalone`            | Bypass monorepo detection entirely; run a single-session apply in the current directory          |
 
 ```bash
 # Root session only (fast CI check for root files)

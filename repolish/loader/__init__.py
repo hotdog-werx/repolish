@@ -18,8 +18,8 @@ from repolish.loader.models import (
     TemplateMapping,
     get_provider_context,
 )
+from repolish.loader.models.pipeline import DryRunResult, PipelineOptions
 from repolish.loader.orchestrator import create_providers
-from repolish.loader.pipeline import DryRunResult
 
 __all__ = [
     'Action',
@@ -27,6 +27,7 @@ __all__ = [
     'Decision',
     'DryRunResult',
     'FileMode',
+    'PipelineOptions',
     'Provider',
     'ProviderEntry',
     'ProviderInfo',

@@ -6,7 +6,7 @@ import pytest
 
 from repolish.config.models import (
     ProviderConfig,
-    ProviderInfo,
+    ProviderFileInfo,
     RepolishConfigFile,
 )
 from repolish.config.resolution import _resolved_from_info, resolve_config
@@ -16,7 +16,7 @@ from repolish.config.resolution import _resolved_from_info, resolve_config
 class TCase:
     name: str
     exit_code: int
-    provider_info_on_retry: ProviderInfo | None
+    provider_info_on_retry: ProviderFileInfo | None
     expected_aliases: list[str]
 
 
@@ -26,7 +26,7 @@ class TCase:
         TCase(
             name='auto_link_succeeds',
             exit_code=0,
-            provider_info_on_retry=ProviderInfo(
+            provider_info_on_retry=ProviderFileInfo(
                 resources_dir='.repolish/base',
                 site_package_dir='/some/source',
             ),
@@ -67,7 +67,7 @@ def test_auto_link_on_missing_provider(tmp_path: Path, case: TCase):
 @dataclass
 class ProviderRootCase:
     name: str
-    provider_root: str  # value written to ProviderInfo.provider_root
+    provider_root: str  # value written to ProviderFileInfo.provider_root
     expected_suffix: str  # expected suffix of the resolved provider_root path
 
 
@@ -92,7 +92,7 @@ def test_resolved_from_info_provider_root(
     case: ProviderRootCase,
 ):
     """_resolved_from_info uses provider_root directly when set; falls back to resources_dir."""
-    provider_info = ProviderInfo(
+    provider_info = ProviderFileInfo(
         resources_dir='.repolish/mylib',
         site_package_dir=str(tmp_path / 'mylib' / 'resources'),
         provider_root=case.provider_root,
