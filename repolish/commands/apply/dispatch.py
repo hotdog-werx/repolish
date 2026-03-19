@@ -1,4 +1,4 @@
-from repolish.commands.apply.command import run_session
+from repolish.commands.apply.session import run_session
 from repolish.commands.apply.coordinator import coordinate_sessions
 from repolish.commands.apply.display import error_running_from_member
 from repolish.commands.apply.options import ApplyCommandOptions, ApplyOptions

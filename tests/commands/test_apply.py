@@ -96,7 +96,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (tmp_path, tmp_path / 'in', tmp_path / 'out')
 
     recorded: dict[str, object] = {}
@@ -126,7 +126,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         provider_contexts={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
@@ -135,7 +135,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
-        'repolish.commands.apply.command.apply_generated_output',
+        'repolish.commands.apply.session.apply_generated_output',
     ).return_value = None
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
@@ -168,7 +168,7 @@ def test_apply_warns_when_providers_not_ready(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -183,7 +183,7 @@ def test_apply_warns_when_providers_not_ready(
         provider_contexts={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
@@ -192,7 +192,7 @@ def test_apply_warns_when_providers_not_ready(
         'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
-        'repolish.commands.apply.command.apply_generated_output',
+        'repolish.commands.apply.session.apply_generated_output',
     ).return_value = None
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
@@ -224,7 +224,7 @@ def test_apply_command_runs_with_valid_provider(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -239,13 +239,13 @@ def test_apply_command_runs_with_valid_provider(
         provider_contexts={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.apply_generated_output',
+        'repolish.commands.apply.session.apply_generated_output',
     ).return_value = None
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
@@ -266,7 +266,7 @@ def test_apply_returns_1_when_render_fails(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -281,7 +281,7 @@ def test_apply_returns_1_when_render_fails(
         provider_contexts={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
@@ -311,7 +311,7 @@ def test_check_only_with_diffs_returns_2(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -326,7 +326,7 @@ def test_check_only_with_diffs_returns_2(
         provider_contexts={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
@@ -353,7 +353,7 @@ def _base_mocks(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -366,13 +366,13 @@ def _base_mocks(
         'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = providers
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.apply_generated_output',
+        'repolish.commands.apply.session.apply_generated_output',
     ).return_value = None
 
 
@@ -495,7 +495,7 @@ def test_template_sources_translated_from_alias_to_pid(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -513,10 +513,10 @@ def test_template_sources_translated_from_alias_to_pid(
         'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = providers
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.apply_generated_output',
+        'repolish.commands.apply.session.apply_generated_output',
     ).return_value = None
 
     captured: dict[str, object] = {}
@@ -569,7 +569,7 @@ def test_paused_files_logged_as_warning(
         'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.command.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (
         tmp_path,
         tmp_path / 'in',
@@ -587,7 +587,7 @@ def test_paused_files_logged_as_warning(
         provider_contexts={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.render_template',
@@ -596,10 +596,10 @@ def test_paused_files_logged_as_warning(
         'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
-        'repolish.commands.apply.command.apply_generated_output',
+        'repolish.commands.apply.session.apply_generated_output',
     ).return_value = None
 
-    mock_logger = mocker.patch('repolish.commands.apply.command.logger')
+    mock_logger = mocker.patch('repolish.commands.apply.session.logger')
 
     run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
 

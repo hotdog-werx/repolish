@@ -3,7 +3,7 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-from repolish.commands.apply.command import apply_session, run_session
+from repolish.commands.apply.session import apply_session, run_session
 from repolish.commands.apply.display import error_unknown_member
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session

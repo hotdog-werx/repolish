@@ -16,8 +16,9 @@ and the resolve/apply split in `coordinator.py`.
 ### `command.py` → multiple modules
 
 - `pipeline.py` — `resolve_session()`, `_collect_session_outputs`,
-  `_alias_pid_maps`, `_ordered_aliases` ✅ _(created; `run_session` stays in
-  `command.py` as a thin wrapper around `resolve_session` + `apply_session`)_
+  `_alias_pid_maps`, `_ordered_aliases` ✅
+- `session.py` — `apply_session`, `run_session` ✅ _(moved from `command.py`;
+  `command.py` is now a shell of re-exports for test backward compat)_
 - `staging.py` — `_create_staged_template`, `gather_template_directories`,
   `_collect_excluded_sources` ✅
 - `symlinks.py` — `_apply_symlinks`, `check_symlinks`, `_check_one_symlink` ✅
@@ -59,8 +60,8 @@ for all sessions (gaining full visibility into cross-session data flows before
 any files are written), then runs the apply phase in order.
 `resolve_session` (in `pipeline.py`) owns the full provider pipeline for one
 session and returns a `ResolvedSession` with no filesystem side effects.
-`apply_session` (in `command.py`) takes a `ResolvedSession` and writes files.
-`run_session` (in `command.py`) is the convenience wrapper that does both in
+`apply_session` (in `session.py`) takes a `ResolvedSession` and writes files.
+`run_session` (in `session.py`) is the convenience wrapper that does both in
 one call — used by standalone mode and the public API.
 
 ### `__init__.py` ✅
