@@ -157,7 +157,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
         continue; authors who need a real context should override the
         method themselves.
 
-        Providers that need to pass arguments to their context constructor
+        SessionBundle that need to pass arguments to their context constructor
         or otherwise perform nontrivial setup should still override this
         method explicitly.  The returned object *must* inherit from
         :class:`BaseContext` so the loader can merge the global ``repolish``
@@ -248,7 +248,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
         type ``None`` is returned, meaning the provider does not
         declare a specific input schema.
 
-        Providers that need a nonstandard schema or that return values of
+        SessionBundle that need a nonstandard schema or that return values of
         a different type should continue to override this method.
         """
         # use helper to fetch both parameters

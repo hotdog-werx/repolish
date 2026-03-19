@@ -246,7 +246,7 @@ def test_overrides_affect_inputs(
     tmp_path: Path,
     make_provider: Callable[[str, str], str],
 ):
-    """Providers should see config overrides when computing inputs.
+    """SessionBundle should see config overrides when computing inputs.
 
     This test exercises the full provider exchange workflow and ensures that
     contexts passed into `provide_inputs` and `finalize_context` are
@@ -492,7 +492,7 @@ class P(Provider[Ctx, BaseInputs]):
 
 
 def test_finalize_provider_contexts_edge_cases() -> None:
-    """Providers should always have `finalize_context` invoked.
+    """SessionBundle should always have `finalize_context` invoked.
 
     Previously we skipped providers when `received_inputs` was empty; this
     prevented context mutation for providers that don't emit inputs.  The

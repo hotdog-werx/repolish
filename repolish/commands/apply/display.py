@@ -7,7 +7,7 @@ from rich.text import Text
 
 from repolish.config import ProviderSymlink
 from repolish.console import console
-from repolish.loader.models import GlobalContext, Providers, get_global_context
+from repolish.loader.models import GlobalContext, SessionBundle, get_global_context
 from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
@@ -98,7 +98,7 @@ def build_provider_table(
 
 
 def print_files_summary(
-    providers: Providers,
+    providers: SessionBundle,
     symlinks: dict[str, list[ProviderSymlink]] | None = None,
 ) -> None:
     """Print one Rich table per provider alias showing mode and path for each file."""
@@ -192,7 +192,7 @@ def build_provider_panel(
 
 
 def _print_provider_panels(
-    providers: Providers,
+    providers: SessionBundle,
     aliases: list[str],
     alias_to_pid: dict[str, str],
     resolved_symlinks: dict[str, list[ProviderSymlink]],
@@ -246,7 +246,7 @@ def _print_provider_panels(
 
 
 def _log_providers_summary(
-    providers: Providers,
+    providers: SessionBundle,
     aliases: list[str],
     alias_to_pid: dict[str, str],
     resolved_symlinks: dict[str, list[ProviderSymlink]],

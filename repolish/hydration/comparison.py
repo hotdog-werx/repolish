@@ -6,7 +6,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.hydration.misc import get_source_str_from_mapping
-from repolish.loader import Providers
+from repolish.loader import SessionBundle
 from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)
@@ -202,7 +202,7 @@ def _should_skip_mapping(
 
 
 def _check_file_mappings(
-    providers: Providers,
+    providers: SessionBundle,
     setup_output: Path,
     base_dir: Path,
     *,
@@ -245,7 +245,7 @@ def _check_file_mappings(
 
 def check_generated_output(
     setup_output: Path,
-    providers: Providers,
+    providers: SessionBundle,
     base_dir: Path,
     *,
     paused_files: frozenset[str] = frozenset(),

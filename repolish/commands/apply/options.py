@@ -6,7 +6,7 @@ from repolish.loader.models import (
     BaseInputs,
     GlobalContext,
     ProviderEntry,
-    Providers,
+    SessionBundle,
 )
 
 
@@ -76,7 +76,7 @@ class ResolvedSession:
     config_path: Path
     config: RepolishConfig = field(repr=False)
     global_context: GlobalContext = field(repr=False)
-    providers: Providers = field(repr=False)
+    providers: SessionBundle = field(repr=False)
     aliases: list[str] = field(default_factory=list)
     alias_to_pid: dict[str, str] = field(default_factory=dict, repr=False)
     pid_to_alias: dict[str, str] = field(default_factory=dict, repr=False)

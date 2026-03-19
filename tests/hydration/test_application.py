@@ -8,7 +8,7 @@ from pytest_mock import MockerFixture
 from repolish.hydration.application import (
     apply_generated_output,
 )
-from repolish.loader import Providers, TemplateMapping
+from repolish.loader import SessionBundle, TemplateMapping
 
 
 def test_apply_creates_file_when_missing(tmp_path: Path):
@@ -27,7 +27,7 @@ def test_apply_creates_file_when_missing(tmp_path: Path):
     base_dir.mkdir()
 
     # File doesn't exist yet
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -63,7 +63,7 @@ def test_apply_skips_file_when_exists(tmp_path: Path):
     existing_file.parent.mkdir(parents=True)
     existing_file.write_text('# Existing content')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={},
@@ -94,7 +94,7 @@ def test_apply_file_mapping_copy(tmp_path: Path):
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={
@@ -123,7 +123,7 @@ def test_apply_file_mapping_copy_without_prefix(tmp_path: Path):
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={
@@ -152,7 +152,7 @@ def test_mapping_without_source_logs_warning(
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={
@@ -185,7 +185,7 @@ def test_apply_deletes_directory_in_delete_files(tmp_path: Path) -> None:
     (dir_to_delete / 'sub').mkdir(parents=True)
     (dir_to_delete / 'sub' / 'file.txt').write_text('stale')
 
-    providers = Providers(
+    providers = SessionBundle(
         delete_files=[Path('old_cache')],
         file_mappings={},
         create_only_files=[],
@@ -207,7 +207,7 @@ def test_apply_skips_paused_regular_file(tmp_path: Path) -> None:
     base_dir.mkdir()
     (base_dir / 'managed.txt').write_text('developer version')
 
-    providers = Providers(file_mappings={}, create_only_files=[])
+    providers = SessionBundle(file_mappings={}, create_only_files=[])
 
     apply_generated_output(
         setup_output,
@@ -230,7 +230,7 @@ def test_apply_skips_paused_deletion(tmp_path: Path) -> None:
     kept = base_dir / 'keep_me.txt'
     kept.write_text('important')
 
-    providers = Providers(
+    providers = SessionBundle(
         delete_files=[Path('keep_me.txt')],
         file_mappings={},
         create_only_files=[],
@@ -265,7 +265,7 @@ def test_apply_skips_suppressed_sources(tmp_path: Path) -> None:
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={},
         create_only_files=[],
         suppressed_sources={'.github/workflows/_ci-checks.yaml'},
@@ -293,7 +293,7 @@ def test_apply_warns_when_mapped_source_missing(
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.missing.yml'},
@@ -324,7 +324,7 @@ def test_apply_skips_regular_file_used_as_mapping_source(
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={'final-config.yml': 'template-config.yml'},

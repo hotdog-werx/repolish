@@ -9,7 +9,7 @@ implementation detail:
   `ProviderInfo`, `BaseContext`, `BaseInputs`
 - `pipeline` — `PipelineOptions`, `DryRunResult`
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
-  `Providers`, `Accumulators`, `build_file_records`
+  `SessionBundle`, `Accumulators`, `build_file_records`
 - `provider` — `ProviderEntry`, `Provider`, `get_provider_inputs_schema`,
   `get_provider_inputs`, `get_provider_context`
 """
@@ -29,7 +29,7 @@ from repolish.loader.models.files import (
     Decision,
     FileMode,
     FileRecord,
-    Providers,
+    SessionBundle,
     TemplateMapping,
     build_file_records,
 )
@@ -69,7 +69,7 @@ __all__ = [
     'Provider',
     'ProviderEntry',
     'ProviderInfo',
-    'Providers',
+    'SessionBundle',
     'Symlink',
     'T',
     'TemplateMapping',

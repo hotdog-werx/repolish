@@ -15,7 +15,8 @@ from typing import cast
 
 from hotlog import get_logger
 
-from repolish.config import ProviderConfig, ProviderFileInfo
+from repolish.config import ProviderConfig
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import load_provider_info
 from repolish.exceptions import ProviderNotReadyError
 from repolish.linker.orchestrator import process_provider

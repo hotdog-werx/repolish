@@ -9,11 +9,10 @@ from pathlib import Path
 import pytest
 
 from repolish.config import (
-    AllProviders,
     ProviderConfig,
-    ProviderFileInfo,
     RepolishConfigFile,
 )
+from repolish.config.models import AliasRegistry, ProviderFileInfo
 from repolish.config.models.provider import ProviderSymlink
 from repolish.config.resolution import resolve_config
 from repolish.exceptions import ProviderConfigError
@@ -88,7 +87,7 @@ def test_provider_config_validation(case: ProviderConfigCase):
 
 
 @dataclass
-class AllProvidersCase:
+class AliasRegistryCase:
     name: str
     file_content: str | None  # None means file doesn't exist
     expected_aliases: dict[str, str]
@@ -97,17 +96,17 @@ class AllProvidersCase:
 @pytest.mark.parametrize(
     'case',
     [
-        AllProvidersCase(
+        AliasRegistryCase(
             name='missing_file',
             file_content=None,
             expected_aliases={},
         ),
-        AllProvidersCase(
+        AliasRegistryCase(
             name='invalid_json',
             file_content='{ not valid json }',
             expected_aliases={},
         ),
-        AllProvidersCase(
+        AliasRegistryCase(
             name='valid_aliases',
             file_content='{"aliases": {"base": "codeguide", "py": "python-tools"}}',
             expected_aliases={
@@ -115,7 +114,7 @@ class AllProvidersCase:
                 'py': 'python-tools',
             },
         ),
-        AllProvidersCase(
+        AliasRegistryCase(
             name='empty_aliases',
             file_content='{"aliases": {}}',
             expected_aliases={},
@@ -123,12 +122,12 @@ class AllProvidersCase:
     ],
     ids=lambda case: case.name,
 )
-def test_all_providers_from_file(tmp_path: Path, case: AllProvidersCase):
-    """Test AllProviders.from_file() behavior."""
+def test_alias_registry_from_file(tmp_path: Path, case: AliasRegistryCase):
+    """Test AliasRegistry.from_file() behavior."""
     all_providers_file = tmp_path / 'all_providers.json'
     if case.file_content is not None:
         all_providers_file.write_text(case.file_content)
-    all_providers = AllProviders.from_file(all_providers_file)
+    all_providers = AliasRegistry.from_file(all_providers_file)
     assert all_providers.aliases == case.expected_aliases
 
 

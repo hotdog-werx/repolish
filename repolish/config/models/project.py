@@ -136,7 +136,7 @@ class RepolishConfig(BaseModel):
 
     This model represents the configuration after all resolution has been performed:
     - Directories are resolved to absolute Paths
-    - Providers are resolved with their full info loaded from JSON
+    - SessionBundle are resolved with their full info loaded from JSON
     - All aliases are resolved
     - All relative paths are made absolute based on config_file location
     """

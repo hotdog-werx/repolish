@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 import pytest_mock
 
-from repolish.config import ProviderConfig, ProviderFileInfo
+from repolish.config import ProviderConfig
+from repolish.config.models import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
 from repolish.exceptions import ProviderNotReadyError
 from repolish.linker import ensure_providers_ready, process_provider

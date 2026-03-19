@@ -1,7 +1,7 @@
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
-from repolish.loader import Action, Decision, Providers, create_providers
+from repolish.loader import Action, Decision, SessionBundle, create_providers
 from repolish.loader.models import BaseInputs, GlobalContext, ProviderEntry
 from repolish.misc import ctx_to_dict
 
@@ -15,7 +15,7 @@ def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
 
 
 def _apply_delete_overrides(
-    providers: Providers,
+    providers: SessionBundle,
     config: RepolishConfig,
 ) -> list[Path]:
     """Apply `config.delete_files` on top of provider delete decisions.
@@ -53,8 +53,8 @@ def build_final_providers(
     global_context: GlobalContext | None = None,
     extra_provider_entries: list[ProviderEntry] | None = None,
     extra_inputs: list[BaseInputs] | None = None,
-) -> Providers:
-    """Build the final Providers object from all configured providers.
+) -> SessionBundle:
+    """Build the final SessionBundle object from all configured providers.
 
     - Loads providers from the directories referenced by configured providers.
     - Applies per-provider context and overrides from `config.providers[alias]`
@@ -106,8 +106,8 @@ def build_final_providers(
     )
 
     # build_final_providers always performs a full pass (dry_run=False),
-    # so the result is always a Providers object.
-    assert isinstance(result, Providers)  # noqa: S101 - guaranteed by dry_run=False
+    # so the result is always a SessionBundle object.
+    assert isinstance(result, SessionBundle)  # noqa: S101 - guaranteed by dry_run=False
     providers = result
 
     delete_files = _apply_delete_overrides(providers, config)

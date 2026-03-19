@@ -14,7 +14,7 @@ from repolish.loader.models import (
     Provider,
     ProviderEntry,
     ProviderInfo,
-    Providers,
+    SessionBundle,
     TemplateMapping,
     get_provider_context,
 )
@@ -31,7 +31,7 @@ __all__ = [
     'Provider',
     'ProviderEntry',
     'ProviderInfo',
-    'Providers',
+    'SessionBundle',
     'TemplateMapping',
     'create_providers',
     'get_provider_context',

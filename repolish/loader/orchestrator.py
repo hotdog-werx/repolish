@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal, overload
 
-from repolish.loader import Providers
+from repolish.loader import SessionBundle
 from repolish.loader.context import (
     _apply_overrides_to_provider_contexts,
     _apply_provider_overrides,
@@ -34,13 +34,13 @@ def _run_provider_pipeline(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     options: PipelineOptions | None = None,
-) -> Providers | DryRunResult:
+) -> SessionBundle | DryRunResult:
     """Run the provider pipeline and return the final result.
 
     When ``options.dry_run`` is ``True``, the pipeline stops before
     ``collect_provider_contributions`` (no file writes) and returns a
     :class:`DryRunResult` containing the provider contexts, all-providers list,
-    and raw emitted inputs.  All other cases return a :class:`Providers` object
+    and raw emitted inputs.  All other cases return a :class:`SessionBundle` object
     as before.
     """
     accum = Accumulators()
@@ -138,12 +138,12 @@ def _run_provider_pipeline(
         )
 
     # and likewise re-apply per-provider overrides so the contexts exposed
-    # in the returned `Providers` object include any project-supplied values.
+    # in the returned `SessionBundle` object include any project-supplied values.
     _apply_provider_overrides(provider_contexts, provider_overrides)
 
     collect_provider_contributions(module_cache, provider_contexts, accum)
 
-    return Providers(
+    return SessionBundle(
         anchors=accum.merged_anchors,
         delete_files=list(accum.delete_set),
         file_mappings=accum.merged_file_mappings,
@@ -164,7 +164,7 @@ def create_providers(
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
     dry_run: Literal[False] = ...,
-) -> Providers: ...
+) -> SessionBundle: ...
 
 
 @overload
@@ -189,7 +189,7 @@ def create_providers(  # noqa: PLR0913
     extra_provider_entries: list[ProviderEntry] | None = None,
     extra_inputs: list[BaseInputs] | None = None,
     dry_run: bool = False,
-) -> Providers | DryRunResult:
+) -> SessionBundle | DryRunResult:
     """Load all template providers and merge their contributions.
 
     Merging semantics:
@@ -204,7 +204,7 @@ def create_providers(  # noqa: PLR0913
 
     When *global_context* is ``None``, it is computed via :func:`get_global_context`.
     When *dry_run* is ``True``, returns a :class:`DryRunResult` instead of a
-    :class:`Providers` object.
+    :class:`SessionBundle` object.
     """
     # Use the provided global context or compute it from git
     global_ctx_obj = global_context if global_context is not None else get_global_context()

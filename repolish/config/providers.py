@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from repolish.config.models import AllProviders, ProviderFileInfo
+from repolish.config.models import AliasRegistry, ProviderFileInfo
 
 
 def get_provider_info_path(provider_alias: str, config_dir: Path) -> Path:
@@ -30,7 +30,7 @@ def resolve_provider_alias(
         Relative path to provider directory, or None if not an alias
     """
     aliases_file = config_dir / '.repolish' / '_' / '.all-providers.json'
-    all_providers = AllProviders.from_file(aliases_file)
+    all_providers = AliasRegistry.from_file(aliases_file)
     folder_name = all_providers.aliases.get(provider_alias)
     return f'.repolish/{folder_name}' if folder_name else None
 

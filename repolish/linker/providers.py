@@ -7,7 +7,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config import ProviderFileInfo
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
 from repolish.utils import open_utf8
 

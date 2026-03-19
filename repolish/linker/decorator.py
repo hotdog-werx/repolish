@@ -15,7 +15,7 @@ from hotlog import (
     resolve_verbosity,
 )
 
-from repolish.config import ProviderFileInfo
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.console import console
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources

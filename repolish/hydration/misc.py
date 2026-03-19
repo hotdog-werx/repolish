@@ -9,7 +9,7 @@ def get_source_str_from_mapping(
     This utility is shared by both `application` and `comparison`
     modules so they don't duplicate the same conditional logic.  The
     value is assumed to have been validated at an earlier stage by the
-    `Providers` pydantic model, therefore this function is intentionally
+    `SessionBundle` pydantic model, therefore this function is intentionally
     concise and not defensive beyond the runtime `isinstance` check.
     """
     if isinstance(source_path, TemplateMapping):

@@ -3,7 +3,7 @@
 Defines the types that track what happens to each file across all providers:
 - :class:`Action` / :class:`Decision` — provenance enum and record
 - :class:`FileMode` / :class:`TemplateMapping` / :class:`FileRecord` — per-file behaviour
-- :class:`Providers` — aggregate of all provider contributions
+- :class:`SessionBundle` — aggregate of all provider contributions
 - :class:`Accumulators` — mutable workspace built up during provider loading
 - :func:`build_file_records` — builds the unified disposition list after staging
 """
@@ -93,49 +93,43 @@ class FileRecord:
     source: str | None = None
 
 
-class Providers(BaseModel):
-    """Structured provider contributions collected from all loaded providers.
+class SessionBundle(BaseModel):
+    """All contributions collected from providers during one session run.
 
-    - anchors: merged anchors mapping
-    - delete_files: list of Paths representing files to delete
-    - file_mappings: dict mapping destination paths to source paths in template
-    - create_only_files: list of Paths for files that should only be created if they don't exist
-    - provider_contexts: typed per-provider context objects; use these (not a
-      flat dict) to access provider-specific data during rendering.
+    Produced by the provider pipeline after all providers have been loaded,
+    their contexts finalized, and their file mappings and anchors gathered.
+    Passed to the hydration layer to stage templates, render them, and apply
+    the results to the project.
 
-    Validation: `file_mappings` entries are validated by Pydantic so downstream
-    code can safely rely on typed values instead of performing defensive
-    runtime checks.
+    A single `SessionBundle` belongs to exactly one session (one directory
+    context: standalone project, monorepo root, or monorepo package member).
     """
 
     anchors: dict[str, str] = Field(default_factory=dict)
+    """Merged Jinja anchor definitions contributed by all providers."""
     delete_files: list[Path] = Field(default_factory=list)
-    # destination -> source OR TemplateMapping
+    """Files that one or more providers have declared should be deleted."""
     file_mappings: dict[str, str | TemplateMapping] = Field(
         default_factory=dict,
     )
+    """Destination path → source path or `TemplateMapping` for each managed file."""
     create_only_files: list[Path] = Field(default_factory=list)
-    # provenance mapping: posix path -> list of Decision instances
+    """Files that should only be created if they do not already exist."""
     delete_history: dict[str, list[Decision]] = Field(default_factory=dict)
-    # provider-specific contexts captured during provider evaluation.
-    # These are the authoritative typed objects for each provider; the
-    # renderer looks up the owning provider's context here when processing
-    # per-file template mappings (e.g. 'create_file_mappings()').
+    """Provenance of delete/keep decisions keyed by POSIX destination path."""
     provider_contexts: dict[str, BaseContext] = Field(
         default_factory=dict,
     )
-    # mapping from a relative template path (POSIX string) to the provider id
-    # that supplied the file when staging.  Populated by the builder so the
-    # renderer can later look up which provider owns a given template and
-    # decide whether to use the provider's own context.
+    """Finalized typed context objects keyed by provider_id. Use these for
+    per-provider template rendering — do not flatten into a plain dict."""
     template_sources: dict[str, str] = Field(default_factory=dict)
-    # template paths that providers explicitly suppressed via a None mapping
-    # in create_file_mappings.  These are excluded from auto-staging so the
-    # builder does not copy them to the consumer's working tree.
+    """Relative template path (POSIX) → provider_id that staged the file.
+    Populated during staging so the renderer can resolve `{{ _provider }}`."""
     suppressed_sources: set[str] = Field(default_factory=set)
-    # unified file disposition list; populated by `build_file_records` after
-    # staging is complete.  empty until that function is called.
+    """Template paths explicitly suppressed via a `None` mapping in
+    `create_file_mappings`; excluded from auto-staging."""
     file_records: list[FileRecord] = Field(default_factory=list)
+    """Unified file disposition list. Empty until `build_file_records` is called."""
 
 
 def _records_from_template_sources(
@@ -213,7 +207,7 @@ def _records_from_delete_files(
 
 
 def build_file_records(
-    providers: Providers,
+    providers: SessionBundle,
     pid_to_alias: dict[str, str],
     config_pid: str,
 ) -> list[FileRecord]:
@@ -268,7 +262,7 @@ class Accumulators:
 
     `collect_provider_contributions` iterates over every loaded provider,
     calls `create_anchors` and `create_file_mappings`, and accumulates the
-    results here.  The fields are written into a `Providers` instance once
+    results here.  The fields are written into a `SessionBundle` instance once
     collection is complete.
 
     `merged_anchors` aggregates the per-provider anchor dicts: each call to

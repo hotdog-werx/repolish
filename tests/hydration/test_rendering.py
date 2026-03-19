@@ -16,7 +16,7 @@ from repolish.hydration.staging import prepare_staging, preprocess_templates
 from repolish.loader import (
     BaseContext,
     FileMode,
-    Providers,
+    SessionBundle,
     TemplateMapping,
 )
 from repolish.loader.models import ProviderInfo
@@ -55,7 +55,7 @@ def test_render_template_renders_with_jinja(tmp_path: Path):
     class ValueCtx(BaseContext):
         value: str = 'hello'
 
-    providers = Providers(
+    providers = SessionBundle(
         provider_contexts={'p': ValueCtx()},
         template_sources={'foo': 'p'},
     )
@@ -71,7 +71,7 @@ def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
     class CtxA(BaseContext):
         a: int = 2
 
-    providers = Providers(
+    providers = SessionBundle(
         provider_contexts={'p': CtxA()},
         template_sources={'tpl.txt': 'p'},
     )
@@ -102,7 +102,7 @@ def test_choose_ctx_for_file_normalizes_windows_pid(
     class CtxX(BaseContext):
         x: int = 9
 
-    providers = Providers(
+    providers = SessionBundle(
         provider_contexts={'P/subdir': CtxX()},
         # template_sources comes from builder; simulate backslash pid
         template_sources={'f.txt': 'P\\subdir'},
@@ -145,7 +145,7 @@ def test_render_with_jinja_exposes_context_as_top_level_variables(
     class PackageCtx(BaseContext):
         package_name: str = 'acme'
 
-    providers = Providers(
+    providers = SessionBundle(
         provider_contexts={'p': PackageCtx()},
         template_sources={'{{package_name}}/README.md': 'p'},
     )
@@ -181,7 +181,7 @@ def test_render_with_file_mappings_generates_multiple_files(
     class ItemCtx(BaseModel):
         file_number: int
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={
             'file-1.txt': TemplateMapping('item', ItemCtx(file_number=1)),
             'file-2.txt': TemplateMapping('item', ItemCtx(file_number=2)),
@@ -229,7 +229,7 @@ def test_render_with_typed_extra_context_models(tmp_path: Path):
 
     _, _ = stage_templates(setup_input, [tpl])
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={
             'file-typed-1.txt': TemplateMapping(
                 'item',
@@ -281,7 +281,7 @@ def test_render_with_jinja_copies_binary_files(tmp_path: Path):
 
     stage_templates(setup_input, [tpl])
 
-    providers = Providers()
+    providers = SessionBundle()
 
     preprocess_templates(setup_input, providers, base_dir)
 
@@ -309,7 +309,7 @@ def test_render_with_jinja_raises_on_missing_variable(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers()
+    providers = SessionBundle()
     preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(RuntimeError) as exc:
@@ -330,7 +330,7 @@ def test_render_with_jinja_raises_on_bad_path_syntax(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers()
+    providers = SessionBundle()
     preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(RuntimeError) as exc:
@@ -353,7 +353,7 @@ def test_render_with_jinja_raises_on_bad_template_content(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers()
+    providers = SessionBundle()
     preprocess_templates(setup_input, providers, base_dir)
 
     with pytest.raises(RuntimeError):
@@ -378,7 +378,7 @@ def test_template_mapping_undefined_errors_are_collected(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={
             'a.txt': TemplateMapping('a', None),
             'b.txt': TemplateMapping('a', None),
@@ -409,7 +409,7 @@ def test_render_template_prunes_missing_and_unreadable_mapping(tmp_path: Path):
     stage_templates(setup_input, [tpl])
 
     # mapping points to a missing template -> should be removed after render
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={'cfg.yml': TemplateMapping('missing.tpl', None)},
     )
 
@@ -431,7 +431,7 @@ def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={
             'will_delete.txt': TemplateMapping(
                 None,
@@ -470,7 +470,7 @@ def test_render_template_mappings_work_with_jinja(
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={'x.txt': TemplateMapping('item', None)},
     )
 
@@ -490,7 +490,7 @@ def test_process_template_mappings_skips_string_entries(tmp_path: Path):
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={
             # plain string entry — must be skipped by _process_template_mappings
             'plain.txt': 'item',
@@ -531,7 +531,7 @@ def test_provider_info_bad_version_renders_none_not_crash(
     ctx = BaseContext()
     ctx._provider_data = ProviderInfo(alias='mypkg', version='not-a-version')
 
-    providers = Providers(
+    providers = SessionBundle(
         provider_contexts={'p': ctx},
         template_sources={'info.txt': 'p'},
     )

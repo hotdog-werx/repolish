@@ -32,7 +32,7 @@ from rich.console import Console
 
 from repolish.console import console
 from repolish.loader import create_providers
-from repolish.loader.models import Providers
+from repolish.loader.models import SessionBundle
 from repolish.preprocessors.core import replace_text
 
 logger = get_logger(__name__)
@@ -261,7 +261,7 @@ def _lint_template(
 
 
 def _resolve_context(
-    providers: Providers,
+    providers: SessionBundle,
     pid: str,
 ) -> tuple[dict[str, object], type[BaseModel]]:
     """Extract context dict and concrete type from the loaded providers object.

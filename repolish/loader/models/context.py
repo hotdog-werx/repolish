@@ -151,7 +151,7 @@ class ProviderInfo(BaseModel):
 class BaseContext(BaseModel):
     """Minimal, empty context type for providers.
 
-    Providers almost always define their own context model, but when no
+    SessionBundle almost always define their own context model, but when no
     fields are needed this class can be used as a lightweight default.  It
     avoids the awkward requirement that `BaseModel` itself cannot be
     instantiated and keeps callers from having to import Pydantic directly -
@@ -177,6 +177,6 @@ class BaseInputs(BaseModel):
 
     This is not strictly necessary since providers can declare any Pydantic
     model as their input schema, but it provides a convenient shared parent
-    for type checking and tooling.  Providers that declare an input schema
+    for type checking and tooling.  SessionBundle that declare an input schema
     but don't need any fields can use this empty class as a default.
     """

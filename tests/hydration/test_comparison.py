@@ -8,7 +8,7 @@ from rich.console import Console
 
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.display import rich_print_diffs
-from repolish.loader import Providers, TemplateMapping
+from repolish.loader import SessionBundle, TemplateMapping
 
 
 def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
@@ -26,7 +26,7 @@ def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
     project_root = tmp_path / 'proj'
     project_root.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={
@@ -54,7 +54,7 @@ def test_check_generated_output_reports_missing_and_diff(
     (project_root).mkdir()
     (project_root / 'foo.txt').write_text('old content')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -112,7 +112,7 @@ def test_unified_diff_format_has_proper_newlines(tmp_path: Path) -> None:
     proj_file = project_root / 'example.txt'
     proj_file.write_text('line1\nmodified\nline3\n')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -154,7 +154,7 @@ def test_check_generated_output_handles_prefixed_mapping(
     project_root.mkdir()
     (project_root / 'foo.txt').write_text('other')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -179,7 +179,7 @@ def test_line_ending_ignored_by_default(tmp_path: Path) -> None:
     base_file = base_dir / 'a.txt'
     base_file.write_bytes(b'line1\r\nline2\r\n')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -207,7 +207,7 @@ def test_preserve_line_endings_env(
     base_file = base_dir / 'a.txt'
     base_file.write_bytes(b'line1\r\nline2\r\n')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -238,7 +238,7 @@ def test_preserve_line_endings_identical_files(
     base_file = base_dir / 'a.txt'
     base_file.write_bytes(b'line1\r\nline2\r\n')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -259,7 +259,7 @@ def test_binary_files_identical_produce_no_diff(tmp_path: Path) -> None:
     base_dir.mkdir()
     (base_dir / 'logo.png').write_bytes(binary)
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -283,7 +283,7 @@ def test_binary_files_different_produce_diff_entry(tmp_path: Path) -> None:
         b'\x89PNG\r\n\x1a\n\x00\x00\x00\xaa\xbb',
     )
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -305,7 +305,7 @@ def test_check_skips_paused_regular_file(tmp_path: Path) -> None:
     base_dir.mkdir()
     (base_dir / 'config.toml').write_text('developer = true')
 
-    providers = Providers(delete_files=[], delete_history={})
+    providers = SessionBundle(delete_files=[], delete_history={})
 
     diffs = check_generated_output(
         setup_output,
@@ -325,7 +325,7 @@ def test_check_skips_paused_deletion(tmp_path: Path) -> None:
     base_dir.mkdir()
     (base_dir / 'legacy.txt').write_text('old')
 
-    providers = Providers(
+    providers = SessionBundle(
         delete_files=[Path('legacy.txt')],
         delete_history={},
     )
@@ -361,7 +361,7 @@ def test_check_skips_suppressed_sources(tmp_path: Path) -> None:
     )
     (base_dir / 'README.md').write_text('readme')
 
-    providers = Providers(
+    providers = SessionBundle(
         delete_files=[],
         delete_history={},
         suppressed_sources={'.github/workflows/_ci-checks.yaml'},
@@ -386,7 +386,7 @@ def test_check_reports_mapping_source_missing(tmp_path: Path) -> None:
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={'config.yml': '_repolish.missing.yml'},
@@ -419,7 +419,7 @@ def test_check_skips_regular_file_used_as_mapping_source(
     base_dir.mkdir()
     (base_dir / 'final-config.yml').write_text('template content')
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={'final-config.yml': 'template-config.yml'},

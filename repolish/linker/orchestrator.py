@@ -110,7 +110,7 @@ def collect_provider_symlinks(
     """Resolve the effective symlink list per provider without creating them.
 
     Explicit entries in ``repolish.yaml`` take priority; absent entries fall
-    back to the defaults declared in ``repolish.py``.  Providers with no
+    back to the defaults declared in ``repolish.py``.  SessionBundle with no
     effective symlinks are omitted from the result.
 
     Args:

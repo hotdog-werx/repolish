@@ -15,7 +15,7 @@ from repolish.loader.models import (
     BaseContext,
     BaseInputs,
     ProviderEntry,
-    Providers,
+    SessionBundle,
     TemplateMapping,
 )
 from repolish.loader.models import (
@@ -112,7 +112,7 @@ def test_load_and_validate_template_handles_corrupt_file(
     template_file = tmp_path / 'bad.txt'
     template_file.write_bytes(b'\xff\xfe\xff')
 
-    providers = Providers()
+    providers = SessionBundle()
     providers.file_mappings['dest'] = TemplateMapping(source_template='bad.txt')
 
     result = _load_and_validate_template(template_file, providers, 'dest')

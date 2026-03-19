@@ -5,7 +5,7 @@ from pathlib import Path
 
 from repolish.builder import stage_templates
 from repolish.hydration.staging import preprocess_templates
-from repolish.loader import Providers
+from repolish.loader import SessionBundle
 
 
 def write_file(p: Path, content: str) -> None:
@@ -48,7 +48,7 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     staged_secret.chmod(0)
 
     # Prepare a minimal providers object for preprocessing
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -90,7 +90,7 @@ def test_preprocess_templates_writes_file_when_anchor_content_changes(
         encoding='utf-8',
     )
 
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},

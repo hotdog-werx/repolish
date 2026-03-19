@@ -4,7 +4,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.loader import Providers, TemplateMapping
+from repolish.loader import SessionBundle, TemplateMapping
 from repolish.preprocessors import replace_text, safe_file_read
 
 logger = get_logger(__name__)
@@ -67,7 +67,7 @@ def _process_single_template_file(
 
 def preprocess_templates(
     setup_input: Path,
-    providers: Providers,
+    providers: SessionBundle,
     base_dir: Path,
 ) -> None:
     """Apply anchor-driven replacements to files under setup_input.

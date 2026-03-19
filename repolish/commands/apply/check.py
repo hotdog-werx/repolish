@@ -10,7 +10,7 @@ from repolish.hydration import (
     render_template,
     rich_print_diffs,
 )
-from repolish.loader.models import Providers
+from repolish.loader.models import SessionBundle
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,7 @@ class CheckContext:
     """Groups the parameters needed to run a check-only session."""
 
     setup_output: Path
-    providers: Providers
+    providers: SessionBundle
     base_dir: Path
     paused: frozenset[str]
     resolved_symlinks: dict[str, list]
@@ -30,7 +30,7 @@ class CheckContext:
 
 def _render_templates(
     setup_input: Path,
-    providers: Providers,
+    providers: SessionBundle,
     setup_output: Path,
 ) -> int:
     """Render templates; return 1 on error, 0 on success."""

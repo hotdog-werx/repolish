@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
 from repolish import loader as loader_mod
-from repolish.loader import Providers, create_providers
+from repolish.loader import SessionBundle, create_providers
 from repolish.loader.module import _find_provider_class as _find_provider_cls
 from tests.support import write_module
 
@@ -144,7 +144,7 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
         (d / 'repolish.py').write_text(src)
         dirs.append(str(d))
 
-    providers: Providers = create_providers(dirs)  # type: ignore[arg-type]
+    providers: SessionBundle = create_providers(dirs)  # type: ignore[arg-type]
 
     assert providers.anchors == case.expected_anchors
 
@@ -242,7 +242,7 @@ def test_multiple_providers_all_conflict(tmp_path: Path):
 
 
 def test_config_alias_passed_through(tmp_path: Path):
-    """Providers loaded via (alias, path) pairs see their config alias."""
+    """SessionBundle loaded via (alias, path) pairs see their config alias."""
     # create a simple provider module that asserts the alias in finalize_context
     prov = tmp_path / 'simple'
     prov.mkdir()

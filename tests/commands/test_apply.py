@@ -13,7 +13,7 @@ from repolish.commands.apply.options import ApplyOptions
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import ProviderSymlink
 from repolish.linker.health import ProviderReadinessResult
-from repolish.loader import Providers
+from repolish.loader import SessionBundle
 from repolish.loader.models import (
     Action,
     BaseContext,
@@ -120,7 +120,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
 
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = Providers(
+    ).return_value = SessionBundle(
         delete_files=[],
         delete_history={},
         create_only_files=[],
@@ -181,7 +181,7 @@ def test_apply_warns_when_providers_not_ready(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = Providers(
+    ).return_value = SessionBundle(
         provider_contexts={},
     )
     mocker.patch(
@@ -237,7 +237,7 @@ def test_apply_command_runs_with_valid_provider(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = Providers(
+    ).return_value = SessionBundle(
         provider_contexts={},
     )
     mocker.patch(
@@ -279,7 +279,7 @@ def test_apply_returns_1_when_render_fails(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = Providers(
+    ).return_value = SessionBundle(
         provider_contexts={},
     )
     mocker.patch(
@@ -324,7 +324,7 @@ def test_check_only_with_diffs_returns_2(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = Providers(
+    ).return_value = SessionBundle(
         provider_contexts={},
     )
     mocker.patch(
@@ -348,7 +348,7 @@ def _base_mocks(
     mocker: MockerFixture,
     tmp_path: Path,
     fake_config: RepolishConfig,
-    providers: Providers,
+    providers: SessionBundle,
 ) -> None:
     """Wire up the standard set of mocks used by the two coverage tests below."""
     mocker.patch(
@@ -404,7 +404,7 @@ def test_apply_with_template_mapping_in_file_mappings(
         },
     )
 
-    providers = Providers(
+    providers = SessionBundle(
         file_mappings={
             'report.md': TemplateMapping(
                 source_template='report.md.jinja',
@@ -448,7 +448,7 @@ def test_apply_with_delete_files(
         },
     )
 
-    providers = Providers(
+    providers = SessionBundle(
         delete_files=[Path('tracked.txt'), Path('untracked.txt')],
         delete_history={
             'tracked.txt': [
@@ -491,7 +491,7 @@ def test_template_sources_translated_from_alias_to_pid(
         },
     )
 
-    providers = Providers(provider_contexts={pid: BaseContext()})
+    providers = SessionBundle(provider_contexts={pid: BaseContext()})
 
     mocker.patch(
         'repolish.commands.apply.pipeline.load_config',
@@ -525,7 +525,7 @@ def test_template_sources_translated_from_alias_to_pid(
 
     def fake_render_template(
         setup_input: Path,
-        p: Providers,
+        p: SessionBundle,
         setup_output: Path,
     ) -> None:
         captured['template_sources'] = dict(p.template_sources)
@@ -585,7 +585,7 @@ def test_paused_files_logged_as_warning(
     )
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = Providers(
+    ).return_value = SessionBundle(
         provider_contexts={},
     )
     mocker.patch(
@@ -619,7 +619,7 @@ def test_print_files_summary_includes_symlink_only_provider(
     tmp_path: Path,
 ) -> None:
     """A provider with only symlinks (no file records) still appears in the table."""
-    providers = Providers(file_records=[])
+    providers = SessionBundle(file_records=[])
     symlinks = {
         'symlink-only-provider': [
             ProviderSymlink(

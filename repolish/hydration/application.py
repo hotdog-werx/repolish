@@ -5,7 +5,7 @@ from hotlog import get_logger
 
 from repolish.hydration.comparison import collect_output_files
 from repolish.hydration.misc import get_source_str_from_mapping
-from repolish.loader import Providers, TemplateMapping
+from repolish.loader import SessionBundle, TemplateMapping
 from repolish.misc import is_conditional_file
 
 logger = get_logger(__name__)
@@ -148,7 +148,7 @@ def _apply_file_mappings(
 
 def apply_generated_output(
     setup_output: Path,
-    providers: Providers,
+    providers: SessionBundle,
     base_dir: Path,
     *,
     paused_files: frozenset[str] = frozenset(),
@@ -158,7 +158,7 @@ def apply_generated_output(
 
     Args:
         setup_output: Path to the rendered output directory.
-        providers: Providers object with delete_files list and file_mappings.
+        providers: SessionBundle object with delete_files list and file_mappings.
         base_dir: Base directory where the project root is located.
         paused_files: POSIX-style paths that repolish must not touch this run.
         disable_auto_staging: When True, only files declared in

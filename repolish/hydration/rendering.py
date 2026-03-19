@@ -11,7 +11,7 @@ from jinja2 import (
     select_autoescape,
 )
 
-from repolish.loader import FileMode, Providers, TemplateMapping
+from repolish.loader import FileMode, SessionBundle, TemplateMapping
 from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ class RenderContext:
 
     setup_input: Path
     setup_output: Path
-    providers: Providers
+    providers: SessionBundle
     skip_templates: set[str] | None = None
 
 
@@ -147,7 +147,7 @@ def _render_file(
     return None
 
 
-def _ctx_for_pid(pid: str | None, providers: Providers) -> dict:
+def _ctx_for_pid(pid: str | None, providers: SessionBundle) -> dict:
     """Return the context dict for the given provider id.
 
     Returns an empty dict when ``pid`` is ``None`` or not found in
@@ -223,7 +223,7 @@ def _jinja_render(
         raise UndefinedError(msg) from exc
 
 
-def _collect_skip_templates(providers: Providers) -> set[str]:
+def _collect_skip_templates(providers: SessionBundle) -> set[str]:
     """Identify templates that are rendered later with per-mapping context.
 
     `TemplateMapping` entries are processed after the generic render pass,
@@ -239,7 +239,7 @@ def _collect_skip_templates(providers: Providers) -> set[str]:
 
 def render_template(
     setup_input: Path,
-    providers: Providers,
+    providers: SessionBundle,
     setup_output: Path,
 ) -> None:
     """Dispatch rendering to Jinja2.
@@ -279,7 +279,7 @@ def render_template(
 
 def _load_and_validate_template(
     template_file: Path,
-    providers: Providers,
+    providers: SessionBundle,
     dest_path: str,
 ) -> str | None:
     """Return the template text or None and remove the mapping on failure."""
@@ -316,7 +316,7 @@ def _render_single_mapping(
     """
     setup_input: Path = ctx.setup_input
     setup_output: Path = ctx.setup_output
-    providers: Providers = ctx.providers
+    providers: SessionBundle = ctx.providers
 
     if mapping.file_mode == FileMode.DELETE:
         providers.file_mappings.pop(dest_path, None)

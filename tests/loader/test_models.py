@@ -112,7 +112,7 @@ def test_get_generic_args_helper():
 
 
 def test_default_context_inference():
-    """Providers with a concrete context type get a default instance."""
+    """SessionBundle with a concrete context type get a default instance."""
 
     class Inferred(Provider[_TContext, _TInputs]):
         # no override of create_context; default implementation should kick in

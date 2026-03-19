@@ -3,12 +3,12 @@ from pathlib import Path
 
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
-from repolish.loader.models import Providers
+from repolish.loader.models import SessionBundle
 from repolish.misc import ctx_to_dict
 
 
 def collect_provider_files(
-    providers: Providers,
+    providers: SessionBundle,
     alias: str,
 ) -> list[dict[str, str | None]]:
     """Return sorted list of {path, mode, source} for files this provider contributes."""
@@ -47,7 +47,7 @@ def _debug_file_slug(ctx: object, alias: str) -> str:
 def _write_provider_debug_files(
     base_dir: Path,
     config: RepolishConfig,
-    providers: Providers,
+    providers: SessionBundle,
     alias_to_pid: dict[str, str],
 ) -> None:
     """Write per-provider context and file decisions to .repolish/_/.

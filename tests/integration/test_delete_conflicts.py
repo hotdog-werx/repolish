@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from repolish.hydration import apply_generated_output, check_generated_output
-from repolish.loader import Providers
+from repolish.loader import SessionBundle
 
 
 def test_check_skips_file_when_marked_for_deletion(tmp_path: Path):
@@ -27,7 +27,7 @@ def test_check_skips_file_when_marked_for_deletion(tmp_path: Path):
     (base_dir / 'config.yml').write_text('different content')
 
     # User marks it for deletion
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[Path('config.yml')],
         file_mappings={},
@@ -59,7 +59,7 @@ def test_check_skips_mapped_file_when_marked_for_deletion(tmp_path: Path):
     (base_dir / 'final-config.yml').write_text('different content')
 
     # File mapping maps it, but also marked for deletion
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[Path('final-config.yml')],
         file_mappings={'final-config.yml': '_repolish.config.yml'},
@@ -95,7 +95,7 @@ def test_apply_handles_file_then_delete(tmp_path: Path):
     (base_dir / 'config.yml').write_text('old content')
 
     # User marks it for deletion (wins over template)
-    providers = Providers(
+    providers = SessionBundle(
         anchors={},
         delete_files=[Path('config.yml')],
         file_mappings={},

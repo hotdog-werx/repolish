@@ -117,7 +117,7 @@ def test_get_provider_context_lookup() -> None:
 
 
 def test_provider_inputs_module_filtering() -> None:
-    """Providers may inspect other providers' input schemas before emitting."""
+    """SessionBundle may inspect other providers' input schemas before emitting."""
 
     class Dummy(BaseContext):
         pass

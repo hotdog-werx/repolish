@@ -29,7 +29,7 @@ def gather_template_directories(
 ) -> list[Path | tuple[str | None, Path]]:
     """Return the template directories in the order they should be staged.
 
-    Providers drive the result; the `directories` field no longer exists.
+    SessionBundle drive the result; the `directories` field no longer exists.
     If `providers_order` is given we honour it, otherwise we use dict key order.
     The return type uses the same element-level union as
     :func:`stage_templates` so type checks won't complain about invariant lists.

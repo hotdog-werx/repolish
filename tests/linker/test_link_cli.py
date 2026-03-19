@@ -14,10 +14,10 @@ from repolish.commands.link import (
 )
 from repolish.config import (
     ProviderConfig,
-    ProviderFileInfo,
     ProviderSymlink,
     RepolishConfigFile,
 )
+from repolish.config.models import ProviderFileInfo
 from repolish.linker import (
     create_provider_symlinks,
     process_provider,

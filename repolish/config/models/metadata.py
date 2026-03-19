@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 logger = get_logger(__name__)
 
 
-class AllProviders(BaseModel):
+class AliasRegistry(BaseModel):
     """Model for .all-providers.json file structure.
 
     This file stores provider alias mappings and can be expanded in the future
@@ -22,14 +22,14 @@ class AllProviders(BaseModel):
     )
 
     @classmethod
-    def from_file(cls, file_path: Path) -> 'AllProviders':
+    def from_file(cls, file_path: Path) -> 'AliasRegistry':
         """Load provider data from JSON file.
 
         Args:
             file_path: Path to .all-providers.json file
 
         Returns:
-            AllProviders model with empty aliases dict if file doesn't exist or is invalid
+            AliasRegistry model with empty aliases dict if file doesn't exist or is invalid
 
         Note:
             Returns a model with empty aliases (not None) because not having this file
