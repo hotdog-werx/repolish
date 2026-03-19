@@ -62,7 +62,7 @@ class MemberInfo(BaseModel):
         return sorted(v)
 
 
-class MonorepoContext(BaseModel):
+class WorkspaceContext(BaseModel):
     """Monorepo topology injected into every provider context as ``repolish.monorepo``.
 
     In standalone mode all fields retain their defaults so existing providers
@@ -126,7 +126,7 @@ class GlobalContext(BaseModel):
             datetime.UTC,
         ).year,
     )
-    monorepo: MonorepoContext = Field(default_factory=MonorepoContext)
+    workspace: WorkspaceContext = Field(default_factory=WorkspaceContext)
 
 
 def get_global_context() -> GlobalContext:
@@ -156,7 +156,7 @@ def get_global_context() -> GlobalContext:
     )
 
 
-class MonorepoProviderInfo(BaseModel):
+class WorkspaceProviderInfo(BaseModel):
     """Monorepo identity of the provider instance, injected into ``_provider``.
 
     Unlike ``repolish.monorepo`` (which is global and shared), these fields
@@ -186,7 +186,9 @@ class ProviderInfo(BaseModel):
     version: str = ''
     package_name: str = ''
     project_name: str = ''
-    monorepo: MonorepoProviderInfo = Field(default_factory=MonorepoProviderInfo)
+    monorepo: WorkspaceProviderInfo = Field(
+        default_factory=WorkspaceProviderInfo,
+    )
     """Monorepo identity: mode and, for package members, name and path."""
 
     @computed_field

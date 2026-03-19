@@ -2,16 +2,22 @@
 
 ## Split `commands/apply/` into focused modules
 
-### Vocabulary
+### Vocabulary ✅
 
 Each directory context (standalone project, monorepo root, or monorepo member)
 is a **session** — a bounded group of providers that share information with each
 other. A repository has one session (standalone) or many (one per member +
 root). Session terminology replaces "pass" and "monorepo" throughout.
 
+The session vocabulary is implemented: `ResolvedSession` (in `options.py`),
+`resolve_session` and `apply_session` (in `pipeline.py` and `command.py`),
+and the resolve/apply split in `coordinator.py`.
+
 ### `command.py` → multiple modules
 
-- `pipeline.py` — `run_session()` _(renamed from `command`)_
+- `pipeline.py` — `resolve_session()`, `_collect_session_outputs`,
+  `_alias_pid_maps`, `_ordered_aliases` ✅ _(created; `run_session` stays in
+  `command.py` as a thin wrapper around `resolve_session` + `apply_session`)_
 - `staging.py` — `_create_staged_template`, `_gather_template_directories`,
   `_collect_excluded_sources`, `_alias_pid_maps`, `_ordered_aliases`,
   `_build_provider_overrides` (from coordinator)
@@ -23,30 +29,45 @@ root). Session terminology replaces "pass" and "monorepo" throughout.
   `_build_provider_table`, `_MODE_STYLE`
 - `check.py` — `_finish_check`, `_render_templates`
 
-### `monorepo.py` → two modules
+### `monorepo.py` → `coordinator.py` ✅
 
-- `dry_pass.py` — `collect_member_data` (imports `MemberDryRunData` from
-  `options`, `_build_provider_overrides` from `staging`)
-- `coordinator.py` _(renamed from `monorepo.py`)_ — `coordinate_sessions`
-  _(renamed from `run_monorepo`)_, `_invoke_session` _(renamed from
-  `_run_single_pass`)_, `_build_global_context`, `_chdir`
+- No separate `dry_pass.py` needed — the dry pass is absorbed into
+  `pipeline.py::_collect_session_outputs` and called automatically by
+  `resolve_session`. `collect_member_data` and `MemberDryRunData` were
+  removed; their work is now done by `resolve_session` returning a
+  `ResolvedSession` with `provider_entries` and `emitted_inputs` fields.
+- `coordinator.py` — `coordinate_sessions`, `_build_global_context`, `_chdir`
+  ✅ _(refactored; `_invoke_session` was not needed — `resolve_session` +
+  `apply_session` are called directly in the resolve/apply split)_
 
-### Call chain
+### Call chain ✅
 
+**Standalone:**
 ```
-apply_command → coordinate_sessions → _invoke_session → run_session
+apply_command → coordinate_sessions → run_session
+                                      (resolve_session + apply_session)
 ```
 
-`coordinate_sessions` detects the repository topology, sequences sessions
-(members first, then root), and routes emitted inputs across sessions.
-`_invoke_session` is the internal helper that builds context, chdir's, and calls
-`run_session` for one project. `run_session` executes the full pipeline for a
-single session and knows nothing about topology.
+**Monorepo:**
+```
+apply_command → coordinate_sessions
+                 ├─ resolve phase: resolve_session × N  (members, then root)
+                 └─ apply phase:  apply_session  × N  (root, then members)
+```
 
-### `__init__.py`
+`coordinate_sessions` detects the repository topology, runs the resolve phase
+for all sessions (gaining full visibility into cross-session data flows before
+any files are written), then runs the apply phase in order.
+`resolve_session` (in `pipeline.py`) owns the full provider pipeline for one
+session and returns a `ResolvedSession` with no filesystem side effects.
+`apply_session` (in `command.py`) takes a `ResolvedSession` and writes files.
+`run_session` (in `command.py`) is the convenience wrapper that does both in
+one call — used by standalone mode and the public API.
 
-Re-export public API: `apply_command`, `ApplyCommandOptions`, `run_session`,
-`ApplyOptions`.
+### `__init__.py` ✅
+
+Current public API: `apply_command`, `ApplyCommandOptions`, `ApplyOptions`,
+`ResolvedSession`, `apply_session`, `resolve_session`, `run_session`.
 
 ### Public API promotion
 
@@ -95,14 +116,14 @@ companion `@dataclass` so callers don't pass positional soup:
 - `_build_provider_overrides` belongs in `staging.py` — same profile as
   `_alias_pid_maps` / `_ordered_aliases`: all derive structured data from
   `RepolishConfig`.
-- `MemberDryRunData` belongs in `options.py` — same nature as `ApplyOptions` /
-  `ApplyCommandOptions`; all framework-agnostic data containers.
+- `MemberDryRunData` was removed — `ResolvedSession.provider_entries` and
+  `ResolvedSession.emitted_inputs` carry its data instead. ✅
 - Model renames will follow naturally: `MonorepoContext` and related names in
   `loader/models` may benefit from session-scoped terminology once the command
   layer is settled.
-- After the split the circular-import workaround in `_run_single_pass` (deferred
-  `from repolish.commands.apply import ...`) can be replaced with direct
-  top-level imports from `pipeline` and `dispatch`.
+- The circular-import workaround in `coordinator.py` (deferred
+  `from repolish.commands.apply import ...`) was replaced with direct top-level
+  imports from `command`, `options`, and `pipeline`. ✅
 
 ---
 

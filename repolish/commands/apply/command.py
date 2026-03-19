@@ -7,29 +7,23 @@ from rich.table import Table
 from rich.text import Text
 
 from repolish.builder import stage_templates
-from repolish.commands.apply.options import ApplyOptions
+from repolish.commands.apply.options import ApplyOptions, ResolvedSession
+from repolish.commands.apply.pipeline import _ordered_aliases, resolve_session
 from repolish.config import (
     ProviderSymlink,
     RepolishConfig,
     ResolvedProviderInfo,
-    load_config,
-    load_config_file,
 )
 from repolish.console import console
 from repolish.hydration import (
     apply_generated_output,
-    build_final_providers,
     check_generated_output,
     prepare_staging,
     preprocess_templates,
     render_template,
     rich_print_diffs,
 )
-from repolish.linker.health import ensure_providers_ready
-from repolish.linker.orchestrator import (
-    collect_provider_symlinks,
-    create_provider_symlinks,
-)
+from repolish.linker.orchestrator import create_provider_symlinks
 from repolish.loader.models import (
     GlobalContext,
     Providers,
@@ -133,18 +127,6 @@ def _gather_template_directories(
 
     return template_dirs
 
-
-def _alias_pid_maps(
-    config: RepolishConfig,
-) -> tuple[dict[str, str], dict[str, str]]:
-    """Return (alias→pid, pid→alias) maps built from config.providers."""
-    alias_to_pid = {alias: info.provider_root.as_posix() for alias, info in config.providers.items()}
-    return alias_to_pid, {v: k for k, v in alias_to_pid.items()}
-
-
-def _ordered_aliases(config: RepolishConfig) -> list[str]:
-    """Return provider aliases in the configured or default order."""
-    return config.providers_order or list(config.providers.keys())
 
 
 def _collect_provider_files(
@@ -539,58 +521,24 @@ def _write_provider_debug_files(
         )
 
 
-def run_session(options: ApplyOptions) -> int:
-    """Run repolish with the given options.
+def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
+    """Run the apply/check pipeline for an already-resolved session.
 
-    When *options.global_context* is provided it is forwarded to the provider
-    pipeline (used by the monorepo orchestrator to inject a pre-built context
-    carrying ``MonorepoContext``).  *extra_provider_entries* and *extra_inputs*
-    are similarly forwarded for member-to-root input routing.
+    Performs staging, rendering, post-processing, then either checks for diffs
+    (``check_only=True``) or writes changes to disk.
+
+    Callers that sequence multiple sessions (e.g. ``coordinate_sessions``) call
+    this after collecting all resolved sessions so they can inspect cross-session
+    interactions before any files are written.
     """
-    config_path = options.config_path
-    check_only = options.check_only
-    strict = options.strict
-    global_context = options.global_context
-    extra_provider_entries = options.extra_provider_entries
-    extra_inputs = options.extra_inputs
-
-    logger.info('repolish_started', version=__version__)
-
-    # Ensure all providers are registered before resolving the config.
-    # This writes/repairs provider-info files so load_config can trust them.
-    raw_config = load_config_file(config_path)
-    config_dir = config_path.resolve().parent
-    aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
-    readiness = ensure_providers_ready(
-        aliases,
-        raw_config.providers,
-        config_dir,
-        strict=strict,
-    )
-    if readiness.failed:
-        logger.warning(
-            'providers_not_ready',
-            failed=readiness.failed,
-            note='these providers will be absent from the run',
-        )
-
-    config = load_config(config_path)
-
-    providers = build_final_providers(
-        config,
-        global_context=global_context,
-        extra_provider_entries=extra_provider_entries,
-        extra_inputs=extra_inputs,
-    )
-    resolved_symlinks = collect_provider_symlinks(
-        config.providers,
-        raw_config.providers,
-    )
-    alias_to_pid, pid_to_alias = _alias_pid_maps(config)
+    config = session.config
+    providers = session.providers
+    resolved_symlinks = session.resolved_symlinks
+    alias_to_pid = session.alias_to_pid
+    pid_to_alias = session.pid_to_alias
+    aliases = session.aliases
     config_pid = config.config_dir.as_posix()
-    aliases = _ordered_aliases(config)
 
-    # earliest possible signal: which providers are in play
     logger.info('providers_loaded', providers=aliases)
 
     # staging must happen before we can report per-provider template ownership
@@ -623,7 +571,7 @@ def run_session(options: ApplyOptions) -> int:
         aliases,
         alias_to_pid,
         resolved_symlinks,
-        global_context,
+        session.global_context,
     )
 
     paused = frozenset(config.paused_files)
@@ -645,6 +593,7 @@ def run_session(options: ApplyOptions) -> int:
     post_cwd = setup_output / 'repolish'
     run_post_process(config.post_process, post_cwd)
 
+    is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
         return _finish_check(
             setup_output,
@@ -653,7 +602,7 @@ def run_session(options: ApplyOptions) -> int:
             paused,
             resolved_symlinks,
             config.providers,
-            disable_auto_staging=(global_context is not None and global_context.monorepo.mode == 'root'),
+            disable_auto_staging=is_root_pass,
         )
 
     apply_generated_output(
@@ -661,7 +610,21 @@ def run_session(options: ApplyOptions) -> int:
         providers,
         base_dir,
         paused_files=paused,
-        disable_auto_staging=(global_context is not None and global_context.monorepo.mode == 'root'),
+        disable_auto_staging=is_root_pass,
     )
     _apply_symlinks(resolved_symlinks, config.providers)
     return 0
+
+
+def run_session(options: ApplyOptions) -> int:
+    """Run repolish for a single session.
+
+    Resolves providers then applies changes (or checks for diffs when
+    ``options.check_only`` is ``True``).  This is the entry point for
+    standalone project runs; ``coordinate_sessions`` calls :func:`resolve_session`
+    and :func:`apply_session` directly to gain visibility into all sessions
+    before any files are written.
+    """
+    logger.info('repolish_started', version=__version__)
+    session = resolve_session(options)
+    return apply_session(session, check_only=options.check_only)

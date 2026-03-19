@@ -10,16 +10,16 @@ selectively if desired.
 """
 
 from .metadata import AllProviders, ProviderInfo
-from .project import MonorepoConfig, RepolishConfig, RepolishConfigFile
+from .project import RepolishConfig, RepolishConfigFile, WorkspaceConfig
 from .provider import ProviderConfig, ProviderSymlink, ResolvedProviderInfo
 
 __all__ = [
     'AllProviders',
-    'MonorepoConfig',
     'ProviderConfig',
     'ProviderInfo',
     'ProviderSymlink',
     'RepolishConfig',
     'RepolishConfigFile',
     'ResolvedProviderInfo',
+    'WorkspaceConfig',
 ]

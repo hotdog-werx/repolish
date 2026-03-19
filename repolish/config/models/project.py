@@ -11,10 +11,10 @@ from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
 from repolish.exceptions import ConfigValidationError
 
 
-class MonorepoConfig(BaseModel):
-    """Optional monorepo section in ``repolish.yaml``.
+class WorkspaceConfig(BaseModel):
+    """Optional workspace section in ``repolish.yaml``.
 
-    When present, enables monorepo mode.  When ``members`` is set it overrides
+    When present, enables workspace mode.  When ``members`` is set it overrides
     auto-detection from ``[tool.uv.workspace]`` in ``pyproject.toml``.
     """
 
@@ -66,10 +66,10 @@ class RepolishConfigFile(BaseModel):
         default_factory=dict,
         description='Provider configurations for resource linking and orchestration',
     )
-    monorepo: MonorepoConfig | None = Field(
+    workspace: WorkspaceConfig | None = Field(
         default=None,
         description=(
-            'Optional monorepo configuration. When present, enables monorepo mode. '
+            'Optional workspace configuration. When present, enables workspace mode. '
             'members overrides auto-detection from [tool.uv.workspace].'
         ),
     )

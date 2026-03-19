@@ -2,7 +2,7 @@ from repolish.commands.apply.command import run_session
 from repolish.commands.apply.coordinator import coordinate_sessions
 from repolish.commands.apply.display import error_running_from_member
 from repolish.commands.apply.options import ApplyCommandOptions, ApplyOptions
-from repolish.config.topology import check_running_from_member
+from repolish.config.topology import find_workspace_root
 
 
 def apply_command(params: ApplyCommandOptions) -> int:
@@ -30,7 +30,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
 
     # Warn when running inside a monorepo member without --standalone.
     if not params.standalone:
-        root = check_running_from_member(config_dir)
+        root = find_workspace_root(config_dir)
         if root is not None:
             rel = config_dir.relative_to(root) if config_dir.is_relative_to(root) else config_dir
             error_running_from_member(config_dir, root, rel)

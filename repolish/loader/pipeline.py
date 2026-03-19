@@ -8,9 +8,9 @@ from repolish.loader.models import (
     BaseContext,
     BaseInputs,
     GlobalContext,
-    MonorepoProviderInfo,
     ProviderEntry,
     ProviderInfo,
+    WorkspaceProviderInfo,
 )
 from repolish.loader.models import Provider as _ProviderBase
 from repolish.pkginfo import resolve_package_identity
@@ -129,7 +129,7 @@ def _synthesize_provider_context_for_pid(
     # {{ _provider.version }}, {{ _provider.package_name }}, etc. without the
     # provider having to do it manually.
     if isinstance(ctx, BaseContext):
-        mono = global_context.monorepo
+        mono = global_context.workspace
         member_name = ''
         member_path = ''
         if mono.mode == 'package' and mono.package_dir is not None:
@@ -143,7 +143,7 @@ def _synthesize_provider_context_for_pid(
             version=getattr(inst, 'version', ''),
             package_name=getattr(inst, 'package_name', ''),
             project_name=getattr(inst, 'project_name', ''),
-            monorepo=MonorepoProviderInfo(
+            monorepo=WorkspaceProviderInfo(
                 mode=mono.mode,
                 member_name=member_name,
                 member_path=member_path,

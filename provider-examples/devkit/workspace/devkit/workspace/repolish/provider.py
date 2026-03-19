@@ -31,7 +31,7 @@ class WorkspaceProvider(
         ``get_inputs_schema()`` matches the item's type.  Return an empty list
         if this provider has nothing to share.
         """
-        mode = own_context.repolish.monorepo.mode
+        mode = own_context.repolish.workspace.mode
         if mode == 'root':
             # The root provider collects messages from members; it has nothing
             # to report to itself.

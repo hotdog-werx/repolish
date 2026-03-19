@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
-from repolish.config.models.project import MonorepoConfig
+from repolish.config.models.project import WorkspaceConfig
 from repolish.config.topology import (
-    check_running_from_member,
-    detect_monorepo,
-    detect_monorepo_from_config,
+    detect_workspace,
+    detect_workspace_from_config,
+    find_workspace_root,
 )
 
 _FIXTURES_DIR = Path(__file__).parent / 'fixtures'
@@ -26,7 +26,7 @@ class TCase:
 
 class TestDetectMonorepo:
     def test_detect_monorepo_finds_members(self) -> None:
-        ctx = detect_monorepo(_MONOREPO_BASIC)
+        ctx = detect_workspace(_MONOREPO_BASIC)
 
         assert ctx is not None
         assert ctx.mode == 'root'
@@ -38,14 +38,14 @@ class TestDetectMonorepo:
         assert 'pkg-no-repolish' not in member_names
 
     def test_detect_monorepo_provider_aliases(self) -> None:
-        ctx = detect_monorepo(_MONOREPO_BASIC)
+        ctx = detect_workspace(_MONOREPO_BASIC)
 
         assert ctx is not None
         for member in ctx.members:
             assert 'simple-provider' in member.provider_aliases
 
     def test_detect_monorepo_paths_are_relative(self) -> None:
-        ctx = detect_monorepo(_MONOREPO_BASIC)
+        ctx = detect_workspace(_MONOREPO_BASIC)
 
         assert ctx is not None
         for member in ctx.members:
@@ -53,7 +53,7 @@ class TestDetectMonorepo:
 
     def test_detect_monorepo_standalone(self, tmp_path: Path) -> None:
         # A directory with no pyproject.toml is standalone.
-        result = detect_monorepo(tmp_path)
+        result = detect_workspace(tmp_path)
 
         assert result is None
 
@@ -62,7 +62,7 @@ class TestDetectMonorepo:
         (tmp_path / 'pyproject.toml').write_text(
             '[project]\nname = "standalone"\n',
         )
-        result = detect_monorepo(tmp_path)
+        result = detect_workspace(tmp_path)
 
         assert result is None
 
@@ -70,8 +70,8 @@ class TestDetectMonorepo:
         # copy monorepo-basic into tmp_path so we can mutate independently
         dest = shutil.copytree(_MONOREPO_BASIC, tmp_path / 'monorepo-basic')
 
-        cfg = MonorepoConfig(members=['packages/pkg-a'])
-        ctx = detect_monorepo_from_config(dest, cfg)
+        cfg = WorkspaceConfig(members=['packages/pkg-a'])
+        ctx = detect_workspace_from_config(dest, cfg)
 
         assert ctx is not None
         assert ctx.mode == 'root'
@@ -80,8 +80,8 @@ class TestDetectMonorepo:
 
     def test_detect_monorepo_from_config_fallback(self) -> None:
         # members=None falls back to uv detection
-        cfg = MonorepoConfig(members=None)
-        ctx = detect_monorepo_from_config(_MONOREPO_BASIC, cfg)
+        cfg = WorkspaceConfig(members=None)
+        ctx = detect_workspace_from_config(_MONOREPO_BASIC, cfg)
 
         assert ctx is not None
         member_names = {m.name for m in ctx.members}
@@ -97,17 +97,17 @@ class TestCheckRunningFromMember:
         pkg_a = (_MONOREPO_BASIC / 'packages' / 'pkg-a').resolve()
         monkeypatch.chdir(pkg_a)
 
-        root = check_running_from_member(pkg_a)
+        root = find_workspace_root(pkg_a)
 
         assert root is not None
         assert root.resolve() == _MONOREPO_BASIC.resolve()
 
     def test_check_running_from_member_at_root(self) -> None:
-        root = check_running_from_member(_MONOREPO_BASIC.resolve())
+        root = find_workspace_root(_MONOREPO_BASIC.resolve())
 
         assert root is None
 
     def test_check_running_from_member_standalone(self, tmp_path: Path) -> None:
-        result = check_running_from_member(tmp_path)
+        result = find_workspace_root(tmp_path)
 
         assert result is None

@@ -95,7 +95,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     )
 
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -119,7 +119,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     )
 
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = Providers(
         delete_files=[],
         delete_history={},
@@ -158,7 +158,7 @@ def test_apply_warns_when_providers_not_ready(
 
     # Override the autouse fixture to simulate a failed provider registration.
     mocker.patch(
-        'repolish.commands.apply.command.ensure_providers_ready',
+        'repolish.commands.apply.pipeline.ensure_providers_ready',
         return_value=ProviderReadinessResult(ready=[], failed=['broken_lib']),
     )
 
@@ -167,7 +167,7 @@ def test_apply_warns_when_providers_not_ready(
         providers={},
     )
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -180,7 +180,7 @@ def test_apply_warns_when_providers_not_ready(
         'repolish.commands.apply.command.stage_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = Providers(
         provider_contexts={},
     )
@@ -223,7 +223,7 @@ def test_apply_command_runs_with_valid_provider(
     )
 
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -236,7 +236,7 @@ def test_apply_command_runs_with_valid_provider(
         'repolish.commands.apply.command.stage_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = Providers(
         provider_contexts={},
     )
@@ -265,7 +265,7 @@ def test_apply_returns_1_when_render_fails(
     fake_config = RepolishConfig(config_dir=tmp_path)
 
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -278,7 +278,7 @@ def test_apply_returns_1_when_render_fails(
         'repolish.commands.apply.command.stage_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = Providers(
         provider_contexts={},
     )
@@ -310,7 +310,7 @@ def test_check_only_with_diffs_returns_2(
     fake_config = RepolishConfig(config_dir=tmp_path)
 
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -323,7 +323,7 @@ def test_check_only_with_diffs_returns_2(
         'repolish.commands.apply.command.stage_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = Providers(
         provider_contexts={},
     )
@@ -352,7 +352,7 @@ def _base_mocks(
 ) -> None:
     """Wire up the standard set of mocks used by the two coverage tests below."""
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -365,7 +365,7 @@ def _base_mocks(
         'repolish.commands.apply.command.stage_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = providers
     mocker.patch(
         'repolish.commands.apply.command.preprocess_templates',
@@ -494,7 +494,7 @@ def test_template_sources_translated_from_alias_to_pid(
     providers = Providers(provider_contexts={pid: BaseContext()})
 
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -512,7 +512,7 @@ def test_template_sources_translated_from_alias_to_pid(
         {'pyproject.toml': 'template_a', 'Dockerfile': 'template_a'},
     )
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = providers
     mocker.patch(
         'repolish.commands.apply.command.preprocess_templates',
@@ -568,7 +568,7 @@ def test_paused_files_logged_as_warning(
     )
 
     mocker.patch(
-        'repolish.commands.apply.command.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.command.prepare_staging',
@@ -584,7 +584,7 @@ def test_paused_files_logged_as_warning(
         {},
     )
     mocker.patch(
-        'repolish.commands.apply.command.build_final_providers',
+        'repolish.commands.apply.pipeline.build_final_providers',
     ).return_value = Providers(
         provider_contexts={},
     )

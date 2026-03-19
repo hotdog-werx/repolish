@@ -212,7 +212,7 @@ def gather_received_inputs(
     # entries are appended *after* them by the orchestrator.  Slicing avoids
     # the shared-`provider_id` trap: installed packages used by both root and
     # members have identical `provider_id` strings, so filtering by pid would
-    # include duplicate member entries and cause 3× duplication in
+    # include duplicate member entries and cause 3x duplication in
     # `received_inputs`.
     routing_list = all_providers_list[: len(module_cache)]
     state = _GatherState(

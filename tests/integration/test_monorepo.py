@@ -41,7 +41,7 @@ class TestStandaloneModeUnchanged:
         )
         assert debug_files, 'no provider-context debug files written'
         data = json.loads(debug_files[0].read_text())
-        monorepo = data['context'].get('repolish', {}).get('monorepo', {})
+        monorepo = data['context'].get('repolish', {}).get('workspace', {})
         assert monorepo.get('mode') == 'standalone'
 
 
@@ -87,7 +87,7 @@ class TestMonorepoRootPass:
         )
         assert debug_files
         data = json.loads(debug_files[0].read_text())
-        monorepo = data['context'].get('repolish', {}).get('monorepo', {})
+        monorepo = data['context'].get('repolish', {}).get('workspace', {})
         assert monorepo.get('mode') == 'root'
 
 
@@ -209,7 +209,7 @@ class TestMonorepoFullRun:
         )
         assert debug_files
         data = json.loads(debug_files[0].read_text())
-        monorepo = data['context'].get('repolish', {}).get('monorepo', {})
+        monorepo = data['context'].get('repolish', {}).get('workspace', {})
         assert monorepo.get('mode') == 'package'
 
 
@@ -259,7 +259,7 @@ class TestExplicitMembersConfig:
 
         # Overwrite root repolish.yaml to declare only pkg-a as a member.
         (repo / 'repolish.yaml').write_text(
-            'monorepo:\n'
+            'workspace:\n'
             '  members:\n'
             '    - packages/pkg-a\n'
             'providers:\n'
@@ -293,13 +293,12 @@ class TestDevkitProviderCommunication:
         WorkspaceProvider collects all of these in ``finalize_context`` and
         writes ``root_file.md`` via an explicit ``create_file_mappings`` entry.
 
-        Expected: 4 provider messages in the file (2 members × 2 providers).
+        Expected: 4 provider messages in the file (2 members x 2 providers).
         """
         repo = fixtures.monorepo_devkit.stage(tmp_path)
         monkeypatch.chdir(repo)
 
-        result = run_repolish(['apply'])
-        print(result.output)
+        _ = run_repolish(['apply'])
         root_file = repo / 'root_file.md'
         assert root_file.exists(), 'root_file.md was not created by the workspace provider'
 
@@ -307,8 +306,7 @@ class TestDevkitProviderCommunication:
         # Collect non-empty, non-header lines.
         messages = [line for line in content.splitlines() if line.strip() and not line.startswith('#')]
 
-        print('content:', content)
-        # Every member provider emits one message → 2 members × 2 providers = 4.
+        # Every member provider emits one message → 2 members x 2 providers = 4.
         assert len(messages) == 4, f'expected 4 provider messages, got {len(messages)}: {messages}'
 
         # Both pkg-alpha and pkg-beta must have contributed a python: message.

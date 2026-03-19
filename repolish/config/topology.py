@@ -1,45 +1,24 @@
-"""Monorepo detection and member discovery.
+from pathlib import Path
 
-Three public helpers:
-
-- :func:`detect_monorepo` — sniff ``[tool.uv.workspace]`` in ``pyproject.toml``.
-- :func:`detect_monorepo_from_config` — same but uses an explicit member list
-  from a ``MonorepoConfig`` object.
-- :func:`check_running_from_member` — walk parent dirs to find whether the
-  current directory is inside a uv workspace member.
-"""
-
-from __future__ import annotations
-
-import tomllib
-from typing import TYPE_CHECKING
-
-from repolish.loader.models.context import MemberInfo, MonorepoContext
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from repolish.config.models.project import MonorepoConfig
+from repolish.config.models.project import WorkspaceConfig
+from repolish.loader.models.context import MemberInfo, WorkspaceContext
+from repolish.misc import read_toml
 
 
 def _read_uv_workspace_members(pyproject: Path) -> list[str] | None:
     """Return the raw member glob patterns from ``[tool.uv.workspace]``, or None."""
-    try:
-        with pyproject.open('rb') as fh:
-            data = tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
-        return None
-    return data.get('tool', {}).get('uv', {}).get('workspace', {}).get('members')
+    data = read_toml(pyproject)
+    if data:
+        members = data.get('tool', {}).get('uv', {}).get('workspace', {}).get('members')
+        if isinstance(members, list) and all(isinstance(m, str) for m in members):
+            return members
+    return None
 
 
 def _read_project_name(pyproject: Path) -> str:
     """Return ``[project].name`` from a ``pyproject.toml``, or empty string on failure."""
-    try:
-        with pyproject.open('rb') as fh:
-            data = tomllib.load(fh)
-    except (OSError, tomllib.TOMLDecodeError):
-        return ''
-    return data.get('project', {}).get('name', '')
+    data = read_toml(pyproject)
+    return data.get('project', {}).get('name', '') or '' if data else ''
 
 
 def _build_member_info(member_dir: Path, config_dir: Path) -> MemberInfo | None:
@@ -83,10 +62,10 @@ def _expand_members(patterns: list[str], config_dir: Path) -> list[MemberInfo]:
     return members
 
 
-def detect_monorepo(config_dir: Path) -> MonorepoContext | None:
-    """Detect monorepo topology by reading ``[tool.uv.workspace]`` in ``pyproject.toml``.
+def detect_workspace(config_dir: Path) -> WorkspaceContext | None:
+    """Detect workspace topology by reading ``[tool.uv.workspace]`` in ``pyproject.toml``.
 
-    Returns a :class:`MonorepoContext` with ``mode="root"`` when a workspace is
+    Returns a :class:`WorkspaceContext` with ``mode="root"`` when a workspace is
     found, or ``None`` when the directory is a standalone repo.
     """
     pyproject = config_dir / 'pyproject.toml'
@@ -95,48 +74,47 @@ def detect_monorepo(config_dir: Path) -> MonorepoContext | None:
         return None
 
     members = _expand_members(patterns, config_dir)
-    return MonorepoContext(mode='root', root_dir=config_dir, members=members)
+    return WorkspaceContext(mode='root', root_dir=config_dir, members=members)
 
 
-def detect_monorepo_from_config(
+def detect_workspace_from_config(
     config_dir: Path,
-    monorepo_config: MonorepoConfig,
-) -> MonorepoContext | None:
-    """Detect monorepo using an explicit member list from ``repolish.yaml``.
+    workspace_config: WorkspaceConfig,
+) -> WorkspaceContext | None:
+    """Detect workspace using an explicit member list from ``repolish.yaml``.
 
-    When ``monorepo_config.members`` is ``None`` or empty, falls back to
-    :func:`detect_monorepo`.
+    When ``workspace_config.members`` is ``None`` or empty, falls back to
+    :func:`detect_workspace`.
     """
-    if not monorepo_config.members:
-        return detect_monorepo(config_dir)
+    if not workspace_config.members:
+        return detect_workspace(config_dir)
 
-    members = _expand_members(monorepo_config.members, config_dir)
-    return MonorepoContext(mode='root', root_dir=config_dir, members=members)
+    members = _expand_members(workspace_config.members, config_dir)
+    return WorkspaceContext(mode='root', root_dir=config_dir, members=members)
 
 
-def check_running_from_member(config_dir: Path) -> Path | None:  # noqa: C901 - TODO: extract inner loop into helper
-    """Return the monorepo root if *config_dir* is a member, else ``None``.
+def find_workspace_root(config_dir: Path) -> Path | None:
+    """Return the workspace root path if *config_dir* is a workspace member.
 
     Walks parent directories until it finds a ``pyproject.toml`` with a
-    ``[tool.uv.workspace]`` whose expanded member globs contain *config_dir*.
-    Stops at the filesystem root.
+    ``[tool.uv.workspace]`` section whose expanded member globs contain
+    *config_dir*.  Returns the directory containing that ``pyproject.toml``,
+    or ``None`` if no matching workspace root is found before the filesystem
+    root.
     """
     config_dir = config_dir.resolve()
-    current = config_dir.parent
 
-    while True:
+    # Iterate through the parent chain (including the filesystem root)
+    for current in (config_dir.parent, *config_dir.parent.parents):
         pyproject = current / 'pyproject.toml'
-        if pyproject.exists():
-            patterns = _read_uv_workspace_members(pyproject)
-            if patterns:
-                for pattern in patterns:
-                    for candidate in current.glob(pattern):
-                        if candidate.resolve() == config_dir:
-                            return current
-        parent = current.parent
-        if parent == current:
-            # reached filesystem root
-            break
-        current = parent
+        if not pyproject.exists():
+            continue
+
+        patterns = _read_uv_workspace_members(pyproject)
+        if not patterns:
+            continue
+
+        if any(candidate.resolve() == config_dir for pattern in patterns for candidate in current.glob(pattern)):
+            return current
 
     return None
