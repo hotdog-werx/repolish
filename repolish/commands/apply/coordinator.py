@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from repolish.commands.apply.options import MemberDryRunData
 from repolish.config.loader import load_config_file
-from repolish.config.monorepo import (
+from repolish.config.topology import (
     detect_monorepo,
     detect_monorepo_from_config,
 )
@@ -144,7 +144,7 @@ def _build_provider_overrides(
     return overrides
 
 
-def _run_single_pass(  # noqa: PLR0913
+def _run_project_session(  # noqa: PLR0913
     config_path: Path,
     mono_ctx: MonorepoContext,
     *,
@@ -161,7 +161,7 @@ def _run_single_pass(  # noqa: PLR0913
     for member passes).
     """
     from repolish.commands.apply import ApplyOptions  # noqa: PLC0415
-    from repolish.commands.apply import command as apply_command
+    from repolish.commands.apply import run_session as apply_command
 
     config_dir = config_path.resolve().parent
     global_ctx = _build_global_context(mono_ctx)
@@ -179,7 +179,7 @@ def _run_single_pass(  # noqa: PLR0913
         )
 
 
-def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass / member-pass helpers
+def coordinate_sessions(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass / member-pass helpers
     config_path: Path,
     *,
     check_only: bool,
@@ -197,7 +197,7 @@ def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass
     5. Member passes (skipped when ``--root-only``): isolated full passes.
     """
     from repolish.commands.apply import ApplyOptions  # noqa: PLC0415
-    from repolish.commands.apply import command as apply_command
+    from repolish.commands.apply import run_session as apply_command
 
     config_dir = config_path.resolve().parent
     raw_config = load_config_file(config_path)
@@ -221,13 +221,9 @@ def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass
     if member:
         matching = [m for m in mono_ctx.members if str(m.path) == member or m.name == member]
         if not matching:
-            valid = ', '.join(m.name for m in mono_ctx.members)
-            import sys  # noqa: PLC0415
+            from repolish.commands.apply.display import error_unknown_member  # noqa: PLC0415
 
-            print(  # noqa: T201
-                f'error: unknown member {member!r}. Valid members: {valid}',
-                file=sys.stderr,
-            )
+            error_unknown_member(member, [m.name for m in mono_ctx.members])
             return 1
         target_members = matching
     else:
@@ -246,7 +242,7 @@ def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass
             root_dir=config_dir,
             members=mono_ctx.members,
         )
-        rc = _run_single_pass(
+        rc = _run_project_session(
             config_path,
             root_mono_ctx,
             check_only=check_only,
@@ -267,7 +263,7 @@ def run_monorepo(  # noqa: C901 - TODO: split into detect / dry-pass / root-pass
                 members=mono_ctx.members,
             )
             member_config = config_dir / m.path / 'repolish.yaml'
-            rc = _run_single_pass(
+            rc = _run_project_session(
                 member_config,
                 member_mono_ctx,
                 check_only=check_only,

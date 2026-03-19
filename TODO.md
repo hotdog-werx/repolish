@@ -6,12 +6,12 @@
 
 Each directory context (standalone project, monorepo root, or monorepo member)
 is a **session** — a bounded group of providers that share information with each
-other. A repository has one session (standalone) or many (one per member + root).
-Session terminology replaces "pass" and "monorepo" throughout.
+other. A repository has one session (standalone) or many (one per member +
+root). Session terminology replaces "pass" and "monorepo" throughout.
 
 ### `command.py` → multiple modules
 
-- `pipeline.py` — `run_session()` *(renamed from `command`)*
+- `pipeline.py` — `run_session()` _(renamed from `command`)_
 - `staging.py` — `_create_staged_template`, `_gather_template_directories`,
   `_collect_excluded_sources`, `_alias_pid_maps`, `_ordered_aliases`,
   `_build_provider_overrides` (from coordinator)
@@ -27,9 +27,9 @@ Session terminology replaces "pass" and "monorepo" throughout.
 
 - `dry_pass.py` — `collect_member_data` (imports `MemberDryRunData` from
   `options`, `_build_provider_overrides` from `staging`)
-- `coordinator.py` *(renamed from `monorepo.py`)* — `coordinate_sessions`
-  *(renamed from `run_monorepo`)*, `_invoke_session` *(renamed from
-  `_run_single_pass`)*, `_build_global_context`, `_chdir`
+- `coordinator.py` _(renamed from `monorepo.py`)_ — `coordinate_sessions`
+  _(renamed from `run_monorepo`)_, `_invoke_session` _(renamed from
+  `_run_single_pass`)_, `_build_global_context`, `_chdir`
 
 ### Call chain
 
@@ -39,9 +39,9 @@ apply_command → coordinate_sessions → _invoke_session → run_session
 
 `coordinate_sessions` detects the repository topology, sequences sessions
 (members first, then root), and routes emitted inputs across sessions.
-`_invoke_session` is the internal helper that builds context, chdir's, and
-calls `run_session` for one project. `run_session` executes the full pipeline
-for a single session and knows nothing about topology.
+`_invoke_session` is the internal helper that builds context, chdir's, and calls
+`run_session` for one project. `run_session` executes the full pipeline for a
+single session and knows nothing about topology.
 
 ### `__init__.py`
 

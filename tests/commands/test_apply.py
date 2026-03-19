@@ -8,7 +8,7 @@ from repolish.commands.apply.command import (
     _print_files_summary,
 )
 from repolish.commands.apply.command import (
-    command as run_repolish,
+    run_session as run_repolish,
 )
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import ProviderSymlink

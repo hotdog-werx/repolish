@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     import pytest
 
 from repolish.config.models.project import MonorepoConfig
-from repolish.config.monorepo import (
+from repolish.config.topology import (
     check_running_from_member,
     detect_monorepo,
     detect_monorepo_from_config,

@@ -539,7 +539,7 @@ def _write_provider_debug_files(
         )
 
 
-def command(options: ApplyOptions) -> int:
+def run_session(options: ApplyOptions) -> int:
     """Run repolish with the given options.
 
     When *options.global_context* is provided it is forwarded to the provider

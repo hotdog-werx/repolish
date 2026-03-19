@@ -1,33 +1,44 @@
-from repolish.commands.apply.command import command
-from repolish.commands.apply.monorepo import run_monorepo
+from repolish.commands.apply.command import run_session
+from repolish.commands.apply.coordinator import coordinate_sessions
+from repolish.commands.apply.display import error_running_from_member
 from repolish.commands.apply.options import ApplyCommandOptions, ApplyOptions
+from repolish.config.topology import check_running_from_member
 
 
 def apply_command(params: ApplyCommandOptions) -> int:
+    """Entry point for the apply command.
+
+    Handles the top-level routing logic before any real work begins:
+
+    1. **Member guard** — if the current directory is a member of a
+       monorepo and ``--standalone`` was not passed, print an actionable
+       error and exit early.  Running from a member directly would bypass
+       the root session and break cross-session input routing.
+    2. **Standalone** — skip topology detection entirely and run a single
+       session directly via :func:`run_session`.
+    3. **Default** — delegate to :func:`coordinate_sessions`, which detects
+       the repository topology and sequences sessions accordingly (root +
+       members for a multi-project repo, or a single session for a plain
+       project).
+
+    Returns:
+        0 on success, 1 on a guard/validation error, or the exit code
+        returned by the underlying session runner.
+    """
     config_path = params.config.resolve()
     config_dir = config_path.parent
 
-    # Guard: warn when running inside a monorepo member without --standalone.
+    # Warn when running inside a monorepo member without --standalone.
     if not params.standalone:
-        from repolish.config.monorepo import check_running_from_member  # noqa: PLC0415
-
         root = check_running_from_member(config_dir)
         if root is not None:
-            import sys  # noqa: PLC0415
-
             rel = config_dir.relative_to(root) if config_dir.is_relative_to(root) else config_dir
-            print(  # noqa: T201
-                f'error: {config_dir} is a member of the monorepo rooted at {root}.\n'
-                f'Run `repolish apply` from the root, or use '
-                f'`repolish apply --member {rel}` from the root.\n'
-                f'Pass --standalone to bypass this check and run a single-pass apply here.',
-                file=sys.stderr,
-            )
+            error_running_from_member(config_dir, root, rel)
             return 1
 
-    # --standalone: single-pass only, no monorepo orchestration.
+    # --standalone: single-session only, no multiple session coordination.
     if params.standalone:
-        return command(
+        return run_session(
             ApplyOptions(
                 config_path=config_path,
                 check_only=params.check,
@@ -35,7 +46,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
             ),
         )
 
-    return run_monorepo(
+    return coordinate_sessions(
         config_path,
         check_only=params.check,
         strict=params.strict,
