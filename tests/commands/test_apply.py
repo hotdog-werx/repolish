@@ -4,12 +4,10 @@ from pathlib import Path
 from pytest_mock import MockerFixture
 
 from repolish.commands.apply.command import (
-    ApplyOptions,
-    _print_files_summary,
-)
-from repolish.commands.apply.command import (
     run_session as run_repolish,
 )
+from repolish.commands.apply.display import print_files_summary as _print_files_summary
+from repolish.commands.apply.options import ApplyOptions
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import ProviderSymlink
 from repolish.linker.health import ProviderReadinessResult
@@ -114,7 +112,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         recorded['overrides'] = template_overrides
 
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
         fake_create,
     )
 
@@ -131,10 +129,10 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.check_generated_output',
+        'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
         'repolish.commands.apply.command.apply_generated_output',
@@ -177,7 +175,7 @@ def test_apply_warns_when_providers_not_ready(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
@@ -188,10 +186,10 @@ def test_apply_warns_when_providers_not_ready(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.check_generated_output',
+        'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
         'repolish.commands.apply.command.apply_generated_output',
@@ -233,7 +231,7 @@ def test_apply_command_runs_with_valid_provider(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
@@ -244,7 +242,7 @@ def test_apply_command_runs_with_valid_provider(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.command.apply_generated_output',
@@ -275,7 +273,7 @@ def test_apply_returns_1_when_render_fails(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
@@ -286,7 +284,7 @@ def test_apply_returns_1_when_render_fails(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).side_effect = RuntimeError(
         "template rendering errors:\npyproject.toml: 'some_unknown' is undefined",
     )
@@ -320,7 +318,7 @@ def test_check_only_with_diffs_returns_2(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
@@ -331,13 +329,13 @@ def test_check_only_with_diffs_returns_2(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.check_generated_output',
+        'repolish.commands.apply.check.check_generated_output',
     ).return_value = ['some_diff']
     mocker.patch(
-        'repolish.commands.apply.command.rich_print_diffs',
+        'repolish.commands.apply.check.rich_print_diffs',
     ).return_value = None
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=True))
@@ -362,7 +360,7 @@ def _base_mocks(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.pipeline.build_final_providers',
@@ -371,7 +369,7 @@ def _base_mocks(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.command.apply_generated_output',
@@ -506,7 +504,7 @@ def test_template_sources_translated_from_alias_to_pid(
     # stage_templates returns alias ('template_a') as the source value — the
     # raw output before the alias→pid translation in apply.command().
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = (
         tmp_path / 'staging',
         {'pyproject.toml': 'template_a', 'Dockerfile': 'template_a'},
@@ -531,7 +529,7 @@ def test_template_sources_translated_from_alias_to_pid(
         captured['template_sources'] = dict(p.template_sources)
 
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
         side_effect=fake_render_template,
     )
 
@@ -578,7 +576,7 @@ def test_paused_files_logged_as_warning(
         tmp_path / 'out',
     )
     mocker.patch(
-        'repolish.commands.apply.command.stage_templates',
+        'repolish.commands.apply.staging.stage_templates',
     ).return_value = (
         tmp_path / 'staging',
         {},
@@ -592,10 +590,10 @@ def test_paused_files_logged_as_warning(
         'repolish.commands.apply.command.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.command.check_generated_output',
+        'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
         'repolish.commands.apply.command.apply_generated_output',

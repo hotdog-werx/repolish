@@ -1,6 +1,23 @@
 from pathlib import Path
 
+from hotlog import get_logger
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
+from repolish.config import ProviderSymlink
 from repolish.console import console
+from repolish.loader.models import GlobalContext, Providers, get_global_context
+from repolish.misc import ctx_to_dict
+
+logger = get_logger(__name__)
+
+_MODE_STYLE: dict[str, str] = {
+    'regular': 'green',
+    'create_only': 'yellow',
+    'delete': 'red',
+    'keep': 'cyan',
+}
 
 
 def error_running_from_member(config_dir: Path, root: Path, rel: Path) -> None:
@@ -40,3 +57,222 @@ def error_unknown_member(member: str, valid_names: list[str]) -> None:
         f'[bold yellow]hint:[/] valid members: {valid_names_str}'
     )
     console.print(msg)
+
+
+def role_label(ctx: object) -> str:
+    """Return a display label for the provider's monorepo role."""
+    try:
+        from repolish.loader.models import BaseContext  # noqa: PLC0415
+
+        if isinstance(ctx, BaseContext):
+            info = ctx._provider.monorepo
+            if info.mode == 'root':
+                return 'root'
+            if info.mode == 'package' and info.member_name:
+                return f'package: {info.member_name}'
+    except Exception:  # noqa: BLE001
+        pass
+    return 'standalone'
+
+
+def build_provider_table(
+    owner: str,
+    records: list,
+    owner_symlinks: list[ProviderSymlink],
+) -> Table:
+    """Build a Rich Table for one provider showing files and symlinks."""
+    total = len(records) + len(owner_symlinks)
+    title = f'{owner} ({total} file{"s" if total != 1 else ""})'
+    table = Table(title=title, show_header=True, header_style='bold')
+    table.add_column('Mode', style='dim', no_wrap=True)
+    table.add_column('Path')
+    table.add_column('Source', style='dim')
+    for record in records:
+        mode_val = record.mode.value
+        style = _MODE_STYLE.get(mode_val, '')
+        source = record.source if record.source and record.source != record.path else ''
+        table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
+    for sl in owner_symlinks:
+        table.add_row('[blue]symlink[/blue]', str(sl.target), str(sl.source))
+    return table
+
+
+def print_files_summary(
+    providers: Providers,
+    symlinks: dict[str, list[ProviderSymlink]] | None = None,
+) -> None:
+    """Print one Rich table per provider alias showing mode and path for each file."""
+    by_owner: dict[str, list] = {}
+    for record in providers.file_records:
+        by_owner.setdefault(record.owner, []).append(record)
+
+    _syms = symlinks if symlinks is not None else {}
+    all_owners = list(by_owner.keys())
+    for alias in _syms:
+        if alias not in all_owners:
+            all_owners.append(alias)
+
+    for owner in all_owners:
+        console.print(
+            build_provider_table(
+                owner,
+                by_owner.get(owner, []),
+                _syms.get(owner, []),
+            ),
+        )
+
+
+def build_provider_panel(
+    alias: str,
+    ctx: object,
+    records: list,
+    owner_symlinks: list[ProviderSymlink],
+    role: str,
+) -> Panel:
+    """Build a Rich Panel for one provider with property, context, and files sections."""
+    props = Table.grid(padding=(0, 1))
+    props.add_column(style='bold cyan', no_wrap=True)
+    props.add_column()
+    props.add_row('name', alias)
+    props.add_row('role', role)
+
+    ctx_dict = ctx_to_dict(ctx) if ctx is not None else {}
+    ctx_display = {k: v for k, v in ctx_dict.items() if k not in ('repolish', '_provider')}
+    if ctx_display:
+        ctx_table = Table.grid(padding=(0, 1))
+        ctx_table.add_column(style='dim', no_wrap=True)
+        ctx_table.add_column()
+        for k, v in ctx_display.items():
+            ctx_table.add_row(str(k), str(v))
+    else:
+        ctx_table = Text('(no context fields)', style='dim')
+
+    total = len(records) + len(owner_symlinks)
+    if total:
+        files_table = Table(
+            show_header=True,
+            header_style='bold',
+            box=None,
+            padding=(0, 1),
+        )
+        files_table.add_column('Mode', style='dim', no_wrap=True)
+        files_table.add_column('Path')
+        files_table.add_column('Source', style='dim')
+        for record in records:
+            mode_val = record.mode.value
+            style = _MODE_STYLE.get(mode_val, '')
+            source = record.source if record.source and record.source != record.path else ''
+            files_table.add_row(
+                f'[{style}]{mode_val}[/{style}]',
+                record.path,
+                source,
+            )
+        for sl in owner_symlinks:
+            files_table.add_row(
+                '[blue]symlink[/blue]',
+                str(sl.target),
+                str(sl.source),
+            )
+    else:
+        files_table = Text('(no files)', style='dim')
+
+    from rich.console import Group  # noqa: PLC0415
+    from rich.rule import Rule  # noqa: PLC0415
+
+    body = Group(
+        props,
+        Rule(style='dim'),
+        Text('context', style='bold'),
+        ctx_table,
+        Rule(style='dim'),
+        Text(f'files ({total})', style='bold'),
+        files_table,
+    )
+    return Panel(body, title=f'[bold]{alias}[/bold]', border_style='cyan')
+
+
+def _print_provider_panels(
+    providers: Providers,
+    aliases: list[str],
+    alias_to_pid: dict[str, str],
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+) -> None:
+    """Print Rich panels for all providers, grouped by monorepo role."""
+    from rich.rule import Rule  # noqa: PLC0415
+
+    by_owner: dict[str, list] = {}
+    for record in providers.file_records:
+        by_owner.setdefault(record.owner, []).append(record)
+
+    _syms = resolved_symlinks or {}
+
+    root_aliases: list[str] = []
+    member_aliases: dict[str, list[str]] = {}
+    standalone_aliases: list[str] = []
+
+    for alias in aliases:
+        pid = alias_to_pid.get(alias)
+        ctx = providers.provider_contexts.get(pid) if pid else None
+        label = role_label(ctx)
+        if label == 'root':
+            root_aliases.append(alias)
+        elif label.startswith('package:'):
+            member_name = label[len('package: '):]
+            member_aliases.setdefault(member_name, []).append(alias)
+        else:
+            standalone_aliases.append(alias)
+
+    def _emit(group_title: str, group_aliases: list[str]) -> None:
+        console.print(Rule(f'[bold]{group_title}[/bold]', style='bright_black'))
+        for a in group_aliases:
+            pid = alias_to_pid.get(a)
+            ctx = providers.provider_contexts.get(pid) if pid else None
+            label = role_label(ctx)
+            panel = build_provider_panel(a, ctx, by_owner.get(a, []), _syms.get(a, []), label)
+            console.print(panel)
+
+    if root_aliases:
+        _emit('Root', root_aliases)
+    for member_name, m_aliases in member_aliases.items():
+        _emit(f'Member: {member_name}', m_aliases)
+    if standalone_aliases:
+        _emit('Standalone', standalone_aliases)
+
+
+def _log_providers_summary(
+    providers: Providers,
+    aliases: list[str],
+    alias_to_pid: dict[str, str],
+    resolved_symlinks: dict[str, list[ProviderSymlink]],
+    global_context: GlobalContext | None = None,
+) -> None:
+    """Log global/per-provider context and print the provider panels."""
+    ctx = global_context if global_context is not None else get_global_context()
+    logger.info(
+        'global_context',
+        context={'repolish': ctx.model_dump()},
+        note='available to all providers',
+    )
+    logger.info(
+        'providers_context',
+        providers=[
+            {
+                'alias': alias,
+                'context': {
+                    k: v
+                    for k, v in ctx_to_dict(
+                        providers.provider_contexts.get(alias_to_pid[alias]),
+                    ).items()
+                    if k != 'repolish'
+                },
+                'file_count': sum(1 for r in providers.file_records if r.owner == alias),
+            }
+            for alias in aliases
+            if alias in alias_to_pid
+        ],
+    )
+    _print_provider_panels(providers, aliases, alias_to_pid, resolved_symlinks)
+    logger.info(
+        'providers_ready',
+        suggestion='see .repolish/_ for extra information on each provider',
+    )

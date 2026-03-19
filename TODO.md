@@ -18,16 +18,15 @@ and the resolve/apply split in `coordinator.py`.
 - `pipeline.py` — `resolve_session()`, `_collect_session_outputs`,
   `_alias_pid_maps`, `_ordered_aliases` ✅ _(created; `run_session` stays in
   `command.py` as a thin wrapper around `resolve_session` + `apply_session`)_
-- `staging.py` — `_create_staged_template`, `_gather_template_directories`,
-  `_collect_excluded_sources`, `_alias_pid_maps`, `_ordered_aliases`,
-  `_build_provider_overrides` (from coordinator)
-- `symlinks.py` — `_apply_symlinks`, `_check_symlinks`, `_check_one_symlink`
+- `staging.py` — `_create_staged_template`, `gather_template_directories`,
+  `_collect_excluded_sources` ✅
+- `symlinks.py` — `_apply_symlinks`, `check_symlinks`, `_check_one_symlink` ✅
 - `debug.py` — `_write_provider_debug_files`, `_debug_file_slug`,
-  `_collect_provider_files`
+  `collect_provider_files` ✅
 - `display.py` — `_log_providers_summary`, `_print_provider_panels`,
-  `_build_provider_panel`, `_role_label`, `_print_files_summary`,
-  `_build_provider_table`, `_MODE_STYLE`
-- `check.py` — `_finish_check`, `_render_templates`
+  `build_provider_panel`, `role_label`, `print_files_summary`,
+  `build_provider_table`, `_MODE_STYLE` ✅
+- `check.py` — `_finish_check` (takes `CheckContext`), `_render_templates` ✅
 
 ### `monorepo.py` → `coordinator.py` ✅
 
@@ -69,44 +68,17 @@ one call — used by standalone mode and the public API.
 Current public API: `apply_command`, `ApplyCommandOptions`, `ApplyOptions`,
 `ResolvedSession`, `apply_session`, `resolve_session`, `run_session`.
 
-### Public API promotion
+### Public API promotion ✅
 
-Functions that return a meaningful value and have no filesystem side effects
-should lose the underscore so tests can import them without reaching into
-private internals.
-
-- `display.py` `_print_files_summary` → `print_files_summary` — **already
-  imported in tests**, no-brainer
-- `display.py` `_build_provider_table` → `build_provider_table` — returns a Rich
-  `Table`; tests can assert on its rows
-- `display.py` `_build_provider_panel` → `build_provider_panel` — returns a Rich
-  `Panel`; testable without IO
-- `display.py` `_role_label` → `role_label` — pure function; classifies a
-  provider's session role
-- `symlinks.py` `_check_symlinks` → `check_symlinks` — returns a `list[str]` of
-  issues; no side effects
-- `debug.py` `_collect_provider_files` → `collect_provider_files` — pure
-  `Providers` → `list[dict]` transform
-- `staging.py` `_gather_template_directories` → `gather_template_directories` —
-  pure `RepolishConfig` → `list` transform; tests want to verify provider
-  ordering
-
-Functions that stay private (pure helpers with no standalone test value, or
-side-effectful orchestration steps): `_create_staged_template`,
-`_collect_excluded_sources`, `_alias_pid_maps`, `_ordered_aliases`,
-`_build_provider_overrides`, `_check_one_symlink`, `_apply_symlinks`,
-`_write_provider_debug_files`, `_debug_file_slug`, `_print_provider_panels`,
-`_log_providers_summary`, `_finish_check`, `_render_templates`,
-`_invoke_session`, `_build_global_context`, `_chdir`.
+- `print_files_summary`, `build_provider_table`, `build_provider_panel`,
+  `role_label` in `display.py`
+- `check_symlinks` in `symlinks.py`
+- `collect_provider_files` in `debug.py`
+- `gather_template_directories` in `staging.py`
 
 ### Dataclass grouping for wide signatures
 
-Two functions have too many parameters (`# noqa: PLR0913`) and should get a
-companion `@dataclass` so callers don't pass positional soup:
-
-- `_finish_check` (7 params) → introduce `CheckResult` or `CheckContext`
-  dataclass; fields: `setup_output`, `providers`, `base_dir`, `paused`,
-  `resolved_symlinks`, `provider_infos`, `disable_auto_staging`
+- `_finish_check` → `CheckContext` dataclass introduced in `check.py` ✅
 - `_log_providers_summary` (5 params) → bundle
   `(providers, aliases, alias_to_pid, resolved_symlinks)` into a lightweight
   context struct; `global_context` stays a kwarg
