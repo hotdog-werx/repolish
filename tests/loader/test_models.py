@@ -190,7 +190,7 @@ def test_get_global_context_falls_back_when_git_raises() -> None:
     from repolish.loader.models import get_global_context  # noqa: PLC0415
 
     with mock.patch(
-        'repolish.providers.git.get_owner_repo',
+        'repolish.loader.models.context._get_owner_repo',
         side_effect=OSError('no git'),
     ):
         ctx = get_global_context()

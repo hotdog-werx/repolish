@@ -92,6 +92,29 @@ class GlobalContext(BaseModel):
     workspace: WorkspaceContext = Field(default_factory=WorkspaceContext)
 
 
+def _get_owner_repo() -> tuple[str, str]:
+    """Parse the git remote 'origin' URL and return (owner, repo_name).
+
+    Supports HTTPS and SSH GitHub URL formats.  Raises `ValueError` if the
+    URL cannot be parsed.
+    """
+    import re  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    remote = subprocess.check_output(
+        ['git', 'remote', 'get-url', 'origin'],  # noqa: S607
+        text=True,
+    ).strip()
+    match = re.search(
+        r'(?:https://(?:[^/]+@)?github\.com/|git@github\.com:)([^/]+)/([^.]+)(?:\.git)?$',
+        remote,
+    )
+    if match:
+        return match.group(1), match.group(2)
+    msg = f'No owner/repo found in git remote URL: {remote}'
+    raise ValueError(msg)
+
+
 def get_global_context() -> GlobalContext:
     """Return a model populated from the current repository settings.
 
@@ -102,17 +125,10 @@ def get_global_context() -> GlobalContext:
     every provider context so the ``repolish`` namespace is available to all
     providers and templates.
     """
-    # imported locally to avoid a circular dependency when the loader tests
-    # import the helper without needing the providers package.
-    from repolish.providers import git  # noqa: PLC0415 - local import avoids circular
-
     try:
-        owner, name = git.get_owner_repo()
+        owner, name = _get_owner_repo()
     except Exception:  # noqa: BLE001
         owner = name = 'Unknown'
-    # explicitly compute the year here as well; this mirrors the default
-    # factory and ensures callers that bypass the default still receive a
-    # sensible value.
     return GlobalContext(
         repo=GithubRepo(owner=owner, name=name),
         year=datetime.datetime.now(datetime.UTC).year,

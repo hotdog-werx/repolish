@@ -18,7 +18,7 @@ def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # n
     """
     # ensure global context is predictable
     monkeypatch.setattr(
-        'repolish.providers.git.get_owner_repo',
+        'repolish.loader.models.context._get_owner_repo',
         lambda: ('owner', 'repo'),
     )
 

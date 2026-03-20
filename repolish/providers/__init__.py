@@ -1,12 +1,7 @@
-"""Utilities for repolish providers.
+"""Provider framework package.
 
-This package provides helper functions and utilities that provider authors
-can use in their repolish.py files to simplify common tasks like extracting
-git repository information, working with files, and manipulating context data.
+This package houses the provider loading and execution framework used by
+repolish to run provider pipelines.  Provider authors write ``repolish.py``
+files; the infrastructure for discovering, importing, and orchestrating them
+lives here.
 """
-
-from repolish.providers.git import get_owner_repo
-
-__all__ = [
-    'get_owner_repo',
-]

@@ -282,7 +282,7 @@ def test_global_context_in_class_based_provider(
     loader should populate the ``repolish`` attribute with the global data.
     """
     monkeypatch.setattr(
-        'repolish.providers.git.get_owner_repo',
+        'repolish.loader.models.context._get_owner_repo',
         lambda: ('x', 'y'),
     )
 
