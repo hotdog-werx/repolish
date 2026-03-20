@@ -1,2 +1,2 @@
-# config managed by {{ _provider.project_name }}
+# config managed by {{ repolish.provider.project_name }}
 variant: option-a

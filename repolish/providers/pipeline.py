@@ -9,9 +9,10 @@ from repolish.providers.models import (
     GlobalContext,
     ProviderEntry,
     ProviderInfo,
-    WorkspaceProviderInfo,
+    ProviderSession,
 )
 from repolish.providers.models import Provider as _ProviderBase
+from repolish.providers.models.context import RepolishContext
 
 
 def _build_all_providers_list(
@@ -97,9 +98,8 @@ def _synthesize_provider_context_for_pid(
     if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):
         ctx = ctx.model_copy(update={'repolish': global_context})
 
-    # inject provider identity so templates can reference {{ _provider.alias }},
-    # {{ _provider.version }}, {{ _provider.package_name }}, etc. without the
-    # provider having to do it manually.
+    # inject provider identity so templates can reference {{ repolish.provider.alias }},
+    # {{ repolish.provider.version }}, {{ repolish.provider.package_name }}, etc.
     if isinstance(ctx, BaseContext):
         mono = global_context.workspace
         member_name = ''
@@ -110,17 +110,24 @@ def _synthesize_provider_context_for_pid(
                     member_name = m.name
                     member_path = m.path.as_posix()
                     break
-        ctx._provider_data = ProviderInfo(
+        provider_info = ProviderInfo(
             alias=getattr(inst, 'alias', ''),
             version=getattr(inst, 'version', ''),
             package_name=getattr(inst, 'package_name', ''),
             project_name=getattr(inst, 'project_name', ''),
-            monorepo=WorkspaceProviderInfo(
+            session=ProviderSession(
                 mode=mono.mode,
                 member_name=member_name,
                 member_path=member_path,
             ),
         )
+        repolish_ctx = RepolishContext(
+            repo=global_context.repo,
+            year=global_context.year,
+            workspace=global_context.workspace,
+            provider=provider_info,
+        )
+        ctx = ctx.model_copy(update={'repolish': repolish_ctx})
 
     provider_contexts[pid] = ctx
 

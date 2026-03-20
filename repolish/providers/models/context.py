@@ -5,10 +5,11 @@ Defines the building blocks that flow into every provider's context object:
 - `Symlink` — return type of `Provider.create_default_symlinks`
 - `GithubRepo` / `GlobalContext` / `get_global_context` — repo-level globals
 - `ProviderInfo` — alias/version injected by the loader at runtime
+- `RepolishContext` — per-provider ``repolish`` namespace (GlobalContext + ProviderInfo)
 - `BaseContext` / `BaseInputs` — base classes for provider contexts and inputs
 
 Workspace topology models (`MemberInfo`, `WorkspaceContext`,
-`WorkspaceProviderInfo`) live in `loader.models.workspace` and are
+`ProviderSession`) live in `loader.models.workspace` and are
 re-exported here for convenience.
 """
 
@@ -20,20 +21,19 @@ from dataclasses import dataclass
 from pydantic import (
     BaseModel,
     Field,
-    PrivateAttr,
     computed_field,
 )
 
 from repolish.providers.models.workspace import (
     MemberInfo,
+    ProviderSession,
     WorkspaceContext,
-    WorkspaceProviderInfo,
 )
 
 __all__ = [
     'MemberInfo',
+    'ProviderSession',
     'WorkspaceContext',
-    'WorkspaceProviderInfo',
 ]
 
 
@@ -138,19 +138,21 @@ def get_global_context() -> GlobalContext:
 class ProviderInfo(BaseModel):
     """Runtime metadata injected into every provider context by the loader.
 
-    Available in templates as ``{{ _provider.alias }}``, ``{{ _provider.version }}``
-    and ``{{ _provider.major_version }}``.  All fields default to empty/None so
-    providers that don't need the information aren't forced to handle it.
+    Available in templates as ``{{ repolish.provider.alias }}``,
+    ``{{ repolish.provider.version }}`` and
+    ``{{ repolish.provider.major_version }}``.  All fields default to
+    empty/None so providers that don't need the information aren't forced to
+    handle it.
     """
 
     alias: str = ''
     version: str = ''
     package_name: str = ''
     project_name: str = ''
-    monorepo: WorkspaceProviderInfo = Field(
-        default_factory=WorkspaceProviderInfo,
+    session: ProviderSession = Field(
+        default_factory=ProviderSession,
     )
-    """Monorepo identity: mode and, for package members, name and path."""
+    """Workspace identity: mode and, for members, name and path."""
 
     @computed_field
     @property
@@ -162,6 +164,21 @@ class ProviderInfo(BaseModel):
             return int(self.version.split('.')[0].lstrip('v'))
         except (ValueError, IndexError):
             return None
+
+
+class RepolishContext(GlobalContext):
+    """The ``repolish`` namespace injected into every provider context.
+
+    Extends :class:`GlobalContext` (repo, year, workspace) with per-provider
+    identity fields under ``provider``.  Available in templates as
+    ``{{ repolish.provider.alias }}``, ``{{ repolish.provider.version }}``, etc.
+
+    The session builds one :class:`GlobalContext` (shared, read-only) and then
+    wraps it into a fresh :class:`RepolishContext` for each provider so every
+    provider sees its own identity alongside the shared globals.
+    """
+
+    provider: ProviderInfo = Field(default_factory=ProviderInfo)
 
 
 class BaseContext(BaseModel):
@@ -178,14 +195,7 @@ class BaseContext(BaseModel):
     safer, idiomatic alternative.
     """
 
-    repolish: GlobalContext = Field(default_factory=GlobalContext)
-    _provider_data: ProviderInfo = PrivateAttr(default_factory=ProviderInfo)
-
-    @computed_field
-    @property
-    def _provider(self) -> ProviderInfo:
-        """Provider metadata injected by the loader (alias, version, major_version)."""
-        return self._provider_data
+    repolish: RepolishContext = Field(default_factory=RepolishContext)
 
 
 class BaseInputs(BaseModel):

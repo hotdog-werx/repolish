@@ -36,7 +36,7 @@ class WorkspaceProvider(
             # The root provider collects messages from members; it has nothing
             # to report to itself.
             return []
-        member_name = own_context._provider.monorepo.member_name
+        member_name = own_context.repolish.provider.session.member_name
         payload = WorkspaceProviderInputs(
             add_to_member=f'workspace: This is a workspace member! {member_name}',
             add_to_root=f'workspace: This is the root of the monorepo! {member_name}',

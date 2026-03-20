@@ -17,10 +17,12 @@ from repolish.providers.models import (
     FileMode,
     GlobalContext,
     ProviderEntry,
+    ProviderInfo,
     TemplateMapping,
     get_global_context,
 )
 from repolish.providers.models import Provider as _ProviderBase
+from repolish.providers.models.context import RepolishContext
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -274,17 +276,23 @@ def _prepare_own_model(
 
     if isinstance(own_model, _BaseModel) and hasattr(own_model, 'repolish'):
         resolved_ctx = global_context if global_context is not None else get_global_context()
-        glob = resolved_ctx.model_dump()
-        if glob:
-            # Pydantic's model_copy does not propagate PrivateAttr values.
-            # Capture _provider_data before copying and restore it afterwards
-            # so that templates retain {{ _provider.alias }}, {{ _provider.version }}, etc.
-            provider_data = own_model._provider_data
-            own_model = own_model.model_copy(
-                update={'repolish': resolved_ctx},
-            )
-            if provider_data is not None:
-                own_model._provider_data = provider_data
+        # Build a RepolishContext preserving the provider identity already on
+        # the context so that {{ repolish.provider.alias }} etc. remain valid
+        # after this re-injection of the global namespace.
+        existing_provider = getattr(
+            own_model.repolish,
+            'provider',
+            ProviderInfo(),
+        )
+        repolish_ctx = RepolishContext(
+            repo=resolved_ctx.repo,
+            year=resolved_ctx.year,
+            workspace=resolved_ctx.workspace,
+            provider=existing_provider,
+        )
+        own_model = own_model.model_copy(
+            update={'repolish': repolish_ctx},
+        )
 
     return own_model
 

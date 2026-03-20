@@ -18,7 +18,7 @@ def collect_provider_files(
 
 
 def debug_file_slug(ctx: object, alias: str) -> str:
-    """Return a filename slug capturing monorepo role + provider alias.
+    """Return a filename slug capturing session role + provider alias.
 
     Examples::
 
@@ -30,12 +30,12 @@ def debug_file_slug(ctx: object, alias: str) -> str:
         from repolish.providers.models import BaseContext  # noqa: PLC0415
 
         if isinstance(ctx, BaseContext):
-            info = ctx._provider
-            mode = info.monorepo.mode
+            info = ctx.repolish.provider
+            mode = info.session.mode
             if mode == 'root':
                 prefix = 'root'
-            elif mode == 'member' and info.monorepo.member_name:
-                prefix = info.monorepo.member_name
+            elif mode == 'member' and info.session.member_name:
+                prefix = info.session.member_name
             else:
                 prefix = 'standalone'
             return f'{prefix}.{alias}'

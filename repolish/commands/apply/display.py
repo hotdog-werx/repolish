@@ -69,7 +69,7 @@ def _role_label(ctx: object) -> str:
     """Return a display label for the provider's monorepo role."""
     try:
         if isinstance(ctx, BaseContext):
-            info = ctx._provider.monorepo
+            info = ctx.repolish.provider.session
             if info.mode == 'root':
                 return 'root'
             if info.mode == 'member' and info.member_name:
@@ -147,7 +147,7 @@ def _build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     props.add_row('alias', alias)
     props.add_row('role', role)
     if ctx is not None and isinstance(ctx, BaseContext):
-        info = ctx._provider
+        info = ctx.repolish.provider
         props.add_row('project', info.project_name)
         props.add_row('package', info.package_name)
         props.add_row('version', info.version)

@@ -169,11 +169,11 @@ def test_provider_info_major_version(
 
 
 def test_basecontext_includes_repolish_field():
-    from repolish.providers.models import BaseContext, GlobalContext  # noqa: PLC0415 - testing import
+    from repolish.providers.models import BaseContext, RepolishContext  # noqa: PLC0415 - testing import
 
     bc = BaseContext()
     assert hasattr(bc, 'repolish')
-    assert isinstance(bc.repolish, GlobalContext)
+    assert isinstance(bc.repolish, RepolishContext)
     # default fields may be populated based on the git repository
     # where the tests run; we simply ensure the nested attributes exist and
     # that the legacy accessors mirror them.

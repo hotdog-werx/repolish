@@ -7,7 +7,7 @@ or a monorepo member.
 
 - `MemberInfo` — metadata about one monorepo member directory
 - `WorkspaceContext` — full topology: mode, root, package dir, all members
-- `WorkspaceProviderInfo` — this provider's own role within the monorepo
+- `ProviderSession` — this provider's own role within the workspace
 """
 
 from __future__ import annotations
@@ -67,16 +67,16 @@ class WorkspaceContext(BaseModel):
         return v.as_posix() if v is not None else None
 
 
-class WorkspaceProviderInfo(BaseModel):
-    """This provider's own role within the monorepo, injected into `_provider.monorepo`.
+class ProviderSession(BaseModel):
+    """This provider's own role within the workspace, injected into `repolish.provider.session`.
 
     Unlike `repolish.workspace` (which is global and shared across all
     providers in the session), these fields describe the role of *this specific
-    provider instance* — its mode and, when running as a monorepo member, its
+    provider instance* — its mode and, when running as a workspace member, its
     name and repo-relative path.
 
-    Available in templates as `{{ _provider.monorepo.mode }}`,
-    `{{ _provider.monorepo.member_name }}`, etc.
+    Available in templates as `{{ repolish.provider.session.mode }}`,
+    `{{ repolish.provider.session.member_name }}`, etc.
     """
 
     mode: Literal['root', 'member', 'standalone'] = 'standalone'

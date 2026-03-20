@@ -45,7 +45,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
         ``get_inputs_schema()`` matches the item's type.  Return an empty list
         if this provider has nothing to share.
         """
-        member_name = own_context._provider.monorepo.member_name
+        member_name = own_context.repolish.provider.session.member_name
         return [
             WorkspaceProviderInputs(
                 add_to_member=f'python: This is a workspace member! {member_name}',

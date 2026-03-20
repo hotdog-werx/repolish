@@ -186,7 +186,7 @@ def _copy_template_dir(  # noqa: PLR0913
             continue
         # Explicitly mapped source: stage the file so file_mappings can find it
         # in setup_output and register it in sources so the renderer can look up
-        # the declaring provider's context (e.g. for {{ _provider }} access).
+        # the declaring provider's context (e.g. for {{ repolish.provider }} access).
         # build_file_records filters these out so they don't appear as managed
         # output files.
         if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:

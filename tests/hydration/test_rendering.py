@@ -19,7 +19,7 @@ from repolish.providers import (
     SessionBundle,
     TemplateMapping,
 )
-from repolish.providers.models import ProviderInfo
+from repolish.providers.models import ProviderInfo, RepolishContext
 
 
 def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
@@ -520,7 +520,7 @@ def test_provider_info_bad_version_renders_none_not_crash(
     tpl = tmp_path / 'tpl'
     (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
     (tpl / 'repolish' / 'info.txt.jinja').write_text(
-        'major={{ _provider.major_version }}\n',
+        'major={{ repolish.provider.major_version }}\n',
         encoding='utf-8',
     )
 
@@ -528,8 +528,11 @@ def test_provider_info_bad_version_renders_none_not_crash(
     base_dir, setup_input, setup_output = prepare_staging(config)
     stage_templates(setup_input, [tpl])
 
-    ctx = BaseContext()
-    ctx._provider_data = ProviderInfo(alias='mypkg', version='not-a-version')
+    ctx = BaseContext(
+        repolish=RepolishContext(
+            provider=ProviderInfo(alias='mypkg', version='not-a-version'),
+        ),
+    )
 
     providers = SessionBundle(
         provider_contexts={'p': ctx},

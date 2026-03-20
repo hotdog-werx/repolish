@@ -4,9 +4,9 @@ Consumers should import from `repolish.providers.models` (this package) rather
 than from the individual submodules. The split into submodules is an
 implementation detail:
 
-- `workspace` — `MemberInfo`, `WorkspaceContext`, `WorkspaceProviderInfo`
+- `workspace` — `MemberInfo`, `WorkspaceContext`, `ProviderSession`
 - `context` — `Symlink`, `GithubRepo`, `GlobalContext`, `get_global_context`,
-  `ProviderInfo`, `BaseContext`, `BaseInputs`
+  `ProviderInfo`, `RepolishContext`, `BaseContext`, `BaseInputs`
 - `pipeline` — `PipelineOptions`, `DryRunResult`
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
   `SessionBundle`, `Accumulators`, `build_file_records`
@@ -20,6 +20,7 @@ from repolish.providers.models.context import (
     GithubRepo,
     GlobalContext,
     ProviderInfo,
+    RepolishContext,
     Symlink,
     get_global_context,
 )
@@ -46,8 +47,8 @@ from repolish.providers.models.provider import (
 )
 from repolish.providers.models.workspace import (
     MemberInfo,
+    ProviderSession,
     WorkspaceContext,
-    WorkspaceProviderInfo,
 )
 
 __all__ = [
@@ -64,17 +65,17 @@ __all__ = [
     'GlobalContext',
     'InputT',
     'MemberInfo',
-    'MemberInfo',
     'PipelineOptions',
     'Provider',
     'ProviderEntry',
     'ProviderInfo',
+    'ProviderSession',
+    'RepolishContext',
     'SessionBundle',
     'Symlink',
     'T',
     'TemplateMapping',
     'WorkspaceContext',
-    'WorkspaceProviderInfo',
     'build_file_records',
     'get_global_context',
     'get_provider_context',
