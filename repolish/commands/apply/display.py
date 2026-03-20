@@ -95,6 +95,8 @@ def _build_provider_table(
         mode_val = record.mode.value
         style = _MODE_STYLE.get(mode_val, '')
         source = record.source if record.source and record.source != record.path else ''
+        if not source and record.overlay_dir:
+            source = f'{record.overlay_dir}/'
         table.add_row(f'[{style}]{mode_val}[/{style}]', record.path, source)
     for sl in owner_symlinks:
         table.add_row('[blue]symlink[/blue]', str(sl.target), str(sl.source))

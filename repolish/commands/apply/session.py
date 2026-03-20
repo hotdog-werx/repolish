@@ -52,11 +52,23 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
         setup_input,
         config,
         excluded_sources=collect_excluded_sources(providers.file_mappings) | providers.suppressed_sources,
+        workspace_mode=session.global_context.workspace.mode,
     )
     # stage_templates records alias as the provider id; provider_contexts is
-    # keyed by the full directory path (pid).  Translate here so rendering
-    # can look up the right context.
-    providers.template_sources = {rel: alias_to_pid.get(alias, alias) for rel, alias in sources.items()}
+    # keyed by the full directory path (pid).  Files from mode overlay dirs
+    # carry an annotated alias like 'myprovider:root'; split that off before
+    # resolving to pid so the renderer always gets a valid context key.
+    overlay_dirs: dict[str, str] = {}
+    pid_map: dict[str, str] = {}
+    for rel, raw_alias in sources.items():
+        if ':' in raw_alias:
+            base_alias, mode_suffix = raw_alias.split(':', 1)
+            overlay_dirs[rel] = mode_suffix
+        else:
+            base_alias = raw_alias
+        pid_map[rel] = alias_to_pid.get(base_alias, base_alias)
+    providers.template_sources = pid_map
+    providers.template_overlay_dirs = overlay_dirs
     providers.file_records = build_file_records(
         providers,
         pid_to_alias,

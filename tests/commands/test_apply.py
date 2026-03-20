@@ -109,6 +109,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         template_dirs: list[tuple[str | None, Path]],
         template_overrides: dict[str, str] | None = None,
         excluded_sources: set[str] | None = None,
+        workspace_mode: str | None = None,
     ) -> None:
         recorded['template_dirs'] = template_dirs
         recorded['overrides'] = template_overrides

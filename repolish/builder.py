@@ -14,11 +14,20 @@ def stage_templates(
     *,
     template_overrides: dict[str, str | None] | None = None,
     excluded_sources: set[str] | None = None,
+    workspace_mode: str | None = None,
 ) -> tuple[Path, dict[str, str]]:
     """Merge provider template directories into a single staging tree.
 
-    Each provider contributes a `repolish/` subdirectory; files are merged in
+    Each provider contributes a ``repolish/`` subdirectory; files are merged in
     order so the last provider wins when the same path appears more than once.
+
+    When `workspace_mode` is provided (``'root'``, ``'member'``, or
+    ``'standalone'``), each provider directory is also checked for a
+    mode-specific sibling directory at ``provider_root/{workspace_mode}/``.
+    When that directory exists, its files are staged *after* the provider's
+    main ``repolish/`` templates so they take precedence for that mode.  Files
+    that only belong in one mode live in the mode directory; files shared
+    across all modes live in ``repolish/``.
 
     When `template_overrides` is provided the merging behaviour is altered
     on a per-file basis. The mapping keys are shell-style glob patterns
@@ -46,6 +55,9 @@ def stage_templates(
             staged or rendered in the output.
         excluded_sources: Optional set of POSIX source-template paths (without
             the ``.jinja`` suffix) that should be excluded from auto-staging.
+        workspace_mode: Current workspace mode (``'root'``, ``'member'``, or
+            ``'standalone'``).  When set, each provider's mode-specific overlay
+            directory is staged after its base ``repolish/`` templates.
 
     Returns:
         The Path to the staging directory containing the combined templates.
@@ -75,6 +87,18 @@ def stage_templates(
             excluded_sources=excluded_sources,
             sources=sources,
         )
+        if workspace_mode:
+            mode_dir = template_dir / workspace_mode
+            if mode_dir.is_dir():
+                _copy_mode_overlay_dir(
+                    mode_dir,
+                    staging_dir,
+                    alias=alias,
+                    mode_name=workspace_mode,
+                    overrides=template_overrides,
+                    excluded_sources=excluded_sources,
+                    sources=sources,
+                )
     return staging_dir, sources
 
 
@@ -170,6 +194,50 @@ def _should_skip_item(
         return True
     # Skip if a different provider owns this file
     return alias is None or selected != alias
+
+
+def _copy_mode_overlay_dir(  # noqa: PLR0913
+    mode_dir: Path,
+    staging_dir: Path,
+    *,
+    alias: str | None = None,
+    mode_name: str,
+    overrides: dict[str, str | None] | None = None,
+    excluded_sources: set[str] | None = None,
+    sources: dict[str, str],
+) -> None:
+    """Stage files from a mode-specific overlay directory.
+
+    Unlike ``_copy_template_dir``, which expects a ``repolish/`` subdirectory,
+    this function treats ``mode_dir`` itself as the template root.  Files are
+    copied directly into ``staging_dir/repolish/``, overriding any previously
+    staged files with the same relative path.
+
+    This is called after the provider's main ``repolish/`` templates have been
+    staged, so mode-specific files always take precedence over shared ones.
+
+    The provider source recorded in ``sources`` is annotated as
+    ``alias:mode_name`` (e.g. ``'myprovider:root'``) so callers can
+    distinguish overlay-staged files from base-staged ones for display
+    purposes.  The colon separator is safe because provider aliases are
+    derived from directory or YAML key names and never contain colons.
+    """
+    if not mode_dir.is_dir():
+        return
+
+    # annotate alias so the caller can tell this file came from the overlay
+    annotated_alias = f'{alias}:{mode_name}' if alias is not None else None
+
+    dest_root = staging_dir / 'repolish'
+    for item in mode_dir.rglob('*'):
+        rel_str = item.relative_to(mode_dir).as_posix()
+        # use original alias for override matching (overrides reference provider names)
+        if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
+            continue
+        if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
+            _copy_item_to_dest(item, mode_dir, dest_root, alias=annotated_alias, sources=sources)
+            continue
+        _copy_item_to_dest(item, mode_dir, dest_root, alias=annotated_alias, sources=sources)
 
 
 def _copy_template_dir(  # noqa: PLR0913

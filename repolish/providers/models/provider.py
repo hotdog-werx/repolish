@@ -78,7 +78,28 @@ class ModeHandler(Generic[ContextT, InputT]):
 
     Type parameters must match the enclosing :class:`Provider` so that the
     type checker enforces context/input consistency across all three roles.
+
+    Attributes:
+        templates_root: Path to the mode overlay directory
+            (``provider_root/{mode}/``).  Set by :func:`call_provider_method`
+            before any hook is called.  Use it to discover mode-specific
+            template files dynamically, e.g.::
+
+                list(self.templates_root.glob('.github/workflows/*.yaml'))
+
+        alias, version, package_name, project_name: Copied from the enclosing
+            :class:`Provider` instance at handler instantiation time.
     """
+
+    # NOTE: templates_root is mode-dependent — call_provider_method scopes it to
+    # ``provider_root/{mode}/`` rather than copying the provider value directly.
+    # If you add another attribute that requires mode-specific derivation, add a
+    # corresponding special case in the copy loop inside call_provider_method.
+    templates_root: Path = Path()
+    alias: str = ''
+    version: str = ''
+    package_name: str = ''
+    project_name: str = ''
 
     def provide_inputs(
         self,
@@ -400,14 +421,14 @@ def call_provider_method(
     """
     repolish_ctx = getattr(own_context, 'repolish', None)
     workspace_ctx = getattr(repolish_ctx, 'workspace', None)
-    mode: str | None = getattr(workspace_ctx, 'mode', None)
+    mode: str = getattr(workspace_ctx, 'mode', None) or 'standalone'
 
     handler_cls: type[ModeHandler[ContextT, InputT]] | None = None
     if mode == 'root':
         handler_cls = inst.root_mode
     elif mode == 'member':
         handler_cls = inst.member_mode
-    elif mode is not None:
+    else:
         handler_cls = inst.standalone_mode
 
     if handler_cls is not None:
@@ -416,7 +437,18 @@ def call_provider_method(
             {},
         )
         if mode not in cache:
-            cache[mode] = handler_cls()
+            handler = handler_cls()
+            # Copy all ModeHandler-declared data attributes from the provider.
+            # Most attributes are copied verbatim; templates_root is the only
+            # mode-dependent exception (scoped to provider_root/{mode}/).
+            # If ModeHandler gains another attribute that needs mode-specific
+            # derivation, add a special case for it below.
+            for attr in ModeHandler.__annotations__:
+                value = getattr(inst, attr, getattr(handler, attr))
+                if attr == 'templates_root':
+                    value = inst.templates_root / mode
+                setattr(handler, attr, value)
+            cache[mode] = handler
         return getattr(cache[mode], method_name)(own_context, *args)
 
     return getattr(inst, method_name)(own_context, *args)

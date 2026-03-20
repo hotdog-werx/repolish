@@ -16,6 +16,7 @@ import pytest
 
 from repolish import BaseContext, BaseInputs, ModeHandler, Provider, call_provider_method
 from repolish.providers.models.context import ProviderInfo, RepolishContext
+from repolish.providers.models.files import TemplateMapping
 from repolish.providers.models.workspace import (
     ProviderSession,
     WorkspaceContext,
@@ -383,3 +384,45 @@ def test_mode_handler_base_defaults() -> None:
     assert handler.finalize_context(ctx, [], [], 0) is ctx
     assert handler.create_file_mappings(ctx) == {}
     assert handler.create_anchors(ctx) == {}
+
+
+# ---------------------------------------------------------------------------
+# Tests: ModeHandler receives provider attributes from call_provider_method
+# ---------------------------------------------------------------------------
+
+
+def test_mode_handler_receives_provider_attributes() -> None:
+    """Handler instantiated via call_provider_method gets provider attrs injected."""
+    from pathlib import Path
+
+    captured: dict[str, object] = {}
+
+    class _CapturingHandler(ModeHandler[MyCtx, MyInputs]):
+        def create_file_mappings(
+            self, context: MyCtx
+        ) -> dict[str, str | TemplateMapping | None]:
+            captured['templates_root'] = self.templates_root
+            captured['alias'] = self.alias
+            captured['version'] = self.version
+            captured['package_name'] = self.package_name
+            captured['project_name'] = self.project_name
+            return {}
+
+    class _AttrProvider(Provider[MyCtx, MyInputs]):
+        root_mode = _CapturingHandler
+
+    provider = _AttrProvider()
+    provider.templates_root = Path('/some/provider/root')
+    provider.alias = 'my-provider'
+    provider.version = '1.2.3'
+    provider.package_name = 'my_pkg'
+    provider.project_name = 'my-pkg'
+
+    ctx = MyCtx(repolish=_make_ctx('root').repolish)
+    call_provider_method(provider, 'create_file_mappings', ctx)
+
+    assert captured['templates_root'] == Path('/some/provider/root') / 'root'
+    assert captured['alias'] == 'my-provider'
+    assert captured['version'] == '1.2.3'
+    assert captured['package_name'] == 'my_pkg'
+    assert captured['project_name'] == 'my-pkg'

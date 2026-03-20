@@ -182,3 +182,69 @@ def test_excluded_sources_skips_explicitly_mapped_templates(
     # renderer can look up the declaring provider's context
     assert (staged / 'workflows' / 'ci.yaml').exists()
     assert 'workflows/ci.yaml' in sources
+
+
+def test_stage_templates_mode_overlay(tmp_path: Path) -> None:
+    """Mode-specific overlay directories are staged after the base repolish/ dir.
+
+    Files in provider_root/{mode}/ are staged with the same provider alias and
+    override any collisions from the base repolish/ directory.  Files only in
+    repolish/ that are absent from the mode directory are unaffected.
+    """
+    prov = tmp_path / 'p'
+    # Base templates — mode-agnostic
+    rep = prov / 'repolish'
+    rep.mkdir(parents=True)
+    (rep / 'shared.txt').write_text('base shared')
+    (rep / 'base_only.txt').write_text('base only')
+
+    # root-mode overlay: overrides shared.txt, adds root_only.txt
+    root_dir = prov / 'root'
+    root_dir.mkdir()
+    (root_dir / 'shared.txt').write_text('root override')
+    (root_dir / 'root_only.txt').write_text('root only')
+
+    # member-mode overlay: only adds member_only.txt
+    member_dir = prov / 'member'
+    member_dir.mkdir()
+    (member_dir / 'member_only.txt').write_text('member only')
+
+    staging_root = tmp_path / 'staging_root'
+    _, sources_root = stage_templates(
+        staging_root,
+        [('p', prov)],
+        workspace_mode='root',
+    )
+    proj_root = staging_root / 'repolish'
+    # overlay overrides the base version
+    assert (proj_root / 'shared.txt').read_text() == 'root override'
+    # overlay files carry the annotated alias so callers can track the origin dir
+    assert sources_root['shared.txt'] == 'p:root'
+    assert sources_root['base_only.txt'] == 'p'
+    # base-only file is unaffected
+    assert (proj_root / 'base_only.txt').read_text() == 'base only'
+    # root-specific file is present
+    assert (proj_root / 'root_only.txt').read_text() == 'root only'
+    # member-only file is absent when mode is root
+    assert not (proj_root / 'member_only.txt').exists()
+
+    staging_member = tmp_path / 'staging_member'
+    _, _ = stage_templates(
+        staging_member,
+        [('p', prov)],
+        workspace_mode='member',
+    )
+    proj_member = staging_member / 'repolish'
+    # base version is kept (no member override for shared.txt)
+    assert (proj_member / 'shared.txt').read_text() == 'base shared'
+    assert (proj_member / 'member_only.txt').read_text() == 'member only'
+    # root-only file is absent when mode is member
+    assert not (proj_member / 'root_only.txt').exists()
+
+    # Without workspace_mode, no overlay is applied
+    staging_none = tmp_path / 'staging_none'
+    _, _ = stage_templates(staging_none, [('p', prov)])
+    proj_none = staging_none / 'repolish'
+    assert (proj_none / 'shared.txt').read_text() == 'base shared'
+    assert not (proj_none / 'root_only.txt').exists()
+    assert not (proj_none / 'member_only.txt').exists()

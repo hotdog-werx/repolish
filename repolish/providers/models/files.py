@@ -88,12 +88,17 @@ class FileRecord:
     or 'config' for entries driven by config.delete_files.
     `source` is the source template path for explicitly-mapped files, or
     None for auto-staged and deleted files.
+    `overlay_dir` is the mode subdirectory (``'root'``, ``'member'``, or
+    ``'standalone'``) when the file was staged from a mode overlay rather
+    than the provider's base ``repolish/`` directory.  ``None`` for all
+    other files.
     """
 
     path: str
     mode: FileMode
     owner: str
     source: str | None = None
+    overlay_dir: str | None = None
 
 
 class SessionBundle(BaseModel):
@@ -131,6 +136,11 @@ class SessionBundle(BaseModel):
     suppressed_sources: set[str] = Field(default_factory=set)
     """Template paths explicitly suppressed via a `None` mapping in
     `create_file_mappings`; excluded from auto-staging."""
+    template_overlay_dirs: dict[str, str] = Field(default_factory=dict)
+    """Relative template path → mode subdir name for files staged from a
+    mode overlay directory (e.g. ``{'ci.yaml': 'root'}`` for a file that
+    came from ``provider_root/root/`` rather than ``provider_root/repolish/``).
+    Populated during staging, before ``build_file_records`` is called."""
     file_records: list[FileRecord] = Field(default_factory=list)
     """Unified file disposition list. Empty until `build_file_records` is called."""
 
@@ -140,6 +150,7 @@ def _records_from_template_sources(
     create_only_posix: set[str],
     pid_to_alias: dict[str, str],
     explicit_sources: set[str],
+    overlay_dirs: dict[str, str] | None = None,
 ) -> dict[str, FileRecord]:
     """Return FileRecord entries from staged template sources.
 
@@ -156,7 +167,8 @@ def _records_from_template_sources(
             continue
         owner = pid_to_alias.get(pid, pid)
         mode = FileMode.CREATE_ONLY if rel_path in create_only_posix else FileMode.REGULAR
-        files[rel_path] = FileRecord(path=rel_path, mode=mode, owner=owner)
+        overlay_dir = overlay_dirs.get(rel_path) if overlay_dirs else None
+        files[rel_path] = FileRecord(path=rel_path, mode=mode, owner=owner, overlay_dir=overlay_dir)
     return files
 
 
@@ -243,6 +255,7 @@ def build_file_records(
             create_only_posix,
             pid_to_alias,
             explicit_sources,
+            providers.template_overlay_dirs or None,
         ),
     )
     files.update(

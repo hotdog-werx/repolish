@@ -51,11 +51,17 @@ def create_staged_template(
     setup_input: Path,
     config: RepolishConfig,
     excluded_sources: set[str] | None = None,
+    workspace_mode: str | None = None,
 ) -> dict[str, str]:
     """Stage all provider templates into `setup_input`.
 
     Returns a mapping from each merged-template relative path to the provider
     alias that supplied it.
+
+    When `workspace_mode` is provided, each provider's mode-specific overlay
+    directory (``provider_root/{workspace_mode}/``) is staged after its base
+    ``repolish/`` templates, allowing providers to keep mode-specific files in
+    separate directories without ``create_file_mappings`` boilerplate.
     """
     template_dirs = _gather_template_directories(config)
     result = stage_templates(
@@ -63,6 +69,7 @@ def create_staged_template(
         template_dirs,
         template_overrides=config.template_overrides,
         excluded_sources=excluded_sources,
+        workspace_mode=workspace_mode,
     )
     if isinstance(result, tuple) and len(result) == 2:
         _, sources = result
