@@ -3,8 +3,8 @@ from textwrap import dedent
 
 import pytest
 
-from repolish.loader import create_providers
-from repolish.loader.models.files import TemplateMapping
+from repolish.providers import create_providers
+from repolish.providers.models.files import TemplateMapping
 
 
 def write_provider(tmp_path: Path, src: str) -> str:

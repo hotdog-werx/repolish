@@ -13,12 +13,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from repolish.loader.models.context import (
+from repolish.providers.models.context import (
     BaseContext,
     BaseInputs,
     GlobalContext,
 )
-from repolish.loader.models.provider import ProviderEntry
+from repolish.providers.models.provider import ProviderEntry
 
 
 @dataclass(frozen=True)

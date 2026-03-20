@@ -18,9 +18,9 @@ from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel, Field
 
-from repolish.loader._log import logger
-from repolish.loader.models.context import BaseContext, BaseInputs, Symlink
-from repolish.loader.models.files import FileMode, TemplateMapping
+from repolish.providers._log import logger
+from repolish.providers.models.context import BaseContext, BaseInputs, Symlink
+from repolish.providers.models.files import FileMode, TemplateMapping
 
 # Type variable for provider context models.  We intentionally
 # bind this to :class:`BaseContext` so that type checkers will flag
@@ -375,8 +375,8 @@ def get_provider_context(
 
 
 # Unused import kept for FileMode - it is re-exported from this module so
-# that code doing `from repolish.loader.models.provider import FileMode`
-# continues to work.  The canonical location is repolish.loader.models.files.
+# that code doing `from repolish.providers.models.provider import FileMode`
+# continues to work.  The canonical location is repolish.providers.models.files.
 __all__ = [
     'ContextT',
     'FileMode',

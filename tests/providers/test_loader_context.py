@@ -1,12 +1,12 @@
 from pydantic import BaseModel, field_validator
 from pytest_mock import MockerFixture
 
-from repolish.loader.context import (
+from repolish.providers.context import (
     _apply_override,
     _apply_overrides_to_model,
     apply_context_overrides,
 )
-from repolish.loader.models import BaseContext
+from repolish.providers.models import BaseContext
 
 
 def test_apply_context_overrides(mocker: MockerFixture):
@@ -37,7 +37,7 @@ def test_apply_context_overrides(mocker: MockerFixture):
         'direct_list.1': 'replaced',  # Direct list index replacement
         'repo.name': 'new_name',  # should not touch Repo instance
     }
-    mock_logger = mocker.patch('repolish.loader.context.logger')
+    mock_logger = mocker.patch('repolish.providers.context.logger')
     apply_context_overrides(context, overrides)
     assert context['devkits'][0]['name'] == 'new-d1'
     assert context['simple'] == 'new-value'
@@ -93,7 +93,7 @@ def test_apply_context_overrides_nested_dict():
 
 def test_apply_override_edge_cases(mocker: MockerFixture):
     """Test edge cases in _apply_override function."""
-    mock_logger = mocker.patch('repolish.loader.context.logger')
+    mock_logger = mocker.patch('repolish.providers.context.logger')
 
     # Test empty path_parts (should return early)
     context = {'test': 'value'}
@@ -132,7 +132,7 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
 
     instance = M()
 
-    mock_logger = mocker.patch('repolish.loader.context.logger')
+    mock_logger = mocker.patch('repolish.providers.context.logger')
 
     # override valid field
     new = _apply_overrides_to_model(instance, {'a': 5}, provider='pid')

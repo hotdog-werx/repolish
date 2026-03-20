@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from repolish.config import ProviderSymlink, RepolishConfig
-from repolish.loader.models import (
+from repolish.providers.models import (
     BaseInputs,
     GlobalContext,
     ProviderEntry,
@@ -53,8 +53,8 @@ class ResolvedSession:
     config:
         The resolved :class:`~repolish.config.RepolishConfig` for this session.
     global_context:
-        The :class:`~repolish.loader.models.GlobalContext` injected into every
-        provider, including the :class:`~repolish.loader.models.WorkspaceContext`.
+        The :class:`~repolish.providers.models.GlobalContext` injected into every
+        provider, including the :class:`~repolish.providers.models.WorkspaceContext`.
     providers:
         All provider instances with their finalized contexts, file mappings,
         and template sources populated.

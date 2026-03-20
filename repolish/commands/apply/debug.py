@@ -3,7 +3,7 @@ from pathlib import Path
 
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
-from repolish.loader.models import SessionBundle
+from repolish.providers.models import SessionBundle
 from repolish.misc import ctx_to_dict
 
 
@@ -27,7 +27,7 @@ def _debug_file_slug(ctx: object, alias: str) -> str:
         standalone.simple-provider
     """
     try:
-        from repolish.loader.models import BaseContext  # noqa: PLC0415
+        from repolish.providers.models import BaseContext  # noqa: PLC0415
 
         if isinstance(ctx, BaseContext):
             info = ctx._provider

@@ -1,19 +1,19 @@
 from pathlib import Path
 from typing import Literal, overload
 
-from repolish.loader import SessionBundle
-from repolish.loader.context import (
+from repolish.providers import SessionBundle
+from repolish.providers.context import (
     _apply_overrides_to_provider_contexts,
     _apply_provider_overrides,
 )
-from repolish.loader.exchange import (
+from repolish.providers.exchange import (
     build_provider_metadata,
     collect_all_emitted_inputs,
     collect_provider_contributions,
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.loader.models import (
+from repolish.providers.models import (
     Accumulators,
     BaseContext,
     BaseInputs,
@@ -21,9 +21,9 @@ from repolish.loader.models import (
     ProviderEntry,
     get_global_context,
 )
-from repolish.loader.models.pipeline import DryRunResult, PipelineOptions
-from repolish.loader.module import _load_module_cache
-from repolish.loader.pipeline import (
+from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
+from repolish.providers.module import _load_module_cache
+from repolish.providers.pipeline import (
     _build_all_providers_list,
     _populate_provider_context,
     _set_provider_metadata,

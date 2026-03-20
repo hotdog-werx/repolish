@@ -10,21 +10,21 @@ from pydantic import BaseModel
 from repolish import ProviderEntry
 from repolish.config import RepolishConfig, ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
-from repolish.loader import (
+from repolish.providers import (
     BaseContext,
     create_providers,
     logger,
 )
-from repolish.loader import Provider as _ProviderBase
-from repolish.loader.context import _apply_overrides_to_model
-from repolish.loader.exchange import (
+from repolish.providers import Provider as _ProviderBase
+from repolish.providers.context import _apply_overrides_to_model
+from repolish.providers.exchange import (
     _process_provider_fm,
     collect_provider_contributions,
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.loader.models import Accumulators, GlobalContext
-from repolish.loader.pipeline import (
+from repolish.providers.models import Accumulators, GlobalContext
+from repolish.providers.pipeline import (
     _build_all_providers_list,
     _synthesize_provider_context_for_pid,
 )
@@ -256,7 +256,7 @@ def test_overrides_affect_inputs(
     """
     sender_src = """
 from repolish import Provider, ProviderEntry, BaseContext, BaseInputs
-from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
+from tests.providers.test_loader_coverage_gaps import SharedMsg as Msg
 
 
 class Repo(BaseContext):
@@ -285,7 +285,7 @@ class Sender(Provider[Ctx, Msg]):
 """
     recv_src = """
 from repolish import Provider, ProviderEntry, BaseContext, BaseInputs
-from tests.loader.test_loader_coverage_gaps import SharedMsg as Msg
+from tests.providers.test_loader_coverage_gaps import SharedMsg as Msg
 
 
 class RecCtx(BaseContext):
@@ -380,7 +380,7 @@ def test_invalid_override_preserves_model(
     callers know something went wrong (extra field, wrong type, etc.).
     """
     src = """
-from repolish.loader.models import Provider, BaseContext, BaseInputs
+from repolish.providers.models import Provider, BaseContext, BaseInputs
 
 
 class IntCtx(BaseContext):
@@ -397,7 +397,7 @@ class P(Provider[IntCtx, BaseInputs]):
     mock_logger = MagicMock()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            'repolish.loader.context.logger',
+            'repolish.providers.context.logger',
             mock_logger,
         )
         providers = create_providers(
@@ -441,7 +441,7 @@ class P(Provider[SimpleCtx, BaseInputs]):
     mock_logger = MagicMock()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            'repolish.loader.context.logger',
+            'repolish.providers.context.logger',
             mock_logger,
         )
         providers = create_providers([pdir], context_overrides={'y': 'value'})

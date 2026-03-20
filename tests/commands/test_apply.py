@@ -13,8 +13,8 @@ from repolish.commands.apply.options import ApplyOptions
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import ProviderSymlink
 from repolish.linker.health import ProviderReadinessResult
-from repolish.loader import SessionBundle
-from repolish.loader.models import (
+from repolish.providers import SessionBundle
+from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,

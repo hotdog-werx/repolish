@@ -4,14 +4,14 @@ from unittest import mock
 import pytest
 from pydantic import BaseModel
 
-from repolish.loader import logger
-from repolish.loader.models import (
+from repolish.providers import logger
+from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     Provider,
     ProviderInfo,
 )
-from repolish.loader.models.provider import _get_provider_generic_args
+from repolish.providers.models.provider import _get_provider_generic_args
 
 
 class _TContext(BaseContext):
@@ -169,7 +169,7 @@ def test_provider_info_major_version(
 
 
 def test_basecontext_includes_repolish_field():
-    from repolish.loader.models import BaseContext, GlobalContext  # noqa: PLC0415 - testing import
+    from repolish.providers.models import BaseContext, GlobalContext  # noqa: PLC0415 - testing import
 
     bc = BaseContext()
     assert hasattr(bc, 'repolish')
@@ -187,10 +187,10 @@ def test_basecontext_includes_repolish_field():
 def test_get_global_context_falls_back_when_git_raises() -> None:
     # get_global_context is best-effort: if git.get_owner_repo raises, owner
     # and name should fall back to 'Unknown' rather than propagating.
-    from repolish.loader.models import get_global_context  # noqa: PLC0415
+    from repolish.providers.models import get_global_context  # noqa: PLC0415
 
     with mock.patch(
-        'repolish.loader.models.context._get_owner_repo',
+        'repolish.providers.models.context._get_owner_repo',
         side_effect=OSError('no git'),
     ):
         ctx = get_global_context()

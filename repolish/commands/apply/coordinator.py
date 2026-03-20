@@ -12,8 +12,8 @@ from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
 )
-from repolish.loader.models import GlobalContext, get_global_context
-from repolish.loader.models.context import MemberInfo, WorkspaceContext
+from repolish.providers.models import GlobalContext, get_global_context
+from repolish.providers.models.context import MemberInfo, WorkspaceContext
 
 
 @contextlib.contextmanager

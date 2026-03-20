@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from repolish.loader import create_providers
-from repolish.loader.models import (
+from repolish.providers import create_providers
+from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     Provider,

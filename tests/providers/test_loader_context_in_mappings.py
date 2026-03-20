@@ -3,7 +3,7 @@ from textwrap import dedent
 
 from pydantic import BaseModel
 
-from repolish.loader import FileMode, TemplateMapping, create_providers
+from repolish.providers import FileMode, TemplateMapping, create_providers
 
 
 def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # noqa: ANN001
@@ -18,7 +18,7 @@ def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # n
     """
     # ensure global context is predictable
     monkeypatch.setattr(
-        'repolish.loader.models.context._get_owner_repo',
+        'repolish.providers.models.context._get_owner_repo',
         lambda: ('owner', 'repo'),
     )
 

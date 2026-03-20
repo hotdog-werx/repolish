@@ -1,4 +1,4 @@
-from repolish.loader.models import Provider, ProviderEntry
+from repolish.providers.models import Provider, ProviderEntry
 from tests.providers_inputs.shared import CtxA, InputA
 
 

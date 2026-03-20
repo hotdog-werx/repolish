@@ -9,9 +9,9 @@ import pytest
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
-from repolish import loader as loader_mod
-from repolish.loader import SessionBundle, create_providers
-from repolish.loader.module import _find_provider_class as _find_provider_cls
+from repolish import providers as loader_mod
+from repolish.providers import SessionBundle, create_providers
+from repolish.providers.module import _find_provider_class as _find_provider_cls
 from tests.support import write_module
 
 
@@ -179,7 +179,7 @@ def test_multiple_provider_classes_with_all(tmp_path: Path):
     (prov / 'repolish.py').write_text(
         dedent(
             """
-        from repolish.loader.models import Provider, ProviderEntry
+        from repolish.providers.models import Provider, ProviderEntry
         from repolish import BaseContext
 
         class ACtx(BaseContext):
@@ -219,7 +219,7 @@ def test_multiple_providers_all_conflict(tmp_path: Path):
     (prov / 'repolish.py').write_text(
         dedent(
             """
-        from repolish.loader.models import Provider, ProviderEntry
+        from repolish.providers.models import Provider, ProviderEntry
 
         class A(Provider):
             def create_context(self):
@@ -282,7 +282,7 @@ def test_global_context_in_class_based_provider(
     loader should populate the ``repolish`` attribute with the global data.
     """
     monkeypatch.setattr(
-        'repolish.loader.models.context._get_owner_repo',
+        'repolish.providers.models.context._get_owner_repo',
         lambda: ('x', 'y'),
     )
 
@@ -291,7 +291,7 @@ def test_global_context_in_class_based_provider(
     (prov / 'repolish.py').write_text(
         """from pydantic import BaseModel
 from repolish import BaseContext
-from repolish.loader.models import Provider
+from repolish.providers.models import Provider
 
 class Ctx(BaseContext):
     pass
@@ -325,7 +325,7 @@ def test_error_when_module_exports_multiple_provider_classes(tmp_path: Path):
     (p / 'repolish.py').write_text(
         """
 from pydantic import BaseModel
-from repolish.loader.models import Provider
+from repolish.providers.models import Provider
 
 class Ctx(BaseModel):
     pass

@@ -13,13 +13,13 @@ from repolish.hydration.rendering import (
     render_template,
 )
 from repolish.hydration.staging import prepare_staging, preprocess_templates
-from repolish.loader import (
+from repolish.providers import (
     BaseContext,
     FileMode,
     SessionBundle,
     TemplateMapping,
 )
-from repolish.loader.models import ProviderInfo
+from repolish.providers.models import ProviderInfo
 
 
 def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:

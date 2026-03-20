@@ -18,7 +18,7 @@ from repolish.linker.providers import (
     write_provider_info_file,
 )
 from repolish.linker.symlinks import create_additional_link, link_resources
-from repolish.loader.models import Symlink
+from repolish.providers.models import Symlink
 
 __all__ = [
     'ProviderReadinessResult',

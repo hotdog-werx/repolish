@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 from repolish import BaseContext, Provider, ProviderEntry
-from repolish.loader.models import BaseInputs
+from repolish.providers.models import BaseInputs
 from tests.providers_inputs.shared import InputA
 
 

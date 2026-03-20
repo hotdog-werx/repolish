@@ -19,7 +19,7 @@ from repolish.hydration import (
     prepare_staging,
     preprocess_templates,
 )
-from repolish.loader.models import build_file_records
+from repolish.providers.models import build_file_records
 from repolish.utils import run_post_process
 from repolish.version import __version__
 

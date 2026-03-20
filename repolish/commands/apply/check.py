@@ -10,7 +10,7 @@ from repolish.hydration import (
     render_template,
     rich_print_diffs,
 )
-from repolish.loader.models import SessionBundle
+from repolish.providers.models import SessionBundle
 
 logger = get_logger(__name__)
 

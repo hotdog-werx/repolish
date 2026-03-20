@@ -8,7 +8,7 @@ from pytest_mock import MockerFixture
 from repolish.hydration.application import (
     apply_generated_output,
 )
-from repolish.loader import SessionBundle, TemplateMapping
+from repolish.providers import SessionBundle, TemplateMapping
 
 
 def test_apply_creates_file_when_missing(tmp_path: Path):

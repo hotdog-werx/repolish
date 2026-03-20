@@ -1,8 +1,8 @@
 from pathlib import Path
 from textwrap import dedent
 
-from repolish.loader import create_providers
-from repolish.loader.models.files import TemplateMapping
+from repolish.providers import create_providers
+from repolish.providers.models.files import TemplateMapping
 
 
 def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):

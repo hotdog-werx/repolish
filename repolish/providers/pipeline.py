@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from repolish.loader._log import logger
-from repolish.loader.models import (
+from repolish.providers._log import logger
+from repolish.providers.models import (
     BaseContext,
     GlobalContext,
     ProviderEntry,
     ProviderInfo,
     WorkspaceProviderInfo,
 )
-from repolish.loader.models import Provider as _ProviderBase
+from repolish.providers.models import Provider as _ProviderBase
 from repolish.pkginfo import resolve_package_identity
 
 

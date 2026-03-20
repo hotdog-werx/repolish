@@ -13,7 +13,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from repolish.config.models import ProviderFileInfo
-from repolish.loader.orchestrator import create_providers
+from repolish.providers.orchestrator import create_providers
 
 from .conftest import fixtures, run_repolish
 

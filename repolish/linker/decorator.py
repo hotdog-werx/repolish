@@ -158,7 +158,7 @@ def resource_linker(
     This decorator wraps a function to create a simple CLI that links
     a library's resource directory into ``.repolish/<alias>/``.  That is
     its only responsibility — symlink management is handled separately by
-    :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
+    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
 
     The library name (used for the default target subdirectory and CLI help
     text) is auto-detected from the caller's top-level package name.
@@ -287,7 +287,7 @@ def resource_linker_cli(
     Assign the result to ``main`` and register it as a project script.
     The CLI's sole responsibility is linking the package resources into
     ``.repolish/<alias>/``; default symlinks are declared instead via
-    :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
+    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
 
     The library name is auto-detected from the caller's top-level package name.
 

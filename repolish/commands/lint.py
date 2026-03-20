@@ -31,8 +31,8 @@ from pydantic import BaseModel
 from rich.console import Console
 
 from repolish.console import console
-from repolish.loader import create_providers
-from repolish.loader.models import SessionBundle
+from repolish.providers import create_providers
+from repolish.providers.models import SessionBundle
 from repolish.preprocessors.core import replace_text
 
 logger = get_logger(__name__)

@@ -7,7 +7,7 @@ from rich.text import Text
 
 from repolish.config import ProviderSymlink
 from repolish.console import console
-from repolish.loader.models import GlobalContext, SessionBundle, get_global_context
+from repolish.providers.models import GlobalContext, SessionBundle, get_global_context
 from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
@@ -62,7 +62,7 @@ def error_unknown_member(member: str, valid_names: list[str]) -> None:
 def role_label(ctx: object) -> str:
     """Return a display label for the provider's monorepo role."""
     try:
-        from repolish.loader.models import BaseContext  # noqa: PLC0415
+        from repolish.providers.models import BaseContext  # noqa: PLC0415
 
         if isinstance(ctx, BaseContext):
             info = ctx._provider.monorepo

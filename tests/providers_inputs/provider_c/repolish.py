@@ -1,4 +1,4 @@
-from repolish.loader.models import (
+from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     Provider,

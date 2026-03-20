@@ -1,6 +1,6 @@
 """Loader models package: re-exports the full public API from all submodules.
 
-Consumers should import from `repolish.loader.models` (this package) rather
+Consumers should import from `repolish.providers.models` (this package) rather
 than from the individual submodules. The split into submodules is an
 implementation detail:
 
@@ -14,7 +14,7 @@ implementation detail:
   `get_provider_inputs`, `get_provider_context`
 """
 
-from repolish.loader.models.context import (
+from repolish.providers.models.context import (
     BaseContext,
     BaseInputs,
     GithubRepo,
@@ -23,7 +23,7 @@ from repolish.loader.models.context import (
     Symlink,
     get_global_context,
 )
-from repolish.loader.models.files import (
+from repolish.providers.models.files import (
     Accumulators,
     Action,
     Decision,
@@ -33,8 +33,8 @@ from repolish.loader.models.files import (
     TemplateMapping,
     build_file_records,
 )
-from repolish.loader.models.pipeline import DryRunResult, PipelineOptions
-from repolish.loader.models.provider import (
+from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
+from repolish.providers.models.provider import (
     ContextT,
     InputT,
     Provider,
@@ -44,7 +44,7 @@ from repolish.loader.models.provider import (
     get_provider_inputs,
     get_provider_inputs_schema,
 )
-from repolish.loader.models.workspace import (
+from repolish.providers.models.workspace import (
     MemberInfo,
     WorkspaceContext,
     WorkspaceProviderInfo,

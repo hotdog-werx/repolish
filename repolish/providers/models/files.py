@@ -16,7 +16,7 @@ from pathlib import Path  # noqa: TC003 - Pydantic model fields require runtime 
 
 from pydantic import BaseModel, Field
 
-from repolish.loader.models.context import (
+from repolish.providers.models.context import (
     BaseContext,  # noqa: TC001 - Pydantic model field requires runtime resolution
 )
 

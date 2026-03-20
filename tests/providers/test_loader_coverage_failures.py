@@ -5,20 +5,20 @@ import pytest
 from pydantic import BaseModel
 
 from repolish.hydration.rendering import _load_and_validate_template
-from repolish.loader.exchange import (
+from repolish.providers.exchange import (
     _retrieve_instance_inputs,
     _schema_matches,
     _validate_raw_inputs,
     finalize_provider_contexts,
 )
-from repolish.loader.models import (
+from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     ProviderEntry,
     SessionBundle,
     TemplateMapping,
 )
-from repolish.loader.models import (
+from repolish.providers.models import (
     Provider as _ProviderBase,
 )
 

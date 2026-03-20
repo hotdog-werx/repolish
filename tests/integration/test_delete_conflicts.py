@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from repolish.hydration import apply_generated_output, check_generated_output
-from repolish.loader import SessionBundle
+from repolish.providers import SessionBundle
 
 
 def test_check_skips_file_when_marked_for_deletion(tmp_path: Path):

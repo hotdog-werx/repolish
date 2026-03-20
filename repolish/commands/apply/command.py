@@ -10,6 +10,6 @@ from repolish.commands.apply.options import ApplyOptions, ResolvedSession  # noq
 from repolish.commands.apply.pipeline import resolve_session  # noqa: F401
 from repolish.commands.apply.session import apply_session, run_session  # noqa: F401
 from repolish.commands.apply.symlinks import _apply_symlinks  # noqa: F401
-from repolish.loader.models import build_file_records  # noqa: F401
+from repolish.providers.models import build_file_records  # noqa: F401
 from repolish.utils import run_post_process  # noqa: F401
 from repolish.version import __version__  # noqa: F401

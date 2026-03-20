@@ -3,7 +3,7 @@ try:
 except ImportError:
     from typing_extensions import override
 
-from .loader.models import (
+from .providers.models import (
     BaseContext,
     BaseInputs,
     FileMode,

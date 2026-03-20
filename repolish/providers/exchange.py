@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import BaseModel as _BaseModel
 from pydantic_core import ValidationError
 
-from repolish.loader._log import logger
-from repolish.loader.models import (
+from repolish.providers._log import logger
+from repolish.providers.models import (
     Accumulators,
     Action,
     BaseContext,
@@ -20,7 +20,7 @@ from repolish.loader.models import (
     TemplateMapping,
     get_global_context,
 )
-from repolish.loader.models import Provider as _ProviderBase
+from repolish.providers.models import Provider as _ProviderBase
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

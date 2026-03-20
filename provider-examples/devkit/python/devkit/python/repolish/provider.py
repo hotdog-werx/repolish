@@ -22,7 +22,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     def create_context(self) -> PythonProviderContext:
         """Return the initial context for this provider.
 
-        The base :class:`~repolish.loader.models.Provider` implementation
+        The base :class:`~repolish.providers.models.Provider` implementation
         will attempt to construct the context automatically using the
         no-argument constructor of the type parameter.  This stub is
         provided mostly for documentation; you can safely remove it if the

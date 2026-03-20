@@ -8,7 +8,7 @@ from typing import Protocol
 import pytest
 from pytest_mock import MockerFixture
 
-from repolish.loader.module import get_module
+from repolish.providers.module import get_module
 from tests.support import module_name_from_path, write_module
 
 

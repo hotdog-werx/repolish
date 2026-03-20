@@ -24,7 +24,7 @@ from pydantic import (
     computed_field,
 )
 
-from repolish.loader.models.workspace import (
+from repolish.providers.models.workspace import (
     MemberInfo,
     WorkspaceContext,
     WorkspaceProviderInfo,
@@ -74,7 +74,7 @@ class GlobalContext(BaseModel):
 
     ``GlobalContext`` is intentionally trivial so consumer code can import
     it directly when typing provider contexts; providers that don't declare
-    a subclass of :class:`~repolish.loader.models.BaseContext` simply ignore
+    a subclass of :class:`~repolish.providers.models.BaseContext` simply ignore
     it.
     """
 

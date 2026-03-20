@@ -1,4 +1,4 @@
-from repolish.loader.models import BaseContext, BaseInputs
+from repolish.providers.models import BaseContext, BaseInputs
 
 
 class CtxA(BaseContext):

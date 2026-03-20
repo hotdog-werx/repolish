@@ -5,7 +5,7 @@ from pathlib import Path
 
 from repolish.builder import stage_templates
 from repolish.hydration.staging import preprocess_templates
-from repolish.loader import SessionBundle
+from repolish.providers import SessionBundle
 
 
 def write_file(p: Path, content: str) -> None:

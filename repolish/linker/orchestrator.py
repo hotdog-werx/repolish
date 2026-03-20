@@ -14,7 +14,7 @@ from repolish.config.models.provider import (
 )
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
-from repolish.loader.models import Provider, Symlink
+from repolish.providers.models import Provider, Symlink
 
 logger = get_logger(__name__)
 
@@ -78,7 +78,7 @@ def _load_provider_default_symlinks(
     """Import ``repolish.py`` from *provider_root* and return its default symlinks.
 
     Finds the ``Provider`` subclass instance in the module and calls
-    :meth:`~repolish.loader.models.Provider.create_default_symlinks`.
+    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
     Returns an empty list when the file is absent, has no Provider instance,
     or raises an exception during loading.
     """

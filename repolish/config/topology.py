@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from repolish.config.models.project import WorkspaceConfig
-from repolish.loader.models.context import MemberInfo, WorkspaceContext
+from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.misc import read_toml
 
 

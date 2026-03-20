@@ -1,4 +1,4 @@
-from repolish.loader import TemplateMapping
+from repolish.providers import TemplateMapping
 
 
 def get_source_str_from_mapping(

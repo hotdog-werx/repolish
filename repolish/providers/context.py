@@ -1,8 +1,8 @@
 import copy
 from typing import Any, TypeVar
 
-from repolish.loader._log import logger
-from repolish.loader.models import BaseContext
+from repolish.providers._log import logger
+from repolish.providers.models import BaseContext
 
 T = TypeVar('T')
 

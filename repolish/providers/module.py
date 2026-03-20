@@ -3,7 +3,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 from inspect import isclass
 from pathlib import Path
 
-from repolish.loader.models import Provider as _ProviderBase
+from repolish.providers.models import Provider as _ProviderBase
 
 
 def _guess_import_name(module_path: str) -> str | None:

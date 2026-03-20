@@ -2,7 +2,7 @@ from pathlib import Path
 
 from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
-from repolish.loader.models import TemplateMapping
+from repolish.providers.models import TemplateMapping
 
 
 def _collect_excluded_sources(

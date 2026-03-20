@@ -8,7 +8,7 @@ from rich.console import Console
 
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.display import rich_print_diffs
-from repolish.loader import SessionBundle, TemplateMapping
+from repolish.providers import SessionBundle, TemplateMapping
 
 
 def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
