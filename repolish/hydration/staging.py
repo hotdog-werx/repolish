@@ -20,9 +20,9 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     setup_input = staging / '_' / 'stage'
     setup_output = staging / '_' / 'render'
 
-    # clear output dir if present
-    shutil.rmtree(setup_input, ignore_errors=True)
-    shutil.rmtree(setup_output, ignore_errors=True)
+    # wipe the entire _ scratch dir so stale stage files, render outputs,
+    # and debug JSON from previous runs are all cleared in one shot.
+    shutil.rmtree(staging / '_', ignore_errors=True)
     setup_input.mkdir(parents=True, exist_ok=True)
     setup_output.mkdir(parents=True, exist_ok=True)
 
