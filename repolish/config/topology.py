@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from repolish.config.models.project import WorkspaceConfig
-from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.misc import read_toml
+from repolish.providers.models.context import MemberInfo, WorkspaceContext
 
 
 def _read_uv_workspace_members(pyproject: Path) -> list[str] | None:

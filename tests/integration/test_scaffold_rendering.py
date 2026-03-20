@@ -49,6 +49,9 @@ def test_apply_renders_jinja_notice_with_context(
     assert '→' in content, 'Unicode arrow must be preserved'
     assert '©' in content, 'Unicode copyright symbol must be preserved'
 
-    assert 'providers_context' in result.output, (
-        'apply output must include the providers_context event for class-based providers'
+    assert 'providers_ready' in result.output, (
+        'apply output must include the providers_ready event'
+    )
+    assert 'debug_dir' in result.output, (
+        'providers_ready event must reference the debug_dir path'
     )

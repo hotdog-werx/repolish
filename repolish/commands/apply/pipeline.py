@@ -5,6 +5,7 @@ from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import collect_provider_symlinks
+from repolish.misc import ctx_to_dict
 from repolish.providers.models import (
     BaseInputs,
     GlobalContext,
@@ -12,7 +13,6 @@ from repolish.providers.models import (
     get_global_context,
 )
 from repolish.providers.orchestrator import create_providers
-from repolish.misc import ctx_to_dict
 
 logger = get_logger(__name__)
 

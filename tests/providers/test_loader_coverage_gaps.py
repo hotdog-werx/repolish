@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from repolish import ProviderEntry
 from repolish.config import RepolishConfig, ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
+from repolish.misc import ctx_keys, ctx_to_dict
 from repolish.providers import (
     BaseContext,
     create_providers,
@@ -28,7 +29,6 @@ from repolish.providers.pipeline import (
     _build_all_providers_list,
     _synthesize_provider_context_for_pid,
 )
-from repolish.misc import ctx_keys, ctx_to_dict
 
 
 # shared message class used by generated provider modules

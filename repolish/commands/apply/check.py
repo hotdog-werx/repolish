@@ -28,7 +28,7 @@ class CheckContext:
     disable_auto_staging: bool = False
 
 
-def _render_templates(
+def render_templates(
     setup_input: Path,
     providers: SessionBundle,
     setup_output: Path,
@@ -43,7 +43,7 @@ def _render_templates(
     return 0
 
 
-def _finish_check(ctx: CheckContext) -> int:
+def finish_check(ctx: CheckContext) -> int:
     """Run check mode: report diffs and symlink issues; return 2 if any, else 0."""
     diffs = check_generated_output(
         ctx.setup_output,

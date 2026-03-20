@@ -3,8 +3,8 @@ from pathlib import Path
 
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
-from repolish.providers.models import SessionBundle
 from repolish.misc import ctx_to_dict
+from repolish.providers.models import SessionBundle
 
 
 def collect_provider_files(
@@ -44,7 +44,7 @@ def _debug_file_slug(ctx: object, alias: str) -> str:
     return f'standalone.{alias}'
 
 
-def _write_provider_debug_files(
+def write_provider_debug_files(
     base_dir: Path,
     config: RepolishConfig,
     providers: SessionBundle,

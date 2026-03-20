@@ -4,8 +4,8 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.providers import SessionBundle, TemplateMapping
 from repolish.preprocessors import replace_text, safe_file_read
+from repolish.providers import SessionBundle, TemplateMapping
 
 logger = get_logger(__name__)
 

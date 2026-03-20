@@ -11,8 +11,8 @@ from jinja2 import (
     select_autoescape,
 )
 
-from repolish.providers import FileMode, SessionBundle, TemplateMapping
 from repolish.misc import ctx_to_dict
+from repolish.providers import FileMode, SessionBundle, TemplateMapping
 
 logger = get_logger(__name__)
 

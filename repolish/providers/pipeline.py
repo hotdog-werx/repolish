@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from repolish.pkginfo import resolve_package_identity
 from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
@@ -11,7 +12,6 @@ from repolish.providers.models import (
     WorkspaceProviderInfo,
 )
 from repolish.providers.models import Provider as _ProviderBase
-from repolish.pkginfo import resolve_package_identity
 
 
 def _build_all_providers_list(

@@ -6,8 +6,8 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.hydration.misc import get_source_str_from_mapping
-from repolish.providers import SessionBundle
 from repolish.misc import is_conditional_file
+from repolish.providers import SessionBundle
 
 logger = get_logger(__name__)
 

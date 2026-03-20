@@ -3,13 +3,13 @@ from pathlib import Path
 
 from pytest_mock import MockerFixture
 
-from repolish.commands.apply.session import (
-    run_session as run_repolish,
-)
 from repolish.commands.apply.display import (
     print_files_summary as _print_files_summary,
 )
 from repolish.commands.apply.options import ApplyOptions
+from repolish.commands.apply.session import (
+    run_session as run_repolish,
+)
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import ProviderSymlink
 from repolish.linker.health import ProviderReadinessResult

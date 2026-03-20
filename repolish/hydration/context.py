@@ -1,9 +1,9 @@
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
+from repolish.misc import ctx_to_dict
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
-from repolish.misc import ctx_to_dict
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:

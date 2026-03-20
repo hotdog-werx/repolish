@@ -1,14 +1,20 @@
 from pathlib import Path
 
 from hotlog import get_logger
+from rich.console import Group
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console
-from repolish.providers.models import GlobalContext, SessionBundle, get_global_context
 from repolish.misc import ctx_to_dict
+from repolish.providers.models import (
+    BaseContext,
+    SessionBundle,
+)
 
 logger = get_logger(__name__)
 
@@ -62,8 +68,6 @@ def error_unknown_member(member: str, valid_names: list[str]) -> None:
 def role_label(ctx: object) -> str:
     """Return a display label for the provider's monorepo role."""
     try:
-        from repolish.providers.models import BaseContext  # noqa: PLC0415
-
         if isinstance(ctx, BaseContext):
             info = ctx._provider.monorepo
             if info.mode == 'root':
@@ -122,14 +126,13 @@ def print_files_summary(
         )
 
 
-def build_provider_panel(
-    alias: str,
-    ctx: object,
-    records: list,
-    owner_symlinks: list[ProviderSymlink],
-    role: str,
-) -> Panel:
+def build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     """Build a Rich Panel for one provider with property, context, and files sections."""
+    pid = session.alias_to_pid.get(alias)
+    ctx = session.providers.provider_contexts.get(pid) if pid else None
+    records = [r for r in session.providers.file_records if r.owner == alias]
+    owner_symlinks = session.resolved_symlinks.get(alias, [])
+    role = role_label(ctx)
     props = Table.grid(padding=(0, 1))
     props.add_column(style='bold cyan', no_wrap=True)
     props.add_column()
@@ -176,9 +179,6 @@ def build_provider_panel(
     else:
         files_table = Text('(no files)', style='dim')
 
-    from rich.console import Group  # noqa: PLC0415
-    from rich.rule import Rule  # noqa: PLC0415
-
     body = Group(
         props,
         Rule(style='dim'),
@@ -191,33 +191,20 @@ def build_provider_panel(
     return Panel(body, title=f'[bold]{alias}[/bold]', border_style='cyan')
 
 
-def _print_provider_panels(
-    providers: SessionBundle,
-    aliases: list[str],
-    alias_to_pid: dict[str, str],
-    resolved_symlinks: dict[str, list[ProviderSymlink]],
-) -> None:
+def _print_provider_panels(session: ResolvedSession) -> None:
     """Print Rich panels for all providers, grouped by monorepo role."""
-    from rich.rule import Rule  # noqa: PLC0415
-
-    by_owner: dict[str, list] = {}
-    for record in providers.file_records:
-        by_owner.setdefault(record.owner, []).append(record)
-
-    _syms = resolved_symlinks or {}
-
     root_aliases: list[str] = []
     member_aliases: dict[str, list[str]] = {}
     standalone_aliases: list[str] = []
 
-    for alias in aliases:
-        pid = alias_to_pid.get(alias)
-        ctx = providers.provider_contexts.get(pid) if pid else None
+    for alias in session.aliases:
+        pid = session.alias_to_pid.get(alias)
+        ctx = session.providers.provider_contexts.get(pid) if pid else None
         label = role_label(ctx)
         if label == 'root':
             root_aliases.append(alias)
-        elif label.startswith('package:'):
-            member_name = label[len('package: ') :]
+        elif label.startswith('member:'):
+            member_name = label[len('member: ') :]
             member_aliases.setdefault(member_name, []).append(alias)
         else:
             standalone_aliases.append(alias)
@@ -225,17 +212,7 @@ def _print_provider_panels(
     def _emit(group_title: str, group_aliases: list[str]) -> None:
         console.print(Rule(f'[bold]{group_title}[/bold]', style='bright_black'))
         for a in group_aliases:
-            pid = alias_to_pid.get(a)
-            ctx = providers.provider_contexts.get(pid) if pid else None
-            label = role_label(ctx)
-            panel = build_provider_panel(
-                a,
-                ctx,
-                by_owner.get(a, []),
-                _syms.get(a, []),
-                label,
-            )
-            console.print(panel)
+            console.print(build_provider_panel(session, a))
 
     if root_aliases:
         _emit('Root', root_aliases)
@@ -245,40 +222,12 @@ def _print_provider_panels(
         _emit('Standalone', standalone_aliases)
 
 
-def _log_providers_summary(
-    providers: SessionBundle,
-    aliases: list[str],
-    alias_to_pid: dict[str, str],
-    resolved_symlinks: dict[str, list[ProviderSymlink]],
-    global_context: GlobalContext | None = None,
-) -> None:
-    """Log global/per-provider context and print the provider panels."""
-    ctx = global_context if global_context is not None else get_global_context()
-    logger.info(
-        'global_context',
-        context={'repolish': ctx.model_dump()},
-        note='available to all providers',
-    )
-    logger.info(
-        'providers_context',
-        providers=[
-            {
-                'alias': alias,
-                'context': {
-                    k: v
-                    for k, v in ctx_to_dict(
-                        providers.provider_contexts.get(alias_to_pid[alias]),
-                    ).items()
-                    if k != 'repolish'
-                },
-                'file_count': sum(1 for r in providers.file_records if r.owner == alias),
-            }
-            for alias in aliases
-            if alias in alias_to_pid
-        ],
-    )
-    _print_provider_panels(providers, aliases, alias_to_pid, resolved_symlinks)
+def _log_providers_summary(session: ResolvedSession) -> None:
+    """Print provider panels and log the location of the debug output directory."""
+    _print_provider_panels(session)
+    debug_dir = session.config.config_dir / '.repolish' / '_'
     logger.info(
         'providers_ready',
-        suggestion='see .repolish/_ for extra information on each provider',
+        debug_dir=str(debug_dir),
+        suggestion='see debug_dir for per-provider context and file decisions',
     )

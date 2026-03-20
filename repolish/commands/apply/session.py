@@ -2,10 +2,10 @@ from hotlog import get_logger
 
 from repolish.commands.apply.check import (
     CheckContext,
-    _finish_check,
-    _render_templates,
+    finish_check,
+    render_templates,
 )
-from repolish.commands.apply.debug import _write_provider_debug_files
+from repolish.commands.apply.debug import write_provider_debug_files
 from repolish.commands.apply.display import _log_providers_summary
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
@@ -64,20 +64,14 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
     )
 
     # write per-provider debug JSON to .repolish/_/provider-context.<alias>.json
-    _write_provider_debug_files(
+    write_provider_debug_files(
         base_dir,
         config,
         providers,
         alias_to_pid,
     )
 
-    _log_providers_summary(
-        providers,
-        aliases,
-        alias_to_pid,
-        resolved_symlinks,
-        session.global_context,
-    )
+    _log_providers_summary(session)
 
     paused = frozenset(config.paused_files)
     if paused:
@@ -91,7 +85,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
     preprocess_templates(setup_input, providers, base_dir)
 
     # Render templates using Jinja2
-    if _render_templates(setup_input, providers, setup_output) != 0:
+    if render_templates(setup_input, providers, setup_output) != 0:
         return 1
 
     # Run any configured post-processing commands in the rendered output dir
@@ -100,7 +94,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
-        return _finish_check(
+        return finish_check(
             CheckContext(
                 setup_output=setup_output,
                 providers=providers,
