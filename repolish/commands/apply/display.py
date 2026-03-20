@@ -139,8 +139,9 @@ def _build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     debug_dir = session.config.config_dir / '.repolish' / '_'
     slug = debug_file_slug(ctx, alias)
     debug_file = debug_dir / f'provider-context.{slug}.json'
+    root_dir = session.global_context.workspace.root_dir
     try:
-        debug_link = str(debug_file.relative_to(Path.cwd()))
+        debug_link = str(debug_file.relative_to(root_dir))
     except ValueError:
         debug_link = str(debug_file)
     props.add_row('alias', alias)

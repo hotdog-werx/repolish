@@ -20,9 +20,15 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     setup_input = staging / '_' / 'stage'
     setup_output = staging / '_' / 'render'
 
-    # wipe the entire _ scratch dir so stale stage files, render outputs,
-    # and debug JSON from previous runs are all cleared in one shot.
-    shutil.rmtree(staging / '_', ignore_errors=True)
+    # Clear transient outputs from previous runs while preserving provider-info
+    # registration files (provider-info.*.json, .all-providers.json) so that
+    # providers don't get re-linked on every apply.
+    shutil.rmtree(setup_input, ignore_errors=True)
+    shutil.rmtree(setup_output, ignore_errors=True)
+    scratch = staging / '_'
+    if scratch.exists():
+        for f in scratch.glob('provider-context.*.json'):
+            f.unlink(missing_ok=True)
     setup_input.mkdir(parents=True, exist_ok=True)
     setup_output.mkdir(parents=True, exist_ok=True)
 
