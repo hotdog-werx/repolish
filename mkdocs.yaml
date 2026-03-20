@@ -40,6 +40,7 @@ nav:
   - Guides:
       # - Python Projects: guides/python.md
       - Monorepo Support: guides/monorepo.md
+      - Mode Handlers: guides/mode-handler.md
       - Provider Patterns: guides/patterns.md
       - Resource Linker: guides/linker.md
       - Debugging Preprocessors: guides/debugger.md

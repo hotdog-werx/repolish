@@ -30,6 +30,11 @@ from jinja2 import select_autoescape
 from pydantic import BaseModel
 from rich.console import Console
 
+from repolish.commands.apply.staging import (
+    collect_mapped_sources,
+    find_unmapped_conditional_sources,
+)
+from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.console import console
 from repolish.preprocessors.core import replace_text
 from repolish.providers import create_providers
@@ -363,8 +368,35 @@ def command(provider_dir: Path) -> int:
     lint_result = LintResult(template_results=results)
     issues_total, render_errors_total = _report_results(results, console)
 
+    # Check for _repolish.* files that are present in the template tree but
+    # never referenced by create_file_mappings.  These are likely typos or
+    # leftover files and would be silently skipped during apply.
+    mapped = collect_mapped_sources(providers.file_mappings) | providers.suppressed_sources
+    dummy_info = ResolvedProviderInfo(
+        alias=provider_dir.name,
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    unmapped = find_unmapped_conditional_sources(
+        {provider_dir.name: dummy_info},
+        mapped,
+    )
+    if unmapped:
+        console.print()
+        console.print(
+            '[yellow]Unmapped conditional sources (never referenced by create_file_mappings):[/yellow]',
+        )
+        for alias, path in unmapped:
+            console.print(f'  [yellow]{path}[/yellow]')
+            logger.warning(
+                'unmapped_conditional_source',
+                provider=alias,
+                path=path,
+                suggestion='add to create_file_mappings or remove the file',
+            )
+
     console.print()
-    if lint_result.ok:
+    if lint_result.ok and not unmapped:
         console.rule('[bold green]All templates OK[/bold green]')
         logger.info('lint_passed', templates=len(results))
         return 0
@@ -374,5 +406,6 @@ def command(provider_dir: Path) -> int:
         'lint_failed',
         issues=issues_total,
         render_errors=render_errors_total,
+        unmapped_conditionals=len(unmapped),
     )
     return 1

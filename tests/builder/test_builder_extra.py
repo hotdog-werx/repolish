@@ -145,10 +145,10 @@ def test_template_sources_are_posix_ids(tmp_path: Path) -> None:
     assert next(iter(sources.values())) == alias.replace('\\', '/')
 
 
-def test_excluded_sources_skips_explicitly_mapped_templates(
+def test_mapped_sources_stages_and_registers_templates(
     tmp_path: Path,
 ) -> None:
-    """Files listed in excluded_sources are staged AND registered in sources.
+    """Files in mapped_sources (claimed by create_file_mappings) are staged and registered.
 
     A provider that explicitly maps 'workflows/ci.yaml' in create_file_mappings
     needs the file present in setup_output so the renderer can find the template,
@@ -167,11 +167,11 @@ def test_excluded_sources_skips_explicitly_mapped_templates(
     (rep / 'README.md').write_text('readme')
 
     staging = tmp_path / 'staging'
-    # exclude the workflows/ci.yaml source — it is claimed by a file mapping
+    # workflows/ci.yaml is claimed by a file mapping — include it as a mapped source
     _, sources = stage_templates(
         staging,
         [tpl],
-        excluded_sources={'workflows/ci.yaml'},
+        mapped_sources={'workflows/ci.yaml'},
     )
 
     staged = staging / 'repolish'

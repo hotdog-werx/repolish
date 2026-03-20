@@ -2,10 +2,12 @@ from pathlib import Path
 
 from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
+from repolish.config.models.provider import ResolvedProviderInfo
+from repolish.misc import is_conditional_file
 from repolish.providers.models import TemplateMapping
 
 
-def collect_excluded_sources(
+def collect_mapped_sources(
     file_mappings: dict[str, str | TemplateMapping],
 ) -> set[str]:
     """Return the set of source template paths explicitly claimed by `file_mappings`.
@@ -15,13 +17,13 @@ def collect_excluded_sources(
     provider tree — the developer has already decided where it goes (and
     possibly under a different destination name).
     """
-    excluded: set[str] = set()
+    result: set[str] = set()
     for src in file_mappings.values():
         if isinstance(src, str):
-            excluded.add(src)
+            result.add(src)
         elif src.source_template is not None:
-            excluded.add(src.source_template)
-    return excluded
+            result.add(src.source_template)
+    return result
 
 
 def _gather_template_directories(
@@ -50,7 +52,7 @@ def _gather_template_directories(
 def create_staged_template(
     setup_input: Path,
     config: RepolishConfig,
-    excluded_sources: set[str] | None = None,
+    mapped_sources: set[str] | None = None,
     workspace_mode: str | None = None,
 ) -> dict[str, str]:
     """Stage all provider templates into `setup_input`.
@@ -68,7 +70,7 @@ def create_staged_template(
         setup_input,
         template_dirs,
         template_overrides=config.template_overrides,
-        excluded_sources=excluded_sources,
+        mapped_sources=mapped_sources,
         workspace_mode=workspace_mode,
     )
     if isinstance(result, tuple) and len(result) == 2:
@@ -76,3 +78,33 @@ def create_staged_template(
     else:
         sources = {}
     return sources
+
+
+def find_unmapped_conditional_sources(
+    provider_infos: dict[str, ResolvedProviderInfo],
+    mapped_sources: set[str],
+) -> list[tuple[str, str]]:
+    """Return (alias, template_path) pairs for unmapped ``_repolish.*`` files.
+
+    Scans each provider's ``repolish/`` template tree for files whose names
+    start with the ``_repolish.`` prefix but that are not referenced by any
+    ``create_file_mappings`` value (i.e. not in *mapped_sources*).  These
+    are likely forgotten mapping sources — template files added to the
+    provider but never wired up to a destination.
+
+    Used by the lint pass to surface potential omissions before they
+    silently disappear from the staging area (the apply pass skips them).
+    """
+    issues: list[tuple[str, str]] = []
+    for alias, info in provider_infos.items():
+        repolish_dir = info.provider_root / 'repolish'
+        if not repolish_dir.is_dir():
+            continue
+        for item in repolish_dir.rglob('*'):
+            if not item.is_file():
+                continue
+            rel = item.relative_to(repolish_dir).as_posix()
+            stripped = rel.removesuffix('.jinja')
+            if is_conditional_file(rel) and stripped not in mapped_sources:
+                issues.append((alias, stripped))
+    return issues

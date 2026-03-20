@@ -104,3 +104,70 @@ def test_preprocess_templates_writes_file_when_anchor_content_changes(
     original = '## repolish-start[intro]\nDefault content\nrepolish-end[intro]\n'
     assert updated != original
     assert 'repolish-start' not in updated
+
+
+# ---------------------------------------------------------------------------
+# Tests: unmapped _repolish.* files are excluded from the staging tree
+# ---------------------------------------------------------------------------
+
+
+def _make_provider_dir(base: Path, files: list[str]) -> Path:
+    """Create a provider dir with the given files under repolish/."""
+    provider = base / 'provider'
+    (provider / 'repolish').mkdir(parents=True)
+    for name in files:
+        p = provider / 'repolish' / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text('content', encoding='utf-8')
+    return provider
+
+
+def test_unmapped_conditional_file_not_staged(tmp_path: Path) -> None:
+    """_repolish.* files that are not in mapped_sources must not be staged."""
+    provider = _make_provider_dir(
+        tmp_path,
+        ['README.md', '_repolish.variant-a.md', '_repolish.variant-b.md'],
+    )
+    staging = tmp_path / 'stage'
+    _, sources = stage_templates(staging, [provider], mapped_sources=set())
+
+    staged = {p.name for p in (staging / 'repolish').rglob('*') if p.is_file()}
+    assert 'README.md' in staged
+    assert '_repolish.variant-a.md' not in staged
+    assert '_repolish.variant-b.md' not in staged
+
+
+def test_mapped_conditional_file_is_staged(tmp_path: Path) -> None:
+    """_repolish.* files that ARE in mapped_sources must be staged."""
+    provider = _make_provider_dir(
+        tmp_path,
+        ['README.md', '_repolish.variant-a.md', '_repolish.variant-b.md'],
+    )
+    staging = tmp_path / 'stage'
+    # only variant-a is mapped
+    _, sources = stage_templates(
+        staging,
+        [provider],
+        mapped_sources={'_repolish.variant-a.md'},
+    )
+
+    staged = {p.name for p in (staging / 'repolish').rglob('*') if p.is_file()}
+    assert 'README.md' in staged
+    assert '_repolish.variant-a.md' in staged
+    assert '_repolish.variant-b.md' not in staged
+
+
+def test_conditional_files_staged_when_mapped_sources_is_none(
+    tmp_path: Path,
+) -> None:
+    """When mapped_sources is omitted (None) the skip logic does not apply."""
+    provider = _make_provider_dir(
+        tmp_path,
+        ['README.md', '_repolish.variant-a.md'],
+    )
+    staging = tmp_path / 'stage'
+    _, sources = stage_templates(staging, [provider])  # mapped_sources=None
+
+    staged = {p.name for p in (staging / 'repolish').rglob('*') if p.is_file()}
+    assert 'README.md' in staged
+    assert '_repolish.variant-a.md' in staged

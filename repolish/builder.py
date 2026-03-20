@@ -2,6 +2,8 @@ import fnmatch
 import shutil
 from pathlib import Path
 
+from repolish.misc import is_conditional_file
+
 
 def stage_templates(
     staging_dir: Path,
@@ -13,7 +15,7 @@ def stage_templates(
     template_directories: list[Path | tuple[str | None, Path]],
     *,
     template_overrides: dict[str, str | None] | None = None,
-    excluded_sources: set[str] | None = None,
+    mapped_sources: set[str] | None = None,
     workspace_mode: str | None = None,
 ) -> tuple[Path, dict[str, str]]:
     """Merge provider template directories into a single staging tree.
@@ -37,11 +39,11 @@ def stage_templates(
     the file is skipped, preventing later providers from overriding the
     specified source.
 
-    When `excluded_sources` is provided, any file whose path (relative to the
-    provider's ``repolish/`` directory, with ``.jinja`` stripped) appears in
-    the set is skipped.  This prevents a template that a provider has
-    explicitly placed in ``create_file_mappings`` from also being auto-copied
-    to its natural staging position.
+    When `mapped_sources` is provided, any ``_repolish.*`` file whose path
+    (relative to the provider's ``repolish/`` directory, with ``.jinja``
+    stripped) is *not* in the set is skipped.  This prevents unmapped
+    conditional templates from appearing in the staging area — only sources
+    explicitly referenced by ``create_file_mappings`` are staged.
 
     Args:
         staging_dir: Path to the staging directory to create the templates.
@@ -53,8 +55,10 @@ def stage_templates(
             aliases (or ``None``) controlling per-file override behaviour.
             A ``None`` value suppresses the file entirely — it will not be
             staged or rendered in the output.
-        excluded_sources: Optional set of POSIX source-template paths (without
-            the ``.jinja`` suffix) that should be excluded from auto-staging.
+        mapped_sources: Optional set of POSIX source-template paths (without
+            the ``.jinja`` suffix) that are claimed by ``create_file_mappings``.
+            ``_repolish.*`` files whose stripped path is not in this set are
+            skipped during staging.
         workspace_mode: Current workspace mode (``'root'``, ``'member'``, or
             ``'standalone'``).  When set, each provider's mode-specific overlay
             directory is staged after its base ``repolish/`` templates.
@@ -84,7 +88,7 @@ def stage_templates(
             staging_dir,
             alias=alias,
             overrides=template_overrides,
-            excluded_sources=excluded_sources,
+            mapped_sources=mapped_sources,
             sources=sources,
         )
         if workspace_mode:
@@ -96,7 +100,7 @@ def stage_templates(
                     alias=alias,
                     mode_name=workspace_mode,
                     overrides=template_overrides,
-                    excluded_sources=excluded_sources,
+                    mapped_sources=mapped_sources,
                     sources=sources,
                 )
     return staging_dir, sources
@@ -182,7 +186,7 @@ def _should_skip_item(
     - a ``None`` override suppresses it entirely, or
     - a different provider's alias is selected for that path.
 
-    Files that appear in ``excluded_sources`` are handled separately: they are
+    Files that appear in ``mapped_sources`` are handled separately: they are
     still copied into the staging tree (so file_mappings can find them) but
     are not registered in ``sources``.
     """
@@ -203,7 +207,7 @@ def _copy_mode_overlay_dir(  # noqa: PLR0913
     alias: str | None = None,
     mode_name: str,
     overrides: dict[str, str | None] | None = None,
-    excluded_sources: set[str] | None = None,
+    mapped_sources: set[str] | None = None,
     sources: dict[str, str],
 ) -> None:
     """Stage files from a mode-specific overlay directory.
@@ -234,14 +238,13 @@ def _copy_mode_overlay_dir(  # noqa: PLR0913
         # use original alias for override matching (overrides reference provider names)
         if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
             continue
-        if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
-            _copy_item_to_dest(
-                item,
-                mode_dir,
-                dest_root,
-                alias=annotated_alias,
-                sources=sources,
-            )
+        stripped = rel_str.removesuffix('.jinja')
+        if (
+            mapped_sources is not None
+            and item.is_file()
+            and is_conditional_file(rel_str)
+            and stripped not in mapped_sources
+        ):
             continue
         _copy_item_to_dest(
             item,
@@ -258,7 +261,7 @@ def _copy_template_dir(  # noqa: PLR0913
     *,
     alias: str | None = None,
     overrides: dict[str, str | None] | None = None,
-    excluded_sources: set[str] | None = None,
+    mapped_sources: set[str] | None = None,
     sources: dict[str, str],
 ) -> None:
     """Copy the contents of a template directory into the staging directory.
@@ -268,8 +271,8 @@ def _copy_template_dir(  # noqa: PLR0913
     the staging directory root.
 
     Files are skipped when overrides pin them to a different provider alias,
-    or when they appear in ``excluded_sources`` (explicitly mapped via
-    ``create_file_mappings``).
+    or when they are unmapped ``_repolish.*`` files not present in
+    ``mapped_sources``.
     """
     repolish_dir = template_dir / 'repolish'
     if not (repolish_dir.exists() and repolish_dir.is_dir()):
@@ -281,19 +284,17 @@ def _copy_template_dir(  # noqa: PLR0913
         # Override mismatch: a different provider owns this file — skip entirely.
         if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
             continue
-        # Explicitly mapped source: stage the file so file_mappings can find it
-        # in setup_output and register it in sources so the renderer can look up
-        # the declaring provider's context (e.g. for {{ repolish.provider }} access).
-        # build_file_records filters these out so they don't appear as managed
-        # output files.
-        if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
-            _copy_item_to_dest(
-                item,
-                repolish_dir,
-                dest_root,
-                alias=alias,
-                sources=sources,
-            )
+        # Unmapped conditional source: skip entirely.  Files with the
+        # _repolish. prefix are staging intermediates only and will never be
+        # auto-applied to the project.  Only stage them when they appear in
+        # mapped_sources, meaning a file_mappings entry references them.
+        stripped = rel_str.removesuffix('.jinja')
+        if (
+            mapped_sources is not None
+            and item.is_file()
+            and is_conditional_file(rel_str)
+            and stripped not in mapped_sources
+        ):
             continue
         _copy_item_to_dest(
             item,

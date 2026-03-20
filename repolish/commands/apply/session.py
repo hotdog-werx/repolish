@@ -10,7 +10,7 @@ from repolish.commands.apply.display import log_providers_summary
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
-    collect_excluded_sources,
+    collect_mapped_sources,
     create_staged_template,
 )
 from repolish.commands.apply.symlinks import apply_symlinks
@@ -51,7 +51,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
     sources = create_staged_template(
         setup_input,
         config,
-        excluded_sources=collect_excluded_sources(providers.file_mappings) | providers.suppressed_sources,
+        mapped_sources=collect_mapped_sources(providers.file_mappings) | providers.suppressed_sources,
         workspace_mode=session.global_context.workspace.mode,
     )
     # stage_templates records alias as the provider id; provider_contexts is
