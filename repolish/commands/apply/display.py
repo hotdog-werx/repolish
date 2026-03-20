@@ -7,10 +7,10 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from repolish.commands.apply.debug import debug_file_slug
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console
-from repolish.misc import ctx_to_dict
 from repolish.providers.models import (
     BaseContext,
     SessionBundle,
@@ -65,7 +65,7 @@ def error_unknown_member(member: str, valid_names: list[str]) -> None:
     console.print(msg)
 
 
-def role_label(ctx: object) -> str:
+def _role_label(ctx: object) -> str:
     """Return a display label for the provider's monorepo role."""
     try:
         if isinstance(ctx, BaseContext):
@@ -79,7 +79,7 @@ def role_label(ctx: object) -> str:
     return 'standalone'
 
 
-def build_provider_table(
+def _build_provider_table(
     owner: str,
     records: list,
     owner_symlinks: list[ProviderSymlink],
@@ -118,7 +118,7 @@ def print_files_summary(
 
     for owner in all_owners:
         console.print(
-            build_provider_table(
+            _build_provider_table(
                 owner,
                 by_owner.get(owner, []),
                 _syms.get(owner, []),
@@ -126,29 +126,31 @@ def print_files_summary(
         )
 
 
-def build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
+def _build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     """Build a Rich Panel for one provider with property, context, and files sections."""
     pid = session.alias_to_pid.get(alias)
     ctx = session.providers.provider_contexts.get(pid) if pid else None
     records = [r for r in session.providers.file_records if r.owner == alias]
     owner_symlinks = session.resolved_symlinks.get(alias, [])
-    role = role_label(ctx)
+    role = _role_label(ctx)
     props = Table.grid(padding=(0, 1))
     props.add_column(style='bold cyan', no_wrap=True)
-    props.add_column()
-    props.add_row('name', alias)
+    props.add_column(overflow='fold')
+    debug_dir = session.config.config_dir / '.repolish' / '_'
+    slug = debug_file_slug(ctx, alias)
+    debug_file = debug_dir / f'provider-context.{slug}.json'
+    try:
+        debug_link = str(debug_file.relative_to(Path.cwd()))
+    except ValueError:
+        debug_link = str(debug_file)
+    props.add_row('alias', alias)
     props.add_row('role', role)
-
-    ctx_dict = ctx_to_dict(ctx) if ctx is not None else {}
-    ctx_display = {k: v for k, v in ctx_dict.items() if k not in ('repolish', '_provider')}
-    if ctx_display:
-        ctx_table = Table.grid(padding=(0, 1))
-        ctx_table.add_column(style='dim', no_wrap=True)
-        ctx_table.add_column()
-        for k, v in ctx_display.items():
-            ctx_table.add_row(str(k), str(v))
-    else:
-        ctx_table = Text('(no context fields)', style='dim')
+    if ctx is not None and isinstance(ctx, BaseContext):
+        info = ctx._provider
+        props.add_row('project', info.project_name)
+        props.add_row('package', info.package_name)
+        props.add_row('version', info.version)
+    props.add_row('debug', debug_link)
 
     total = len(records) + len(owner_symlinks)
     if total:
@@ -182,9 +184,6 @@ def build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     body = Group(
         props,
         Rule(style='dim'),
-        Text('context', style='bold'),
-        ctx_table,
-        Rule(style='dim'),
         Text(f'files ({total})', style='bold'),
         files_table,
     )
@@ -200,7 +199,7 @@ def _print_provider_panels(session: ResolvedSession) -> None:
     for alias in session.aliases:
         pid = session.alias_to_pid.get(alias)
         ctx = session.providers.provider_contexts.get(pid) if pid else None
-        label = role_label(ctx)
+        label = _role_label(ctx)
         if label == 'root':
             root_aliases.append(alias)
         elif label.startswith('member:'):
@@ -212,7 +211,7 @@ def _print_provider_panels(session: ResolvedSession) -> None:
     def _emit(group_title: str, group_aliases: list[str]) -> None:
         console.print(Rule(f'[bold]{group_title}[/bold]', style='bright_black'))
         for a in group_aliases:
-            console.print(build_provider_panel(session, a))
+            console.print(_build_provider_panel(session, a))
 
     if root_aliases:
         _emit('Root', root_aliases)
@@ -222,7 +221,7 @@ def _print_provider_panels(session: ResolvedSession) -> None:
         _emit('Standalone', standalone_aliases)
 
 
-def _log_providers_summary(session: ResolvedSession) -> None:
+def log_providers_summary(session: ResolvedSession) -> None:
     """Print provider panels and log the location of the debug output directory."""
     _print_provider_panels(session)
     debug_dir = session.config.config_dir / '.repolish' / '_'

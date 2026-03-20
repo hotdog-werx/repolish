@@ -17,7 +17,7 @@ def collect_provider_files(
     ]
 
 
-def _debug_file_slug(ctx: object, alias: str) -> str:
+def debug_file_slug(ctx: object, alias: str) -> str:
     """Return a filename slug capturing monorepo role + provider alias.
 
     Examples::
@@ -64,7 +64,7 @@ def write_provider_debug_files(
         if not pid:
             continue
         ctx = providers.provider_contexts.get(pid)
-        slug = _debug_file_slug(ctx, alias)
+        slug = debug_file_slug(ctx, alias)
         data: dict[str, object] = {
             'alias': alias,
             'context': ctx_to_dict(ctx),

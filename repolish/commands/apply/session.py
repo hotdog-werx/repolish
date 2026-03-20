@@ -6,7 +6,7 @@ from repolish.commands.apply.check import (
     render_templates,
 )
 from repolish.commands.apply.debug import write_provider_debug_files
-from repolish.commands.apply.display import _log_providers_summary
+from repolish.commands.apply.display import log_providers_summary
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
@@ -71,7 +71,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
         alias_to_pid,
     )
 
-    _log_providers_summary(session)
+    log_providers_summary(session)
 
     paused = frozenset(config.paused_files)
     if paused:
