@@ -105,6 +105,20 @@ def test_stage_templates_with_overrides(tmp_path: Path) -> None:
     assert (project2 / 'unique1.txt').read_text() == 'only p1'
     assert (project2 / 'unique2.txt').read_text() == 'only p2'
 
+    # with a None override, the file is suppressed entirely — absent from every provider
+    staging3 = tmp_path / 'staging3'
+    _, sources3 = stage_templates(
+        staging3,
+        [('p1', p1), ('p2', p2)],
+        template_overrides={'common.txt': None},
+    )
+    project3 = staging3 / 'repolish'
+    assert not (project3 / 'common.txt').exists()
+    assert 'common.txt' not in sources3
+    # unique files from both providers are still present
+    assert (project3 / 'unique1.txt').exists()
+    assert (project3 / 'unique2.txt').exists()
+
 
 def test_template_sources_are_posix_ids(tmp_path: Path) -> None:
     """Returned sources map should normalise provider IDs to forward slashes.

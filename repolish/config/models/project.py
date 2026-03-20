@@ -44,13 +44,14 @@ class RepolishConfigFile(BaseModel):
         default_factory=list,
         description='Optional: Order in which to process providers. Defaults to providers dict key order from YAML.',
     )
-    template_overrides: dict[str, str] = Field(
+    template_overrides: dict[str, str | None] = Field(
         default_factory=dict,
         description=(
             'Optional mapping of glob-style file patterns to provider aliases. '
             'Overrides which provider supplies a given file regardless of the '
             'usual provider order. Keys are POSIX-style file paths, values must '
-            'reference a defined provider alias.'
+            'reference a defined provider alias, or null/~ to suppress the '
+            'file entirely (it will not be staged or rendered).'
         ),
     )
     paused_files: list[str] = Field(
@@ -122,9 +123,11 @@ class RepolishConfigFile(BaseModel):
         both the overrides mapping and the providers dict.
         """
         if self.template_overrides:
-            unknown = set(self.template_overrides.values()) - set(
-                self.providers.keys(),
-            )
+            unknown = {
+                alias
+                for alias in self.template_overrides.values()
+                if alias is not None
+            } - set(self.providers.keys())
             if unknown:
                 msg = f'template_overrides references undefined providers: {sorted(unknown)}'
                 raise ConfigValidationError(msg)
@@ -160,10 +163,11 @@ class RepolishConfig(BaseModel):
         default_factory=list,
         description='Order in which to process providers',
     )
-    template_overrides: dict[str, str] = Field(
+    template_overrides: dict[str, str | None] = Field(
         default_factory=dict,
         description=(
-            'Mapping of glob patterns to provider aliases after resolution. '
+            'Mapping of glob patterns to provider aliases (or None to suppress) '
+            'after resolution. '
             'Inherited directly from `RepolishConfigFile.template_overrides`.'
         ),
     )

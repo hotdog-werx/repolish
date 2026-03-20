@@ -12,7 +12,7 @@ def stage_templates(
     # (alias, path) pairs with or without a `None` alias.
     template_directories: list[Path | tuple[str | None, Path]],
     *,
-    template_overrides: dict[str, str] | None = None,
+    template_overrides: dict[str, str | None] | None = None,
     excluded_sources: set[str] | None = None,
 ) -> tuple[Path, dict[str, str]]:
     """Merge provider template directories into a single staging tree.
@@ -41,7 +41,9 @@ def stage_templates(
             used to evaluate `template_overrides`; plain Path entries ignore
             any overrides.
         template_overrides: Optional mapping of glob patterns to provider
-            aliases controlling per-file override behaviour.
+            aliases (or ``None``) controlling per-file override behaviour.
+            A ``None`` value suppresses the file entirely — it will not be
+            staged or rendered in the output.
         excluded_sources: Optional set of POSIX source-template paths (without
             the ``.jinja`` suffix) that should be excluded from auto-staging.
 
@@ -76,21 +78,31 @@ def stage_templates(
     return staging_dir, sources
 
 
+_UNMATCHED: str | None = None  # sentinel — value never actually read when matched=False
+
+
 def _selected_override_alias(
     rel_path: str,
-    overrides: dict[str, str] | None,
-) -> str | None:
-    """Return the alias selected by `overrides` for `rel_path`.
+    overrides: dict[str, str | None] | None,
+) -> tuple[bool, str | None]:
+    """Return ``(matched, alias)`` for `rel_path` against `overrides`.
+
+    - ``(False, None)`` — no pattern matched; caller should not act on alias.
+    - ``(True, str)``   — pattern matched; the file belongs to *alias*.
+    - ``(True, None)``  — pattern matched with a ``None`` value; the file
+      should be suppressed entirely (not staged or rendered).
 
     The last matching pattern wins (consistent with previous behaviour).
     """
     if not overrides:
-        return None
+        return False, _UNMATCHED
+    matched = False
     selected: str | None = None
     for pat, ali in overrides.items():
         if fnmatch.fnmatch(rel_path, pat):
+            matched = True
             selected = ali
-    return selected
+    return matched, selected
 
 
 def _copy_item_to_dest(
@@ -138,21 +150,26 @@ def _should_skip_item(
     rel_str: str,
     *,
     alias: str | None,
-    overrides: dict[str, str] | None,
+    overrides: dict[str, str | None] | None,
 ) -> bool:
     """Return True if *item* should be fully skipped during staging.
 
-    A file is skipped when it is governed by ``overrides`` and the current
-    provider's alias is not the selected one for that path.  Files that appear
-    in ``excluded_sources`` are handled separately: they are still copied into
-    the staging tree (so file_mappings can find them) but are not registered in
-    ``sources``.
+    A file is skipped when:
+    - a ``None`` override suppresses it entirely, or
+    - a different provider's alias is selected for that path.
+
+    Files that appear in ``excluded_sources`` are handled separately: they are
+    still copied into the staging tree (so file_mappings can find them) but
+    are not registered in ``sources``.
     """
-    if alias is not None:
-        selected = _selected_override_alias(rel_str, overrides)
-        if selected is not None and selected != alias:
-            return True
-    return False
+    matched, selected = _selected_override_alias(rel_str, overrides)
+    if not matched:
+        return False
+    # None value means "suppress this file entirely"
+    if selected is None:
+        return True
+    # Skip if a different provider owns this file
+    return alias is None or selected != alias
 
 
 def _copy_template_dir(  # noqa: PLR0913
@@ -160,7 +177,7 @@ def _copy_template_dir(  # noqa: PLR0913
     staging_dir: Path,
     *,
     alias: str | None = None,
-    overrides: dict[str, str] | None = None,
+    overrides: dict[str, str | None] | None = None,
     excluded_sources: set[str] | None = None,
     sources: dict[str, str],
 ) -> None:
