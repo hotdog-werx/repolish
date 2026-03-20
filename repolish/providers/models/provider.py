@@ -1,6 +1,7 @@
 """Provider base class, entry metadata, and provider utility functions.
 
 Defines the public API for class-based providers:
+- :class:`ModeHandler` — base class for mode-scoped provider behavior
 - :class:`ProviderEntry` — metadata record passed to provider hooks
 - :class:`Provider` — ABC base class all class-based providers subclass
 - :func:`get_provider_inputs_schema` / :func:`get_provider_inputs` / :func:`get_provider_context`
@@ -53,6 +54,64 @@ def _get_provider_generic_args(cls: type) -> tuple[type | None, type | None]:
     ctx = args[0] if len(args) >= 1 else None
     inp = args[1] if len(args) >= 2 else None
     return ctx, inp
+
+
+class ModeHandler(Generic[ContextT, InputT]):
+    """Base class for mode-scoped provider behavior.
+
+    Subclass to handle behavior for a single workspace mode (``root``,
+    ``member``, or ``standalone``).  Each method has the same no-op default
+    as :class:`Provider`; only override what the mode actually needs.
+
+    Attach handlers to a :class:`Provider` subclass via optional class
+    attributes::
+
+        class WorkspaceProvider(Provider[WorkspaceContext, WorkspaceInputs]):
+            root_mode = RootModeHandler
+            member_mode = MemberModeHandler
+            # standalone_mode not set → falls back to the no-op defaults
+
+    When repolish calls a hook it checks whether a handler is registered for
+    the current workspace mode and delegates to it.  Providers that override a
+    hook *directly* on the :class:`Provider` subclass always take priority —
+    mode handlers are only reachable via the base class defaults.
+
+    Type parameters must match the enclosing :class:`Provider` so that the
+    type checker enforces context/input consistency across all three roles.
+    """
+
+    def provide_inputs(
+        self,
+        own_context: ContextT,  # noqa: ARG002 - unused in base implementation
+        all_providers: list[ProviderEntry],  # noqa: ARG002 - unused in base implementation
+        provider_index: int,  # noqa: ARG002 - unused in base implementation
+    ) -> list[BaseInputs]:
+        """See :meth:`Provider.provide_inputs`."""
+        return []
+
+    def finalize_context(
+        self,
+        own_context: ContextT,
+        received_inputs: list[InputT],  # noqa: ARG002 - unused in base implementation
+        all_providers: list[ProviderEntry],  # noqa: ARG002 - unused in base implementation
+        provider_index: int,  # noqa: ARG002 - unused in base implementation
+    ) -> ContextT:
+        """See :meth:`Provider.finalize_context`."""
+        return own_context
+
+    def create_file_mappings(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> dict[str, str | TemplateMapping | None]:
+        """See :meth:`Provider.create_file_mappings`."""
+        return {}
+
+    def create_anchors(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> dict[str, str]:
+        """See :meth:`Provider.create_anchors`."""
+        return {}
 
 
 # `ProviderEntry` is the object passed to provider hooks such as
@@ -144,6 +203,14 @@ class Provider(ABC, Generic[ContextT, InputT]):
     package_name: str = ''  # top-level Python package (import name), e.g. "devkit_workspace"
     project_name: str = ''  # distribution name from pyproject.toml [project] name, e.g. "devkit-workspace"
 
+    # Optional mode-scoped handler classes.  When set, ``call_provider_method``
+    # routes to the correct handler instead of calling the hook on the provider
+    # directly.  If no handler is registered for the current mode, the
+    # provider's own method (override or base no-op) is called.
+    root_mode: type[ModeHandler[ContextT, InputT]] | None = None
+    member_mode: type[ModeHandler[ContextT, InputT]] | None = None
+    standalone_mode: type[ModeHandler[ContextT, InputT]] | None = None
+
     def create_context(self) -> ContextT:
         """Return this provider's initial context object.
 
@@ -157,13 +224,12 @@ class Provider(ABC, Generic[ContextT, InputT]):
         continue; authors who need a real context should override the
         method themselves.
 
-        SessionBundle that need to pass arguments to their context constructor
+        Providers that need to pass arguments to their context constructor
         or otherwise perform nontrivial setup should still override this
         method explicitly.  The returned object *must* inherit from
         :class:`BaseContext` so the loader can merge the global ``repolish``
         data into it.
         """
-        # reuse helper to obtain generic args
         ctx_cls, _ = _get_provider_generic_args(self.__class__)
         if ctx_cls is None or not isinstance(ctx_cls, type) or not issubclass(ctx_cls, BaseContext):
             logger.warning(
@@ -203,7 +269,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
         the `input_type`/`alias` attributes are useful
         for most providers.
 
-        The default implementation returns an empty list.
+        The default returns an empty list.
         """
         return []
 
@@ -273,7 +339,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
             list((self.templates_root / '.github' / 'workflows').glob('*.yaml'))
 
-        Default implementation returns an empty mapping.
+        Default: empty mapping.
         """
         return {}
 
@@ -283,8 +349,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
     ) -> dict[str, str]:
         """Optional: return anchors mapping for this provider.
 
-        The provider's own context object is passed so implementations can
-        make decisions based on it.  Default: no anchors (empty dict).
+        Default: no anchors (empty dict).
         """
         return {}
 
@@ -305,6 +370,56 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Default implementation returns an empty list (no symlinks).
         """
         return []
+
+
+def call_provider_method(
+    inst: Provider[ContextT, InputT],
+    method_name: str,
+    own_context: ContextT,
+    /,
+    *args: object,
+) -> object:
+    """Call a provider hook, routing to the mode handler if one is registered.
+
+    Orchestration callers use this instead of ``inst.method_name(own_context,
+    ...)`` directly, so that :class:`Provider` itself has no knowledge of mode
+    dispatch.
+
+    Resolution order:
+
+    1. The mode is read from ``own_context.repolish.workspace.mode``.  If
+       ``own_context`` does not carry a ``repolish`` attribute the mode is
+       treated as unknown and the handler lookup is skipped.
+    2. If a handler class is registered on ``inst`` for the current mode a
+       cached instance is used and the method is called on it.
+    3. Otherwise the provider's own implementation is called — whether that is
+       an explicit override in the subclass or the base-class no-op.
+
+    Handler instances are lazily created and cached on the provider instance
+    under ``_mode_handler_instances`` so repeated calls share the same object.
+    """
+    repolish_ctx = getattr(own_context, 'repolish', None)
+    workspace_ctx = getattr(repolish_ctx, 'workspace', None)
+    mode: str | None = getattr(workspace_ctx, 'mode', None)
+
+    handler_cls: type[ModeHandler[ContextT, InputT]] | None = None
+    if mode == 'root':
+        handler_cls = inst.root_mode
+    elif mode == 'member':
+        handler_cls = inst.member_mode
+    elif mode is not None:
+        handler_cls = inst.standalone_mode
+
+    if handler_cls is not None:
+        cache: dict[str, ModeHandler[ContextT, InputT]] = vars(inst).setdefault(
+            '_mode_handler_instances',
+            {},
+        )
+        if mode not in cache:
+            cache[mode] = handler_cls()
+        return getattr(cache[mode], method_name)(own_context, *args)
+
+    return getattr(inst, method_name)(own_context, *args)
 
 
 # ---------------------------------------------------------------------------
@@ -381,10 +496,12 @@ __all__ = [
     'ContextT',
     'FileMode',
     'InputT',
+    'ModeHandler',
     'Provider',
     'ProviderEntry',
     'T',
     '_get_provider_generic_args',
+    'call_provider_method',
     'get_provider_context',
     'get_provider_inputs',
     'get_provider_inputs_schema',

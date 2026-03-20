@@ -19,6 +19,7 @@ from repolish.providers.models import (
     ProviderEntry,
     ProviderInfo,
     TemplateMapping,
+    call_provider_method,
     get_global_context,
 )
 from repolish.providers.models import Provider as _ProviderBase
@@ -63,7 +64,9 @@ def _retrieve_instance_inputs(
     """
     own_model = provider_contexts.get(provider_id, {})
     try:
-        raw = inst.provide_inputs(
+        raw = call_provider_method(
+            inst,
+            'provide_inputs',
             own_model,
             all_providers_list,
             idx,
@@ -307,11 +310,16 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
 ) -> BaseContext:
     """Call `finalize_context` with consistent logging on failure."""
     try:
-        return inst.finalize_context(
-            own_model,
-            validated_inputs,
-            all_providers_list,
-            idx,
+        return cast(
+            'BaseContext',
+            call_provider_method(
+                inst,
+                'finalize_context',
+                own_model,
+                validated_inputs,
+                all_providers_list,
+                idx,
+            ),
         )
     except Exception:
         logger.exception(
@@ -443,11 +451,16 @@ def collect_provider_contributions(
         inst = cast('_ProviderBase', inst)
 
         own_ctx = provider_contexts.get(provider_id, {})
-        val = inst.create_anchors(own_ctx)
+        if not isinstance(own_ctx, BaseContext):
+            continue
+        val = call_provider_method(inst, 'create_anchors', own_ctx)
         if val:
             if not isinstance(val, dict):
                 msg = 'create_anchors() must return a dict'
                 raise TypeError(msg)
             accum.merged_anchors.update(cast('dict[str, str]', val))
-        fm = inst.create_file_mappings(own_ctx)
+        fm = cast(
+            'dict[str, str | TemplateMapping | None]',
+            call_provider_method(inst, 'create_file_mappings', own_ctx),
+        )
         _process_provider_fm(provider_id, fm, accum)
