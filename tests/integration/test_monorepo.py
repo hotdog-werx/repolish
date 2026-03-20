@@ -196,7 +196,7 @@ class TestMonorepoFullRun:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Member debug JSON shows ``mode="package"``."""
+        """Member debug JSON shows ``mode="member"``."""
         repo = fixtures.monorepo_basic.stage(tmp_path)
         monkeypatch.chdir(repo)
 
@@ -210,7 +210,7 @@ class TestMonorepoFullRun:
         assert debug_files
         data = json.loads(debug_files[0].read_text())
         monorepo = data['context'].get('repolish', {}).get('workspace', {})
-        assert monorepo.get('mode') == 'package'
+        assert monorepo.get('mode') == 'member'
 
 
 class TestR10Guard:

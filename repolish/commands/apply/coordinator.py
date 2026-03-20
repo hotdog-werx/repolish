@@ -97,7 +97,7 @@ def coordinate_sessions(
     for m in mono_ctx.members:
         member_dir = (config_dir / m.path).resolve()
         pkg_mono_ctx = WorkspaceContext(
-            mode='package',
+            mode='member',
             root_dir=config_dir,
             package_dir=member_dir,
             members=mono_ctx.members,

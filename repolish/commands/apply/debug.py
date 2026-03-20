@@ -34,7 +34,7 @@ def _debug_file_slug(ctx: object, alias: str) -> str:
             mode = info.monorepo.mode
             if mode == 'root':
                 prefix = 'root'
-            elif mode == 'package' and info.monorepo.member_name:
+            elif mode == 'member' and info.monorepo.member_name:
                 prefix = info.monorepo.member_name
             else:
                 prefix = 'standalone'

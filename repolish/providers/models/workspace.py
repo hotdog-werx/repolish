@@ -3,7 +3,7 @@
 These models describe the structure of the repository from repolish's point
 of view. They are injected into every provider context so templates can
 react to whether they are running in a standalone project, a monorepo root,
-or a monorepo package member.
+or a monorepo member.
 
 - `MemberInfo` — metadata about one monorepo member directory
 - `WorkspaceContext` — full topology: mode, root, package dir, all members
@@ -53,7 +53,7 @@ class WorkspaceContext(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mode: Literal['root', 'package', 'standalone'] = 'standalone'
+    mode: Literal['root', 'member', 'standalone'] = 'standalone'
     root_dir: Path = Field(default_factory=Path.cwd)
     package_dir: Path | None = None
     members: list[MemberInfo] = Field(default_factory=list)
@@ -72,14 +72,14 @@ class WorkspaceProviderInfo(BaseModel):
 
     Unlike `repolish.workspace` (which is global and shared across all
     providers in the session), these fields describe the role of *this specific
-    provider instance* — its mode and, when running as a package member, its
+    provider instance* — its mode and, when running as a monorepo member, its
     name and repo-relative path.
 
     Available in templates as `{{ _provider.monorepo.mode }}`,
     `{{ _provider.monorepo.member_name }}`, etc.
     """
 
-    mode: Literal['root', 'package', 'standalone'] = 'standalone'
+    mode: Literal['root', 'member', 'standalone'] = 'standalone'
     member_name: str = ''
     """Package name of this member (from its `pyproject.toml`), e.g. `pkg-alpha`."""
     member_path: str = ''

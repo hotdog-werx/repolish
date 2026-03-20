@@ -68,8 +68,8 @@ def role_label(ctx: object) -> str:
             info = ctx._provider.monorepo
             if info.mode == 'root':
                 return 'root'
-            if info.mode == 'package' and info.member_name:
-                return f'package: {info.member_name}'
+            if info.mode == 'member' and info.member_name:
+                return f'member: {info.member_name}'
     except Exception:  # noqa: BLE001
         pass
     return 'standalone'

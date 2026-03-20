@@ -104,7 +104,7 @@ def _synthesize_provider_context_for_pid(
         mono = global_context.workspace
         member_name = ''
         member_path = ''
-        if mono.mode == 'package' and mono.package_dir is not None:
+        if mono.mode == 'member' and mono.package_dir is not None:
             for m in mono.members:
                 if (mono.root_dir / m.path).resolve() == mono.package_dir.resolve():
                     member_name = m.name
