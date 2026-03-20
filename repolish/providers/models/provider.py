@@ -134,6 +134,13 @@ class ModeHandler(Generic[ContextT, InputT]):
         """See :meth:`Provider.create_anchors`."""
         return {}
 
+    def create_default_symlinks(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> list[Symlink]:
+        """See :meth:`Provider.create_default_symlinks`."""
+        return []
+
 
 # `ProviderEntry` is the object passed to provider hooks such as
 # `provide_inputs` and `finalize_context`.  it carries richer metadata
@@ -374,8 +381,18 @@ class Provider(ABC, Generic[ContextT, InputT]):
         """
         return {}
 
-    def create_default_symlinks(self) -> list[Symlink]:
+    def create_default_symlinks(
+        self,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
+    ) -> list[Symlink]:
         """Optional: return the default symlinks this provider wants created.
+
+        The merged provider context (a 'ContextT' instance) is passed so
+        implementations can inspect it — for example to skip symlinks in
+        ``member`` mode.  The context follows the same convention as
+        :meth:`create_file_mappings` and is routed through
+        :func:`call_provider_method` so that mode handlers (see
+        :class:`ModeHandler`) receive it correctly.
 
         Each :class:`Symlink` has a ``source`` path (relative to the
         provider's ``resources_dir``) and a ``target`` path (relative to the

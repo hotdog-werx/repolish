@@ -235,9 +235,21 @@ def _copy_mode_overlay_dir(  # noqa: PLR0913
         if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
             continue
         if excluded_sources is not None and item.is_file() and rel_str.removesuffix('.jinja') in excluded_sources:
-            _copy_item_to_dest(item, mode_dir, dest_root, alias=annotated_alias, sources=sources)
+            _copy_item_to_dest(
+                item,
+                mode_dir,
+                dest_root,
+                alias=annotated_alias,
+                sources=sources,
+            )
             continue
-        _copy_item_to_dest(item, mode_dir, dest_root, alias=annotated_alias, sources=sources)
+        _copy_item_to_dest(
+            item,
+            mode_dir,
+            dest_root,
+            alias=annotated_alias,
+            sources=sources,
+        )
 
 
 def _copy_template_dir(  # noqa: PLR0913

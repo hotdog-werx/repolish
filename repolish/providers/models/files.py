@@ -168,7 +168,12 @@ def _records_from_template_sources(
         owner = pid_to_alias.get(pid, pid)
         mode = FileMode.CREATE_ONLY if rel_path in create_only_posix else FileMode.REGULAR
         overlay_dir = overlay_dirs.get(rel_path) if overlay_dirs else None
-        files[rel_path] = FileRecord(path=rel_path, mode=mode, owner=owner, overlay_dir=overlay_dir)
+        files[rel_path] = FileRecord(
+            path=rel_path,
+            mode=mode,
+            owner=owner,
+            overlay_dir=overlay_dir,
+        )
     return files
 
 

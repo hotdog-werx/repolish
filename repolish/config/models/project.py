@@ -123,11 +123,9 @@ class RepolishConfigFile(BaseModel):
         both the overrides mapping and the providers dict.
         """
         if self.template_overrides:
-            unknown = {
-                alias
-                for alias in self.template_overrides.values()
-                if alias is not None
-            } - set(self.providers.keys())
+            unknown = {alias for alias in self.template_overrides.values() if alias is not None} - set(
+                self.providers.keys()
+            )
             if unknown:
                 msg = f'template_overrides references undefined providers: {sorted(unknown)}'
                 raise ConfigValidationError(msg)

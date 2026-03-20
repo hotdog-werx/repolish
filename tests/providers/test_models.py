@@ -202,4 +202,4 @@ def test_get_global_context_falls_back_when_git_raises() -> None:
 def test_provider_create_default_symlinks_returns_empty_list():
     """Base Provider.create_default_symlinks() returns [] by default."""
     provider = Provider()
-    assert provider.create_default_symlinks() == []
+    assert provider.create_default_symlinks(BaseContext()) == []

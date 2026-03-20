@@ -14,7 +14,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from repolish import BaseContext, BaseInputs, ModeHandler, Provider, call_provider_method
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    ModeHandler,
+    Provider,
+    call_provider_method,
+)
 from repolish.providers.models.context import ProviderInfo, RepolishContext
 from repolish.providers.models.files import TemplateMapping
 from repolish.providers.models.workspace import (
@@ -399,7 +405,8 @@ def test_mode_handler_receives_provider_attributes() -> None:
 
     class _CapturingHandler(ModeHandler[MyCtx, MyInputs]):
         def create_file_mappings(
-            self, context: MyCtx
+            self,
+            context: MyCtx,
         ) -> dict[str, str | TemplateMapping | None]:
             captured['templates_root'] = self.templates_root
             captured['alias'] = self.alias

@@ -74,7 +74,7 @@ class ScaffoldProvider(Provider[Ctx, BaseInputs]):
             mappings['.github/workflows/ci.yml'] = '.github/workflows/_repolish.ci-github.yml'
         return mappings
 
-    def create_default_symlinks(self) -> list[Symlink]:
+    def create_default_symlinks(self, context: Ctx) -> list[Symlink]:
         """Create a few symlinks to verify they they work."""
         return [
             Symlink(
