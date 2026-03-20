@@ -8,7 +8,12 @@ def check_symlinks(
     resolved_symlinks: dict[str, list[ProviderSymlink]],
     providers: dict[str, ResolvedProviderInfo],
 ) -> list[str]:
-    """Return a list of symlink issues (empty if all expected symlinks are correct)."""
+    """Validate all expected symlinks and return a list of issue strings.
+
+    Each issue string identifies the provider alias and describes the problem
+    (missing symlink, wrong target, or path exists but is not a symlink).
+    Returns an empty list when every symlink is present and correct.
+    """
     issues: list[str] = []
     for alias, symlinks in resolved_symlinks.items():
         info = providers.get(alias)
@@ -39,11 +44,16 @@ def _check_one_symlink(
     return f'{alias}: missing symlink {symlink.target!s} → {symlink.source!s}'
 
 
-def _apply_symlinks(
+def apply_symlinks(
     resolved_symlinks: dict[str, list[ProviderSymlink]],
     providers: dict[str, ResolvedProviderInfo],
 ) -> None:
-    """Materialise all resolved symlinks for every provider."""
+    """Materialise all resolved symlinks for every provider.
+
+    Delegates to `create_provider_symlinks` for each alias that appears in
+    both `resolved_symlinks` and `providers`. Providers absent from the
+    current config are silently skipped.
+    """
     for alias, symlinks in resolved_symlinks.items():
         info = providers.get(alias)
         if info:

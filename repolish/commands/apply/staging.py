@@ -5,15 +5,15 @@ from repolish.config import RepolishConfig
 from repolish.providers.models import TemplateMapping
 
 
-def _collect_excluded_sources(
+def collect_excluded_sources(
     file_mappings: dict[str, str | TemplateMapping],
 ) -> set[str]:
-    """Collect all explicit source template paths from file_mappings.
+    """Return the set of source template paths explicitly claimed by `file_mappings`.
 
-    When a provider explicitly maps a source template via ``create_file_mappings``,
-    that file should not also be auto-staged at its natural position in the
-    provider's ``repolish/`` tree — the developer has already decided where it
-    goes (possibly with a different destination name).
+    When a provider maps a source template via `create_file_mappings`, that
+    template must not also be auto-staged at its natural position in the
+    provider tree — the developer has already decided where it goes (and
+    possibly under a different destination name).
     """
     excluded: set[str] = set()
     for src in file_mappings.values():
@@ -24,15 +24,13 @@ def _collect_excluded_sources(
     return excluded
 
 
-def gather_template_directories(
+def _gather_template_directories(
     config: RepolishConfig,
 ) -> list[Path | tuple[str | None, Path]]:
-    """Return the template directories in the order they should be staged.
+    """Return provider template directories in staged order.
 
-    SessionBundle drive the result; the `directories` field no longer exists.
-    If `providers_order` is given we honour it, otherwise we use dict key order.
-    The return type uses the same element-level union as
-    :func:`stage_templates` so type checks won't complain about invariant lists.
+    Internal helper for `create_staged_template`. Respects `providers_order`
+    when set, otherwise uses config dict key order.
     """
     template_dirs: list[Path | tuple[str | None, Path]] = []
     order = config.providers_order or list(config.providers.keys())
@@ -49,17 +47,17 @@ def gather_template_directories(
     return template_dirs
 
 
-def _create_staged_template(
+def create_staged_template(
     setup_input: Path,
     config: RepolishConfig,
     excluded_sources: set[str] | None = None,
 ) -> dict[str, str]:
-    """Build template directory list from `config` and stage into `setup_input`.
+    """Stage all provider templates into `setup_input`.
 
-    Returns a mapping from merged-template-relative-path to the provider alias
-    that supplied it.
+    Returns a mapping from each merged-template relative path to the provider
+    alias that supplied it.
     """
-    template_dirs = gather_template_directories(config)
+    template_dirs = _gather_template_directories(config)
     result = stage_templates(
         setup_input,
         template_dirs,

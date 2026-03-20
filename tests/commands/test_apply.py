@@ -3,7 +3,7 @@ from pathlib import Path
 
 from pytest_mock import MockerFixture
 
-from repolish.commands.apply.command import (
+from repolish.commands.apply.session import (
     run_session as run_repolish,
 )
 from repolish.commands.apply.display import (

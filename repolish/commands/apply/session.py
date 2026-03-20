@@ -10,10 +10,10 @@ from repolish.commands.apply.display import _log_providers_summary
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
-    _collect_excluded_sources,
-    _create_staged_template,
+    collect_excluded_sources,
+    create_staged_template,
 )
-from repolish.commands.apply.symlinks import _apply_symlinks
+from repolish.commands.apply.symlinks import apply_symlinks
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
@@ -48,10 +48,10 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
 
     # staging must happen before we can report per-provider template ownership
     base_dir, setup_input, setup_output = prepare_staging(config)
-    sources = _create_staged_template(
+    sources = create_staged_template(
         setup_input,
         config,
-        excluded_sources=_collect_excluded_sources(providers.file_mappings) | providers.suppressed_sources,
+        excluded_sources=collect_excluded_sources(providers.file_mappings) | providers.suppressed_sources,
     )
     # stage_templates records alias as the provider id; provider_contexts is
     # keyed by the full directory path (pid).  Translate here so rendering
@@ -119,7 +119,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
         paused_files=paused,
         disable_auto_staging=is_root_pass,
     )
-    _apply_symlinks(resolved_symlinks, config.providers)
+    apply_symlinks(resolved_symlinks, config.providers)
     return 0
 
 
