@@ -83,9 +83,9 @@ def test_generate_renders_names_into_files(
     assert case.context_class in models_text
     assert case.inputs_class in models_text
 
-    # provider.py uses absolute imports and all three class names
-    provider_py = tmp_path / case.package_name / 'repolish' / 'provider.py'
-    provider_text = provider_py.read_text()
+    # provider/__init__.py uses absolute imports and all three class names
+    provider_init = tmp_path / case.package_name / 'repolish' / 'provider' / '__init__.py'
+    provider_text = provider_init.read_text()
     assert f'from {case.package_name}.repolish.models import' in provider_text
     assert case.class_name in provider_text
     assert case.context_class in provider_text
@@ -124,7 +124,7 @@ def test_generate_package_dir_uses_package_name(tmp_path: Path) -> None:
 
     # the package directory exists under the correct name
     assert (tmp_path / 'my_provider').is_dir()
-    assert (tmp_path / 'my_provider' / 'repolish' / 'provider.py').exists()
+    assert (tmp_path / 'my_provider' / 'repolish' / 'provider' / '__init__.py').exists()
     assert (tmp_path / 'my_provider' / 'resources' / 'templates' / 'repolish.py').exists()
 
 
@@ -142,7 +142,10 @@ def test_generate_creates_all_expected_files(tmp_path: Path) -> None:
         'acme_base/repolish/__init__.py',
         'acme_base/repolish/linker.py',
         'acme_base/repolish/models.py',
-        'acme_base/repolish/provider.py',
+        'acme_base/repolish/provider/__init__.py',
+        'acme_base/repolish/provider/root.py',
+        'acme_base/repolish/provider/member.py',
+        'acme_base/repolish/provider/standalone.py',
         'acme_base/resources/templates/repolish.py',
         'acme_base/resources/templates/repolish/.gitkeep',
     }
@@ -169,9 +172,12 @@ def test_generate_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_generate_provider_py_contains_all_methods(tmp_path: Path) -> None:
-    """The scaffolded provider.py includes all six Provider method stubs with typed names."""
+    """The scaffolded provider package contains all Provider and ModeHandler stubs."""
     generate('my_lib', tmp_path)
-    provider_py = (tmp_path / 'my_lib' / 'repolish' / 'provider.py').read_text()
+    provider_dir = tmp_path / 'my_lib' / 'repolish' / 'provider'
+
+    # provider/__init__.py has Provider-level methods and registers mode handlers
+    init_text = (provider_dir / '__init__.py').read_text()
     for method in (
         'create_context',
         'provide_inputs',
@@ -179,15 +185,33 @@ def test_generate_provider_py_contains_all_methods(tmp_path: Path) -> None:
         'get_inputs_schema',
         'create_file_mappings',
         'create_anchors',
+        'create_default_symlinks',
     ):
-        assert method in provider_py
-    # uses absolute import, not relative
-    assert 'from repolish import' in provider_py
-    assert 'override' in provider_py
-    assert 'BaseInputs' in provider_py
-    assert 'from my_lib.repolish.models import' in provider_py
-    assert 'LibProviderContext' in provider_py
-    assert 'LibProviderInputs' in provider_py
+        assert method in init_text
+    assert 'LibRootHandler' in init_text
+    assert 'LibMemberHandler' in init_text
+    assert 'LibStandaloneHandler' in init_text
+    assert 'from repolish import' in init_text
+    assert 'override' in init_text
+    assert 'BaseInputs' in init_text
+    assert 'from my_lib.repolish.models import' in init_text
+    assert 'LibProviderContext' in init_text
+    assert 'LibProviderInputs' in init_text
+
+    # each mode handler file has all ModeHandler method stubs
+    for mode_file in ('root.py', 'member.py', 'standalone.py'):
+        text = (provider_dir / mode_file).read_text()
+        for method in (
+            'provide_inputs',
+            'finalize_context',
+            'create_file_mappings',
+            'create_anchors',
+            'create_default_symlinks',
+        ):
+            assert method in text
+        assert 'ModeHandler' in text
+        assert 'LibProviderContext' in text
+        assert 'LibProviderInputs' in text
 
 
 def test_generate_normalizes_underscores_to_dashes_in_repo_name(
