@@ -46,12 +46,15 @@ class FileMode(str, Enum):
     - CREATE_ONLY: treat the destination as create-only (never overwrite existing)
     - DELETE: mark the destination for deletion (no source template required)
     - KEEP: explicitly cancel a delete scheduled by an earlier provider
+    - SUPPRESS: skip staging and rendering for this file entirely; useful
+      during development when a template is temporarily broken
     """
 
     REGULAR = 'regular'
     CREATE_ONLY = 'create_only'
     DELETE = 'delete'
     KEEP = 'keep'
+    SUPPRESS = 'suppress'
 
 
 @dataclass(frozen=True)

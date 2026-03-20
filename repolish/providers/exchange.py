@@ -390,6 +390,12 @@ def _apply_annotated_tm(
         accum.history.setdefault(key, []).append(
             Decision(source=provider_id, action=Action.keep),
         )
+    elif annotated.file_mode == FileMode.SUPPRESS:
+        # Don't render or stage this file; record the source template path so
+        # the renderer can skip it even if it was staged by another provider.
+        if annotated.source_template:
+            accum.suppressed_sources.add(annotated.source_template)
+        accum.merged_file_mappings.pop(dest, None)
     else:
         if annotated.file_mode == FileMode.CREATE_ONLY:
             accum.create_only_set.add(path)

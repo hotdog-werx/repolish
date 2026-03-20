@@ -248,7 +248,7 @@ def render_template(
     raised together as a single :class:`RuntimeError` so callers see all
     failures at once rather than stopping at the first bad template.
     """
-    skip_templates = _collect_skip_templates(providers)
+    skip_templates = _collect_skip_templates(providers) | providers.suppressed_sources
 
     # build a RenderContext once; the same object drives both
     # the Jinja pass and the mapping pass.

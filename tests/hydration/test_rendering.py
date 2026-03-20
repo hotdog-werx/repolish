@@ -546,3 +546,51 @@ def test_provider_info_bad_version_renders_none_not_crash(
     assert out.exists()
     # None serialises to the string "None" in Jinja2 — no crash, no empty string
     assert out.read_text(encoding='utf-8').strip() == 'major=None'
+
+
+def test_render_template_skips_suppressed_sources(tmp_path: Path) -> None:
+    """A broken template listed in suppressed_sources is not rendered and causes no error."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    # This template references an undefined variable — it would fail if rendered.
+    (tpl / 'repolish' / 'broken.txt').write_text(
+        '{{ undefined_variable }}',
+        encoding='utf-8',
+    )
+    # A normal template that should still be rendered.
+    (tpl / 'repolish' / 'good.txt').write_text('ok', encoding='utf-8')
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    providers = SessionBundle(suppressed_sources={'broken.txt'})
+    preprocess_templates(setup_input, providers, base_dir)
+
+    # Must not raise even though broken.txt has an undefined variable.
+    render_template(setup_input, providers, setup_output)
+
+    assert not (setup_output / 'repolish' / 'broken.txt').exists()
+    assert (setup_output / 'repolish' / 'good.txt').read_text() == 'ok'
+
+
+def test_render_template_skips_filemode_suppress(tmp_path: Path) -> None:
+    """FileMode.SUPPRESS on a TemplateMapping prevents the source template from rendering."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'wip.txt').write_text('{{ boom }}', encoding='utf-8')
+    (tpl / 'repolish' / 'stable.txt').write_text('fine', encoding='utf-8')
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    # Simulate what exchange._apply_annotated_tm does for SUPPRESS:
+    # source_template path ends up in suppressed_sources, nothing in file_mappings.
+    providers = SessionBundle(suppressed_sources={'wip.txt'})
+    preprocess_templates(setup_input, providers, base_dir)
+
+    render_template(setup_input, providers, setup_output)
+
+    assert not (setup_output / 'repolish' / 'wip.txt').exists()
+    assert (setup_output / 'repolish' / 'stable.txt').read_text() == 'fine'
