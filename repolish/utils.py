@@ -82,6 +82,19 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
         _run_argv(argv, cwd)
 
 
+def ensure_dot_repolish(base_dir: Path) -> Path:
+    """Create the .repolish directory under base_dir and write a catch-all .gitignore if absent.
+
+    Returns the .repolish Path.
+    """
+    repolish_dir = base_dir / '.repolish'
+    repolish_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = repolish_dir / '.gitignore'
+    if not gitignore.exists():
+        gitignore.write_text('*\n', encoding='utf-8')
+    return repolish_dir
+
+
 def read_text_utf8(path: Path) -> str:
     """Read text from a file using UTF-8 encoding."""
     return path.read_text(encoding='utf-8')

@@ -9,7 +9,7 @@ from hotlog import get_logger
 
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
-from repolish.utils import open_utf8
+from repolish.utils import ensure_dot_repolish, open_utf8
 
 logger = get_logger(__name__)
 
@@ -35,6 +35,7 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
     data['aliases'][alias] = folder_name
 
     # Save data
+    ensure_dot_repolish(config_dir)
     repolish_dir.mkdir(parents=True, exist_ok=True)
     with open_utf8(aliases_file, 'w') as f:
         json.dump(data, f, indent=2)

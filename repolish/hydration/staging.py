@@ -6,6 +6,7 @@ from hotlog import get_logger
 from repolish.config import RepolishConfig
 from repolish.preprocessors import replace_text, safe_file_read
 from repolish.providers import SessionBundle, TemplateMapping
+from repolish.utils import ensure_dot_repolish
 
 logger = get_logger(__name__)
 
@@ -16,7 +17,7 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     Returns: (base_dir, setup_input_path, setup_output_path)
     """
     base_dir = config.config_dir
-    staging = base_dir / '.repolish'
+    staging = ensure_dot_repolish(base_dir)
     setup_input = staging / '_' / 'stage'
     setup_output = staging / '_' / 'render'
 
