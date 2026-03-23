@@ -13,6 +13,8 @@ from repolish.config import ProviderSymlink
 from repolish.console import console
 from repolish.providers.models import (
     BaseContext,
+    FileMode,
+    FileRecord,
     SessionBundle,
 )
 from repolish.version import __version__
@@ -229,26 +231,77 @@ def _print_provider_panels(session: ResolvedSession) -> None:
         _emit('Standalone', standalone_aliases)
 
 
-def _build_summary_tree(session: ResolvedSession) -> Tree:
-    """Build a Tree summarising providers grouped by role with file counts."""
-    debug_dir = session.config.config_dir / '.repolish' / '_'
-    file_counts: dict[str, int] = {}
-    for record in session.providers.file_records:
-        file_counts[record.owner] = file_counts.get(record.owner, 0) + 1
-    for alias, syms in session.resolved_symlinks.items():
-        file_counts[alias] = file_counts.get(alias, 0) + len(syms)
+def _file_skip_reason(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> str | None:
+    """Return why a file was not applied, or None if it was applied.
 
-    def _provider_label(alias: str) -> Text:
-        count = file_counts.get(alias, 0)
-        noun = 'file' if count == 1 else 'files'
+    Checks in order: suppressed template, paused file, then auto-staging
+    disabled for a root monorepo pass (files not in ``create_file_mappings``
+    are never written to the root).
+    """
+    if record.mode == FileMode.SUPPRESS:
+        return 'suppressed'
+    if record.path in frozenset(session.config.paused_files):
+        return 'paused'
+    if session.global_context.workspace.mode == 'root':
+        if record.mode not in (FileMode.DELETE, FileMode.KEEP, FileMode.SUPPRESS):
+            if record.path not in session.providers.file_mappings:
+                return 'not in create_file_mappings (root mode)'
+    return None
+
+
+def _build_summary_tree(session: ResolvedSession) -> Tree:
+    """Build a Tree summarising providers grouped by role with per-file status."""
+    debug_dir = session.config.config_dir / '.repolish' / '_'
+    records_by_owner: dict[str, list[FileRecord]] = {}
+    for record in session.providers.file_records:
+        records_by_owner.setdefault(record.owner, []).append(record)
+
+    def _provider_label(
+        alias: str,
+        records: list[FileRecord],
+        syms: list[ProviderSymlink],
+    ) -> Text:
+        skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+        total = len(records) + len(syms)
+        applied = total - skipped
         pid = session.alias_to_pid.get(alias)
         ctx = session.providers.provider_contexts.get(pid) if pid else None
         slug = debug_file_slug(ctx, alias)
         debug_file = debug_dir / f'provider-context.{slug}.json'
         label = Text()
         label.append(alias, style=f'bold link file://{debug_file.absolute()}')
-        label.append(f' [{count} {noun}]', style='dim')
+        if skipped:
+            label.append(f' [{applied} applied, {skipped} not applied]', style='dim yellow')
+        else:
+            noun = 'file' if total == 1 else 'files'
+            label.append(f' [{total} {noun}]', style='dim')
         return label
+
+    def _file_node(record: FileRecord) -> Text:
+        reason = _file_skip_reason(record, session)
+        node = Text()
+        if reason:
+            node.append('\u2717 ', style='yellow')
+            node.append(record.path)
+            node.append(f'  {reason}', style='dim yellow')
+        else:
+            node.append('\u2713 ', style='green')
+            node.append(record.path)
+            mode_val = record.mode.value
+            if mode_val != 'regular':
+                style = _MODE_STYLE.get(mode_val, '')
+                node.append(f'  {mode_val}', style=f'dim {style}'.strip())
+        return node
+
+    def _symlink_node(sl: ProviderSymlink) -> Text:
+        node = Text()
+        node.append('\u2197 ', style='blue')
+        node.append(str(sl.target))
+        node.append(f'  \u2192 {sl.source}', style='dim')
+        return node
 
     root_aliases: list[str] = []
     member_aliases: dict[str, list[str]] = {}
@@ -265,19 +318,28 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         else:
             standalone_aliases.append(alias)
 
+    def _add_provider(group_branch: Tree, alias: str) -> None:
+        records = records_by_owner.get(alias, [])
+        syms = session.resolved_symlinks.get(alias, [])
+        provider_node = group_branch.add(_provider_label(alias, records, syms))
+        for record in records:
+            provider_node.add(_file_node(record))
+        for sl in syms:
+            provider_node.add(_symlink_node(sl))
+
     tree = Tree('[bold]apply summary[/bold]')
     if root_aliases:
         branch = tree.add('[bold]Root[/bold]')
         for alias in root_aliases:
-            branch.add(_provider_label(alias))
+            _add_provider(branch, alias)
     for member_name, m_aliases in member_aliases.items():
         branch = tree.add(f'[bold]Member: {member_name}[/bold]')
         for alias in m_aliases:
-            branch.add(_provider_label(alias))
+            _add_provider(branch, alias)
     if standalone_aliases:
         branch = tree.add('[bold]Standalone[/bold]')
         for alias in standalone_aliases:
-            branch.add(_provider_label(alias))
+            _add_provider(branch, alias)
     return tree
 
 
