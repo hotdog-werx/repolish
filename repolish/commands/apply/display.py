@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from hotlog import get_logger
 from rich.console import Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
 from repolish.commands.apply.debug import debug_file_slug
 from repolish.commands.apply.options import ResolvedSession
@@ -15,8 +15,13 @@ from repolish.providers.models import (
     BaseContext,
     SessionBundle,
 )
+from repolish.version import __version__
 
-logger = get_logger(__name__)
+
+def print_startup() -> None:
+    """Print the repolish startup banner."""
+    console.print(f'[bold cyan]repolish[/bold cyan] [dim]v{__version__}[/dim]')
+
 
 _MODE_STYLE: dict[str, str] = {
     'regular': 'green',
@@ -141,11 +146,8 @@ def _build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     debug_dir = session.config.config_dir / '.repolish' / '_'
     slug = debug_file_slug(ctx, alias)
     debug_file = debug_dir / f'provider-context.{slug}.json'
-    root_dir = session.global_context.workspace.root_dir
-    try:
-        debug_link = str(debug_file.relative_to(root_dir))
-    except ValueError:
-        debug_link = str(debug_file)
+    debug_link = Text()
+    debug_link.append(debug_file.name, style=f'link file://{debug_file.absolute()}')
     props.add_row('alias', alias)
     props.add_row('role', role)
     if ctx is not None and isinstance(ctx, BaseContext):
@@ -224,12 +226,59 @@ def _print_provider_panels(session: ResolvedSession) -> None:
         _emit('Standalone', standalone_aliases)
 
 
-def log_providers_summary(session: ResolvedSession) -> None:
-    """Print provider panels and log the location of the debug output directory."""
-    _print_provider_panels(session)
+def _build_summary_tree(session: ResolvedSession) -> Tree:
+    """Build a Tree summarising providers grouped by role with file counts."""
     debug_dir = session.config.config_dir / '.repolish' / '_'
-    logger.info(
-        'providers_ready',
-        debug_dir=str(debug_dir),
-        suggestion='see debug_dir for per-provider context and file decisions',
-    )
+    file_counts: dict[str, int] = {}
+    for record in session.providers.file_records:
+        file_counts[record.owner] = file_counts.get(record.owner, 0) + 1
+    for alias, syms in session.resolved_symlinks.items():
+        file_counts[alias] = file_counts.get(alias, 0) + len(syms)
+
+    def _provider_label(alias: str) -> Text:
+        count = file_counts.get(alias, 0)
+        noun = 'file' if count == 1 else 'files'
+        pid = session.alias_to_pid.get(alias)
+        ctx = session.providers.provider_contexts.get(pid) if pid else None
+        slug = debug_file_slug(ctx, alias)
+        debug_file = debug_dir / f'provider-context.{slug}.json'
+        label = Text()
+        label.append(alias, style=f'bold link file://{debug_file.absolute()}')
+        label.append(f' [{count} {noun}]', style='dim')
+        return label
+
+    root_aliases: list[str] = []
+    member_aliases: dict[str, list[str]] = {}
+    standalone_aliases: list[str] = []
+    for alias in session.aliases:
+        pid = session.alias_to_pid.get(alias)
+        ctx = session.providers.provider_contexts.get(pid) if pid else None
+        label = _role_label(ctx)
+        if label == 'root':
+            root_aliases.append(alias)
+        elif label.startswith('member:'):
+            member_name = label[len('member: '):]
+            member_aliases.setdefault(member_name, []).append(alias)
+        else:
+            standalone_aliases.append(alias)
+
+    tree = Tree('[bold]apply summary[/bold]')
+    if root_aliases:
+        branch = tree.add('[bold]Root[/bold]')
+        for alias in root_aliases:
+            branch.add(_provider_label(alias))
+    for member_name, m_aliases in member_aliases.items():
+        branch = tree.add(f'[bold]Member: {member_name}[/bold]')
+        for alias in m_aliases:
+            branch.add(_provider_label(alias))
+    if standalone_aliases:
+        branch = tree.add('[bold]Standalone[/bold]')
+        for alias in standalone_aliases:
+            branch.add(_provider_label(alias))
+    return tree
+
+
+def log_providers_summary(session: ResolvedSession) -> None:
+    """Print provider panels then a tree summary."""
+    _print_provider_panels(session)
+    console.print(_build_summary_tree(session))

@@ -1,5 +1,5 @@
 from repolish.commands.apply.coordinator import coordinate_sessions
-from repolish.commands.apply.display import error_running_from_member
+from repolish.commands.apply.display import error_running_from_member, print_startup
 from repolish.commands.apply.options import ApplyCommandOptions, ApplyOptions
 from repolish.commands.apply.session import run_session
 from repolish.config.topology import find_workspace_root
@@ -27,6 +27,8 @@ def apply_command(params: ApplyCommandOptions) -> int:
     """
     config_path = params.config.resolve()
     config_dir = config_path.parent
+
+    print_startup()
 
     # Warn when running inside a monorepo member without --standalone.
     if not params.standalone:

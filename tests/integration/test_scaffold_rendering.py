@@ -33,7 +33,7 @@ def test_apply_renders_jinja_notice_with_context(
     - Jinja variable ``{{ project_name }}`` is substituted from context.
     - ``{{ _provider.major_version }}`` resolves to the package major version (0).
     - Unicode characters in the template (→, ©) are preserved.
-    - The apply output contains the ``providers_context`` structured log event,
+    - The apply output contains the startup banner and tree summary,
       confirming class-based provider context is reported correctly.
     """
     repo = fixtures.scaffold_notice_fresh.stage(tmp_path)
@@ -49,5 +49,5 @@ def test_apply_renders_jinja_notice_with_context(
     assert '→' in content, 'Unicode arrow must be preserved'
     assert '©' in content, 'Unicode copyright symbol must be preserved'
 
-    assert 'providers_ready' in result.output, 'apply output must include the providers_ready event'
-    assert 'debug_dir' in result.output, 'providers_ready event must reference the debug_dir path'
+    assert 'repolish' in result.output, 'apply output must include the startup banner'
+    assert 'apply summary' in result.output, 'apply output must include the tree summary'

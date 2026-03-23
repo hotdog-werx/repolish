@@ -41,10 +41,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
     resolved_symlinks = session.resolved_symlinks
     alias_to_pid = session.alias_to_pid
     pid_to_alias = session.pid_to_alias
-    aliases = session.aliases
     config_pid = config.config_dir.as_posix()
-
-    logger.info('providers_loaded', providers=aliases)
 
     # staging must happen before we can report per-provider template ownership
     base_dir, setup_input, setup_output = prepare_staging(config)
