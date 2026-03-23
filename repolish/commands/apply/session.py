@@ -6,7 +6,10 @@ from repolish.commands.apply.check import (
     render_templates,
 )
 from repolish.commands.apply.debug import write_provider_debug_files
-from repolish.commands.apply.display import log_providers_summary
+from repolish.commands.apply.display import (
+    log_providers_summary,
+    print_summary_tree,
+)
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
@@ -137,4 +140,6 @@ def run_session(options: ApplyOptions) -> int:
     """
     logger.info('repolish_started', version=__version__)
     session = resolve_session(options)
-    return apply_session(session, check_only=options.check_only)
+    rc = apply_session(session, check_only=options.check_only)
+    print_summary_tree([session])
+    return rc

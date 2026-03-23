@@ -3,7 +3,10 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
-from repolish.commands.apply.display import error_unknown_member
+from repolish.commands.apply.display import (
+    error_unknown_member,
+    print_summary_tree,
+)
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import apply_session, run_session
@@ -135,12 +138,15 @@ def coordinate_sessions(
         root_session = resolve_session(root_opts)
 
     # ── APPLY PHASE ────────────────────────────────────────────────────────────
+    completed_sessions: list[ResolvedSession] = []
+
     # Apply root (unless --member is given).
     if not member:
         with _chdir(config_dir):
             rc = apply_session(root_session, check_only=check_only)
         if rc != 0:
             return rc
+        completed_sessions.append(root_session)
 
     # Apply members (unless --root-only); honour the --member filter.
     if not root_only:
@@ -151,5 +157,7 @@ def coordinate_sessions(
                 rc = apply_session(session, check_only=check_only)
             if rc != 0:
                 return rc
+            completed_sessions.append(session)
 
+    print_summary_tree(completed_sessions)
     return 0

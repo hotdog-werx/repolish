@@ -147,7 +147,10 @@ def _build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
     slug = debug_file_slug(ctx, alias)
     debug_file = debug_dir / f'provider-context.{slug}.json'
     debug_link = Text()
-    debug_link.append(debug_file.name, style=f'link file://{debug_file.absolute()}')
+    debug_link.append(
+        debug_file.name,
+        style=f'link file://{debug_file.absolute()}',
+    )
     props.add_row('alias', alias)
     props.add_row('role', role)
     if ctx is not None and isinstance(ctx, BaseContext):
@@ -257,7 +260,7 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         if label == 'root':
             root_aliases.append(alias)
         elif label.startswith('member:'):
-            member_name = label[len('member: '):]
+            member_name = label[len('member: ') :]
             member_aliases.setdefault(member_name, []).append(alias)
         else:
             standalone_aliases.append(alias)
@@ -279,6 +282,23 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
 
 
 def log_providers_summary(session: ResolvedSession) -> None:
-    """Print provider panels then a tree summary."""
+    """Print provider panels for one session."""
     _print_provider_panels(session)
-    console.print(_build_summary_tree(session))
+
+
+def print_summary_tree(sessions: list[ResolvedSession]) -> None:
+    """Print a combined Tree summary across all sessions."""
+    # Merge all sessions into a single tree rooted at 'apply summary'.
+    # Each session contributes its groups (Root / Member / Standalone).
+    # When there is only one session the groups are added directly.
+    tree = Tree('[bold]apply summary[/bold]')
+    if len(sessions) == 1:
+        sub = _build_summary_tree(sessions[0])
+        for branch in sub.children:
+            tree.add(branch)
+    else:
+        for session in sessions:
+            sub = _build_summary_tree(session)
+            for branch in sub.children:
+                tree.add(branch)
+    console.print(tree)
