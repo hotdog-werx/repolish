@@ -12,15 +12,17 @@ from repolish.providers.models import SessionBundle, TemplateMapping
 def _to_jsonable(value: object) -> object:
     """Recursively convert a value to a JSON-serializable structure.
 
-    Handles Pydantic models (via ``model_dump``), dicts, lists, and
-    primitives.  Any other type is passed through and left to
-    ``json.dumps(default=str)`` as a last resort.
+    Handles Pydantic models (via ``model_dump``), dicts, lists, tuples,
+    sets/frozensets (converted to sorted lists), and primitives.
+    Any other type is passed through as-is for ``json.dumps`` to handle.
     """
     if isinstance(value, BaseModel):
         return _to_jsonable(value.model_dump())
     if isinstance(value, dict):
         return {k: _to_jsonable(v) for k, v in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(item) for item in value]
+    if isinstance(value, (set, frozenset)):
         return [_to_jsonable(item) for item in value]
     return value
 
