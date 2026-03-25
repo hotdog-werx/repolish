@@ -5,7 +5,7 @@ from repolish.commands.apply.check import (
     finish_check,
     render_templates,
 )
-from repolish.commands.apply.debug import write_provider_debug_files
+from repolish.commands.apply.debug import write_file_context_debug_files, write_provider_debug_files
 from repolish.commands.apply.display import (
     log_providers_summary,
     print_summary_tree,
@@ -77,6 +77,13 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
 
     # write per-provider debug JSON to .repolish/_/provider-context.<alias>.json
     write_provider_debug_files(
+        base_dir,
+        config,
+        providers,
+        alias_to_pid,
+    )
+    # write per-rendered-file context debug JSON to .repolish/_/file-context.<slug>.json
+    write_file_context_debug_files(
         base_dir,
         config,
         providers,

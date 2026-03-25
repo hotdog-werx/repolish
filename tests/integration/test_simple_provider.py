@@ -71,3 +71,32 @@ def test_repolish_apply_creates_readme(
     assert readme.exists(), 'README.simple-provider.md was not created by repolish apply'
     content = readme.read_text(encoding='utf-8')
     assert 'Hello, world!' in content
+
+
+def test_file_context_debug_file_created(
+    installed_providers: InstalledProviders,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``repolish apply`` writes a file-ctx debug JSON for each rendered file.
+
+    Piggybacks on the simple-repo apply run.  The file-context JSON must
+    record the correct owner alias, destination path, and an empty
+    ``extra_context`` dict (simple-provider uses auto-staging with no
+    TemplateMapping override).
+    """
+    repo = fixtures.simple_repo.stage(tmp_path)
+    monkeypatch.chdir(repo)
+    run_repolish(['apply'])
+
+    debug_file = (
+        repo / '.repolish' / '_' / 'file-ctx'
+        / 'file-context.README.simple-provider.md.json'
+    )
+    assert debug_file.exists(), f'file-context debug file not found: {debug_file}'
+
+    data = json.loads(debug_file.read_text(encoding='utf-8'))
+    assert data['dest'] == 'README.simple-provider.md'
+    assert data['owner'] == 'simple-provider'
+    assert data['provider_context_file'] == 'provider-context.standalone.simple-provider.json'
+    assert data['extra_context'] == {}

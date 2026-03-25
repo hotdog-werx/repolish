@@ -4,7 +4,7 @@ from pathlib import Path
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
 from repolish.misc import ctx_to_dict
-from repolish.providers.models import SessionBundle
+from repolish.providers.models import SessionBundle, TemplateMapping
 
 
 def collect_provider_files(
@@ -71,6 +71,73 @@ def write_provider_debug_files(
             'files': collect_provider_files(providers, alias),
         }
         out_path = debug_dir / f'provider-context.{slug}.json'
+        out_path.write_text(
+            json.dumps(data, indent=2, default=str),
+            encoding='utf-8',
+        )
+
+
+def _file_context_slug(dest_path: str) -> str:
+    """Convert a destination path to a debug filename slug.
+
+    Replaces ``/`` with ``--`` so nested paths remain readable as filenames::
+
+        'root_file.md'        → 'root_file.md'
+        'some/nested/file.md' → 'some--nested--file.md'
+    """
+    return dest_path.replace('/', '--')
+
+
+def write_file_context_debug_files(
+    base_dir: Path,
+    config: RepolishConfig,
+    providers: SessionBundle,
+    alias_to_pid: dict[str, str],
+) -> None:
+    """Write per-rendered-file context debug files to ``.repolish/_/``.
+
+    Each file rendered from a template gets a
+    ``file-context.<dest-slug>.json`` file that records what context was
+    available during rendering, including any ``extra_context`` injected via
+    a :class:`TemplateMapping`.  A ``provider_context_file`` key links to the
+    corresponding ``provider-context.*.json`` file for cross-reference.
+
+    Only ``REGULAR`` and ``CREATE_ONLY`` files are written; ``DELETE``,
+    ``KEEP``, and ``SUPPRESS`` entries are skipped because they are not
+    rendered.
+    """
+    from repolish.providers.models.files import FileMode  # noqa: PLC0415
+
+    debug_dir = base_dir / '.repolish' / '_'
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    file_ctx_dir = debug_dir / 'file-ctx'
+    file_ctx_dir.mkdir(parents=True, exist_ok=True)
+
+    for record in providers.file_records:
+        if record.mode not in (FileMode.REGULAR, FileMode.CREATE_ONLY):
+            continue
+
+        dest = record.path
+        alias = record.owner
+        pid = alias_to_pid.get(alias)
+        ctx = providers.provider_contexts.get(pid) if pid else None
+        provider_ctx_file = f'provider-context.{debug_file_slug(ctx, alias)}.json'
+
+        mapping = providers.file_mappings.get(dest)
+        extra: object = (
+            mapping.extra_context
+            if isinstance(mapping, TemplateMapping) and mapping.extra_context is not None
+            else None
+        )
+
+        data: dict[str, object] = {
+            'dest': dest,
+            'owner': alias,
+            'source_template': record.source,
+            'provider_context_file': provider_ctx_file,
+            'extra_context': ctx_to_dict(extra) if extra is not None else {},
+        }
+        out_path = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(dest)}.json'
         out_path.write_text(
             json.dumps(data, indent=2, default=str),
             encoding='utf-8',

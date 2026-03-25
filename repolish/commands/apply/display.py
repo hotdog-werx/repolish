@@ -7,7 +7,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from repolish.commands.apply.debug import debug_file_slug
+from repolish.commands.apply.debug import debug_file_slug, _file_context_slug
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console
@@ -289,14 +289,20 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
 
     def _file_node(record: FileRecord) -> Text:
         reason = _file_skip_reason(record, session)
+        file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
         node = Text()
         if reason:
-            node.append('\u2717 ', style='yellow')
+            node.append('✗ ', style='yellow')
             node.append(record.path)
             node.append(f'  {reason}', style='dim yellow')
         else:
-            node.append('\u2713 ', style='green')
-            node.append(record.path)
+            node.append('✓ ', style='green')
+            link = (
+                f'link file://{file_ctx_file.absolute()}'
+                if record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)
+                else ''
+            )
+            node.append(record.path, style=link)
             mode_val = record.mode.value
             if mode_val != 'regular':
                 style = _MODE_STYLE.get(mode_val, '')
