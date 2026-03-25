@@ -14,6 +14,7 @@ provider authors do not need to import from :mod:`typing` directly.
 from __future__ import annotations
 
 from abc import ABC
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar, cast
@@ -105,7 +106,7 @@ class ModeHandler(Generic[ContextT, InputT]):
     def provide_inputs(
         self,
         opt: ProvideInputsOptions[ContextT],  # noqa: ARG002 - unused in base implementation
-    ) -> list[InputT]:
+    ) -> Sequence[BaseInputs]:
         """See :meth:`Provider.provide_inputs`."""
         return []
 
@@ -317,7 +318,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
     def provide_inputs(
         self,
         opt: ProvideInputsOptions[ContextT],  # noqa: ARG002 - parameter may be unused
-    ) -> list[InputT]:
+    ) -> Sequence[BaseInputs]:
         """Return payload objects that should be sent to other providers.
 
         The loader calls this hook when it needs outbound data from a
