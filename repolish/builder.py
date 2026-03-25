@@ -163,14 +163,13 @@ def _copy_item_to_dest(
     # the string uses forward slashes regardless of platform.
     pid = pid.replace('\\', '/')
     pid = Path(pid).as_posix()
-    if sources is not None:
-        sources[rel.as_posix()] = pid
-
     if item.is_dir():
         dest.mkdir(parents=True, exist_ok=True)
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, dest)
+        if sources is not None:
+            sources[rel.as_posix()] = pid
 
 
 def _should_skip_item(

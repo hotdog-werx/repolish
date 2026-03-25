@@ -18,5 +18,5 @@ ci-checks.sequence = [
 ]
 
 [tool.poe.tasks.install-devkit-providers]
-help = "install the devkit example providers in editable mode"
-cmd = "uv pip install -e provider-examples/devkit/workspace -e provider-examples/devkit/python"
+help = "install all example providers in editable mode"
+cmd = "uv pip install -e provider-examples/devkit/workspace -e provider-examples/devkit/python -e provider-examples/simple-provider -e provider-examples/scaffold-provider"
