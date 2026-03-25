@@ -1,10 +1,28 @@
 import json
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
 from repolish.misc import ctx_to_dict
 from repolish.providers.models import SessionBundle, TemplateMapping
+
+
+def _to_jsonable(value: object) -> object:
+    """Recursively convert a value to a JSON-serializable structure.
+
+    Handles Pydantic models (via ``model_dump``), dicts, lists, and
+    primitives.  Any other type is passed through and left to
+    ``json.dumps(default=str)`` as a last resort.
+    """
+    if isinstance(value, BaseModel):
+        return _to_jsonable(value.model_dump())
+    if isinstance(value, dict):
+        return {k: _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_jsonable(item) for item in value]
+    return value
 
 
 def collect_provider_files(
@@ -72,7 +90,7 @@ def write_provider_debug_files(
         }
         out_path = debug_dir / f'provider-context.{slug}.json'
         out_path.write_text(
-            json.dumps(data, indent=2, default=str),
+            json.dumps(_to_jsonable(data), indent=2),
             encoding='utf-8',
         )
 
@@ -135,10 +153,10 @@ def write_file_context_debug_files(
             'owner': alias,
             'source_template': record.source,
             'provider_context_file': provider_ctx_file,
-            'extra_context': ctx_to_dict(extra) if extra is not None else {},
+            'extra_context': _to_jsonable(extra) if extra is not None else {},
         }
         out_path = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(dest)}.json'
         out_path.write_text(
-            json.dumps(data, indent=2, default=str),
+            json.dumps(_to_jsonable(data), indent=2),
             encoding='utf-8',
         )
