@@ -5,6 +5,8 @@ import subprocess
 from inspect import isclass
 from pathlib import Path
 
+from typing import cast
+
 from hotlog import get_logger
 
 from repolish.config import ProviderConfig
@@ -72,11 +74,10 @@ def _symlinks_from_module(
     """Return default symlinks declared by the ``Provider`` subclass in *mod*."""
     for val in vars(mod).values():
         if isclass(val) and issubclass(val, Provider) and val is not Provider:
-            symlinks: list[Symlink] = call_provider_method(
-                val(),
-                'create_default_symlinks',
-                context,
-            )  # type: ignore[arg-type]
+            symlinks: list[Symlink] = cast(
+                'list[Symlink]',
+                call_provider_method(val(), 'create_default_symlinks', context),
+            )
             return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
     return []  # pragma: no cover - defensive fallback, we make sure that a provider is declared in repolish.py
 

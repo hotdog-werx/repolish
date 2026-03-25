@@ -10,7 +10,8 @@ implementation detail:
 - `pipeline` — `PipelineOptions`, `DryRunResult`
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
   `SessionBundle`, `Accumulators`, `build_file_records`
-- `provider` — `ProviderEntry`, `Provider`, `ModeHandler`, `get_provider_inputs_schema`,
+- `provider` — `ProviderEntry`, `Provider`, `ModeHandler`, `ProvideInputsOptions`,
+  `FinalizeContextOptions`, `get_provider_inputs_schema`,
   `get_provider_inputs`, `get_provider_context`
 """
 
@@ -37,8 +38,10 @@ from repolish.providers.models.files import (
 from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
 from repolish.providers.models.provider import (
     ContextT,
+    FinalizeContextOptions,
     InputT,
     ModeHandler,
+    ProvideInputsOptions,
     Provider,
     ProviderEntry,
     T,
@@ -63,12 +66,14 @@ __all__ = [
     'DryRunResult',
     'FileMode',
     'FileRecord',
+    'FinalizeContextOptions',
     'GithubRepo',
     'GlobalContext',
     'InputT',
     'MemberInfo',
     'ModeHandler',
     'PipelineOptions',
+    'ProvideInputsOptions',
     'Provider',
     'ProviderEntry',
     'ProviderInfo',

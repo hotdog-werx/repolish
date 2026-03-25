@@ -144,7 +144,7 @@ def test_create_providers(tmp_path: Path, case: ProviderCase):
         (d / 'repolish.py').write_text(src)
         dirs.append(str(d))
 
-    providers: SessionBundle = create_providers(dirs)  # type: ignore[arg-type]
+    providers: SessionBundle = create_providers(dirs)  # type: ignore
 
     assert providers.anchors == case.expected_anchors
 
@@ -257,11 +257,11 @@ class Checker(Provider[Ctx, BaseInputs]):
     def create_context(self):
         return Ctx()
 
-    def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
-        entry = all_providers[provider_index]
+    def finalize_context(self, opt):
+        entry = opt.all_providers[opt.provider_index]
         # alias should equal the configuration key we passed
         assert entry.alias == 'myalias'
-        return own_context
+        return opt.own_context
 """,
     )
     # call using tuple syntax with alias
@@ -419,7 +419,7 @@ def test_provider_exchange_input_routing_and_finalize(tmp_path: Path):
                 def create_context(self) -> AContext:
                     return AContext()
 
-                def provide_inputs(self, own_context, all_providers, provider_index):
+                def provide_inputs(self, opt):
                     return [AInputs(register_component='database')]
             """,
         ),
@@ -445,12 +445,12 @@ def test_provider_exchange_input_routing_and_finalize(tmp_path: Path):
                 def get_inputs_schema(self):
                     return BInputs
 
-                def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
-                    own_context.registered_components = (
-                        own_context.registered_components
-                        + [i.register_component for i in received_inputs]
+                def finalize_context(self, opt):
+                    opt.own_context.registered_components = (
+                        opt.own_context.registered_components
+                        + [i.register_component for i in opt.received_inputs]
                     )
-                    return own_context
+                    return opt.own_context
             """,
         ),
     )
@@ -705,10 +705,10 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
 
     if case.name in raises:
         with pytest.raises(Exception):  # noqa: B017, PT011 - broad exception to verify fail-fast
-            create_providers(dirs)  # type: ignore[arg-type]
+            create_providers(dirs)  # type: ignore
         return
 
-    providers = create_providers(dirs)  # type: ignore[arg-type]
+    providers = create_providers(dirs)  # type: ignore
 
     assert providers.anchors == case.expected_anchors
     got_delete = {Path(p) for p in providers.delete_files}
@@ -737,7 +737,7 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
 
     providers = create_providers([str(provider_dir)])
     pid = next(iter(providers.provider_contexts.keys()))
-    assert providers.provider_contexts[pid].name == 'created-by-class'  # type: ignore[union-attr]
+    assert providers.provider_contexts[pid].name == 'created-by-class'  # type: ignore
 
 
 def test_file_mappings_merge_across_providers(tmp_path: Path) -> None:
@@ -777,8 +777,8 @@ class P(Provider[Ctx, BaseInputs]):
     providers = create_providers([str(template_a), str(template_b)])
 
     assert set(providers.file_mappings) == {'file-a.yml', 'file-b.yml'}
-    assert providers.file_mappings['file-a.yml'].source_template == '_repolish.a.yml'  # type: ignore[union-attr]
-    assert providers.file_mappings['file-b.yml'].source_template == '_repolish.b.yml'  # type: ignore[union-attr]
+    assert providers.file_mappings['file-a.yml'].source_template == '_repolish.a.yml'  # type: ignore
+    assert providers.file_mappings['file-b.yml'].source_template == '_repolish.b.yml'  # type: ignore
 
 
 def test_file_mappings_later_provider_overrides_earlier(tmp_path: Path) -> None:
@@ -818,7 +818,7 @@ class P(Provider[Ctx, BaseInputs]):
     providers = create_providers([str(template_a), str(template_b)])
 
     assert list(providers.file_mappings) == ['config.yml']
-    assert providers.file_mappings['config.yml'].source_template == '_repolish.option-b.yml'  # type: ignore[union-attr]
+    assert providers.file_mappings['config.yml'].source_template == '_repolish.option-b.yml'  # type: ignore
 
 
 def test_none_mapped_entry_populates_suppressed_sources(tmp_path: Path) -> None:

@@ -15,7 +15,9 @@ from repolish.providers.models import (
     BaseInputs,
     Decision,
     FileMode,
+    FinalizeContextOptions,
     GlobalContext,
+    ProvideInputsOptions,
     ProviderEntry,
     ProviderInfo,
     TemplateMapping,
@@ -67,9 +69,11 @@ def _retrieve_instance_inputs(
         raw = call_provider_method(
             inst,
             'provide_inputs',
-            own_model,
-            all_providers_list,
-            idx,
+            ProvideInputsOptions(
+                own_context=own_model,
+                all_providers=all_providers_list,
+                provider_index=idx,
+            ),
         )
     except Exception:
         logger.exception(
@@ -315,10 +319,12 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
             call_provider_method(
                 inst,
                 'finalize_context',
-                own_model,
-                validated_inputs,
-                all_providers_list,
-                idx,
+                FinalizeContextOptions(
+                    own_context=own_model,
+                    received_inputs=validated_inputs,
+                    all_providers=all_providers_list,
+                    provider_index=idx,
+                ),
             ),
         )
     except Exception:

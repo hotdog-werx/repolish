@@ -8,8 +8,9 @@ from devkit.workspace.repolish.models import (
 
 from repolish import (
     BaseInputs,
+    FinalizeContextOptions,
+    ProvideInputsOptions,
     Provider,
-    ProviderEntry,
     TemplateMapping,
     override,
 )
@@ -34,9 +35,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     @override
     def provide_inputs(
         self,
-        own_context: PythonProviderContext,
-        all_providers: list[ProviderEntry],  # noqa: ARG002
-        provider_index: int,  # noqa: ARG002
+        opt: ProvideInputsOptions[PythonProviderContext],
     ) -> list[BaseInputs]:
         """Broadcast data to other providers that declare a matching input schema.
 
@@ -45,7 +44,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
         ``get_inputs_schema()`` matches the item's type.  Return an empty list
         if this provider has nothing to share.
         """
-        member_name = own_context.repolish.provider.session.member_name
+        member_name = opt.own_context.repolish.provider.session.member_name
         return [
             WorkspaceProviderInputs(
                 add_to_member=f'python: This is a workspace member! {member_name}',
@@ -56,20 +55,20 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     @override
     def finalize_context(
         self,
-        own_context: PythonProviderContext,
-        received_inputs: list[PythonProviderInputs],  # noqa: ARG002
-        all_providers: list[ProviderEntry],  # noqa: ARG002
-        provider_index: int,  # noqa: ARG002
+        opt: FinalizeContextOptions[
+            PythonProviderContext,
+            PythonProviderInputs,
+        ],
     ) -> PythonProviderContext:
         """Merge inputs received from other providers into this context.
 
-        ``received_inputs`` contains every ``PythonProviderInputs`` payload
+        ``opt.received_inputs`` contains every ``PythonProviderInputs`` payload
         delivered to this provider by upstream ``provide_inputs`` calls.
-        Inspect the list, update ``own_context`` as needed, and return it.
+        Inspect the list, update ``opt.own_context`` as needed, and return it.
         If this provider does not consume inputs from others, just return
-        ``own_context`` unchanged.
+        ``opt.own_context`` unchanged.
         """
-        return own_context
+        return opt.own_context
 
     @override
     def get_inputs_schema(self) -> type[PythonProviderInputs]:

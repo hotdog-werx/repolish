@@ -246,7 +246,11 @@ def _file_skip_reason(
     if record.path in frozenset(session.config.paused_files):
         return 'paused'
     if session.global_context.workspace.mode == 'root':
-        if record.mode not in (FileMode.DELETE, FileMode.KEEP, FileMode.SUPPRESS):
+        if record.mode not in (
+            FileMode.DELETE,
+            FileMode.KEEP,
+            FileMode.SUPPRESS,
+        ):
             if record.path not in session.providers.file_mappings:
                 return 'not in create_file_mappings (root mode)'
     return None
@@ -274,7 +278,10 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         label = Text()
         label.append(alias, style=f'bold link file://{debug_file.absolute()}')
         if skipped:
-            label.append(f' [{applied} applied, {skipped} not applied]', style='dim yellow')
+            label.append(
+                f' [{applied} applied, {skipped} not applied]',
+                style='dim yellow',
+            )
         else:
             noun = 'file' if total == 1 else 'files'
             label.append(f' [{total} {noun}]', style='dim')

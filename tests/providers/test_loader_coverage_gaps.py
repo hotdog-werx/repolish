@@ -24,7 +24,7 @@ from repolish.providers.exchange import (
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.providers.models import Accumulators, GlobalContext
+from repolish.providers.models import Accumulators, BaseInputs, FinalizeContextOptions, GlobalContext
 from repolish.providers.pipeline import (
     _build_all_providers_list,
     _synthesize_provider_context_for_pid,
@@ -52,7 +52,7 @@ def test_process_file_mappings_skips_none_values() -> None:
     acc2 = Accumulators()
     _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc2)
     assert list(acc2.merged_file_mappings) == ['b.txt']
-    assert acc2.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore[union-attr]
+    assert acc2.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore
 
 
 # ---- orchestrator helpers --------------------------------------------------
@@ -63,7 +63,7 @@ def test_process_provider_fm_skips_none_values() -> None:
     acc = Accumulators()
     _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc)
     assert list(acc.merged_file_mappings) == ['b.txt']
-    assert acc.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore[union-attr]
+    assert acc.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore
 
 
 def test_process_provider_fm_none_populates_suppressed_sources() -> None:
@@ -77,7 +77,7 @@ def test_process_provider_fm_none_populates_suppressed_sources() -> None:
     assert '.github/workflows/_ci-checks.yaml' in acc.suppressed_sources
     assert '.github/workflows/_ci-checks.yaml' not in acc.merged_file_mappings
     assert list(acc.merged_file_mappings) == ['other.txt']
-    assert acc.merged_file_mappings['other.txt'].source_template == 'tmpl'  # type: ignore[union-attr]
+    assert acc.merged_file_mappings['other.txt'].source_template == 'tmpl'  # type: ignore
 
 
 def test_collect_provider_contributions_skips_missing_instance():
@@ -277,11 +277,11 @@ class Sender(Provider[Ctx, Msg]):
     def get_inputs_schema(self):
         return Msg
 
-    def provide_inputs(self, own_context, all_providers, provider_index):
+    def provide_inputs(self, opt):
         # when the override utility is corrected we will always receive a
         # real model here; assert to catch regressions.
-        assert not isinstance(own_context, dict)
-        return [Msg(foo=own_context.foo)]
+        assert not isinstance(opt.own_context, dict)
+        return [Msg(foo=opt.own_context.foo)]
 """
     recv_src = """
 from repolish import Provider, ProviderEntry, BaseContext, BaseInputs
@@ -299,11 +299,11 @@ class Receiver(Provider[RecCtx, Msg]):
     def get_inputs_schema(self):
         return Msg
 
-    def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
-        assert not isinstance(own_context, dict)
-        if received_inputs:
-            own_context.got = received_inputs[0].foo
-        return own_context
+    def finalize_context(self, opt):
+        assert not isinstance(opt.own_context, dict)
+        if opt.received_inputs:
+            opt.own_context.got = opt.received_inputs[0].foo
+        return opt.own_context
 """
     sdir = make_provider(sender_src, 'sender')
     rdir = make_provider(recv_src, 'receiver')
@@ -506,12 +506,9 @@ def test_finalize_provider_contexts_edge_cases() -> None:
 
     # provider with no inputs still has finalize_context executed
     class Setter(DummyProvider):
-        def finalize_context(
+        def finalize_context(  # type: ignore
             self,
-            own_context: BaseContext,  # noqa: ARG002 - parameter may be unused
-            received_inputs: list[BaseModel],  # noqa: ARG002 - parameter may be unused
-            all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
-            provider_index: int,  # noqa: ARG002 - parameter may be unused
+            _opt: FinalizeContextOptions[BaseContext, BaseInputs],
         ) -> BaseContext:
             return cast('BaseContext', {'called': True})
 

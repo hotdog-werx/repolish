@@ -1,5 +1,5 @@
 try:
-    from typing import override  # type: ignore[unresolved-import]
+    from typing import override  # type: ignore
 except ImportError:
     from typing_extensions import override
 
@@ -7,7 +7,9 @@ from .providers.models import (
     BaseContext,
     BaseInputs,
     FileMode,
+    FinalizeContextOptions,
     ModeHandler,
+    ProvideInputsOptions,
     Provider,
     ProviderEntry,
     ProviderInfo,
@@ -21,7 +23,9 @@ __all__ = [
     'BaseContext',
     'BaseInputs',
     'FileMode',
+    'FinalizeContextOptions',
     'ModeHandler',
+    'ProvideInputsOptions',
     'Provider',
     'ProviderEntry',
     'ProviderInfo',

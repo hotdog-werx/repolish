@@ -1,8 +1,8 @@
 from repolish.providers.models import (
     BaseContext,
     BaseInputs,
+    ProvideInputsOptions,
     Provider,
-    ProviderEntry,
 )
 from tests.providers_inputs.shared import InputA
 
@@ -18,8 +18,6 @@ class ProviderC(Provider[CtxC, InputA]):
 
     def provide_inputs(
         self,
-        own_context: CtxC,  # noqa: ARG002 - method signature must match base
-        all_providers: list[ProviderEntry],  # noqa: ARG002 - method signature must match base
-        provider_index: int,  # noqa: ARG002 - method signature must match base
-    ) -> list[BaseInputs]:
+        opt: ProvideInputsOptions[CtxC],  # noqa: ARG002 - parameter unused
+    ) -> list[InputA]:
         return [InputA(prob_a_input='provider_c')]

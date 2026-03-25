@@ -41,3 +41,8 @@ hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{ch
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ty.src]
+# provider-examples are standalone packages with their own cross-dependencies
+# (e.g. devkit.workspace) that are not installed in this venv.
+exclude = ["provider-examples"]

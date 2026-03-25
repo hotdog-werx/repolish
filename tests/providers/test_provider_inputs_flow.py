@@ -10,6 +10,7 @@ from repolish.providers import create_providers
 from repolish.providers.models import (
     BaseContext,
     BaseInputs,
+    ProvideInputsOptions,
     Provider,
     ProviderEntry,
     get_provider_context,
@@ -134,35 +135,44 @@ def test_provider_inputs_module_filtering() -> None:
 
         def provide_inputs(
             self,
-            own_context: Dummy,  # noqa: ARG002 - method signature must match base
-            all_providers: list[ProviderEntry],
-            provider_index: int,  # noqa: ARG002 - method signature must match base
-        ) -> list[BaseInputs]:
+            opt: ProvideInputsOptions[Dummy],
+        ) -> list[InputA]:
             # inspect schemas rather than names; access via attributes for
             # clarity. previously callers unpacked a 3-tuple; the new
             # `ProviderEntry` class requires attribute access but the intent
             # is clearer.
-            for entry in all_providers:
+            for entry in opt.all_providers:
                 if entry.input_type is InputA:
                     return [InputA(prob_a_input='x')]
             return []
 
     b_inst = Btest()
     # if A not in list, no inputs
-    assert b_inst.provide_inputs(Dummy(), [], 0) == []
+    assert (
+        b_inst.provide_inputs(
+            ProvideInputsOptions(
+                own_context=Dummy(),
+                all_providers=[],
+                provider_index=0,
+            ),
+        )
+        == []
+    )
 
     # if A present, returns list
     assert b_inst.provide_inputs(
-        Dummy(),
-        [
-            ProviderEntry(
-                provider_id='a',
-                alias='a',
-                context={},
-                input_type=InputA,
-            ),
-        ],
-        0,
+        ProvideInputsOptions(
+            own_context=Dummy(),
+            all_providers=[
+                ProviderEntry(
+                    provider_id='a',
+                    alias='a',
+                    context={},
+                    input_type=InputA,
+                ),
+            ],
+            provider_index=0,
+        ),
     ) == [
         InputA(prob_a_input='x'),
     ]

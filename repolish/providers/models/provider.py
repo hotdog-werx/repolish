@@ -14,6 +14,7 @@ provider authors do not need to import from :mod:`typing` directly.
 from __future__ import annotations
 
 from abc import ABC
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar, cast
 
@@ -103,22 +104,17 @@ class ModeHandler(Generic[ContextT, InputT]):
 
     def provide_inputs(
         self,
-        own_context: ContextT,  # noqa: ARG002 - unused in base implementation
-        all_providers: list[ProviderEntry],  # noqa: ARG002 - unused in base implementation
-        provider_index: int,  # noqa: ARG002 - unused in base implementation
-    ) -> list[BaseInputs]:
+        opt: ProvideInputsOptions[ContextT],  # noqa: ARG002 - unused in base implementation
+    ) -> list[InputT]:
         """See :meth:`Provider.provide_inputs`."""
         return []
 
     def finalize_context(
         self,
-        own_context: ContextT,
-        received_inputs: list[InputT],  # noqa: ARG002 - unused in base implementation
-        all_providers: list[ProviderEntry],  # noqa: ARG002 - unused in base implementation
-        provider_index: int,  # noqa: ARG002 - unused in base implementation
+        opt: FinalizeContextOptions[ContextT, InputT],
     ) -> ContextT:
         """See :meth:`Provider.finalize_context`."""
-        return own_context
+        return opt.own_context
 
     def create_file_mappings(
         self,
@@ -201,6 +197,48 @@ class ProviderEntry(BaseModel):
     input_type: type[BaseModel] | None = None
 
 
+@dataclass
+class ProvideInputsOptions(Generic[ContextT]):
+    """Options bundle passed to :meth:`Provider.provide_inputs` and :meth:`ModeHandler.provide_inputs`.
+
+    Replaces the former separate ``own_context``, ``all_providers``, and
+    ``provider_index`` parameters.  Access only the fields you need; unused
+    ones require no ``noqa`` comment.
+
+    Attributes:
+        own_context: This provider's current context object.
+        all_providers: Snapshot of every provider the loader knows about.
+        provider_index: Position of this provider in the load order.
+    """
+
+    own_context: ContextT
+    all_providers: list[ProviderEntry]
+    provider_index: int
+
+
+@dataclass
+class FinalizeContextOptions(Generic[ContextT, InputT]):
+    """Options bundle passed to :meth:`Provider.finalize_context` and :meth:`ModeHandler.finalize_context`.
+
+    Replaces the former separate ``own_context``, ``received_inputs``,
+    ``all_providers``, and ``provider_index`` parameters.  Access only the
+    fields you need; unused ones require no ``noqa`` comment.
+
+    Attributes:
+        own_context: The context object produced by ``create_context()`` before
+            any inputs are merged.
+        received_inputs: Payloads delivered by other providers whose input
+            schema matched this provider's ``get_inputs_schema()``.
+        all_providers: Snapshot of every provider the loader knows about.
+        provider_index: Position of this provider in the load order.
+    """
+
+    own_context: ContextT
+    received_inputs: list[InputT]
+    all_providers: list[ProviderEntry]
+    provider_index: int
+
+
 class Provider(ABC, Generic[ContextT, InputT]):
     """Base class for class-based providers.
 
@@ -264,24 +302,22 @@ class Provider(ABC, Generic[ContextT, InputT]):
                 'provider_context_inference_failed',
                 provider=self.__class__.__name__,
             )
-            return BaseContext()  # type: ignore[return-value]
+            return BaseContext()  # type: ignore
 
         try:
-            return ctx_cls()  # type: ignore[return-value]
+            return ctx_cls()  # type: ignore
         except Exception as exc:  # noqa: BLE001 - we log and continue
             logger.warning(
                 'provider_context_instantiation_failed',
                 provider=self.__class__.__name__,
                 error=str(exc),
             )
-            return BaseContext()  # type: ignore[return-value]
+            return BaseContext()  # type: ignore
 
     def provide_inputs(
         self,
-        own_context: ContextT,  # noqa: ARG002 - parameter may be unused
-        all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
-        provider_index: int,  # noqa: ARG002 - parameter may be unused
-    ) -> list[BaseInputs]:
+        opt: ProvideInputsOptions[ContextT],  # noqa: ARG002 - parameter may be unused
+    ) -> list[InputT]:
         """Return payload objects that should be sent to other providers.
 
         The loader calls this hook when it needs outbound data from a
@@ -293,9 +329,10 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Subclasses should override this method to supply whatever
         information is relevant to downstream providers.
 
-        `all_providers` is a list of :class:`ProviderEntry` instances; only
-        the `input_type`/`alias` attributes are useful
-        for most providers.
+        ``opt.all_providers`` is a list of :class:`ProviderEntry` instances;
+        only the ``input_type``/``alias`` attributes are useful for most
+        providers.  Access ``opt.own_context`` for this provider's current
+        context, and ``opt.provider_index`` for the load-order position.
 
         The default returns an empty list.
         """
@@ -303,28 +340,22 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
     def finalize_context(
         self,
-        own_context: ContextT,
-        received_inputs: list[InputT],  # noqa: ARG002 - parameter may be unused
-        all_providers: list[ProviderEntry],  # noqa: ARG002 - parameter may be unused
-        provider_index: int,  # noqa: ARG002 - parameter may be unused
+        opt: FinalizeContextOptions[ContextT, InputT],
     ) -> ContextT:
         """Optionally apply inputs received from other providers.
 
-        Parameters are:
-        - 'own_context': the context object produced by 'create_context()'
-          before any inputs are merged.
-        - 'received_inputs': list of payloads delivered by other providers
-          whose 'get_inputs_schema()' matched the values.
-        - 'all_providers': snapshot of every provider the loader knows about.
-          each item is a :class:`ProviderEntry` object; providers can inspect
-          attributes such as `alias` or `input_type` if
-          they need to make context-dependent decisions.  the argument is
-          optional and most providers can ignore it entirely.
-        - 'provider_index': the position of this provider in the load order.
+        ``opt.own_context`` is the context object produced by
+        ``create_context()`` before any inputs are merged.
+        ``opt.received_inputs`` is a list of payloads delivered by other
+        providers whose ``get_inputs_schema()`` matched the values.
+        ``opt.all_providers`` is a snapshot of every provider the loader
+        knows about; inspect ``alias`` or ``input_type`` on each entry as
+        needed.  ``opt.provider_index`` is the position of this provider in
+        the load order.
 
-        Default: return the unmodified `own_context`.
+        Default: return the unmodified ``opt.own_context``.
         """
-        return own_context
+        return opt.own_context
 
     def get_inputs_schema(self) -> type[InputT] | None:
         """Return the Pydantic model class for this provider's *input* type.
@@ -413,21 +444,24 @@ class Provider(ABC, Generic[ContextT, InputT]):
 def call_provider_method(
     inst: Provider[ContextT, InputT],
     method_name: str,
-    own_context: ContextT,
+    arg: ContextT | ProvideInputsOptions[ContextT] | FinalizeContextOptions[ContextT, Any],
     /,
-    *args: object,
 ) -> object:
     """Call a provider hook, routing to the mode handler if one is registered.
 
-    Orchestration callers use this instead of ``inst.method_name(own_context,
-    ...)`` directly, so that :class:`Provider` itself has no knowledge of mode
-    dispatch.
+    Orchestration callers use this instead of calling the hook directly so
+    that :class:`Provider` itself has no knowledge of mode dispatch.
+
+    ``arg`` is passed through to the target method unchanged — it is either a
+    plain context (for single-context hooks such as ``create_anchors``) or an
+    options object (:class:`ProvideInputsOptions` /
+    :class:`FinalizeContextOptions`) for hooks that need extra data.
 
     Resolution order:
 
-    1. The mode is read from ``own_context.repolish.workspace.mode``.  If
-       ``own_context`` does not carry a ``repolish`` attribute the mode is
-       treated as unknown and the handler lookup is skipped.
+    1. The mode is read from the context's ``repolish.workspace.mode`` field.
+       For options objects the context is taken from ``arg.own_context``.  If
+       no ``repolish`` attribute exists the mode defaults to ``'standalone'``.
     2. If a handler class is registered on ``inst`` for the current mode a
        cached instance is used and the method is called on it.
     3. Otherwise the provider's own implementation is called — whether that is
@@ -436,7 +470,8 @@ def call_provider_method(
     Handler instances are lazily created and cached on the provider instance
     under ``_mode_handler_instances`` so repeated calls share the same object.
     """
-    repolish_ctx = getattr(own_context, 'repolish', None)
+    ctx_for_mode: object = arg.own_context if isinstance(arg, (ProvideInputsOptions, FinalizeContextOptions)) else arg
+    repolish_ctx = getattr(ctx_for_mode, 'repolish', None)
     workspace_ctx = getattr(repolish_ctx, 'workspace', None)
     mode: str = getattr(workspace_ctx, 'mode', None) or 'standalone'
 
@@ -466,9 +501,11 @@ def call_provider_method(
                     value = inst.templates_root / mode
                 setattr(handler, attr, value)
             cache[mode] = handler
-        return getattr(cache[mode], method_name)(own_context, *args)
+        _target: ModeHandler[ContextT, InputT] | Provider[ContextT, InputT] = cache[mode]
+    else:
+        _target = inst
 
-    return getattr(inst, method_name)(own_context, *args)
+    return getattr(_target, method_name)(arg)
 
 
 # ---------------------------------------------------------------------------
@@ -544,8 +581,10 @@ def get_provider_context(
 __all__ = [
     'ContextT',
     'FileMode',
+    'FinalizeContextOptions',
     'InputT',
     'ModeHandler',
+    'ProvideInputsOptions',
     'Provider',
     'ProviderEntry',
     'T',

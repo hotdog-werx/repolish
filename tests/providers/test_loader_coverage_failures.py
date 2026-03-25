@@ -14,7 +14,8 @@ from repolish.providers.exchange import (
 from repolish.providers.models import (
     BaseContext,
     BaseInputs,
-    ProviderEntry,
+    FinalizeContextOptions,
+    ProvideInputsOptions,
     SessionBundle,
     TemplateMapping,
 )
@@ -23,7 +24,7 @@ from repolish.providers.models import (
 )
 
 
-class BadInst(_ProviderBase[BaseContext, BaseModel]):
+class BadInst(_ProviderBase[BaseContext, BaseInputs]):
     def create_context(self) -> BaseContext:
         raise ValueError
 
@@ -31,9 +32,7 @@ class BadInst(_ProviderBase[BaseContext, BaseModel]):
     # class and will warn if invoked.
     def provide_inputs(
         self,
-        own_context: BaseContext,  # noqa: ARG002 - method signature must match base
-        all_providers: list[ProviderEntry],  # noqa: ARG002 - method signature must match base
-        provider_index: int,  # noqa: ARG002 - method signature must match base
+        opt: ProvideInputsOptions[BaseContext],
     ) -> list[BaseInputs]:
         raise RuntimeError
 
@@ -81,24 +80,21 @@ def test_validate_raw_inputs_wrong_model() -> None:
 
 
 def test_finalize_provider_contexts_error_path() -> None:
-    class F(_ProviderBase):
+    class F(_ProviderBase[BaseContext, BaseInputs]):
         def create_context(self) -> BaseContext:
             return BaseContext()
 
-        def finalize_context(  # type: ignore[override]
+        def finalize_context(  # type: ignore
             self,
-            _own_context: BaseModel,
-            _received_inputs: list[object],
-            _all_providers: list[tuple[str, object, type[BaseModel] | None]],
-            _provider_index: int,
-        ) -> BaseModel:
+            _opt: FinalizeContextOptions[BaseContext, BaseInputs],
+        ) -> BaseContext:
             raise RuntimeError
 
     with pytest.raises(RuntimeError):
         finalize_provider_contexts(
             [('p', {})],
             [F()],
-            {'p': [1]},  # type: ignore[arg-type]
+            {'p': [1]},  # type: ignore
             {},
             [],
         )

@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 from pathlib import Path
-
 from typing import Literal
 
 import pytest
@@ -79,7 +78,11 @@ class SummaryTreeCase:
             name='root_mode_auto_staged_not_applied',
             mode='root',
             file_records=[
-                FileRecord(path='.gitignore', mode=FileMode.REGULAR, owner='my-provider'),
+                FileRecord(
+                    path='.gitignore',
+                    mode=FileMode.REGULAR,
+                    owner='my-provider',
+                ),
                 FileRecord(
                     path='root_file.md',
                     mode=FileMode.REGULAR,
@@ -95,8 +98,16 @@ class SummaryTreeCase:
             name='standalone_all_applied',
             mode='standalone',
             file_records=[
-                FileRecord(path='.gitignore', mode=FileMode.REGULAR, owner='my-provider'),
-                FileRecord(path='README.md', mode=FileMode.REGULAR, owner='my-provider'),
+                FileRecord(
+                    path='.gitignore',
+                    mode=FileMode.REGULAR,
+                    owner='my-provider',
+                ),
+                FileRecord(
+                    path='README.md',
+                    mode=FileMode.REGULAR,
+                    owner='my-provider',
+                ),
             ],
             file_mappings={},
             expected_not_applied=[],
@@ -106,8 +117,16 @@ class SummaryTreeCase:
             name='suppress_mode_not_applied',
             mode='standalone',
             file_records=[
-                FileRecord(path='broken.md', mode=FileMode.SUPPRESS, owner='my-provider'),
-                FileRecord(path='good.md', mode=FileMode.REGULAR, owner='my-provider'),
+                FileRecord(
+                    path='broken.md',
+                    mode=FileMode.SUPPRESS,
+                    owner='my-provider',
+                ),
+                FileRecord(
+                    path='good.md',
+                    mode=FileMode.REGULAR,
+                    owner='my-provider',
+                ),
             ],
             file_mappings={},
             expected_not_applied=['broken.md'],
@@ -117,7 +136,11 @@ class SummaryTreeCase:
             name='root_delete_still_applied',
             mode='root',
             file_records=[
-                FileRecord(path='old.md', mode=FileMode.DELETE, owner='my-provider'),
+                FileRecord(
+                    path='old.md',
+                    mode=FileMode.DELETE,
+                    owner='my-provider',
+                ),
             ],
             file_mappings={},
             expected_not_applied=[],
@@ -160,7 +183,11 @@ def test_summary_tree_paused_file_shows_reason(
         tmp_path,
         mode='standalone',
         file_records=[
-            FileRecord(path='managed.txt', mode=FileMode.REGULAR, owner='my-provider'),
+            FileRecord(
+                path='managed.txt',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+            ),
         ],
         paused_files=['managed.txt'],
     )
@@ -178,7 +205,11 @@ def test_summary_tree_root_mode_count_label(
         tmp_path,
         mode='root',
         file_records=[
-            FileRecord(path='auto.md', mode=FileMode.REGULAR, owner='my-provider'),
+            FileRecord(
+                path='auto.md',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+            ),
             FileRecord(
                 path='explicit.md',
                 mode=FileMode.REGULAR,

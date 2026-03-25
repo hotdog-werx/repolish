@@ -8,6 +8,8 @@ from repolish.providers import logger
 from repolish.providers.models import (
     BaseContext,
     BaseInputs,
+    FinalizeContextOptions,
+    ProvideInputsOptions,
     Provider,
     ProviderInfo,
 )
@@ -52,9 +54,28 @@ def test_minimal_provider_defaults_and_behavior():
     assert ctx.v == 42
 
     # optional methods have sensible defaults
-    assert p.provide_inputs(ctx, [], 0) == []
+    assert (
+        p.provide_inputs(
+            ProvideInputsOptions(
+                own_context=ctx,
+                all_providers=[],
+                provider_index=0,
+            ),
+        )
+        == []
+    )
 
-    assert p.finalize_context(ctx, [], [], 0) == ctx
+    assert (
+        p.finalize_context(
+            FinalizeContextOptions(
+                own_context=ctx,
+                received_inputs=[],
+                all_providers=[],
+                provider_index=0,
+            ),
+        )
+        == ctx
+    )
     assert p.get_inputs_schema() is None
 
 

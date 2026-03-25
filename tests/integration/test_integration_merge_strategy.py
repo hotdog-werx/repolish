@@ -20,6 +20,7 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
     a = dedent(
         """
         from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import ProvideInputsOptions
 
         class ACtx(BaseContext):
             preferred_source: str = 'provider_a'
@@ -28,9 +29,9 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
             def create_context(self):
                 return ACtx()
 
-            def provide_inputs(self, own_context, all_providers, provider_index):
+            def provide_inputs(self, opt: ProvideInputsOptions):
                 # return a plain dict; the loader routes it by structural match
-                return [{'preferred_source': own_context.preferred_source}]
+                return [{'preferred_source': opt.own_context.preferred_source}]
         """,
     )
 
@@ -54,12 +55,12 @@ def test_merge_strategy_context_drives_file_mappings(tmp_path: Path):
             def get_inputs_schema(self):
                 return PrefInput
 
-            def finalize_context(self, own_context, received_inputs, all_providers, provider_index):
-                if received_inputs:
-                    preferred = received_inputs[0].preferred_source
+            def finalize_context(self, opt):
+                if opt.received_inputs:
+                    preferred = opt.received_inputs[0].preferred_source
                     strat = 'ours' if preferred == 'provider_a' else 'theirs'
-                    return own_context.model_copy(update={'merge_strategy': strat})
-                return own_context
+                    return opt.own_context.model_copy(update={'merge_strategy': strat})
+                return opt.own_context
 
             def create_file_mappings(self, context=None):
                 strat = context.merge_strategy if context else 'unknown'

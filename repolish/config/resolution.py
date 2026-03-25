@@ -132,7 +132,7 @@ def _resolved_from_static(
     config_dir: Path,
 ) -> ResolvedProviderInfo:
     """Build a ResolvedProviderInfo from explicit provider_root (and optional resources_dir) fields."""
-    provider_root = _resolve_path(provider_config.provider_root, config_dir)  # type: ignore[arg-type]
+    provider_root = _resolve_path(provider_config.provider_root, config_dir)  # type: ignore
     resources_dir = (
         _resolve_path(provider_config.resources_dir, config_dir) if provider_config.resources_dir else provider_root
     )

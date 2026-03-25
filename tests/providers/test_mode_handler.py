@@ -11,13 +11,16 @@ Verifies that:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
 from repolish import (
     BaseContext,
     BaseInputs,
+    FinalizeContextOptions,
     ModeHandler,
+    ProvideInputsOptions,
     Provider,
     call_provider_method,
 )
@@ -37,7 +40,7 @@ def _make_ctx(mode: str) -> BaseContext:
     from typing import Literal, cast
 
     _mode = cast('Literal["root", "member", "standalone"]', mode)
-    workspace = WorkspaceContext(mode=_mode, root_dir='/tmp')  # type: ignore[arg-type]
+    workspace = WorkspaceContext(mode=_mode, root_dir=Path('/tmp'))
     session = ProviderSession(mode=_mode)
     provider_info = ProviderInfo(session=session)
     rc = RepolishContext(workspace=workspace, provider=provider_info)
@@ -63,18 +66,18 @@ class MyInputs(BaseInputs):
 
 
 class RootHandler(ModeHandler[MyCtx, MyInputs]):
-    def provide_inputs(self, own_context, all_providers, provider_index):
+    def provide_inputs(
+        self,
+        opt: ProvideInputsOptions[MyCtx],
+    ) -> list[MyInputs]:
         return [MyInputs(tag='from-root')]
 
     def finalize_context(
         self,
-        own_context,
-        received_inputs,
-        all_providers,
-        provider_index,
-    ):
-        own_context.value = 'finalized-by-root'
-        return own_context
+        opt: FinalizeContextOptions[MyCtx, MyInputs],
+    ) -> MyCtx:
+        opt.own_context.value = 'finalized-by-root'
+        return opt.own_context
 
     def create_file_mappings(self, context):
         return {'root.md': 'root.md'}
@@ -84,18 +87,18 @@ class RootHandler(ModeHandler[MyCtx, MyInputs]):
 
 
 class MemberHandler(ModeHandler[MyCtx, MyInputs]):
-    def provide_inputs(self, own_context, all_providers, provider_index):
+    def provide_inputs(
+        self,
+        opt: ProvideInputsOptions[MyCtx],
+    ) -> list[MyInputs]:
         return [MyInputs(tag='from-member')]
 
     def finalize_context(
         self,
-        own_context,
-        received_inputs,
-        all_providers,
-        provider_index,
-    ):
-        own_context.value = 'finalized-by-member'
-        return own_context
+        opt: FinalizeContextOptions[MyCtx, MyInputs],
+    ) -> MyCtx:
+        opt.own_context.value = 'finalized-by-member'
+        return opt.own_context
 
     def create_file_mappings(self, context):
         return {'member.md': 'member.md'}
@@ -107,7 +110,10 @@ class MemberHandler(ModeHandler[MyCtx, MyInputs]):
 class HandlerWithProvideOverride(ModeHandler[MyCtx, MyInputs]):
     """Used to verify that direct Provider override bypasses the handler."""
 
-    def provide_inputs(self, own_context, all_providers, provider_index):
+    def provide_inputs(
+        self,
+        opt: ProvideInputsOptions[MyCtx],
+    ) -> list[MyInputs]:
         return [MyInputs(tag='from-handler-should-not-run')]
 
 
@@ -156,7 +162,11 @@ def test_provide_inputs_dispatches_to_handler(case: ProvideInputsCase) -> None:
     ctx.__class__ = MyCtx  # keep mode info but use typed subclass
     # build a proper MyCtx keeping the repolish field from the base context
     typed_ctx = MyCtx(repolish=ctx.repolish)
-    inputs = call_provider_method(provider, 'provide_inputs', typed_ctx, [], 0)
+    inputs = call_provider_method(
+        provider,
+        'provide_inputs',
+        ProvideInputsOptions(own_context=typed_ctx, all_providers=[], provider_index=0),
+    )
     assert isinstance(inputs, list)
     assert len(inputs) == 1
     item = inputs[0]
@@ -167,7 +177,11 @@ def test_provide_inputs_dispatches_to_handler(case: ProvideInputsCase) -> None:
 def test_provide_inputs_no_handler_returns_empty() -> None:
     provider = _HandledProvider()
     ctx = MyCtx(repolish=_make_ctx('standalone').repolish)
-    result = call_provider_method(provider, 'provide_inputs', ctx, [], 0)
+    result = call_provider_method(
+        provider,
+        'provide_inputs',
+        ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0),
+    )
     assert result == []
 
 
@@ -202,7 +216,11 @@ class FinalizeCase:
 def test_finalize_context_dispatches_to_handler(case: FinalizeCase) -> None:
     provider = _HandledProvider()
     ctx = MyCtx(repolish=_make_ctx(case.mode).repolish)
-    result = call_provider_method(provider, 'finalize_context', ctx, [], [], 0)
+    result = call_provider_method(
+        provider,
+        'finalize_context',
+        FinalizeContextOptions(own_context=ctx, received_inputs=[], all_providers=[], provider_index=0),
+    )
     assert isinstance(result, MyCtx)
     assert result.value == case.expected_value
 
@@ -210,7 +228,11 @@ def test_finalize_context_dispatches_to_handler(case: FinalizeCase) -> None:
 def test_finalize_context_no_handler_returns_unchanged() -> None:
     provider = _HandledProvider()
     ctx = MyCtx(repolish=_make_ctx('standalone').repolish, value='original')
-    result = call_provider_method(provider, 'finalize_context', ctx, [], [], 0)
+    result = call_provider_method(
+        provider,
+        'finalize_context',
+        FinalizeContextOptions(own_context=ctx, received_inputs=[], all_providers=[], provider_index=0),
+    )
     assert isinstance(result, MyCtx)
     assert result.value == 'original'
 
@@ -319,8 +341,9 @@ def test_handler_instance_is_cached_across_calls() -> None:
     _CountingHandler._instances = 0
     provider = _CachingProvider()
     ctx = MyCtx(repolish=_make_ctx('root').repolish)
-    call_provider_method(provider, 'provide_inputs', ctx, [], 0)
-    call_provider_method(provider, 'provide_inputs', ctx, [], 0)
+    _opts = ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0)
+    call_provider_method(provider, 'provide_inputs', _opts)
+    call_provider_method(provider, 'provide_inputs', _opts)
     assert _CountingHandler._instances == 1, 'handler should be instantiated only once'
 
 
@@ -328,8 +351,8 @@ def test_different_modes_get_different_handler_instances() -> None:
     provider = _HandledProvider()
     root_ctx = MyCtx(repolish=_make_ctx('root').repolish)
     member_ctx = MyCtx(repolish=_make_ctx('member').repolish)
-    call_provider_method(provider, 'provide_inputs', root_ctx, [], 0)
-    call_provider_method(provider, 'provide_inputs', member_ctx, [], 0)
+    call_provider_method(provider, 'provide_inputs', ProvideInputsOptions(own_context=root_ctx, all_providers=[], provider_index=0))
+    call_provider_method(provider, 'provide_inputs', ProvideInputsOptions(own_context=member_ctx, all_providers=[], provider_index=0))
     cache = vars(provider)['_mode_handler_instances']
     assert isinstance(cache['root'], RootHandler)
     assert isinstance(cache['member'], MemberHandler)
@@ -347,12 +370,19 @@ def test_mode_handler_wins_over_direct_override() -> None:
     class _BothProvider(Provider[MyCtx, MyInputs]):
         root_mode = HandlerWithProvideOverride
 
-        def provide_inputs(self, own_context, all_providers, provider_index):
+        def provide_inputs(
+            self,
+            opt: ProvideInputsOptions[MyCtx],
+        ) -> list[MyInputs]:
             return [MyInputs(tag='from-direct-override')]
 
     provider = _BothProvider()
     ctx = MyCtx(repolish=_make_ctx('root').repolish)
-    inputs = call_provider_method(provider, 'provide_inputs', ctx, [], 0)
+    inputs = call_provider_method(
+        provider,
+        'provide_inputs',
+        ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0),
+    )
     assert isinstance(inputs, list)
     assert len(inputs) == 1
     item = inputs[0]
@@ -364,12 +394,19 @@ def test_direct_override_runs_when_no_mode_handler() -> None:
     """When no mode handler is registered, the provider's own override is called."""
 
     class _DirectProvider(Provider[MyCtx, MyInputs]):
-        def provide_inputs(self, own_context, all_providers, provider_index):
+        def provide_inputs(
+            self,
+            opt: ProvideInputsOptions[MyCtx],
+        ) -> list[MyInputs]:
             return [MyInputs(tag='from-direct-override')]
 
     provider = _DirectProvider()
     ctx = MyCtx(repolish=_make_ctx('root').repolish)
-    inputs = call_provider_method(provider, 'provide_inputs', ctx, [], 0)
+    inputs = call_provider_method(
+        provider,
+        'provide_inputs',
+        ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0),
+    )
     assert isinstance(inputs, list)
     assert len(inputs) == 1
     item = inputs[0]
@@ -386,8 +423,27 @@ def test_mode_handler_base_defaults() -> None:
     """ModeHandler base class methods should all return empty / unchanged values."""
     handler: ModeHandler[MyCtx, MyInputs] = ModeHandler()
     ctx = MyCtx(repolish=_make_ctx('root').repolish)
-    assert handler.provide_inputs(ctx, [], 0) == []
-    assert handler.finalize_context(ctx, [], [], 0) is ctx
+    assert (
+        handler.provide_inputs(
+            ProvideInputsOptions(
+                own_context=ctx,
+                all_providers=[],
+                provider_index=0,
+            ),
+        )
+        == []
+    )
+    assert (
+        handler.finalize_context(
+            FinalizeContextOptions(
+                own_context=ctx,
+                received_inputs=[],
+                all_providers=[],
+                provider_index=0,
+            ),
+        )
+        is ctx
+    )
     assert handler.create_file_mappings(ctx) == {}
     assert handler.create_anchors(ctx) == {}
 
