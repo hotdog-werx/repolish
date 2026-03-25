@@ -36,9 +36,11 @@ class WorkspaceProvider(
             # to report to itself.
             return []
         member_name = opt.own_context.repolish.provider.session.member_name
+        member_path = opt.own_context.repolish.provider.session.member_path
         payload = WorkspaceProviderInputs(
             add_to_member=f'workspace: This is a workspace member! {member_name}',
             add_to_root=f'workspace: This is the root of the monorepo! {member_name}',
+            member_path=member_path,
         )
         return [payload]
 
@@ -61,6 +63,9 @@ class WorkspaceProvider(
         opt.own_context.root_file_messages = [
             inp.add_to_root for inp in opt.received_inputs if inp.add_to_root is not None
         ]
+        opt.own_context.root_file_sources = sorted(
+            {inp.member_path for inp in opt.received_inputs if inp.member_path}
+        )
         return opt.own_context
 
     @override

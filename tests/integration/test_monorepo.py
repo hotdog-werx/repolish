@@ -303,8 +303,11 @@ class TestDevkitProviderCommunication:
         assert root_file.exists(), 'root_file.md was not created by the workspace provider'
 
         content = root_file.read_text()
-        # Collect non-empty, non-header lines.
-        messages = [line for line in content.splitlines() if line.strip() and not line.startswith('#')]
+        # Collect provider message lines only (contain ': ', not section headers).
+        messages = [
+            line for line in content.splitlines()
+            if line.strip() and not line.startswith('#') and ': ' in line
+        ]
 
         # Every member provider emits one message → 2 members x 2 providers = 4.
         assert len(messages) == 4, f'expected 4 provider messages, got {len(messages)}: {messages}'
@@ -318,3 +321,44 @@ class TestDevkitProviderCommunication:
         # Both members' workspace provider messages must also appear.
         workspace_msgs = [m for m in messages if 'workspace:' in m]
         assert len(workspace_msgs) == 2, f'expected 2 workspace: messages (one per member), got {len(workspace_msgs)}'
+
+    def test_member_path_field_exposes_member_path(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """member_path on the input payload resolves sources for every received input.
+
+        The WorkspaceProvider's provide_inputs sets member_path from
+        opt.own_context.repolish.provider.session.member_path, so finalize_context
+        at the root can read inp.member_path directly without any lookup.
+
+        Both pkg-alpha and pkg-beta emit inputs (2 per member via devkit-python
+        and devkit-workspace), so after de-duplication the sources section must
+        contain exactly those two repo-relative paths.
+        """
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        run_repolish(['apply'])
+        root_file = repo / 'root_file.md'
+        assert root_file.exists()
+
+        content = root_file.read_text()
+        assert '# Sources' in content, 'sources section not rendered'
+
+        source_lines = []
+        in_sources = False
+        for line in content.splitlines():
+            if line.strip() == '# Sources':
+                in_sources = True
+                continue
+            if in_sources and line.startswith('#'):
+                break
+            if in_sources and line.strip():
+                source_lines.append(line.strip())
+
+        assert sorted(source_lines) == ['packages/pkg-alpha', 'packages/pkg-beta'], (
+            f'expected member paths in sources, got: {source_lines}'
+        )

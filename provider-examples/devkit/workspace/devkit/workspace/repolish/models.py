@@ -5,6 +5,8 @@ class WorkspaceProviderContext(BaseContext):
     """Context for the WorkspaceProvider."""
 
     root_file_messages: list[str] = []
+    root_file_sources: list[str] = []
+    """Repo-relative member paths that contributed inputs, in sorted order."""
 
 
 class WorkspaceProviderInputs(BaseInputs):
@@ -16,3 +18,5 @@ class WorkspaceProviderInputs(BaseInputs):
 
     add_to_root: str | None = None
     add_to_member: str | None = None
+    member_path: str = ''
+    """Repo-relative path of the member that emitted this input."""
