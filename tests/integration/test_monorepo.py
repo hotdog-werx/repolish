@@ -214,37 +214,46 @@ class TestMonorepoFullRun:
 
 
 class TestR10Guard:
-    def test_guard_running_from_member(
+    def test_running_from_member_applies_standalone_with_note(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Running ``repolish apply`` from inside a member exits with code 1."""
+        """Running from inside a member succeeds (standalone) and prints a note."""
         repo = fixtures.monorepo_basic.stage(tmp_path)
         pkg_a = repo / 'packages' / 'pkg-a'
         monkeypatch.chdir(pkg_a)
 
-        run_repolish(['apply'], exit_code=1)
+        result = run_repolish(['apply'])
 
-    def test_standalone_flag_bypasses_guard(
+        # Member's own files must be applied.
+        assert (pkg_a / 'README.simple-provider.md').exists()
+        # Root and other members must be untouched.
+        assert not (repo / 'README.simple-provider.md').exists()
+        assert not (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
+        # An informational note (not an error) must appear.
+        assert 'note:' in result.output
+        assert 'root pass skipped' in result.output
+
+    def test_standalone_flag_suppresses_note(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``--standalone`` suppresses the R10 guard and runs a single-pass apply."""
+        """``--standalone`` runs a single-pass apply without printing the member note."""
         repo = fixtures.monorepo_basic.stage(tmp_path)
         pkg_a = repo / 'packages' / 'pkg-a'
         monkeypatch.chdir(pkg_a)
 
-        # Must succeed even though we're inside a member.
-        run_repolish(['apply', '--standalone'])
+        result = run_repolish(['apply', '--standalone'])
 
         assert (pkg_a / 'README.simple-provider.md').exists()
         # Root and pkg-b must be untouched.
         assert not (repo / 'README.simple-provider.md').exists()
         assert not (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
+        assert 'note:' not in result.output
 
 
 class TestExplicitMembersConfig:

@@ -33,26 +33,22 @@ _MODE_STYLE: dict[str, str] = {
 }
 
 
-def error_running_from_member(config_dir: Path, root: Path, rel: Path) -> None:
-    """Display an error when `apply` is invoked from inside a monorepo member.
+def note_running_from_member(config_dir: Path, root: Path, rel: Path) -> None:
+    """Print an informational note when `apply` runs standalone from a member directory.
 
-    When a user runs `repolish apply` from inside a member repository, the
-    correct behavior is to run the command from the monorepo root (or to use
-    `--standalone`). This helper prints a helpful, rich-formatted message
-    describing the situation and offering next steps.
+    Running from a member is allowed — the member's own providers and templates
+    apply correctly.  The root session is simply skipped, so root-managed files
+    are not updated in this pass.
 
     Args:
         config_dir: The current working directory (member path).
         root: The detected monorepo root directory.
-        rel: The member path relative to the monorepo root (for the suggested
-            `--member` command).
+        rel: The member path relative to the monorepo root.
     """
     msg = (
-        '[bold red]error:[/] running from a monorepo member directory\n'
-        f'  [dim]{config_dir}[/] is a member of the monorepo rooted at [dim]{root}[/]\n\n'
-        '[bold yellow]hint:[/] run [bold]repolish apply[/] from the root, or target this member from the root:\n'
-        f'      [bold]repolish apply --member {rel}[/]\n'
-        '      pass [bold]--standalone[/] to bypass this check entirely'
+        '[dim]note:[/] running standalone from member directory (root pass skipped)\n'
+        f'  [dim]{config_dir}[/] is a member of [dim]{root}[/]\n'
+        f'  for a full monorepo run: [bold]repolish apply --member {rel}[/] from the root'
     )
     console.print(msg)
 

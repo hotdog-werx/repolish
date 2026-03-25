@@ -37,8 +37,8 @@ class ApplyParams(BaseModel):
     standalone: bool = Field(
         default=False,
         description=(
-            'Bypass monorepo detection entirely. Run a normal single-pass repolish on the '
-            'current directory. Use this from inside a member directory to skip the monorepo guard.'
+            'Bypass monorepo detection entirely and suppress the member note. '
+            'Run a normal single-pass repolish on the current directory.'
         ),
     )
 
