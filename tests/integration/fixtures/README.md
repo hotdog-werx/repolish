@@ -1,8 +1,8 @@
 # Integration test fixtures
 
-Each subdirectory is a minimal project used by the integration tests.
-Tests stage a copy of the fixture into a `tmp_path`, so the originals
-are never modified during a normal `pytest` run.
+Each subdirectory is a minimal project used by the integration tests. Tests
+stage a copy of the fixture into a `tmp_path`, so the originals are never
+modified during a normal `pytest` run.
 
 ## Running a fixture manually
 
@@ -21,11 +21,11 @@ repolish apply
 
 ## Warning: manual runs modify the fixture
 
-`repolish apply` writes generated files and a `.repolish/_/` debug
-directory directly into the fixture folder.  If those files are left
-behind, subsequent integration tests that expect a clean state will
-fail — for example, a `--check` test that expects `MISSING` will
-instead find the file already present and pass silently.
+`repolish apply` writes generated files and a `.repolish/_/` debug directory
+directly into the fixture folder. If those files are left behind, subsequent
+integration tests that expect a clean state will fail — for example, a `--check`
+test that expects `MISSING` will instead find the file already present and pass
+silently.
 
 ## Safe workflow for manual debugging
 
@@ -53,5 +53,5 @@ instead find the file already present and pass silently.
    git stash pop
    ```
 
-The `git clean -fd` approach is the fastest way to restore all fixtures
-to their committed state in one command.
+The `git clean -fd` approach is the fastest way to restore all fixtures to their
+committed state in one command.

@@ -43,6 +43,7 @@ def coordinate_sessions(
     strict: bool = False,
     member: str | None = None,
     root_only: bool = False,
+    skip_post_process: bool = False,
 ) -> int:
     """Orchestrate a full repolish run for a standalone project or monorepo.
 
@@ -82,6 +83,7 @@ def coordinate_sessions(
                 config_path=config_path.resolve(),
                 check_only=check_only,
                 strict=strict,
+                skip_post_process=skip_post_process,
             ),
         )
 
@@ -109,6 +111,7 @@ def coordinate_sessions(
             config_path=(member_dir / 'repolish.yaml').resolve(),
             check_only=check_only,
             strict=strict,
+            skip_post_process=skip_post_process,
             global_context=_build_global_context(pkg_mono_ctx),
         )
         with _chdir(member_dir):
@@ -130,6 +133,7 @@ def coordinate_sessions(
         config_path=config_path.resolve(),
         check_only=check_only,
         strict=strict,
+        skip_post_process=skip_post_process,
         global_context=_build_global_context(root_mono_ctx),
         extra_provider_entries=all_member_entries or None,
         extra_inputs=all_member_inputs or None,
@@ -143,7 +147,11 @@ def coordinate_sessions(
     # Apply root (unless --member is given).
     if not member:
         with _chdir(config_dir):
-            rc = apply_session(root_session, check_only=check_only)
+            rc = apply_session(
+                root_session,
+                check_only=check_only,
+                skip_post_process=skip_post_process,
+            )
         if rc != 0:
             return rc
         completed_sessions.append(root_session)
@@ -154,7 +162,11 @@ def coordinate_sessions(
             if member and (str(m.path) != member and m.name != member):
                 continue
             with _chdir(opts.config_path.parent):
-                rc = apply_session(session, check_only=check_only)
+                rc = apply_session(
+                    session,
+                    check_only=check_only,
+                    skip_post_process=skip_post_process,
+                )
             if rc != 0:
                 return rc
             completed_sessions.append(session)

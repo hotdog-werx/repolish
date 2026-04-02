@@ -89,10 +89,7 @@ def test_file_context_debug_file_created(
     monkeypatch.chdir(repo)
     run_repolish(['apply'])
 
-    debug_file = (
-        repo / '.repolish' / '_' / 'file-ctx'
-        / 'file-context.README.simple-provider.md.json'
-    )
+    debug_file = repo / '.repolish' / '_' / 'file-ctx' / 'file-context.README.simple-provider.md.json'
     assert debug_file.exists(), f'file-context debug file not found: {debug_file}'
 
     data = json.loads(debug_file.read_text(encoding='utf-8'))

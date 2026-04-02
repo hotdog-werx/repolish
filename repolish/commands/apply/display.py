@@ -1,13 +1,10 @@
 from pathlib import Path
 
-from rich.console import Group
-from rich.panel import Panel
-from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from repolish.commands.apply.debug import debug_file_slug, _file_context_slug
+from repolish.commands.apply.debug import _file_context_slug, debug_file_slug
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console
@@ -131,102 +128,6 @@ def print_files_summary(
         )
 
 
-def _build_provider_panel(session: ResolvedSession, alias: str) -> Panel:
-    """Build a Rich Panel for one provider with property, context, and files sections."""
-    pid = session.alias_to_pid.get(alias)
-    ctx = session.providers.provider_contexts.get(pid) if pid else None
-    records = [r for r in session.providers.file_records if r.owner == alias]
-    owner_symlinks = session.resolved_symlinks.get(alias, [])
-    role = _role_label(ctx)
-    props = Table.grid(padding=(0, 1))
-    props.add_column(style='bold cyan', no_wrap=True)
-    props.add_column(overflow='fold')
-    debug_dir = session.config.config_dir / '.repolish' / '_'
-    slug = debug_file_slug(ctx, alias)
-    debug_file = debug_dir / f'provider-context.{slug}.json'
-    debug_link = Text()
-    debug_link.append(
-        debug_file.name,
-        style=f'link file://{debug_file.absolute()}',
-    )
-    props.add_row('alias', alias)
-    props.add_row('role', role)
-    if ctx is not None and isinstance(ctx, BaseContext):
-        info = ctx.repolish.provider
-        props.add_row('project', info.project_name)
-        props.add_row('package', info.package_name)
-        props.add_row('version', info.version)
-    props.add_row('debug', debug_link)
-
-    total = len(records) + len(owner_symlinks)
-    if total:
-        files_table = Table(
-            show_header=True,
-            header_style='bold',
-            box=None,
-            padding=(0, 1),
-        )
-        files_table.add_column('Mode', style='dim', no_wrap=True)
-        files_table.add_column('Path')
-        files_table.add_column('Source', style='dim')
-        for record in records:
-            mode_val = record.mode.value
-            style = _MODE_STYLE.get(mode_val, '')
-            source = record.source if record.source and record.source != record.path else ''
-            files_table.add_row(
-                f'[{style}]{mode_val}[/{style}]',
-                record.path,
-                source,
-            )
-        for sl in owner_symlinks:
-            files_table.add_row(
-                '[blue]symlink[/blue]',
-                str(sl.target),
-                str(sl.source),
-            )
-    else:
-        files_table = Text('(no files)', style='dim')
-
-    body = Group(
-        props,
-        Rule(style='dim'),
-        Text(f'files ({total})', style='bold'),
-        files_table,
-    )
-    return Panel(body, title=f'[bold]{alias}[/bold]', border_style='cyan')
-
-
-def _print_provider_panels(session: ResolvedSession) -> None:
-    """Print Rich panels for all providers, grouped by monorepo role."""
-    root_aliases: list[str] = []
-    member_aliases: dict[str, list[str]] = {}
-    standalone_aliases: list[str] = []
-
-    for alias in session.aliases:
-        pid = session.alias_to_pid.get(alias)
-        ctx = session.providers.provider_contexts.get(pid) if pid else None
-        label = _role_label(ctx)
-        if label == 'root':
-            root_aliases.append(alias)
-        elif label.startswith('member:'):
-            member_name = label[len('member: ') :]
-            member_aliases.setdefault(member_name, []).append(alias)
-        else:
-            standalone_aliases.append(alias)
-
-    def _emit(group_title: str, group_aliases: list[str]) -> None:
-        console.print(Rule(f'[bold]{group_title}[/bold]', style='bright_black'))
-        for a in group_aliases:
-            console.print(_build_provider_panel(session, a))
-
-    if root_aliases:
-        _emit('Root', root_aliases)
-    for member_name, m_aliases in member_aliases.items():
-        _emit(f'Member: {member_name}', m_aliases)
-    if standalone_aliases:
-        _emit('Standalone', standalone_aliases)
-
-
 def _file_skip_reason(
     record: FileRecord,
     session: ResolvedSession,
@@ -264,23 +165,49 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         records: list[FileRecord],
         syms: list[ProviderSymlink],
     ) -> Text:
-        skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
-        total = len(records) + len(syms)
-        applied = total - skipped
         pid = session.alias_to_pid.get(alias)
         ctx = session.providers.provider_contexts.get(pid) if pid else None
         slug = debug_file_slug(ctx, alias)
         debug_file = debug_dir / f'provider-context.{slug}.json'
         label = Text()
         label.append(alias, style=f'bold link file://{debug_file.absolute()}')
-        if skipped:
-            label.append(
-                f' [{applied} applied, {skipped} not applied]',
-                style='dim yellow',
-            )
+        if ctx is not None and isinstance(ctx, BaseContext):
+            label.append(f'@{ctx.repolish.provider.version}', style='dim')
+        if session.apply_result:
+            record_paths = {r.path for r in records}
+            written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
+            unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
+            deleted = sum(1 for p in record_paths if session.apply_result.get(p) == 'deleted')
+            skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+            parts: list[str] = []
+            if written:
+                parts.append(f'[green]{written} written[/green]')
+            if unchanged:
+                parts.append(f'[dim]{unchanged} unchanged[/dim]')
+            if deleted:
+                parts.append(f'[dim red]{deleted} deleted[/dim red]')
+            if skipped:
+                parts.append(f'[yellow]{skipped} skipped[/yellow]')
+            if syms:
+                parts.append(f'[blue]{len(syms)} symlinks[/blue]')
+            if parts:
+                label.append('  ')
+                for i, part in enumerate(parts):
+                    if i:
+                        label.append(' · ', style='dim')
+                    label.append_text(Text.from_markup(part))
         else:
-            noun = 'file' if total == 1 else 'files'
-            label.append(f' [{total} {noun}]', style='dim')
+            skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+            total = len(records) + len(syms)
+            applied = total - skipped
+            if skipped:
+                label.append(
+                    f'  [{applied} applied, {skipped} not applied]',
+                    style='dim yellow',
+                )
+            else:
+                noun = 'file' if total == 1 else 'files'
+                label.append(f'  [{total} {noun}]', style='dim')
         return label
 
     def _file_node(record: FileRecord) -> Text:
@@ -292,7 +219,13 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
             node.append(record.path)
             node.append(f'  {reason}', style='dim yellow')
         else:
-            node.append('✓ ', style='green')
+            file_status = session.apply_result.get(record.path) if session.apply_result else None
+            if file_status == 'unchanged':
+                node.append('~ ', style='dim cyan')
+            elif file_status == 'deleted':
+                node.append('✗ ', style='dim red')
+            else:
+                node.append('✓ ', style='green')
             link = (
                 f'link file://{file_ctx_file.absolute()}'
                 if record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)
@@ -300,9 +233,14 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
             )
             node.append(record.path, style=link)
             mode_val = record.mode.value
-            if mode_val != 'regular':
+            if mode_val not in ('regular', 'delete'):
                 style = _MODE_STYLE.get(mode_val, '')
                 node.append(f'  {mode_val}', style=f'dim {style}'.strip())
+            source = record.source if record.source and record.source != record.path else ''
+            if not source and record.overlay_dir:
+                source = f'{record.overlay_dir}/'
+            if source:
+                node.append(f'  ← {source}', style='dim')
         return node
 
     def _symlink_node(sl: ProviderSymlink) -> Text:
@@ -350,11 +288,6 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         for alias in standalone_aliases:
             _add_provider(branch, alias)
     return tree
-
-
-def log_providers_summary(session: ResolvedSession) -> None:
-    """Print provider panels for one session."""
-    _print_provider_panels(session)
 
 
 def print_summary_tree(sessions: list[ResolvedSession]) -> None:

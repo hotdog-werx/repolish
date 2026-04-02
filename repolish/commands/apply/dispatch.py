@@ -47,6 +47,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
                 check_only=params.check,
                 strict=params.strict,
                 member=str(rel),
+                skip_post_process=params.skip_post_process,
             )
 
     # --standalone: single-session only, no note printed.
@@ -56,6 +57,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
                 config_path=config_path,
                 check_only=params.check,
                 strict=params.strict,
+                skip_post_process=params.skip_post_process,
             ),
         )
 
@@ -65,4 +67,5 @@ def apply_command(params: ApplyCommandOptions) -> int:
         strict=params.strict,
         member=params.member,
         root_only=params.root_only,
+        skip_post_process=params.skip_post_process,
     )

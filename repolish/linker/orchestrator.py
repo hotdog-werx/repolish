@@ -4,7 +4,6 @@ import importlib.util
 import subprocess
 from inspect import isclass
 from pathlib import Path
-
 from typing import cast
 
 from hotlog import get_logger

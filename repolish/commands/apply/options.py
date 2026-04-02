@@ -17,6 +17,7 @@ class ApplyOptions:
     config_path: Path
     check_only: bool = False
     strict: bool = False
+    skip_post_process: bool = False
     global_context: GlobalContext | None = field(default=None, repr=False)
     extra_provider_entries: list[ProviderEntry] | None = field(
         default=None,
@@ -35,6 +36,7 @@ class ApplyCommandOptions:
     root_only: bool = False
     member: str | None = None
     standalone: bool = False
+    skip_post_process: bool = False
 
 
 @dataclass
@@ -96,3 +98,7 @@ class ResolvedSession:
     """Provider entries emitted outward by this session (cross-session routing to root)."""
     emitted_inputs: list[BaseInputs] = field(default_factory=list, repr=False)
     """Inputs emitted outward by this session's providers (cross-session routing to root)."""
+    apply_result: dict[str, str] = field(default_factory=dict, repr=False)
+    """Per-file apply status: ``'written'``, ``'unchanged'``, or ``'deleted'``.
+    Populated after :func:`~repolish.hydration.apply_generated_output` runs.
+    Empty when running in check-only mode."""

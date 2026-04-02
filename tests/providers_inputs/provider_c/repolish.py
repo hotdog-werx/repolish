@@ -1,6 +1,5 @@
 from repolish.providers.models import (
     BaseContext,
-    BaseInputs,
     ProvideInputsOptions,
     Provider,
 )

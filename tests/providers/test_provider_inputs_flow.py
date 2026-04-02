@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from repolish.providers import create_providers
 from repolish.providers.models import (
     BaseContext,
-    BaseInputs,
     ProvideInputsOptions,
     Provider,
     ProviderEntry,

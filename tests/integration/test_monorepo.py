@@ -314,8 +314,7 @@ class TestDevkitProviderCommunication:
         content = root_file.read_text()
         # Collect provider message lines only (contain ': ', not section headers).
         messages = [
-            line for line in content.splitlines()
-            if line.strip() and not line.startswith('#') and ': ' in line
+            line for line in content.splitlines() if line.strip() and not line.startswith('#') and ': ' in line
         ]
 
         # Every member provider emits one message → 2 members x 2 providers = 4.
@@ -368,6 +367,7 @@ class TestDevkitProviderCommunication:
             if in_sources and line.strip():
                 source_lines.append(line.strip())
 
-        assert sorted(source_lines) == ['packages/pkg-alpha', 'packages/pkg-beta'], (
-            f'expected member paths in sources, got: {source_lines}'
-        )
+        assert sorted(source_lines) == [
+            'packages/pkg-alpha',
+            'packages/pkg-beta',
+        ], f'expected member paths in sources, got: {source_lines}'

@@ -165,7 +165,11 @@ def test_provide_inputs_dispatches_to_handler(case: ProvideInputsCase) -> None:
     inputs = call_provider_method(
         provider,
         'provide_inputs',
-        ProvideInputsOptions(own_context=typed_ctx, all_providers=[], provider_index=0),
+        ProvideInputsOptions(
+            own_context=typed_ctx,
+            all_providers=[],
+            provider_index=0,
+        ),
     )
     assert isinstance(inputs, list)
     assert len(inputs) == 1
@@ -180,7 +184,11 @@ def test_provide_inputs_no_handler_returns_empty() -> None:
     result = call_provider_method(
         provider,
         'provide_inputs',
-        ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0),
+        ProvideInputsOptions(
+            own_context=ctx,
+            all_providers=[],
+            provider_index=0,
+        ),
     )
     assert result == []
 
@@ -219,7 +227,12 @@ def test_finalize_context_dispatches_to_handler(case: FinalizeCase) -> None:
     result = call_provider_method(
         provider,
         'finalize_context',
-        FinalizeContextOptions(own_context=ctx, received_inputs=[], all_providers=[], provider_index=0),
+        FinalizeContextOptions(
+            own_context=ctx,
+            received_inputs=[],
+            all_providers=[],
+            provider_index=0,
+        ),
     )
     assert isinstance(result, MyCtx)
     assert result.value == case.expected_value
@@ -231,7 +244,12 @@ def test_finalize_context_no_handler_returns_unchanged() -> None:
     result = call_provider_method(
         provider,
         'finalize_context',
-        FinalizeContextOptions(own_context=ctx, received_inputs=[], all_providers=[], provider_index=0),
+        FinalizeContextOptions(
+            own_context=ctx,
+            received_inputs=[],
+            all_providers=[],
+            provider_index=0,
+        ),
     )
     assert isinstance(result, MyCtx)
     assert result.value == 'original'
@@ -341,7 +359,11 @@ def test_handler_instance_is_cached_across_calls() -> None:
     _CountingHandler._instances = 0
     provider = _CachingProvider()
     ctx = MyCtx(repolish=_make_ctx('root').repolish)
-    _opts = ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0)
+    _opts = ProvideInputsOptions(
+        own_context=ctx,
+        all_providers=[],
+        provider_index=0,
+    )
     call_provider_method(provider, 'provide_inputs', _opts)
     call_provider_method(provider, 'provide_inputs', _opts)
     assert _CountingHandler._instances == 1, 'handler should be instantiated only once'
@@ -351,8 +373,24 @@ def test_different_modes_get_different_handler_instances() -> None:
     provider = _HandledProvider()
     root_ctx = MyCtx(repolish=_make_ctx('root').repolish)
     member_ctx = MyCtx(repolish=_make_ctx('member').repolish)
-    call_provider_method(provider, 'provide_inputs', ProvideInputsOptions(own_context=root_ctx, all_providers=[], provider_index=0))
-    call_provider_method(provider, 'provide_inputs', ProvideInputsOptions(own_context=member_ctx, all_providers=[], provider_index=0))
+    call_provider_method(
+        provider,
+        'provide_inputs',
+        ProvideInputsOptions(
+            own_context=root_ctx,
+            all_providers=[],
+            provider_index=0,
+        ),
+    )
+    call_provider_method(
+        provider,
+        'provide_inputs',
+        ProvideInputsOptions(
+            own_context=member_ctx,
+            all_providers=[],
+            provider_index=0,
+        ),
+    )
     cache = vars(provider)['_mode_handler_instances']
     assert isinstance(cache['root'], RootHandler)
     assert isinstance(cache['member'], MemberHandler)
@@ -381,7 +419,11 @@ def test_mode_handler_wins_over_direct_override() -> None:
     inputs = call_provider_method(
         provider,
         'provide_inputs',
-        ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0),
+        ProvideInputsOptions(
+            own_context=ctx,
+            all_providers=[],
+            provider_index=0,
+        ),
     )
     assert isinstance(inputs, list)
     assert len(inputs) == 1
@@ -405,7 +447,11 @@ def test_direct_override_runs_when_no_mode_handler() -> None:
     inputs = call_provider_method(
         provider,
         'provide_inputs',
-        ProvideInputsOptions(own_context=ctx, all_providers=[], provider_index=0),
+        ProvideInputsOptions(
+            own_context=ctx,
+            all_providers=[],
+            provider_index=0,
+        ),
     )
     assert isinstance(inputs, list)
     assert len(inputs) == 1

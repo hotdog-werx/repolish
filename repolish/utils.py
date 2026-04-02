@@ -1,11 +1,14 @@
 import os
 import shlex
 import subprocess
+import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import IO
 
 from hotlog import get_logger
+from hotlog.config import get_config
+from hotlog.live import LiveLogger, live_logging
 
 logger = get_logger(__name__)
 
@@ -30,17 +33,34 @@ def _normalize_command(raw: object) -> Sequence[str]:
     raise TypeError(msg)
 
 
-def _run_argv(argv: Sequence[str], cwd: Path) -> None:
-    """Run an argv command in cwd, raise CalledProcessError on non-zero exit."""
-    logger.info('post_process_command', command=argv, cwd=str(cwd))
+def _run_argv(argv: Sequence[str], cwd: Path, *, live: LiveLogger | None = None) -> None:
+    """Run an argv command in cwd, raise CalledProcessError on non-zero exit.
+
+    Output (stdout + stderr) is captured and only printed when the current
+    verbosity level is >= 1 (-v) or the command exits non-zero.
+    """
+    if live is not None:
+        live.info('post_process_command', command=list(argv), cwd=str(cwd))
+    else:
+        logger.info('post_process_command', command=argv, cwd=str(cwd))
     # Run the tokenized argv without a shell. This avoids shell=True based
     # injection risk while keeping behavior simple and convenient for
     # developers. If you need complex shell pipelines, commit a script and
     # call it from `post_process`.
     # We intentionally run an argv list (not shell=True) and
     # accept that development tooling runs commands from repositories.
-    completed = subprocess.run(argv, check=False, cwd=str(cwd))  # noqa: S603 - see above
+    verbose = get_config().verbosity_level >= 1
+    completed = subprocess.run(  # noqa: S603 - see above
+        argv,
+        check=False,
+        cwd=str(cwd),
+        stdout=None if verbose else subprocess.PIPE,
+        stderr=None if verbose else subprocess.STDOUT,
+    )
     if completed.returncode != 0:
+        if not verbose and completed.stdout:
+            sys.stdout.buffer.write(completed.stdout)
+            sys.stdout.flush()
         logger.error(
             'post_process_failed',
             command=argv,
@@ -73,13 +93,14 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
         ValueError: when a string command contains shell metacharacters.
         subprocess.CalledProcessError: when a command exits non-zero.
     """
-    for raw in commands:
-        if raw is None:
-            continue
-        argv = _normalize_command(raw)
-        if not argv:
-            continue
-        _run_argv(argv, cwd)
+    normalised = [_normalize_command(raw) for raw in commands if raw is not None]
+    normalised = [argv for argv in normalised if argv]
+    if not normalised:
+        return
+    label = f'post-process ({len(normalised)} command{"s" if len(normalised) != 1 else ""})'
+    with live_logging(label) as live:
+        for argv in normalised:
+            _run_argv(argv, cwd, live=live)
 
 
 def ensure_dot_repolish(base_dir: Path) -> Path:

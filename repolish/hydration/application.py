@@ -1,3 +1,4 @@
+import filecmp
 import shutil
 from pathlib import Path
 
@@ -18,8 +19,11 @@ def _apply_regular_files(
     base_dir: Path,
     *,
     disable_auto_staging: bool = False,
-) -> None:
+) -> dict[str, str]:
     """Copy regular files (non-conditional, non-mapped) to base_dir.
+
+    Returns a dict mapping POSIX relative path to ``'written'`` or
+    ``'unchanged'`` for each file that was processed.
 
     Args:
         output_files: List of files in the template output.
@@ -30,6 +34,7 @@ def _apply_regular_files(
             monorepo root passes where every output file must be explicitly
             declared via ``create_file_mappings``).
     """
+    status: dict[str, str] = {}
     for out in output_files:
         rel = out.relative_to(setup_output / 'repolish')
         rel_str = rel.as_posix()
@@ -56,16 +61,21 @@ def _apply_regular_files(
             continue
 
         dest = base_dir / rel
-
         dest.parent.mkdir(parents=True, exist_ok=True)
-        logger.info(
-            'copying_file',
-            source=str(out),
-            dest=str(dest),
-            rel=rel_str,
-            _display_level=1,
-        )
-        shutil.copy2(out, dest)
+
+        if dest.exists() and filecmp.cmp(str(out), str(dest), shallow=False):
+            status[rel_str] = 'unchanged'
+        else:
+            logger.info(
+                'copying_file',
+                source=str(out),
+                dest=str(dest),
+                rel=rel_str,
+                _display_level=1,
+            )
+            shutil.copy2(out, dest)
+            status[rel_str] = 'written'
+    return status
 
 
 def _copy_mapping_file(
@@ -74,8 +84,11 @@ def _copy_mapping_file(
     setup_output: Path,
     base_dir: Path,
     create_only_files_set: set[str],
-) -> None:
-    """Copy the resolved source string into the destination path (handles logging)."""
+) -> str | None:
+    """Copy the resolved source string into the destination path (handles logging).
+
+    Returns ``'written'``, ``'unchanged'``, or ``None`` when the source is missing.
+    """
     # mapping sources are materialized with a filename prefix; attempt to
     # load the prefixed file first and fall back to the original name if the
     # prefix isn't present (compatibility with older runs).
@@ -92,7 +105,7 @@ def _copy_mapping_file(
                 source=source_str,
                 dest=dest_path,
             )
-            return
+            return None
 
     dest_file = base_dir / dest_path
     # Respect create-only semantics
@@ -104,9 +117,17 @@ def _copy_mapping_file(
             target_path=str(dest_file),
             _display_level=1,
         )
-        return
+        return 'unchanged'
 
     dest_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if dest_file.exists() and filecmp.cmp(
+        str(source_file),
+        str(dest_file),
+        shallow=False,
+    ):
+        return 'unchanged'
+
     logger.info(
         'copying_file_mapping',
         source=source_str,
@@ -115,6 +136,7 @@ def _copy_mapping_file(
         _display_level=1,
     )
     shutil.copy2(source_file, dest_file)
+    return 'written'
 
 
 def _apply_file_mappings(
@@ -122,12 +144,16 @@ def _apply_file_mappings(
     setup_output: Path,
     base_dir: Path,
     create_only_files_set: set[str],
-) -> None:
+) -> dict[str, str]:
     """Process file_mappings: copy source -> destination with rename.
+
+    Returns a dict mapping destination POSIX path to ``'written'`` or
+    ``'unchanged'`` for each mapping processed.
 
     Implementation delegates validation and copy work to small helpers to
     keep cognitive complexity low while preserving behavior.
     """
+    status: dict[str, str] = {}
     for dest_path, source_path in file_mappings.items():
         source_str = get_source_str_from_mapping(source_path)
         # When mapping has no source (e.g. TemplateMapping with None) skip
@@ -137,13 +163,16 @@ def _apply_file_mappings(
                 logger.warning('mapping_without_source', dest=dest_path)
             continue
 
-        _copy_mapping_file(
+        result = _copy_mapping_file(
             dest_path,
             source_str,
             setup_output,
             base_dir,
             create_only_files_set,
         )
+        if result is not None:
+            status[dest_path] = result
+    return status
 
 
 def apply_generated_output(
@@ -153,8 +182,15 @@ def apply_generated_output(
     *,
     paused_files: frozenset[str] = frozenset(),
     disable_auto_staging: bool = False,
-) -> None:
+) -> dict[str, str]:
     """Copy generated files into the project root and apply deletions.
+
+    Returns a dict mapping POSIX destination path to one of ``'written'``,
+    ``'unchanged'``, or ``'deleted'`` for every file that was processed.
+    Files skipped for other reasons (suppressed, paused, etc.) are not
+    included — callers can inspect
+    :func:`~repolish.commands.apply.display._file_skip_reason` to determine
+    why a file was excluded.
 
     Args:
         setup_output: Path to the rendered output directory.
@@ -165,8 +201,6 @@ def apply_generated_output(
             ``create_file_mappings`` are written.  Auto-staged files (those
             present in the provider's ``repolish/`` tree but not explicitly
             mapped) are silently skipped.  Set this for monorepo root passes.
-
-    Returns None. Exceptions during per-file operations are raised to caller.
     """
     output_files = collect_output_files(setup_output)
     mapped_sources = {s for v in providers.file_mappings.values() if (s := get_source_str_from_mapping(v)) is not None}
@@ -201,7 +235,7 @@ def apply_generated_output(
             )
 
     # Copy regular files (skip _repolish.* prefix, mapped sources, and existing create-only files)
-    _apply_regular_files(
+    file_status = _apply_regular_files(
         output_files,
         setup_output,
         skip_sources,
@@ -211,7 +245,7 @@ def apply_generated_output(
 
     # Process file_mappings: copy source -> destination with rename
     # Respect create_only_files for mapped destinations too
-    _apply_file_mappings(
+    file_status |= _apply_file_mappings(
         providers.file_mappings,
         setup_output,
         base_dir,
@@ -219,15 +253,24 @@ def apply_generated_output(
     )
 
     # Now apply deletions at the project root as the final step
-    _apply_deletions(providers.delete_files, base_dir, paused_files)
+    file_status |= _apply_deletions(
+        providers.delete_files,
+        base_dir,
+        paused_files,
+    )
+    return file_status
 
 
 def _apply_deletions(
     delete_files: list,
     base_dir: Path,
     paused_files: frozenset[str],
-) -> None:
-    """Delete provider-declared files from the project root, skipping paused ones."""
+) -> dict[str, str]:
+    """Delete provider-declared files from the project root, skipping paused ones.
+
+    Returns a dict mapping POSIX path to ``'deleted'`` for each file removed.
+    """
+    status: dict[str, str] = {}
     for rel in delete_files:
         if rel.as_posix() in paused_files:
             continue
@@ -237,3 +280,5 @@ def _apply_deletions(
                 shutil.rmtree(target)
             else:
                 target.unlink()
+            status[rel.as_posix()] = 'deleted'
+    return status

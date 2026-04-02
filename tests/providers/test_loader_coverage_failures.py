@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pydantic_core
 import pytest
-from pydantic import BaseModel
 
 from repolish.hydration.rendering import _load_and_validate_template
 from repolish.providers.exchange import (

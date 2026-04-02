@@ -41,6 +41,10 @@ class ApplyParams(BaseModel):
             'Run a normal single-pass repolish on the current directory.'
         ),
     )
+    skip_post_process: bool = Field(
+        default=False,
+        description='Skip all post_process commands defined in repolish.yaml',
+    )
 
 
 _DEFAULT_APPLY_PARAMS = ApplyParams()
@@ -61,6 +65,7 @@ def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
                 root_only=params.root_only,
                 member=params.member,
                 standalone=params.standalone,
+                skip_post_process=params.skip_post_process,
             ),
         ),
     )

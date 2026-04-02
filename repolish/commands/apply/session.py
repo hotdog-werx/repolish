@@ -5,9 +5,11 @@ from repolish.commands.apply.check import (
     finish_check,
     render_templates,
 )
-from repolish.commands.apply.debug import write_file_context_debug_files, write_provider_debug_files
+from repolish.commands.apply.debug import (
+    write_file_context_debug_files,
+    write_provider_debug_files,
+)
 from repolish.commands.apply.display import (
-    log_providers_summary,
     print_summary_tree,
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
@@ -29,7 +31,12 @@ from repolish.version import __version__
 logger = get_logger(__name__)
 
 
-def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
+def apply_session(
+    session: ResolvedSession,
+    *,
+    check_only: bool = False,
+    skip_post_process: bool = False,
+) -> int:
     """Run the apply/check pipeline for an already-resolved session.
 
     Performs staging, rendering, post-processing, then either checks for diffs
@@ -90,8 +97,6 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
         alias_to_pid,
     )
 
-    log_providers_summary(session)
-
     paused = frozenset(config.paused_files)
     if paused:
         logger.warning(
@@ -109,7 +114,8 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
 
     # Run any configured post-processing commands in the rendered output dir
     post_cwd = setup_output / 'repolish'
-    run_post_process(config.post_process, post_cwd)
+    if not skip_post_process:
+        run_post_process(config.post_process, post_cwd)
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
@@ -125,7 +131,7 @@ def apply_session(session: ResolvedSession, *, check_only: bool = False) -> int:
             ),
         )
 
-    apply_generated_output(
+    session.apply_result = apply_generated_output(
         setup_output,
         providers,
         base_dir,
@@ -147,6 +153,10 @@ def run_session(options: ApplyOptions) -> int:
     """
     logger.info('repolish_started', version=__version__)
     session = resolve_session(options)
-    rc = apply_session(session, check_only=options.check_only)
+    rc = apply_session(
+        session,
+        check_only=options.check_only,
+        skip_post_process=options.skip_post_process,
+    )
     print_summary_tree([session])
     return rc

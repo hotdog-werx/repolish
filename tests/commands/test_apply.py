@@ -139,7 +139,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     ).return_value = []
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = None
+    ).return_value = {}
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
@@ -196,7 +196,7 @@ def test_apply_warns_when_providers_not_ready(
     ).return_value = []
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = None
+    ).return_value = {}
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
@@ -249,7 +249,7 @@ def test_apply_command_runs_with_valid_provider(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = None
+    ).return_value = {}
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
@@ -376,7 +376,7 @@ def _base_mocks(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = None
+    ).return_value = {}
 
 
 def test_apply_with_template_mapping_in_file_mappings(
@@ -520,7 +520,7 @@ def test_template_sources_translated_from_alias_to_pid(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = None
+    ).return_value = {}
 
     captured: dict[str, object] = {}
 
@@ -600,7 +600,7 @@ def test_paused_files_logged_as_warning(
     ).return_value = []
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = None
+    ).return_value = {}
 
     mock_logger = mocker.patch('repolish.commands.apply.session.logger')
 

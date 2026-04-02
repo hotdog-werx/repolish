@@ -24,7 +24,12 @@ from repolish.providers.exchange import (
     finalize_provider_contexts,
     gather_received_inputs,
 )
-from repolish.providers.models import Accumulators, BaseInputs, FinalizeContextOptions, GlobalContext
+from repolish.providers.models import (
+    Accumulators,
+    BaseInputs,
+    FinalizeContextOptions,
+    GlobalContext,
+)
 from repolish.providers.pipeline import (
     _build_all_providers_list,
     _synthesize_provider_context_for_pid,

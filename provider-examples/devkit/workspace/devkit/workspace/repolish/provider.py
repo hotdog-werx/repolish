@@ -64,7 +64,7 @@ class WorkspaceProvider(
             inp.add_to_root for inp in opt.received_inputs if inp.add_to_root is not None
         ]
         opt.own_context.root_file_sources = sorted(
-            {inp.member_path for inp in opt.received_inputs if inp.member_path}
+            {inp.member_path for inp in opt.received_inputs if inp.member_path},
         )
         return opt.own_context
 
