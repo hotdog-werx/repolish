@@ -81,6 +81,12 @@ class ProviderSession(BaseModel):
 
     mode: Literal['root', 'member', 'standalone'] = 'standalone'
     member_name: str = ''
-    """Package name of this member (from its `pyproject.toml`), e.g. `pkg-alpha`."""
-    member_path: str = ''
-    """Repo-relative POSIX path to this member directory, e.g. `packages/pkg-alpha`."""
+    """Package name of this member (from its `pyproject.toml`), e.g. `pkg-alpha`.
+
+    For root mode this is `'_root'`; for standalone it is `''`.
+    """
+    member_path: str = '.'
+    """Repo-relative POSIX path to this member directory, e.g. `packages/pkg-alpha`.
+
+    For root and standalone modes this is `'.'` (the project root itself).
+    """

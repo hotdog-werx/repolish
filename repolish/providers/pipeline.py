@@ -102,8 +102,8 @@ def _synthesize_provider_context_for_pid(
     # {{ repolish.provider.version }}, {{ repolish.provider.package_name }}, etc.
     if isinstance(ctx, BaseContext):
         mono = global_context.workspace
-        member_name = ''
-        member_path = ''
+        member_name = '_root' if mono.mode == 'root' else ''
+        member_path = '.'
         if mono.mode == 'member' and mono.package_dir is not None:
             for m in mono.members:
                 if (mono.root_dir / m.path).resolve() == mono.package_dir.resolve():
