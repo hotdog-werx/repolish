@@ -33,7 +33,12 @@ def _normalize_command(raw: object) -> Sequence[str]:
     raise TypeError(msg)
 
 
-def _run_argv(argv: Sequence[str], cwd: Path, *, live: LiveLogger | None = None) -> None:
+def _run_argv(
+    argv: Sequence[str],
+    cwd: Path,
+    *,
+    live: LiveLogger | None = None,
+) -> None:
     """Run an argv command in cwd, raise CalledProcessError on non-zero exit.
 
     Output (stdout + stderr) is captured and only printed when the current

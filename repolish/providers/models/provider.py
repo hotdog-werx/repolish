@@ -124,6 +124,13 @@ class ModeHandler(Generic[ContextT, InputT]):
         """See :meth:`Provider.create_file_mappings`."""
         return {}
 
+    def promote_file_mappings(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> dict[str, str | TemplateMapping | None]:
+        """See :meth:`Provider.promote_file_mappings`."""
+        return {}
+
     def create_anchors(
         self,
         context: ContextT,  # noqa: ARG002 - unused in base implementation
@@ -440,6 +447,32 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Default implementation returns an empty list (no symlinks).
         """
         return []
+
+    def promote_file_mappings(
+        self,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Optional: return file mappings to promote to the **repo root** from a member session.
+
+        Semantics are identical to ``create_file_mappings`` but destination
+        paths are resolved relative to the monorepo root rather than the
+        member package directory.
+
+        Only meaningful when called in ``member`` mode.  repolish emits a
+        warning and ignores the return value when this method is called in
+        ``root`` or ``standalone`` mode — use ``create_file_mappings`` there.
+
+        The ``TemplateMapping.promote_conflict`` field controls what happens
+        when two members promote the same destination path:
+
+        - ``"identical"`` — fail loudly unless the rendered outputs are
+          byte-for-byte equal (default, safe for shared CI templates).
+        - ``"last_wins"`` — last member wins silently.
+        - ``"error"`` — fail immediately on any conflict.
+
+        Default implementation returns an empty mapping (no promotions).
+        """
+        return {}
 
 
 def call_provider_method(

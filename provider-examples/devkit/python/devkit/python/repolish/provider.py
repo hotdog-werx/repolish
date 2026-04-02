@@ -109,3 +109,23 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
         replacement string.  Return an empty dict if no anchors are needed.
         """
         return {}
+
+    @override
+    def promote_file_mappings(
+        self,
+        context: PythonProviderContext,
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Promote a per-member CI workflow file to the repo root.
+
+        Each member running the python provider contributes one callable
+        workflow named after the member's project, so the workspace CI can
+        trigger it without knowing the full member list up front.
+        """
+        member_name = context.repolish.provider.session.member_name or self.project_name
+        dest = f'.github/workflows/_ci-checks_{member_name}.yaml'
+        return {
+            dest: TemplateMapping(
+                source_template='_repolish._ci-checks.yaml',
+                promote_conflict='identical',
+            ),
+        }

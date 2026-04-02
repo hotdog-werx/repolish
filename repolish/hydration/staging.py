@@ -26,6 +26,8 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     # providers don't get re-linked on every apply.
     shutil.rmtree(setup_input, ignore_errors=True)
     shutil.rmtree(setup_output, ignore_errors=True)
+    promote_dir = staging / '_' / 'promote'
+    shutil.rmtree(promote_dir, ignore_errors=True)
     scratch = staging / '_'
     if scratch.exists():
         for f in scratch.glob('provider-context.*.json'):

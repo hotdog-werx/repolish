@@ -243,6 +243,34 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
                 node.append(f'  ← {source}', style='dim')
         return node
 
+    def _promoted_file_node(record: FileRecord) -> Text:
+        node = Text()
+        promo_status = session.promoted_apply_result.get(record.path) if session.promoted_apply_result else None
+        if promo_status == 'overridden_by_root':
+            node.append('↑ ', style='dim yellow')
+            node.append(record.path)
+            by = record.overridden_by or 'root'
+            node.append(f'  ⚠ overridden by {by}', style='dim yellow')
+        elif promo_status == 'unchanged':
+            node.append('~ ', style='dim cyan')
+            node.append(record.path)
+            node.append(
+                f'  ↑ promoted from {record.promoted_from}',
+                style='dim',
+            )
+        elif promo_status == 'differs':
+            node.append('↑ ', style='yellow')
+            node.append(record.path)
+            node.append(
+                f'  promoted from {record.promoted_from} (differs)',
+                style='dim yellow',
+            )
+        else:
+            node.append('↑ ', style='green')
+            node.append(record.path)
+            node.append(f'  promoted from {record.promoted_from}', style='dim')
+        return node
+
     def _symlink_node(sl: ProviderSymlink) -> Text:
         node = Text()
         node.append('\u2197 ', style='blue')
@@ -279,6 +307,11 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         branch = tree.add('[bold]Root[/bold]')
         for alias in root_aliases:
             _add_provider(branch, alias)
+        # Promoted files: shown as a sub-section under Root with ↑ markers.
+        if session.promoted_records:
+            promo_branch = branch.add('[bold]Promoted[/bold]')
+            for record in session.promoted_records:
+                promo_branch.add(_promoted_file_node(record))
     for member_name, m_aliases in member_aliases.items():
         branch = tree.add(f'[bold]Member: {member_name}[/bold]')
         for alias in m_aliases:

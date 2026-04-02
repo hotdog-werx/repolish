@@ -476,3 +476,43 @@ def collect_provider_contributions(
             call_provider_method(inst, 'create_file_mappings', own_ctx),
         )
         _process_provider_fm(provider_id, fm, accum)
+
+        # Collect promote_file_mappings only in member mode.
+        workspace_mode = own_ctx.repolish.workspace.mode
+        if workspace_mode == 'member':
+            pfm = cast(
+                'dict[str, str | TemplateMapping | None]',
+                call_provider_method(inst, 'promote_file_mappings', own_ctx),
+            )
+            if pfm:
+                # Wrap plain strings, annotate source_provider, fold into accum.
+                for dest, src in pfm.items():
+                    if src is None:
+                        continue
+                    if isinstance(src, str):
+                        accum.promoted_file_mappings[dest] = TemplateMapping(
+                            source_template=src,
+                            source_provider=provider_id,
+                        )
+                    else:
+                        accum.promoted_file_mappings[dest] = TemplateMapping(
+                            source_template=src.source_template,
+                            extra_context=src.extra_context,
+                            file_mode=src.file_mode,
+                            promote_conflict=src.promote_conflict,
+                            source_provider=provider_id,
+                        )
+        elif workspace_mode in ('root', 'standalone'):
+            # Calling promote_file_mappings in non-member mode is a mistake;
+            # warn but don't halt the run.
+            pfm_check = cast(
+                'dict[str, str | TemplateMapping | None]',
+                call_provider_method(inst, 'promote_file_mappings', own_ctx),
+            )
+            if pfm_check:
+                logger.warning(
+                    'promote_file_mappings_ignored_in_non_member_mode',
+                    provider=provider_id,
+                    mode=workspace_mode,
+                    suggestion='promote_file_mappings is only effective in member mode',
+                )

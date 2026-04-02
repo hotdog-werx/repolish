@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path  # noqa: TC003 - Pydantic model fields require runtime resolution
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -66,11 +67,20 @@ class TemplateMapping:
         tree. May be 'None' for `FileMode.DELETE` mappings.
       - extra_context: optional typed context (Pydantic models allowed).
       - file_mode: optional behavior hint for the destination path.
+      - promote_conflict: conflict resolution strategy when two member sessions
+        promote the same destination path via `promote_file_mappings`.  Only
+        relevant for entries returned from `promote_file_mappings`; ignored for
+        regular `create_file_mappings` entries.
+        - ``"identical"`` — render both and assert byte-for-byte equality;
+          fail loudly if they differ (default, safe for shared CI templates).
+        - ``"last_wins"`` — last member session processed wins silently.
+        - ``"error"`` — fail immediately on any conflict.
     """
 
     source_template: str | None
     extra_context: object | None = None
     file_mode: FileMode = FileMode.REGULAR
+    promote_conflict: Literal['identical', 'last_wins', 'error'] = 'identical'
     # provider alias that originally supplied the template.  This is not
     # something the provider needs to set; the loader populates it during
     # merging so we can track provenance of conditional/create-only/delete
@@ -92,6 +102,11 @@ class FileRecord:
     ``'standalone'``) when the file was staged from a mode overlay rather
     than the provider's base ``repolish/`` directory.  ``None`` for all
     other files.
+    `promoted_from` is the member session name that contributed this file
+    via ``promote_file_mappings``.  ``None`` for all non-promoted files.
+    `overridden_by` is the provider alias that clobbered a promoted file
+    via the root session's own ``create_file_mappings``.  ``None`` when
+    the promoted file was written without conflict.
     """
 
     path: str
@@ -99,6 +114,8 @@ class FileRecord:
     owner: str
     source: str | None = None
     overlay_dir: str | None = None
+    promoted_from: str | None = None
+    overridden_by: str | None = None
 
 
 class SessionBundle(BaseModel):
@@ -143,6 +160,13 @@ class SessionBundle(BaseModel):
     Populated during staging, before ``build_file_records`` is called."""
     file_records: list[FileRecord] = Field(default_factory=list)
     """Unified file disposition list. Empty until `build_file_records` is called."""
+    promoted_file_mappings: dict[str, str | TemplateMapping] = Field(
+        default_factory=dict,
+    )
+    """Destination path → source template or TemplateMapping for files this
+    session wants promoted to the repo root.  Collected from
+    ``promote_file_mappings()`` on member providers; empty for root and
+    standalone sessions."""
 
 
 def _records_from_template_sources(
@@ -302,3 +326,8 @@ class Accumulators:
     # destination paths that providers explicitly mapped to None — these
     # should not be auto-staged even though no file_mappings entry exists.
     suppressed_sources: set[str] = field(default_factory=set)
+    # promoted_file_mappings: collected from promote_file_mappings() on member
+    # providers; keyed by destination path relative to the repo root.
+    promoted_file_mappings: dict[str, str | TemplateMapping] = field(
+        default_factory=dict,
+    )

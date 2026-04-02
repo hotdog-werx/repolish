@@ -102,3 +102,14 @@ class ResolvedSession:
     """Per-file apply status: ``'written'``, ``'unchanged'``, or ``'deleted'``.
     Populated after :func:`~repolish.hydration.apply_generated_output` runs.
     Empty when running in check-only mode."""
+    promoted_records: list = field(default_factory=list, repr=False)
+    """FileRecord entries for files promoted from member sessions to the repo
+    root.  Populated by the coordinator after the promotion pass.  Empty for
+    member and standalone sessions."""
+    promoted_apply_result: dict[str, str] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    """Per-file apply status for promoted files: ``'written'``, ``'unchanged'``,
+    or ``'overridden_by_root'``.  Populated by the coordinator promotion pass.
+    Empty for member and standalone sessions."""

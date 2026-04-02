@@ -371,3 +371,96 @@ class TestDevkitProviderCommunication:
             'packages/pkg-alpha',
             'packages/pkg-beta',
         ], f'expected member paths in sources, got: {source_lines}'
+
+
+class TestPromoteFileMappings:
+    """Integration tests for promote_file_mappings — promoting files from members to root."""
+
+    def test_promoted_files_written_to_root(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """promote_file_mappings writes files at the repo root, not in the member dir.
+
+        The devkit-python provider's PythonMemberHandler.promote_file_mappings
+        returns a per-member CI workflow keyed by member name.  After a full
+        ``repolish apply`` run on the monorepo-devkit fixture, both pkg-alpha
+        and pkg-beta workflow files must appear at the repo root under
+        ``.github/workflows/``.
+        """
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        run_repolish(['apply'])
+
+        alpha_workflow = repo / '.github' / 'workflows' / '_ci-checks_pkg-alpha.yaml'
+        beta_workflow = repo / '.github' / 'workflows' / '_ci-checks_pkg-beta.yaml'
+
+        assert alpha_workflow.exists(), f'expected {alpha_workflow} to be promoted to root'
+        assert beta_workflow.exists(), f'expected {beta_workflow} to be promoted to root'
+
+        # Each workflow must contain the rendering of its member name.
+        assert 'pkg-alpha' in alpha_workflow.read_text()
+        assert 'pkg-beta' in beta_workflow.read_text()
+
+    def test_promoted_files_not_written_in_member_dir(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Promoted files must NOT appear inside the member package directory."""
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        run_repolish(['apply'])
+
+        # The _ci-checks.yaml template should not leak into member dirs.
+        for pkg in ('pkg-alpha', 'pkg-beta'):
+            member_dir = repo / 'packages' / pkg
+            leaked = list(member_dir.rglob('_ci-checks*.yaml'))
+            assert not leaked, f'promoted template leaked into member dir {pkg}: {leaked}'
+
+    def test_check_flag_detects_missing_promoted_files(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``repolish apply --check`` exits non-zero when promoted files are missing."""
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        # Check without applying first — promoted files are absent from disk.
+        run_repolish(['apply', '--check'], exit_code=2)
+
+    def test_check_flag_passes_after_apply(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``repolish apply --check`` exits 0 when promoted files are up to date."""
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        run_repolish(['apply'])
+        run_repolish(['apply', '--check'], exit_code=0)
+
+    def test_root_only_skips_promotion_pass(
+        self,
+        installed_providers: InstalledProviders,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``--root-only`` must not run the promotion pass (no member sessions applied)."""
+        repo = fixtures.monorepo_devkit.stage(tmp_path)
+        monkeypatch.chdir(repo)
+
+        run_repolish(['apply', '--root-only'])
+
+        # Promoted files must not appear — the promotion pass is skipped for --root-only.
+        alpha_workflow = repo / '.github' / 'workflows' / '_ci-checks_pkg-alpha.yaml'
+        assert not alpha_workflow.exists(), 'promoted file appeared despite --root-only'

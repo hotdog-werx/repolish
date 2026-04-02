@@ -58,7 +58,11 @@ def apply_session(
     sources = create_staged_template(
         setup_input,
         config,
-        mapped_sources=collect_mapped_sources(providers.file_mappings) | providers.suppressed_sources,
+        mapped_sources=(
+            collect_mapped_sources(providers.file_mappings)
+            | collect_mapped_sources(providers.promoted_file_mappings)
+            | providers.suppressed_sources
+        ),
         workspace_mode=session.global_context.workspace.mode,
     )
     # stage_templates records alias as the provider id; provider_contexts is
