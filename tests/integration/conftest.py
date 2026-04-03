@@ -53,7 +53,7 @@ def init_git_repo(
     """
 
     def _run(*args: str) -> None:
-        subprocess.run(  # noqa: S603
+        subprocess.run(  # noqa: S603 - args are hardcoded by the fixture, no user input
             list(args),
             cwd=str(path),
             check=True,
@@ -197,8 +197,8 @@ class InstalledProviders:
 def _build_wheel(source_dir: Path, out_dir: Path, package_name: str) -> Path:
     """Build a wheel and return the path to the produced .whl file."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(  # noqa: S603
-        ['uv', 'build', '--wheel', '--out-dir', str(out_dir)],  # noqa: S607
+    subprocess.run(  # noqa: S603 - hardcoded build args, no user input
+        ['uv', 'build', '--wheel', '--out-dir', str(out_dir)],  # noqa: S607 - uv is a known tool resolved from PATH
         cwd=str(source_dir),
         check=True,
     )
@@ -209,8 +209,8 @@ def _build_wheel(source_dir: Path, out_dir: Path, package_name: str) -> Path:
 
 def _install_wheel(wheel: Path) -> None:
     """Install a wheel into the running Python, skipping its dependencies."""
-    subprocess.run(  # noqa: S603
-        [  # noqa: S607
+    subprocess.run(  # noqa: S603 - hardcoded install args, no user input
+        [  # noqa: S607 - uv is a known tool resolved from PATH
             'uv',
             'pip',
             'install',
@@ -225,8 +225,8 @@ def _install_wheel(wheel: Path) -> None:
 
 def _uninstall_package(dist_name: str) -> None:
     """Uninstall a distribution from the running Python."""
-    subprocess.run(  # noqa: S603
-        ['uv', 'pip', 'uninstall', '--python', sys.executable, dist_name],  # noqa: S607
+    subprocess.run(  # noqa: S603 - hardcoded uninstall args, no user input
+        ['uv', 'pip', 'uninstall', '--python', sys.executable, dist_name],  # noqa: S607 - uv is a known tool resolved from PATH
         check=True,
     )
 

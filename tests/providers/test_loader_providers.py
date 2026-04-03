@@ -9,8 +9,10 @@ import pytest
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
+from repolish import BaseContext
 from repolish import providers as loader_mod
-from repolish.providers import SessionBundle, create_providers
+from repolish.providers import create_providers
+from repolish.providers.models import TemplateMapping
 from repolish.providers.module import _find_provider_class as _find_provider_cls
 from tests.support import write_module
 
@@ -137,14 +139,14 @@ class ProviderCase:
 )
 def test_create_providers(tmp_path: Path, case: ProviderCase):
     # Create provider directories with repolish.py files
-    dirs: list[str] = []
+    dirs: list[str | tuple[str, str]] = []
     for i, src in enumerate(case.providers):
         d = tmp_path / f'prov{i}'
         d.mkdir()
         (d / 'repolish.py').write_text(src)
         dirs.append(str(d))
 
-    providers: SessionBundle = create_providers(dirs)  # type: ignore
+    providers = create_providers(dirs)
 
     assert providers.anchors == case.expected_anchors
 
@@ -204,8 +206,10 @@ def test_multiple_provider_classes_with_all(tmp_path: Path):
     providers = create_providers([str(prov)])  # should succeed using A
     pid = next(iter(providers.provider_contexts.keys()))
     ctx = providers.provider_contexts[pid]
-    assert hasattr(ctx, 'which')
-    assert ctx.which == 'A'
+    assert isinstance(ctx, BaseContext)
+    serialized = ctx.model_dump()
+    assert 'which' in serialized
+    assert serialized['which'] == 'A'
 
 
 def test_multiple_providers_all_conflict(tmp_path: Path):
@@ -274,7 +278,7 @@ class Checker(Provider[Ctx, BaseInputs]):
 
 def test_global_context_in_class_based_provider(
     tmp_path: Path,
-    monkeypatch,  # noqa: ANN001
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Class-based providers receive a typed `repolish` field.
 
@@ -307,7 +311,6 @@ class P(Provider[Ctx, BaseModel]):
     pid = next(iter(providers.provider_contexts.keys()))
 
     ctx = providers.provider_contexts[pid]
-    assert hasattr(ctx, 'repolish')
     assert ctx.repolish.repo.owner == 'x'
     assert ctx.repolish.repo.name == 'y'
 
@@ -380,7 +383,7 @@ def test_create_providers_records_provider_contexts(tmp_path: Path):
         """,
     )
 
-    dirs = []
+    dirs: list[str | tuple[str, str]] = []
     for i, src in enumerate((src_a, src_b)):
         d = tmp_path / f'prov{i}'
         d.mkdir()
@@ -682,7 +685,7 @@ class P(Provider[Ctx, BaseInputs]):
 )
 def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
     # Reuse the same test runner but with ProviderCase instances
-    dirs: list[str] = []
+    dirs: list[str | tuple[str, str]] = []
     for i, src in enumerate(case.providers):
         d = tmp_path / f'prov{i}'
         d.mkdir()
@@ -705,10 +708,10 @@ def test_create_providers_edge_cases(tmp_path: Path, case: ProviderCase):
 
     if case.name in raises:
         with pytest.raises(Exception):  # noqa: B017, PT011 - broad exception to verify fail-fast
-            create_providers(dirs)  # type: ignore
+            _ = create_providers(dirs)
         return
 
-    providers = create_providers(dirs)  # type: ignore
+    providers = create_providers(dirs)
 
     assert providers.anchors == case.expected_anchors
     got_delete = {Path(p) for p in providers.delete_files}
@@ -737,7 +740,11 @@ def test_loader_instantiates_class_based_provider(tmp_path: Path):
 
     providers = create_providers([str(provider_dir)])
     pid = next(iter(providers.provider_contexts.keys()))
-    assert providers.provider_contexts[pid].name == 'created-by-class'  # type: ignore
+    ctx = providers.provider_contexts[pid]
+    assert isinstance(ctx, BaseContext)
+    serialized_ctx = ctx.model_dump()
+    assert 'name' in serialized_ctx
+    assert serialized_ctx['name'] == 'created-by-class'
 
 
 def test_file_mappings_merge_across_providers(tmp_path: Path) -> None:
@@ -777,8 +784,12 @@ class P(Provider[Ctx, BaseInputs]):
     providers = create_providers([str(template_a), str(template_b)])
 
     assert set(providers.file_mappings) == {'file-a.yml', 'file-b.yml'}
-    assert providers.file_mappings['file-a.yml'].source_template == '_repolish.a.yml'  # type: ignore
-    assert providers.file_mappings['file-b.yml'].source_template == '_repolish.b.yml'  # type: ignore
+    file_a_mapping = providers.file_mappings['file-a.yml']
+    file_b_mapping = providers.file_mappings['file-b.yml']
+    assert isinstance(file_a_mapping, TemplateMapping)
+    assert isinstance(file_b_mapping, TemplateMapping)
+    assert file_a_mapping.source_template == '_repolish.a.yml'
+    assert file_b_mapping.source_template == '_repolish.b.yml'
 
 
 def test_file_mappings_later_provider_overrides_earlier(tmp_path: Path) -> None:
@@ -818,7 +829,9 @@ class P(Provider[Ctx, BaseInputs]):
     providers = create_providers([str(template_a), str(template_b)])
 
     assert list(providers.file_mappings) == ['config.yml']
-    assert providers.file_mappings['config.yml'].source_template == '_repolish.option-b.yml'  # type: ignore
+    config_mapping = providers.file_mappings['config.yml']
+    assert isinstance(config_mapping, TemplateMapping)
+    assert config_mapping.source_template == '_repolish.option-b.yml'
 
 
 def test_none_mapped_entry_populates_suppressed_sources(tmp_path: Path) -> None:

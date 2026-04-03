@@ -12,13 +12,16 @@ These models are the input/output contracts for the provider pipeline:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from repolish.providers.models.context import (
     BaseContext,
     BaseInputs,
     GlobalContext,
 )
-from repolish.providers.models.provider import ProviderEntry
+
+if TYPE_CHECKING:
+    from repolish.providers.models.provider import ProviderEntry
 
 
 @dataclass(frozen=True)

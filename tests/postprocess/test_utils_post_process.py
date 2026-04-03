@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from hotlog import configure_logging, resolve_verbosity
+from pytest_mock import MockerFixture
 
 from repolish import utils
 
@@ -38,7 +39,10 @@ def test__run_argv_failure(tmp_path: Path):
         utils._run_argv(argv, tmp_path)
 
 
-def test__run_argv_output_suppressed_on_success(tmp_path: Path, mocker):
+def test__run_argv_output_suppressed_on_success(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
     """By default (verbosity 0) subprocess stdout is captured (not inherited)."""
     configure_logging(verbosity=resolve_verbosity(verbose=0))
     mock_run = mocker.patch('repolish.utils.subprocess.run')
@@ -50,7 +54,10 @@ def test__run_argv_output_suppressed_on_success(tmp_path: Path, mocker):
     assert kwargs['stderr'] == subprocess.STDOUT
 
 
-def test__run_argv_output_shown_on_failure(tmp_path: Path, mocker):
+def test__run_argv_output_shown_on_failure(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
     """On failure the captured output is flushed to stdout regardless of verbosity."""
     configure_logging(verbosity=resolve_verbosity(verbose=0))
     fake_output = b'error details\n'
@@ -67,7 +74,10 @@ def test__run_argv_output_shown_on_failure(tmp_path: Path, mocker):
     mock_write.assert_any_call(fake_output)
 
 
-def test__run_argv_output_inherited_when_verbose(tmp_path: Path, mocker):
+def test__run_argv_output_inherited_when_verbose(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
     """With verbosity >= 1 subprocess stdout is inherited (stdout=None)."""
     configure_logging(verbosity=resolve_verbosity(verbose=1))
     try:

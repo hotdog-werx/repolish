@@ -8,6 +8,7 @@ from repolish.commands.apply.debug import _file_context_slug, debug_file_slug
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console
+from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
     FileMode,
@@ -28,6 +29,35 @@ _MODE_STYLE: dict[str, str] = {
     'delete': 'red',
     'keep': 'cyan',
 }
+
+# (prefix, prefix_style) keyed by apply_result status; default → written
+_FILE_STATUS_PREFIX: dict[str | None, tuple[str, str]] = {
+    'unchanged': ('~ ', 'dim cyan'),
+    'deleted': ('✗ ', 'dim red'),
+}
+
+# (prefix, prefix_style, annotation_fmt, annotation_style) keyed by promoted status
+_PROMO_STATUS_FMT: dict[str | None, tuple[str, str, str, str]] = {
+    'overridden_by_root': (
+        '↑ ',
+        'dim yellow',
+        '  ⚠ overridden by {owner}',
+        'dim yellow',
+    ),
+    'unchanged': ('~ ', 'dim cyan', '  ↑ promoted from {from_}', 'dim'),
+    'differs': (
+        '↑ ',
+        'yellow',
+        '  promoted from {from_} (differs)',
+        'dim yellow',
+    ),
+}
+_PROMO_DEFAULT_FMT: tuple[str, str, str, str] = (
+    '↑ ',
+    'green',
+    '  promoted from {from_}',
+    'dim',
+)
 
 
 def note_running_from_member(config_dir: Path, root: Path, rel: Path) -> None:
@@ -74,8 +104,12 @@ def _role_label(ctx: object) -> str:
                 return 'root'
             if info.mode == 'member' and info.member_name:
                 return f'member: {info.member_name}'
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            'role_label_exception',
+            error=str(exc),
+            ctx_type=type(ctx).__name__,
+        )
     return 'standalone'
 
 
@@ -142,15 +176,146 @@ def _file_skip_reason(
         return 'suppressed'
     if record.path in frozenset(session.config.paused_files):
         return 'paused'
-    if session.global_context.workspace.mode == 'root':
-        if record.mode not in (
+    if (
+        session.global_context.workspace.mode == 'root'
+        and record.mode
+        not in (
             FileMode.DELETE,
             FileMode.KEEP,
             FileMode.SUPPRESS,
-        ):
-            if record.path not in session.providers.file_mappings:
-                return 'not in create_file_mappings (root mode)'
+        )
+        and record.path not in session.providers.file_mappings
+    ):
+        return 'not in create_file_mappings (root mode)'
     return None
+
+
+def _symlink_node(sl: ProviderSymlink) -> Text:
+    node = Text()
+    node.append('↗ ', style='blue')
+    node.append(str(sl.target))
+    node.append(f'  → {sl.source}', style='dim')
+    return node
+
+
+def _promoted_file_node(
+    record: FileRecord,
+    promoted_apply_result: dict[str, str],
+) -> Text:
+    node = Text()
+    promo_status = promoted_apply_result.get(record.path) if promoted_apply_result else None
+    prefix, pfx_style, annot_fmt, annot_style = _PROMO_STATUS_FMT.get(
+        promo_status,
+        _PROMO_DEFAULT_FMT,
+    )
+    node.append(prefix, style=pfx_style)
+    node.append(record.path)
+    node.append(
+        annot_fmt.format(
+            owner=record.overridden_by or 'root',
+            from_=record.promoted_from,
+        ),
+        style=annot_style,
+    )
+    return node
+
+
+def _file_node(
+    record: FileRecord,
+    session: ResolvedSession,
+    debug_dir: Path,
+) -> Text:
+    reason = _file_skip_reason(record, session)
+    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
+    node = Text()
+    if reason:
+        node.append('✗ ', style='yellow')
+        node.append(record.path)
+        node.append(f'  {reason}', style='dim yellow')
+        return node
+    file_status = session.apply_result.get(record.path) if session.apply_result else None
+    prefix, pfx_style = _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
+    node.append(prefix, style=pfx_style)
+    link = f'link file://{file_ctx_file.absolute()}' if record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY) else ''
+    node.append(record.path, style=link)
+    mode_val = record.mode.value
+    if mode_val not in ('regular', 'delete'):
+        style = _MODE_STYLE.get(mode_val, '')
+        node.append(f'  {mode_val}', style=f'dim {style}'.strip())
+    source = record.source if record.source and record.source != record.path else ''
+    if not source and record.overlay_dir:
+        source = f'{record.overlay_dir}/'
+    if source:
+        node.append(f'  ← {source}', style='dim')
+    return node
+
+
+def _provider_label(
+    alias: str,
+    records: list[FileRecord],
+    syms: list[ProviderSymlink],
+    session: ResolvedSession,
+    debug_dir: Path,
+) -> Text:
+    pid = session.alias_to_pid.get(alias)
+    ctx = session.providers.provider_contexts.get(pid) if pid else None
+    slug = debug_file_slug(ctx, alias)
+    debug_file = debug_dir / f'provider-context.{slug}.json'
+    label = Text()
+    label.append(alias, style=f'bold link file://{debug_file.absolute()}')
+    if ctx is not None and isinstance(ctx, BaseContext):
+        label.append(f'@{ctx.repolish.provider.version}', style='dim')
+    if session.apply_result:
+        record_paths = {r.path for r in records}
+        written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
+        unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
+        deleted = sum(1 for p in record_paths if session.apply_result.get(p) == 'deleted')
+        skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+        stat_items = [
+            (written, '[green]{n} written[/green]'),
+            (unchanged, '[dim]{n} unchanged[/dim]'),
+            (deleted, '[dim red]{n} deleted[/dim red]'),
+            (skipped, '[yellow]{n} skipped[/yellow]'),
+            (len(syms), '[blue]{n} symlinks[/blue]'),
+        ]
+        parts = [fmt.format(n=n) for n, fmt in stat_items if n]
+        if parts:
+            label.append('  ')
+            for i, part in enumerate(parts):
+                if i:
+                    label.append(' · ', style='dim')
+                label.append_text(Text.from_markup(part))
+    else:
+        skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+        total = len(records) + len(syms)
+        applied = total - skipped
+        if skipped:
+            label.append(
+                f'  [{applied} applied, {skipped} not applied]',
+                style='dim yellow',
+            )
+        else:
+            noun = 'file' if total == 1 else 'files'
+            label.append(f'  [{total} {noun}]', style='dim')
+    return label
+
+
+def _add_provider_branch(
+    group_branch: Tree,
+    alias: str,
+    records_by_owner: dict[str, list[FileRecord]],
+    session: ResolvedSession,
+    debug_dir: Path,
+) -> None:
+    records = records_by_owner.get(alias, [])
+    syms = session.resolved_symlinks.get(alias, [])
+    provider_node = group_branch.add(
+        _provider_label(alias, records, syms, session, debug_dir),
+    )
+    for record in records:
+        provider_node.add(_file_node(record, session, debug_dir))
+    for sl in syms:
+        provider_node.add(_symlink_node(sl))
 
 
 def _build_summary_tree(session: ResolvedSession) -> Tree:
@@ -159,124 +324,6 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
     records_by_owner: dict[str, list[FileRecord]] = {}
     for record in session.providers.file_records:
         records_by_owner.setdefault(record.owner, []).append(record)
-
-    def _provider_label(
-        alias: str,
-        records: list[FileRecord],
-        syms: list[ProviderSymlink],
-    ) -> Text:
-        pid = session.alias_to_pid.get(alias)
-        ctx = session.providers.provider_contexts.get(pid) if pid else None
-        slug = debug_file_slug(ctx, alias)
-        debug_file = debug_dir / f'provider-context.{slug}.json'
-        label = Text()
-        label.append(alias, style=f'bold link file://{debug_file.absolute()}')
-        if ctx is not None and isinstance(ctx, BaseContext):
-            label.append(f'@{ctx.repolish.provider.version}', style='dim')
-        if session.apply_result:
-            record_paths = {r.path for r in records}
-            written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
-            unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
-            deleted = sum(1 for p in record_paths if session.apply_result.get(p) == 'deleted')
-            skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
-            parts: list[str] = []
-            if written:
-                parts.append(f'[green]{written} written[/green]')
-            if unchanged:
-                parts.append(f'[dim]{unchanged} unchanged[/dim]')
-            if deleted:
-                parts.append(f'[dim red]{deleted} deleted[/dim red]')
-            if skipped:
-                parts.append(f'[yellow]{skipped} skipped[/yellow]')
-            if syms:
-                parts.append(f'[blue]{len(syms)} symlinks[/blue]')
-            if parts:
-                label.append('  ')
-                for i, part in enumerate(parts):
-                    if i:
-                        label.append(' · ', style='dim')
-                    label.append_text(Text.from_markup(part))
-        else:
-            skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
-            total = len(records) + len(syms)
-            applied = total - skipped
-            if skipped:
-                label.append(
-                    f'  [{applied} applied, {skipped} not applied]',
-                    style='dim yellow',
-                )
-            else:
-                noun = 'file' if total == 1 else 'files'
-                label.append(f'  [{total} {noun}]', style='dim')
-        return label
-
-    def _file_node(record: FileRecord) -> Text:
-        reason = _file_skip_reason(record, session)
-        file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
-        node = Text()
-        if reason:
-            node.append('✗ ', style='yellow')
-            node.append(record.path)
-            node.append(f'  {reason}', style='dim yellow')
-        else:
-            file_status = session.apply_result.get(record.path) if session.apply_result else None
-            if file_status == 'unchanged':
-                node.append('~ ', style='dim cyan')
-            elif file_status == 'deleted':
-                node.append('✗ ', style='dim red')
-            else:
-                node.append('✓ ', style='green')
-            link = (
-                f'link file://{file_ctx_file.absolute()}'
-                if record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)
-                else ''
-            )
-            node.append(record.path, style=link)
-            mode_val = record.mode.value
-            if mode_val not in ('regular', 'delete'):
-                style = _MODE_STYLE.get(mode_val, '')
-                node.append(f'  {mode_val}', style=f'dim {style}'.strip())
-            source = record.source if record.source and record.source != record.path else ''
-            if not source and record.overlay_dir:
-                source = f'{record.overlay_dir}/'
-            if source:
-                node.append(f'  ← {source}', style='dim')
-        return node
-
-    def _promoted_file_node(record: FileRecord) -> Text:
-        node = Text()
-        promo_status = session.promoted_apply_result.get(record.path) if session.promoted_apply_result else None
-        if promo_status == 'overridden_by_root':
-            node.append('↑ ', style='dim yellow')
-            node.append(record.path)
-            by = record.overridden_by or 'root'
-            node.append(f'  ⚠ overridden by {by}', style='dim yellow')
-        elif promo_status == 'unchanged':
-            node.append('~ ', style='dim cyan')
-            node.append(record.path)
-            node.append(
-                f'  ↑ promoted from {record.promoted_from}',
-                style='dim',
-            )
-        elif promo_status == 'differs':
-            node.append('↑ ', style='yellow')
-            node.append(record.path)
-            node.append(
-                f'  promoted from {record.promoted_from} (differs)',
-                style='dim yellow',
-            )
-        else:
-            node.append('↑ ', style='green')
-            node.append(record.path)
-            node.append(f'  promoted from {record.promoted_from}', style='dim')
-        return node
-
-    def _symlink_node(sl: ProviderSymlink) -> Text:
-        node = Text()
-        node.append('\u2197 ', style='blue')
-        node.append(str(sl.target))
-        node.append(f'  \u2192 {sl.source}', style='dim')
-        return node
 
     root_aliases: list[str] = []
     member_aliases: dict[str, list[str]] = {}
@@ -293,33 +340,43 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         else:
             standalone_aliases.append(alias)
 
-    def _add_provider(group_branch: Tree, alias: str) -> None:
-        records = records_by_owner.get(alias, [])
-        syms = session.resolved_symlinks.get(alias, [])
-        provider_node = group_branch.add(_provider_label(alias, records, syms))
-        for record in records:
-            provider_node.add(_file_node(record))
-        for sl in syms:
-            provider_node.add(_symlink_node(sl))
-
     tree = Tree('[bold]apply summary[/bold]')
     if root_aliases:
         branch = tree.add('[bold]Root[/bold]')
         for alias in root_aliases:
-            _add_provider(branch, alias)
-        # Promoted files: shown as a sub-section under Root with ↑ markers.
+            _add_provider_branch(
+                branch,
+                alias,
+                records_by_owner,
+                session,
+                debug_dir,
+            )
         if session.promoted_records:
             promo_branch = branch.add('[bold]Promoted[/bold]')
             for record in session.promoted_records:
-                promo_branch.add(_promoted_file_node(record))
+                promo_branch.add(
+                    _promoted_file_node(record, session.promoted_apply_result),
+                )
     for member_name, m_aliases in member_aliases.items():
         branch = tree.add(f'[bold]Member: {member_name}[/bold]')
         for alias in m_aliases:
-            _add_provider(branch, alias)
+            _add_provider_branch(
+                branch,
+                alias,
+                records_by_owner,
+                session,
+                debug_dir,
+            )
     if standalone_aliases:
         branch = tree.add('[bold]Standalone[/bold]')
         for alias in standalone_aliases:
-            _add_provider(branch, alias)
+            _add_provider_branch(
+                branch,
+                alias,
+                records_by_owner,
+                session,
+                debug_dir,
+            )
     return tree
 
 

@@ -1,12 +1,16 @@
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
 from pydantic import BaseModel
 
 from repolish.providers import FileMode, TemplateMapping, create_providers
 
 
-def test_file_mappings_receive_merged_context(tmp_path: Path, monkeypatch):  # noqa: ANN001
+def test_file_mappings_receive_merged_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     """A provider may use the merged context when creating file mappings.
 
     This test creates a provider that sets `readme_ext` via `create_context`

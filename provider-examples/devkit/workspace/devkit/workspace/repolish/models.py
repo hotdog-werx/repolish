@@ -1,11 +1,13 @@
+from pydantic import Field
+
 from repolish import BaseContext, BaseInputs
 
 
 class WorkspaceProviderContext(BaseContext):
     """Context for the WorkspaceProvider."""
 
-    root_file_messages: list[str] = []
-    root_file_sources: list[str] = []
+    root_file_messages: list[str] = Field(default_factory=list)
+    root_file_sources: list[str] = Field(default_factory=list)
     """Repo-relative member paths that contributed inputs, in sorted order."""
 
 

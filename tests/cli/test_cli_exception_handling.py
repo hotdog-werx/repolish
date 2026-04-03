@@ -73,7 +73,7 @@ def test_cli_exception_handling(
 
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(Exception) as exc_info:  # noqa: PT011
+    with pytest.raises(Exception) as exc_info:  # noqa: PT011 - exception type varies per parametrized case; checking type here would duplicate the parametrize data
         runner.invoke(app, args, catch_exceptions=False)
 
     if case.error_has:

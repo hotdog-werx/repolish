@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
 
@@ -25,11 +26,13 @@ from repolish import (
     call_provider_method,
 )
 from repolish.providers.models.context import ProviderInfo, RepolishContext
-from repolish.providers.models.files import TemplateMapping
 from repolish.providers.models.workspace import (
     ProviderSession,
     WorkspaceContext,
 )
+
+if TYPE_CHECKING:
+    from repolish.providers.models.files import TemplateMapping
 
 # ---------------------------------------------------------------------------
 # Helpers: build a BaseContext whose repolish.workspace.mode is set
@@ -37,10 +40,8 @@ from repolish.providers.models.workspace import (
 
 
 def _make_ctx(mode: str) -> BaseContext:
-    from typing import Literal, cast
-
     _mode = cast('Literal["root", "member", "standalone"]', mode)
-    workspace = WorkspaceContext(mode=_mode, root_dir=Path('/tmp'))
+    workspace = WorkspaceContext(mode=_mode, root_dir=Path('/tmp'))  # noqa: S108 - test-only path value; no files are created here
     session = ProviderSession(mode=_mode)
     provider_info = ProviderInfo(session=session)
     rc = RepolishContext(workspace=workspace, provider=provider_info)
@@ -79,10 +80,13 @@ class RootHandler(ModeHandler[MyCtx, MyInputs]):
         opt.own_context.value = 'finalized-by-root'
         return opt.own_context
 
-    def create_file_mappings(self, context):
+    def create_file_mappings(
+        self,
+        context: MyCtx,
+    ) -> dict[str, str | TemplateMapping | None]:
         return {'root.md': 'root.md'}
 
-    def create_anchors(self, context):
+    def create_anchors(self, context: MyCtx) -> dict[str, str]:
         return {'ROOT': 'yes'}
 
 
@@ -100,10 +104,13 @@ class MemberHandler(ModeHandler[MyCtx, MyInputs]):
         opt.own_context.value = 'finalized-by-member'
         return opt.own_context
 
-    def create_file_mappings(self, context):
+    def create_file_mappings(
+        self,
+        context: MyCtx,
+    ) -> dict[str, str | TemplateMapping | None]:
         return {'member.md': 'member.md'}
 
-    def create_anchors(self, context):
+    def create_anchors(self, context: MyCtx) -> dict[str, str]:
         return {'MEMBER': 'yes'}
 
 
@@ -501,8 +508,6 @@ def test_mode_handler_base_defaults() -> None:
 
 def test_mode_handler_receives_provider_attributes() -> None:
     """Handler instantiated via call_provider_method gets provider attrs injected."""
-    from pathlib import Path
-
     captured: dict[str, object] = {}
 
     class _CapturingHandler(ModeHandler[MyCtx, MyInputs]):

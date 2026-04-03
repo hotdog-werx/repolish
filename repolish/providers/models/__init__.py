@@ -85,6 +85,7 @@ __all__ = [
     'TemplateMapping',
     'WorkspaceContext',
     'build_file_records',
+    'call_provider_method',
     'get_global_context',
     'get_provider_context',
     'get_provider_inputs',

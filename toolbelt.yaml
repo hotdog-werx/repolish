@@ -6,3 +6,4 @@ variables:
   TB_COVERAGE_VERBOSE: vv
   TB_PROJECT_SOURCE: repolish
   TB_DPRINT_CONFIG: dprint.json
+  TB_RUFF_CONFIG: ./ruff.toml

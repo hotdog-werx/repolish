@@ -29,6 +29,7 @@ from repolish.providers.models import (
     BaseInputs,
     FinalizeContextOptions,
     GlobalContext,
+    TemplateMapping,
 )
 from repolish.providers.pipeline import (
     _build_all_providers_list,
@@ -42,14 +43,14 @@ class SharedMsg(BaseModel):
 
 
 # ---- helpers and minimal provider implementations ------------------------
-class DummyProvider(_ProviderBase):
+class DummyProvider(_ProviderBase[BaseContext, BaseInputs]):
     """Simplest concrete provider used in helpers."""
 
     def __init__(self, name: str = 'dummy') -> None:
         self._name = name
 
-    def create_context(self) -> BaseModel | dict:
-        return {}
+    def create_context(self) -> BaseContext:
+        return BaseContext()
 
 
 def test_process_file_mappings_skips_none_values() -> None:
@@ -57,7 +58,9 @@ def test_process_file_mappings_skips_none_values() -> None:
     acc2 = Accumulators()
     _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc2)
     assert list(acc2.merged_file_mappings) == ['b.txt']
-    assert acc2.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore
+    mapping = acc2.merged_file_mappings['b.txt']
+    assert isinstance(mapping, TemplateMapping)
+    assert mapping.source_template == 'tmpl'
 
 
 # ---- orchestrator helpers --------------------------------------------------
@@ -68,7 +71,9 @@ def test_process_provider_fm_skips_none_values() -> None:
     acc = Accumulators()
     _process_provider_fm('m', {'a.txt': None, 'b.txt': 'tmpl'}, acc)
     assert list(acc.merged_file_mappings) == ['b.txt']
-    assert acc.merged_file_mappings['b.txt'].source_template == 'tmpl'  # type: ignore
+    mapping = acc.merged_file_mappings['b.txt']
+    assert isinstance(mapping, TemplateMapping)
+    assert mapping.source_template == 'tmpl'
 
 
 def test_process_provider_fm_none_populates_suppressed_sources() -> None:
@@ -82,7 +87,9 @@ def test_process_provider_fm_none_populates_suppressed_sources() -> None:
     assert '.github/workflows/_ci-checks.yaml' in acc.suppressed_sources
     assert '.github/workflows/_ci-checks.yaml' not in acc.merged_file_mappings
     assert list(acc.merged_file_mappings) == ['other.txt']
-    assert acc.merged_file_mappings['other.txt'].source_template == 'tmpl'  # type: ignore
+    mapping = acc.merged_file_mappings['other.txt']
+    assert isinstance(mapping, TemplateMapping)
+    assert mapping.source_template == 'tmpl'
 
 
 def test_collect_provider_contributions_skips_missing_instance():
@@ -136,7 +143,7 @@ def test_build_all_providers_list_swallows_broken_schema(
     """
 
     class BrokenProvider(DummyProvider):
-        def get_inputs_schema(self) -> type[BaseModel]:
+        def get_inputs_schema(self) -> type[BaseInputs]:
             msg = 'broken get_inputs_schema'
             raise RuntimeError(msg)
 
@@ -511,9 +518,9 @@ def test_finalize_provider_contexts_edge_cases() -> None:
 
     # provider with no inputs still has finalize_context executed
     class Setter(DummyProvider):
-        def finalize_context(  # type: ignore
+        def finalize_context(
             self,
-            _opt: FinalizeContextOptions[BaseContext, BaseInputs],
+            opt: FinalizeContextOptions[BaseContext, BaseInputs],
         ) -> BaseContext:
             return cast('BaseContext', {'called': True})
 

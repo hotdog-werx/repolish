@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
 from repolish.misc import ctx_to_dict
+from repolish.providers._log import logger
 from repolish.providers.models import SessionBundle, TemplateMapping
 
 
@@ -59,8 +60,13 @@ def debug_file_slug(ctx: object, alias: str) -> str:
             else:
                 prefix = 'standalone'
             return f'{prefix}.{alias}'
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            'debug_file_slug_exception',
+            error=str(exc),
+            ctx_type=type(ctx).__name__,
+            alias=alias,
+        )
     return f'standalone.{alias}'
 
 
@@ -110,7 +116,6 @@ def _file_context_slug(dest_path: str) -> str:
 
 def write_file_context_debug_files(
     base_dir: Path,
-    config: RepolishConfig,
     providers: SessionBundle,
     alias_to_pid: dict[str, str],
 ) -> None:

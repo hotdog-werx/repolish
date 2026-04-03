@@ -1,5 +1,5 @@
 """End-to-end integration tests for monorepo support."""
-# ruff: noqa: ARG002  # installed_providers fixture is used for its side-effects
+# installed_providers fixture is used for its side-effects
 
 from __future__ import annotations
 

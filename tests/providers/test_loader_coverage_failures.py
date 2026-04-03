@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import pydantic_core
 import pytest
@@ -57,8 +58,9 @@ def test_validate_raw_inputs_coerces_compatible_base_inputs() -> None:
     instance = Target(x=7)
     result = _validate_raw_inputs([instance], Target)
     assert len(result) == 1
-    assert result[0] is instance  # passed through unchanged, not re-validated
-    assert result[0].x == 7
+    result_instance = result[0]
+    assert result_instance is instance  # passed through unchanged, not re-validated
+    assert result_instance.x == 7
 
 
 def test_retrieve_instance_inputs_raises_on_collect_error() -> None:
@@ -83,17 +85,18 @@ def test_finalize_provider_contexts_error_path() -> None:
         def create_context(self) -> BaseContext:
             return BaseContext()
 
-        def finalize_context(  # type: ignore
+        def finalize_context(
             self,
-            _opt: FinalizeContextOptions[BaseContext, BaseInputs],
+            opt: FinalizeContextOptions[BaseContext, BaseInputs],
         ) -> BaseContext:
             raise RuntimeError
 
+    provider_contexts = cast('dict[str, list[BaseInputs]]', {'p': [1]})
     with pytest.raises(RuntimeError):
         finalize_provider_contexts(
             [('p', {})],
             [F()],
-            {'p': [1]},  # type: ignore
+            provider_contexts,
             {},
             [],
         )

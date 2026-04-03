@@ -208,7 +208,7 @@ def test_basecontext_includes_repolish_field():
 def test_get_global_context_falls_back_when_git_raises() -> None:
     # get_global_context is best-effort: if git.get_owner_repo raises, owner
     # and name should fall back to 'Unknown' rather than propagating.
-    from repolish.providers.models import get_global_context  # noqa: PLC0415
+    from repolish.providers.models import get_global_context  # noqa: PLC0415 - imported inside test for local scoping
 
     with mock.patch(
         'repolish.providers.models.context._get_owner_repo',

@@ -445,6 +445,54 @@ def _process_provider_fm(
         _apply_annotated_tm(dest, annotated, provider_id, accum)
 
 
+def _collect_promoted_fm(
+    provider_id: str,
+    pfm: dict[str, str | TemplateMapping | None],
+    accum: Accumulators,
+) -> None:
+    """Fold a provider's promote_file_mappings dict into ``accum.promoted_file_mappings``."""
+    for dest, src in pfm.items():
+        if src is None:
+            continue
+        if isinstance(src, str):
+            accum.promoted_file_mappings[dest] = TemplateMapping(
+                source_template=src,
+                source_provider=provider_id,
+            )
+        else:
+            accum.promoted_file_mappings[dest] = TemplateMapping(
+                source_template=src.source_template,
+                extra_context=src.extra_context,
+                file_mode=src.file_mode,
+                promote_conflict=src.promote_conflict,
+                source_provider=provider_id,
+            )
+
+
+def _handle_promote_file_mappings(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Call promote_file_mappings and route the result based on workspace mode."""
+    workspace_mode = own_ctx.repolish.workspace.mode
+    pfm = cast(
+        'dict[str, str | TemplateMapping | None]',
+        call_provider_method(inst, 'promote_file_mappings', own_ctx),
+    )
+    if workspace_mode == 'member':
+        if pfm:
+            _collect_promoted_fm(provider_id, pfm, accum)
+    elif pfm:
+        logger.warning(
+            'promote_file_mappings_ignored_in_non_member_mode',
+            provider=provider_id,
+            mode=workspace_mode,
+            suggestion='promote_file_mappings is only effective in member mode',
+        )
+
+
 def collect_provider_contributions(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
@@ -455,64 +503,25 @@ def collect_provider_contributions(
     This mutates the provided accumulators in-place.
     """
     for provider_id, module_dict in module_cache:
-        # module_dict always has a provider instance injected by _load_module_cache
         inst = module_dict.get('_repolish_provider_instance')
         if not inst:
-            # should not happen, but skip defensively
             continue
         inst = cast('_ProviderBase', inst)
 
         own_ctx = provider_contexts.get(provider_id, {})
         if not isinstance(own_ctx, BaseContext):
             continue
+
         val = call_provider_method(inst, 'create_anchors', own_ctx)
         if val:
             if not isinstance(val, dict):
                 msg = 'create_anchors() must return a dict'
                 raise TypeError(msg)
             accum.merged_anchors.update(cast('dict[str, str]', val))
+
         fm = cast(
             'dict[str, str | TemplateMapping | None]',
             call_provider_method(inst, 'create_file_mappings', own_ctx),
         )
         _process_provider_fm(provider_id, fm, accum)
-
-        # Collect promote_file_mappings only in member mode.
-        workspace_mode = own_ctx.repolish.workspace.mode
-        if workspace_mode == 'member':
-            pfm = cast(
-                'dict[str, str | TemplateMapping | None]',
-                call_provider_method(inst, 'promote_file_mappings', own_ctx),
-            )
-            if pfm:
-                # Wrap plain strings, annotate source_provider, fold into accum.
-                for dest, src in pfm.items():
-                    if src is None:
-                        continue
-                    if isinstance(src, str):
-                        accum.promoted_file_mappings[dest] = TemplateMapping(
-                            source_template=src,
-                            source_provider=provider_id,
-                        )
-                    else:
-                        accum.promoted_file_mappings[dest] = TemplateMapping(
-                            source_template=src.source_template,
-                            extra_context=src.extra_context,
-                            file_mode=src.file_mode,
-                            promote_conflict=src.promote_conflict,
-                            source_provider=provider_id,
-                        )
-        elif workspace_mode in ('root', 'standalone'):
-            # Calling promote_file_mappings in non-member mode is a mistake;
-            # warn but don't halt the run.
-            pfm_check = cast(
-                'dict[str, str | TemplateMapping | None]',
-                call_provider_method(inst, 'promote_file_mappings', own_ctx),
-            )
-            if pfm_check:
-                logger.warning(
-                    'promote_file_mappings_ignored_in_non_member_mode',
-                    provider=provider_id,
-                    mode=workspace_mode,
-                    suggestion='promote_file_mappings is only effective in member mode',
-                )
+        _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)

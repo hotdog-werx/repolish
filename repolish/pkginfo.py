@@ -174,8 +174,12 @@ def _project_from_distribution_files(module_name: str) -> str:
             for f in files:
                 if pkg_path in Path(str(dist.locate_file(f))).resolve().parents:
                     return dist.metadata['Name'] or ''
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                'package_match_error',
+                error=str(exc),
+                dist=str(dist.metadata),
+            )
 
     return ''
 

@@ -14,10 +14,12 @@ provider authors do not need to import from :mod:`typing` directly.
 from __future__ import annotations
 
 from abc import ABC
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
@@ -310,17 +312,17 @@ class Provider(ABC, Generic[ContextT, InputT]):
                 'provider_context_inference_failed',
                 provider=self.__class__.__name__,
             )
-            return BaseContext()  # type: ignore
+            return cast('ContextT', BaseContext())
 
         try:
-            return ctx_cls()  # type: ignore
+            return cast('ContextT', ctx_cls())
         except Exception as exc:  # noqa: BLE001 - we log and continue
             logger.warning(
                 'provider_context_instantiation_failed',
                 provider=self.__class__.__name__,
                 error=str(exc),
             )
-            return BaseContext()  # type: ignore
+            return cast('ContextT', BaseContext())
 
     def provide_inputs(
         self,

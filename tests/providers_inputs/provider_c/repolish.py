@@ -17,6 +17,6 @@ class ProviderC(Provider[CtxC, InputA]):
 
     def provide_inputs(
         self,
-        opt: ProvideInputsOptions[CtxC],  # noqa: ARG002 - parameter unused
+        opt: ProvideInputsOptions[CtxC],
     ) -> list[InputA]:
         return [InputA(prob_a_input='provider_c')]

@@ -96,7 +96,6 @@ def apply_session(
     # write per-rendered-file context debug JSON to .repolish/_/file-context.<slug>.json
     write_file_context_debug_files(
         base_dir,
-        config,
         providers,
         alias_to_pid,
     )

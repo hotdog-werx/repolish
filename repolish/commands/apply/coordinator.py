@@ -3,8 +3,7 @@ import filecmp
 import os
 import shutil
 from collections.abc import Iterator
-from pathlib import Path
-from typing import Literal
+from pathlib import Path, PurePosixPath
 
 from hotlog import get_logger
 
@@ -58,46 +57,26 @@ def _resolve_source_file(
     member_render_dir: Path,
 ) -> Path | None:
     """Return the rendered source file path for a promoted mapping, or None if missing."""
-    prefix = '_repolish.'
     source_file = member_render_dir / source_template
     if source_file.exists():
         return source_file
-    from pathlib import PurePosixPath
-
     cand = PurePosixPath(source_template)
-    prefixed = member_render_dir / str(cand.parent) / (prefix + cand.name)
+    prefixed = member_render_dir / str(cand.parent) / ('_repolish.' + cand.name)
     if prefixed.exists():
         return prefixed
     return None
 
 
-def _apply_promotion_pass(
+def _collect_promotion_winners(
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
-    root_session: ResolvedSession,
-    *,
-    check_only: bool,
-) -> int:
-    """Collect and apply (or check) files promoted from member sessions to the root.
+) -> dict[str, tuple[Path, str, TemplateMapping]] | None:
+    """Scan member sessions and return the winning source for each promoted destination.
 
-    Iterates ``promoted_file_mappings`` from each member session, resolves
-    conflicts using the ``promote_conflict`` strategy, then either diffs the
-    promoted files against disk (``check_only=True``) or writes them.  Root's
-    own ``file_mappings`` always wins: any promoted path present in the root
-    session's ``file_mappings`` is silently skipped here.
-
-    Results are stored on ``root_session.promoted_records`` and
-    ``root_session.promoted_apply_result``.
-
-    Returns 0 on success, non-zero on conflict or check failure.
+    When two members promote to the same destination, the ``promote_conflict``
+    strategy on the mapping decides the outcome.  Returns ``None`` and logs an
+    error on a hard conflict (``'error'`` strategy or non-identical content);
+    the caller should propagate rc=1 in that case.
     """
-    root_base_dir = root_session.config.config_dir
-
-    # Paths owned by the root session's own create_file_mappings — these win.
-    root_owned_paths: set[str] = set(
-        root_session.providers.file_mappings.keys(),
-    )
-
-    # winner: dest -> (rendered_source_path, member_name, mapping)
     winners: dict[str, tuple[Path, str, TemplateMapping]] = {}
 
     for m, session, _opts in member_sessions:
@@ -108,11 +87,7 @@ def _apply_promotion_pass(
             dest,
             mapping_val,
         ) in session.providers.promoted_file_mappings.items():
-            if isinstance(mapping_val, str):
-                mapping = TemplateMapping(source_template=mapping_val)
-            else:
-                mapping = mapping_val
-
+            mapping = TemplateMapping(source_template=mapping_val) if isinstance(mapping_val, str) else mapping_val
             if not mapping.source_template:
                 continue
 
@@ -129,47 +104,62 @@ def _apply_promotion_pass(
                 )
                 continue
 
-            if dest in winners:
-                prev_path, prev_member, prev_mapping = winners[dest]
-                strategy: Literal['identical', 'last_wins', 'error'] = mapping.promote_conflict
-
-                if strategy == 'error':
-                    logger.error(
-                        'promote_conflict_error',
-                        dest=dest,
-                        member_a=prev_member,
-                        member_b=member_name,
-                        suggestion='set promote_conflict="last_wins" to suppress this',
-                    )
-                    return 1
-                if strategy == 'last_wins':
-                    winners[dest] = (source_file, member_name, mapping)
-                elif not filecmp.cmp(
-                    str(prev_path),
-                    str(source_file),
-                    shallow=False,
-                ):
-                    logger.error(
-                        'promote_conflict_not_identical',
-                        dest=dest,
-                        member_a=prev_member,
-                        member_b=member_name,
-                        suggestion=(
-                            'both members rendered different content; '
-                            'set promote_conflict="last_wins" or resolve the template divergence'
-                        ),
-                    )
-                    return 1
-                    # identical — keep first winner, no-op
-            else:
+            if dest not in winners:
                 winners[dest] = (source_file, member_name, mapping)
+                continue
 
+            prev_path, prev_member, _ = winners[dest]
+            strategy = mapping.promote_conflict
+            if strategy == 'error':
+                logger.error(
+                    'promote_conflict_error',
+                    dest=dest,
+                    member_a=prev_member,
+                    member_b=member_name,
+                    suggestion='set promote_conflict="last_wins" to suppress this',
+                )
+                return None
+            if strategy == 'last_wins':
+                winners[dest] = (source_file, member_name, mapping)
+            elif not filecmp.cmp(
+                str(prev_path),
+                str(source_file),
+                shallow=False,
+            ):
+                logger.error(
+                    'promote_conflict_not_identical',
+                    dest=dest,
+                    member_a=prev_member,
+                    member_b=member_name,
+                    suggestion=(
+                        'both members rendered different content; '
+                        'set promote_conflict="last_wins" or resolve the template divergence'
+                    ),
+                )
+                return None
+            # identical — keep first winner, no-op
+
+    return winners
+
+
+def _apply_winners(
+    winners: dict[str, tuple[Path, str, TemplateMapping]],
+    root_session: ResolvedSession,
+    *,
+    check_only: bool,
+) -> tuple[list[FileRecord], dict[str, str]]:
+    """Write (or diff) each winning promoted file at the repo root.
+
+    Root-owned destinations are skipped and annotated as overridden instead.
+    Returns ``(promoted_records, promoted_result)``.
+    """
+    root_base_dir = root_session.config.config_dir
+    root_owned_paths = set(root_session.providers.file_mappings.keys())
     promoted_records: list[FileRecord] = []
     promoted_result: dict[str, str] = {}
 
     for dest, (source_file, member_name, mapping) in winners.items():
         if dest in root_owned_paths:
-            # Root's own mapping wins; annotate the root FileRecord instead.
             for i, rec in enumerate(root_session.providers.file_records):
                 if rec.path == dest:
                     root_session.providers.file_records[i] = FileRecord(
@@ -189,14 +179,13 @@ def _apply_promotion_pass(
                     owner=member_name,
                     source=mapping.source_template,
                     promoted_from=member_name,
-                    overridden_by='root' if dest in root_session.providers.file_mappings else None,
+                    overridden_by='root',
                 ),
             )
             promoted_result[dest] = 'overridden_by_root'
             continue
 
         dest_file = root_base_dir / dest
-
         if check_only:
             if not dest_file.exists() or not filecmp.cmp(
                 str(source_file),
@@ -241,6 +230,30 @@ def _apply_promotion_pass(
             ),
         )
 
+    return promoted_records, promoted_result
+
+
+def _apply_promotion_pass(
+    member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
+    root_session: ResolvedSession,
+    *,
+    check_only: bool,
+) -> int:
+    """Collect and apply (or check) files promoted from member sessions to the root.
+
+    Returns 0 on success, 1 on hard conflict, 2 when check-only finds stale files.
+    Results are stored on ``root_session.promoted_records`` and
+    ``root_session.promoted_apply_result``.
+    """
+    winners = _collect_promotion_winners(member_sessions)
+    if winners is None:
+        return 1
+
+    promoted_records, promoted_result = _apply_winners(
+        winners,
+        root_session,
+        check_only=check_only,
+    )
     root_session.promoted_records = promoted_records
     root_session.promoted_apply_result = promoted_result
 

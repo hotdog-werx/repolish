@@ -1,7 +1,4 @@
-try:
-    from typing import override  # type: ignore
-except ImportError:
-    from typing_extensions import override
+from typing_extensions import override
 
 from .providers.models import (
     BaseContext,

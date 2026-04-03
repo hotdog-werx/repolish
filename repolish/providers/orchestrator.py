@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal, overload
 
@@ -157,7 +158,7 @@ def _run_provider_pipeline(
 
 @overload
 def create_providers(
-    directories: list[str | tuple[str, str]],
+    directories: Sequence[str | tuple[str, str]],
     context_overrides: dict[str, object] | None = ...,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = ...,
@@ -170,7 +171,7 @@ def create_providers(
 
 @overload
 def create_providers(
-    directories: list[str | tuple[str, str]],
+    directories: Sequence[str | tuple[str, str]],
     context_overrides: dict[str, object] | None = ...,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = ...,
@@ -182,7 +183,7 @@ def create_providers(
 
 
 def create_providers(  # noqa: PLR0913
-    directories: list[str | tuple[str, str]],
+    directories: Sequence[str | tuple[str, str]],
     context_overrides: dict[str, object] | None = None,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = None,

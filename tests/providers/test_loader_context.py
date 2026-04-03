@@ -147,7 +147,8 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
         a: int = 0
 
         @field_validator('a', mode='after')
-        def bump(cls, v: int) -> int:  # noqa: N805
+        @classmethod
+        def bump(cls, v: int) -> int:
             return v + 10
 
     ninst = N()

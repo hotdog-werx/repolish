@@ -129,7 +129,7 @@ def test_unmapped_conditional_file_not_staged(tmp_path: Path) -> None:
         ['README.md', '_repolish.variant-a.md', '_repolish.variant-b.md'],
     )
     staging = tmp_path / 'stage'
-    _, sources = stage_templates(staging, [provider], mapped_sources=set())
+    _, _sources = stage_templates(staging, [provider], mapped_sources=set())
 
     staged = {p.name for p in (staging / 'repolish').rglob('*') if p.is_file()}
     assert 'README.md' in staged
@@ -145,7 +145,7 @@ def test_mapped_conditional_file_is_staged(tmp_path: Path) -> None:
     )
     staging = tmp_path / 'stage'
     # only variant-a is mapped
-    _, sources = stage_templates(
+    _, _sources = stage_templates(
         staging,
         [provider],
         mapped_sources={'_repolish.variant-a.md'},
@@ -166,7 +166,7 @@ def test_conditional_files_staged_when_mapped_sources_is_none(
         ['README.md', '_repolish.variant-a.md'],
     )
     staging = tmp_path / 'stage'
-    _, sources = stage_templates(staging, [provider])  # mapped_sources=None
+    _, _sources = stage_templates(staging, [provider])  # mapped_sources=None
 
     staged = {p.name for p in (staging / 'repolish').rglob('*') if p.is_file()}
     assert 'README.md' in staged
