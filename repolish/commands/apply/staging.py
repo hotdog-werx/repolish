@@ -80,6 +80,23 @@ def create_staged_template(
     return sources
 
 
+def _unmapped_in_dir(
+    alias: str,
+    repolish_dir: Path,
+    mapped_sources: set[str],
+) -> list[tuple[str, str]]:
+    """Return (alias, template_path) pairs for unmapped conditional files in *repolish_dir*."""
+    issues: list[tuple[str, str]] = []
+    for item in repolish_dir.rglob('*'):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(repolish_dir).as_posix()
+        stripped = rel.removesuffix('.jinja')
+        if is_conditional_file(rel) and stripped not in mapped_sources:
+            issues.append((alias, stripped))
+    return issues
+
+
 def find_unmapped_conditional_sources(
     provider_infos: dict[str, ResolvedProviderInfo],
     mapped_sources: set[str],
@@ -98,13 +115,6 @@ def find_unmapped_conditional_sources(
     issues: list[tuple[str, str]] = []
     for alias, info in provider_infos.items():
         repolish_dir = info.provider_root / 'repolish'
-        if not repolish_dir.is_dir():
-            continue
-        for item in repolish_dir.rglob('*'):
-            if not item.is_file():
-                continue
-            rel = item.relative_to(repolish_dir).as_posix()
-            stripped = rel.removesuffix('.jinja')
-            if is_conditional_file(rel) and stripped not in mapped_sources:
-                issues.append((alias, stripped))
+        if repolish_dir.is_dir():
+            issues.extend(_unmapped_in_dir(alias, repolish_dir, mapped_sources))
     return issues

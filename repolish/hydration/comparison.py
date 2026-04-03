@@ -74,6 +74,39 @@ def _compare_and_prepare_diff(
         return (a_raw == b_raw), [], []
 
 
+def _check_one_regular_file(
+    out: Path,
+    setup_output: Path,
+    skip_files: set[str],
+    base_dir: Path,
+    *,
+    preserve: bool,
+) -> tuple[str, str] | None:
+    """Check one auto-staged file for diffs; return ``(rel_str, diff)`` or ``None``."""
+    rel = out.relative_to(setup_output / 'repolish')
+    rel_str = rel.as_posix()
+    if is_conditional_file(rel_str):
+        return None
+    if rel_str in skip_files:
+        return None
+    dest = base_dir / rel
+    if not dest.exists():
+        return (rel_str, 'MISSING')
+    same, a_lines, b_lines = _compare_and_prepare_diff(out, dest, preserve=preserve)
+    if same:
+        return None
+    ud = ''.join(
+        difflib.unified_diff(
+            b_lines,
+            a_lines,
+            fromfile=str(dest),
+            tofile=str(out),
+            lineterm='\n',
+        ),
+    )
+    return (rel_str, ud)
+
+
 def _check_regular_files(  # noqa: PLR0913
     output_files: list[Path],
     setup_output: Path,
@@ -96,48 +129,13 @@ def _check_regular_files(  # noqa: PLR0913
 
     Returns list of (relative_path, message_or_diff).
     """
+    if disable_auto_staging:
+        return []
     diffs: list[tuple[str, str]] = []
-
     for out in output_files:
-        rel = out.relative_to(setup_output / 'repolish')
-        rel_str = rel.as_posix()
-
-        if disable_auto_staging:
-            continue
-
-        # Skip conditional files (files with _repolish. prefix anywhere in path)
-        if is_conditional_file(rel_str):
-            continue
-
-        # Skip files that are mapped sources, marked for deletion, or create-only files that exist
-        if rel_str in skip_files:
-            continue
-
-        dest = base_dir / rel
-
-        if not dest.exists():
-            diffs.append((rel_str, 'MISSING'))
-            continue
-
-        same, a_lines, b_lines = _compare_and_prepare_diff(
-            out,
-            dest,
-            preserve=preserve,
-        )
-        if same:
-            continue
-
-        ud = ''.join(
-            difflib.unified_diff(
-                b_lines,
-                a_lines,
-                fromfile=str(dest),
-                tofile=str(out),
-                lineterm='\n',
-            ),
-        )
-        diffs.append((rel_str, ud))
-
+        result = _check_one_regular_file(out, setup_output, skip_files, base_dir, preserve=preserve)
+        if result:
+            diffs.append(result)
     return diffs
 
 

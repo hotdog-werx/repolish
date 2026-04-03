@@ -102,6 +102,20 @@ def _schema_matches(schema: type[_BaseModel], value: object) -> bool:
     return True
 
 
+def _route_input_to_targets(
+    inp: object,
+    targets: list[ProviderEntry],
+    received_inputs: dict[str, list[BaseInputs]],
+) -> None:
+    """Route a single payload to every target whose schema matches it."""
+    for entry in targets:
+        schema = entry.input_type
+        if schema and _schema_matches(schema, inp):
+            received_inputs.setdefault(entry.provider_id, []).append(
+                cast('BaseInputs', inp),
+            )
+
+
 def _distribute_payloads(
     inputs_list: Sequence[object],
     state: _GatherState,
@@ -121,14 +135,7 @@ def _distribute_payloads(
     """
     targets = state.routing_list if state.routing_list is not None else state.all_providers_list
     for inp in inputs_list:
-        for entry in targets:
-            schema = entry.input_type
-            if not schema:
-                continue
-            if _schema_matches(schema, inp):
-                state.received_inputs.setdefault(entry.provider_id, []).append(
-                    cast('BaseInputs', inp),
-                )
+        _route_input_to_targets(inp, targets, state.received_inputs)
 
 
 @dataclass
@@ -493,6 +500,37 @@ def _handle_promote_file_mappings(
         )
 
 
+def _collect_provider_contribution(
+    provider_id: str,
+    module_dict: dict,
+    provider_contexts: dict[str, BaseContext],
+    accum: Accumulators,
+) -> None:
+    """Process a single provider's anchors, file mappings, and promotions."""
+    inst = module_dict.get('_repolish_provider_instance')
+    if not inst:
+        return
+    inst = cast('_ProviderBase', inst)
+
+    own_ctx = provider_contexts.get(provider_id, {})
+    if not isinstance(own_ctx, BaseContext):
+        return
+
+    val = call_provider_method(inst, 'create_anchors', own_ctx)
+    if val:
+        if not isinstance(val, dict):
+            msg = 'create_anchors() must return a dict'
+            raise TypeError(msg)
+        accum.merged_anchors.update(cast('dict[str, str]', val))
+
+    fm = cast(
+        'dict[str, str | TemplateMapping | None]',
+        call_provider_method(inst, 'create_file_mappings', own_ctx),
+    )
+    _process_provider_fm(provider_id, fm, accum)
+    _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
+
+
 def collect_provider_contributions(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
@@ -503,25 +541,4 @@ def collect_provider_contributions(
     This mutates the provided accumulators in-place.
     """
     for provider_id, module_dict in module_cache:
-        inst = module_dict.get('_repolish_provider_instance')
-        if not inst:
-            continue
-        inst = cast('_ProviderBase', inst)
-
-        own_ctx = provider_contexts.get(provider_id, {})
-        if not isinstance(own_ctx, BaseContext):
-            continue
-
-        val = call_provider_method(inst, 'create_anchors', own_ctx)
-        if val:
-            if not isinstance(val, dict):
-                msg = 'create_anchors() must return a dict'
-                raise TypeError(msg)
-            accum.merged_anchors.update(cast('dict[str, str]', val))
-
-        fm = cast(
-            'dict[str, str | TemplateMapping | None]',
-            call_provider_method(inst, 'create_file_mappings', own_ctx),
-        )
-        _process_provider_fm(provider_id, fm, accum)
-        _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
+        _collect_provider_contribution(provider_id, module_dict, provider_contexts, accum)

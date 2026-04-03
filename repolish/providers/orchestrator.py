@@ -45,59 +45,28 @@ def _run_provider_pipeline(
     as before.
     """
     accum = Accumulators()
+    _opts = options or PipelineOptions()
 
-    # gather metadata and basic helper structures
     instances = build_provider_metadata(module_cache)
+    _set_provider_metadata(module_cache, instances, _opts.alias_map or {})
 
-    # set alias and version on every provider instance before any hooks
-    # (including create_context) are called.
-    _alias_map = {} if options is None or options.alias_map is None else options.alias_map
-    _set_provider_metadata(module_cache, instances, _alias_map)
+    _populate_provider_context(module_cache, instances, provider_contexts, _opts.global_context)
+    _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
 
-    global_context = options.global_context if options is not None else GlobalContext()
-    _populate_provider_context(
-        module_cache,
-        instances,
-        provider_contexts,
-        global_context,
-    )
-
-    context_overrides = None if options is None else options.context_overrides
-    provider_overrides = None if options is None else options.provider_overrides
-
-    # apply any per-provider overrides now that each provider has a concrete
-    # context object.  this ensures `provide_inputs` sees the patched values
-    # even though the loader API only accepts global overrides.
-    _apply_provider_overrides(provider_contexts, provider_overrides)
-
-    # include each provider's declared input schema so that other providers can
-    # inspect it when deciding what to emit.  We build the list via a
-    # dedicated helper to keep this function's complexity low.
     all_providers_list: list[ProviderEntry] = _build_all_providers_list(
         module_cache,
         instances,
         provider_contexts,
-        alias_map=options.alias_map if options is not None else None,
+        alias_map=_opts.alias_map,
     )
 
-    # Extend all_providers_list with member entries from a monorepo dry pass.
-    # This makes member providers visible to root providers via `all_providers`.
-    extra_entries = options.extra_provider_entries if options is not None else None
-    if extra_entries:
-        all_providers_list = all_providers_list + extra_entries
+    if _opts.extra_provider_entries:
+        all_providers_list = all_providers_list + _opts.extra_provider_entries
 
-    # apply overrides before input gathering
-    if context_overrides:
-        _apply_overrides_to_provider_contexts(
-            provider_contexts,
-            context_overrides,
-        )
+    if _opts.context_overrides:
+        _apply_overrides_to_provider_contexts(provider_contexts, _opts.context_overrides)
 
-    dry_run = options is not None and options.dry_run
-    extra_inputs: list[BaseInputs] | None = options.extra_inputs if options is not None else None
-
-    if dry_run:
-        # Collect raw emitted inputs without routing — return early.
+    if _opts.dry_run:
         emitted = collect_all_emitted_inputs(
             module_cache,
             instances,
@@ -110,37 +79,26 @@ def _run_provider_pipeline(
             emitted_inputs=emitted,
         )
 
-    # we no longer attempt to predict receivers; just call all providers
-    # for their outgoing inputs and route them based on schemas.
-    # extra_inputs from member dry passes are injected into the routing pool.
     received_inputs = gather_received_inputs(
         module_cache,
         instances,
         provider_contexts,
         all_providers_list,
-        extra_inputs=extra_inputs,
+        extra_inputs=_opts.extra_inputs,
     )
 
-    # finalize provider contexts based on collected inputs
     finalize_provider_contexts(
         module_cache,
         instances,
         received_inputs,
         provider_contexts,
         all_providers_list,
-        global_context=global_context,
+        global_context=_opts.global_context,
     )
 
-    # re-apply global overrides after finalization
-    if context_overrides:
-        _apply_overrides_to_provider_contexts(
-            provider_contexts,
-            context_overrides,
-        )
-
-    # and likewise re-apply per-provider overrides so the contexts exposed
-    # in the returned `SessionBundle` object include any project-supplied values.
-    _apply_provider_overrides(provider_contexts, provider_overrides)
+    if _opts.context_overrides:
+        _apply_overrides_to_provider_contexts(provider_contexts, _opts.context_overrides)
+    _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
 
     collect_provider_contributions(module_cache, provider_contexts, accum)
 

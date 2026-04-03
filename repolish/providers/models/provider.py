@@ -477,6 +477,44 @@ class Provider(ABC, Generic[ContextT, InputT]):
         return {}
 
 
+def _resolve_mode_handler_cls(
+    inst: Provider[ContextT, InputT],
+    mode: str,
+) -> type[ModeHandler[ContextT, InputT]] | None:
+    """Return the handler class registered on *inst* for *mode*, or ``None``."""
+    if mode == 'root':
+        return inst.root_mode
+    if mode == 'member':
+        return inst.member_mode
+    return inst.standalone_mode
+
+
+def _get_or_create_handler(
+    inst: Provider[ContextT, InputT],
+    mode: str,
+    handler_cls: type[ModeHandler[ContextT, InputT]],
+) -> ModeHandler[ContextT, InputT]:
+    """Return a cached handler instance, creating and initialising it on first use."""
+    cache: dict[str, ModeHandler[ContextT, InputT]] = vars(inst).setdefault(
+        '_mode_handler_instances',
+        {},
+    )
+    if mode not in cache:
+        handler = handler_cls()
+        # Copy all ModeHandler-declared data attributes from the provider.
+        # Most attributes are copied verbatim; templates_root is the only
+        # mode-dependent exception (scoped to provider_root/{mode}/).
+        # If ModeHandler gains another attribute that needs mode-specific
+        # derivation, add a special case for it below.
+        for attr in ModeHandler.__annotations__:
+            value = getattr(inst, attr, getattr(handler, attr))
+            if attr == 'templates_root':
+                value = inst.templates_root / mode
+            setattr(handler, attr, value)
+        cache[mode] = handler
+    return cache[mode]
+
+
 def call_provider_method(
     inst: Provider[ContextT, InputT],
     method_name: str,
@@ -511,37 +549,11 @@ def call_provider_method(
     workspace_ctx = getattr(repolish_ctx, 'workspace', None)
     mode: str = getattr(workspace_ctx, 'mode', None) or 'standalone'
 
-    handler_cls: type[ModeHandler[ContextT, InputT]] | None = None
-    if mode == 'root':
-        handler_cls = inst.root_mode
-    elif mode == 'member':
-        handler_cls = inst.member_mode
-    else:
-        handler_cls = inst.standalone_mode
-
-    if handler_cls is not None:
-        cache: dict[str, ModeHandler[ContextT, InputT]] = vars(inst).setdefault(
-            '_mode_handler_instances',
-            {},
-        )
-        if mode not in cache:
-            handler = handler_cls()
-            # Copy all ModeHandler-declared data attributes from the provider.
-            # Most attributes are copied verbatim; templates_root is the only
-            # mode-dependent exception (scoped to provider_root/{mode}/).
-            # If ModeHandler gains another attribute that needs mode-specific
-            # derivation, add a special case for it below.
-            for attr in ModeHandler.__annotations__:
-                value = getattr(inst, attr, getattr(handler, attr))
-                if attr == 'templates_root':
-                    value = inst.templates_root / mode
-                setattr(handler, attr, value)
-            cache[mode] = handler
-        _target: ModeHandler[ContextT, InputT] | Provider[ContextT, InputT] = cache[mode]
-    else:
-        _target = inst
-
-    return getattr(_target, method_name)(arg)
+    handler_cls = _resolve_mode_handler_cls(inst, mode)
+    target: ModeHandler[ContextT, InputT] | Provider[ContextT, InputT] = (
+        _get_or_create_handler(inst, mode, handler_cls) if handler_cls is not None else inst
+    )
+    return getattr(target, method_name)(arg)
 
 
 # ---------------------------------------------------------------------------

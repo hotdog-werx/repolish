@@ -69,6 +69,51 @@ def _build_all_providers_list(
     return all_providers_list
 
 
+def _resolve_member_identity(
+    global_context: GlobalContext,
+) -> tuple[str, str]:
+    """Return ``(member_name, member_path)`` for the current workspace member.
+
+    For non-member modes returns ``('_root', '.')`` or ``('', '.')``.
+    """
+    mono = global_context.workspace
+    if mono.mode == 'root':
+        return '_root', '.'
+    if mono.mode == 'member' and mono.package_dir is not None:
+        for m in mono.members:
+            if (mono.root_dir / m.path).resolve() == mono.package_dir.resolve():
+                return m.name, m.path.as_posix()
+    return '', '.'
+
+
+def _inject_provider_identity(
+    ctx: BaseContext,
+    inst: _ProviderBase,
+    global_context: GlobalContext,
+) -> BaseContext:
+    """Return a copy of *ctx* with a fully-populated ``repolish`` field."""
+    mono = global_context.workspace
+    member_name, member_path = _resolve_member_identity(global_context)
+    provider_info = ProviderInfo(
+        alias=getattr(inst, 'alias', ''),
+        version=getattr(inst, 'version', ''),
+        package_name=getattr(inst, 'package_name', ''),
+        project_name=getattr(inst, 'project_name', ''),
+        session=ProviderSession(
+            mode=mono.mode,
+            member_name=member_name,
+            member_path=member_path,
+        ),
+    )
+    repolish_ctx = RepolishContext(
+        repo=global_context.repo,
+        year=global_context.year,
+        workspace=global_context.workspace,
+        provider=provider_info,
+    )
+    return ctx.model_copy(update={'repolish': repolish_ctx})
+
+
 def _synthesize_provider_context_for_pid(
     inst: _ProviderBase,
     pid: str,
@@ -95,39 +140,8 @@ def _synthesize_provider_context_for_pid(
         )
         return
 
-    if isinstance(ctx, BaseContext) and hasattr(ctx, 'repolish'):
-        ctx = ctx.model_copy(update={'repolish': global_context})
-
-    # inject provider identity so templates can reference {{ repolish.provider.alias }},
-    # {{ repolish.provider.version }}, {{ repolish.provider.package_name }}, etc.
     if isinstance(ctx, BaseContext):
-        mono = global_context.workspace
-        member_name = '_root' if mono.mode == 'root' else ''
-        member_path = '.'
-        if mono.mode == 'member' and mono.package_dir is not None:
-            for m in mono.members:
-                if (mono.root_dir / m.path).resolve() == mono.package_dir.resolve():
-                    member_name = m.name
-                    member_path = m.path.as_posix()
-                    break
-        provider_info = ProviderInfo(
-            alias=getattr(inst, 'alias', ''),
-            version=getattr(inst, 'version', ''),
-            package_name=getattr(inst, 'package_name', ''),
-            project_name=getattr(inst, 'project_name', ''),
-            session=ProviderSession(
-                mode=mono.mode,
-                member_name=member_name,
-                member_path=member_path,
-            ),
-        )
-        repolish_ctx = RepolishContext(
-            repo=global_context.repo,
-            year=global_context.year,
-            workspace=global_context.workspace,
-            provider=provider_info,
-        )
-        ctx = ctx.model_copy(update={'repolish': repolish_ctx})
+        ctx = _inject_provider_identity(ctx, inst, global_context)
 
     provider_contexts[pid] = ctx
 
