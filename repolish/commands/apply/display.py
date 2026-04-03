@@ -250,6 +250,72 @@ def _file_node(
     return node
 
 
+def _append_stat_parts(label: Text, parts: list[str]) -> None:
+    """Append formatted stat parts to *label* separated by dim · dots."""
+    label.append('  ')
+    for i, part in enumerate(parts):
+        if i:
+            label.append(' · ', style='dim')
+        label.append_text(Text.from_markup(part))
+
+
+def _append_applied_stats(
+    label: Text,
+    records: list[FileRecord],
+    syms: list[ProviderSymlink],
+    session: ResolvedSession,
+) -> None:
+    """Append post-apply counts (written/unchanged/deleted/skipped/symlinks) to *label*."""
+    record_paths = {r.path for r in records}
+    written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
+    unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
+    deleted = sum(1 for p in record_paths if session.apply_result.get(p) == 'deleted')
+    skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+    stat_items = [
+        (written, '[green]{n} written[/green]'),
+        (unchanged, '[dim]{n} unchanged[/dim]'),
+        (deleted, '[dim red]{n} deleted[/dim red]'),
+        (skipped, '[yellow]{n} skipped[/yellow]'),
+        (len(syms), '[blue]{n} symlinks[/blue]'),
+    ]
+    parts = [fmt.format(n=n) for n, fmt in stat_items if n]
+    if parts:
+        _append_stat_parts(label, parts)
+
+
+def _append_pending_count(
+    label: Text,
+    records: list[FileRecord],
+    syms: list[ProviderSymlink],
+    session: ResolvedSession,
+) -> None:
+    """Append a simple applied/not-applied count to *label* (pre-apply display)."""
+    skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
+    total = len(records) + len(syms)
+    applied = total - skipped
+    if skipped:
+        label.append(
+            f'  [{applied} applied, {skipped} not applied]',
+            style='dim yellow',
+        )
+    else:
+        noun = 'file' if total == 1 else 'files'
+        label.append(f'  [{total} {noun}]', style='dim')
+
+
+def _append_provider_stat_suffix(
+    label: Text,
+    records: list[FileRecord],
+    syms: list[ProviderSymlink],
+    session: ResolvedSession,
+) -> None:
+    """Append a compact file-count stats suffix to *label* in-place."""
+    if session.apply_result:
+        _append_applied_stats(label, records, syms, session)
+    else:
+        _append_pending_count(label, records, syms, session)
+
+
 def _provider_label(
     alias: str,
     records: list[FileRecord],
@@ -265,38 +331,7 @@ def _provider_label(
     label.append(alias, style=f'bold link file://{debug_file.absolute()}')
     if ctx is not None and isinstance(ctx, BaseContext):
         label.append(f'@{ctx.repolish.provider.version}', style='dim')
-    if session.apply_result:
-        record_paths = {r.path for r in records}
-        written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
-        unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
-        deleted = sum(1 for p in record_paths if session.apply_result.get(p) == 'deleted')
-        skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
-        stat_items = [
-            (written, '[green]{n} written[/green]'),
-            (unchanged, '[dim]{n} unchanged[/dim]'),
-            (deleted, '[dim red]{n} deleted[/dim red]'),
-            (skipped, '[yellow]{n} skipped[/yellow]'),
-            (len(syms), '[blue]{n} symlinks[/blue]'),
-        ]
-        parts = [fmt.format(n=n) for n, fmt in stat_items if n]
-        if parts:
-            label.append('  ')
-            for i, part in enumerate(parts):
-                if i:
-                    label.append(' · ', style='dim')
-                label.append_text(Text.from_markup(part))
-    else:
-        skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
-        total = len(records) + len(syms)
-        applied = total - skipped
-        if skipped:
-            label.append(
-                f'  [{applied} applied, {skipped} not applied]',
-                style='dim yellow',
-            )
-        else:
-            noun = 'file' if total == 1 else 'files'
-            label.append(f'  [{total} {noun}]', style='dim')
+    _append_provider_stat_suffix(label, records, syms, session)
     return label
 
 
@@ -318,13 +353,10 @@ def _add_provider_branch(
         provider_node.add(_symlink_node(sl))
 
 
-def _build_summary_tree(session: ResolvedSession) -> Tree:
-    """Build a Tree summarising providers grouped by role with per-file status."""
-    debug_dir = session.config.config_dir / '.repolish' / '_'
-    records_by_owner: dict[str, list[FileRecord]] = {}
-    for record in session.providers.file_records:
-        records_by_owner.setdefault(record.owner, []).append(record)
-
+def _classify_aliases(
+    session: ResolvedSession,
+) -> tuple[list[str], dict[str, list[str]], list[str]]:
+    """Split session aliases into root, per-member, and standalone groups."""
     root_aliases: list[str] = []
     member_aliases: dict[str, list[str]] = {}
     standalone_aliases: list[str] = []
@@ -339,24 +371,55 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
             member_aliases.setdefault(member_name, []).append(alias)
         else:
             standalone_aliases.append(alias)
+    return root_aliases, member_aliases, standalone_aliases
+
+
+def _add_root_branch_to_tree(
+    tree: Tree,
+    root_aliases: list[str],
+    records_by_owner: dict[str, list[FileRecord]],
+    session: ResolvedSession,
+    debug_dir: Path,
+) -> None:
+    """Add a Root branch (with promoted-file sub-branch) to *tree* when applicable."""
+    if not root_aliases:
+        return
+    branch = tree.add('[bold]Root[/bold]')
+    for alias in root_aliases:
+        _add_provider_branch(
+            branch,
+            alias,
+            records_by_owner,
+            session,
+            debug_dir,
+        )
+    if session.promoted_records:
+        promo_branch = branch.add('[bold]Promoted[/bold]')
+        for record in session.promoted_records:
+            promo_branch.add(
+                _promoted_file_node(record, session.promoted_apply_result),
+            )
+
+
+def _build_summary_tree(session: ResolvedSession) -> Tree:
+    """Build a Tree summarising providers grouped by role with per-file status."""
+    debug_dir = session.config.config_dir / '.repolish' / '_'
+    records_by_owner: dict[str, list[FileRecord]] = {}
+    for record in session.providers.file_records:
+        records_by_owner.setdefault(record.owner, []).append(record)
+
+    root_aliases, member_aliases, standalone_aliases = _classify_aliases(
+        session,
+    )
 
     tree = Tree('[bold]apply summary[/bold]')
-    if root_aliases:
-        branch = tree.add('[bold]Root[/bold]')
-        for alias in root_aliases:
-            _add_provider_branch(
-                branch,
-                alias,
-                records_by_owner,
-                session,
-                debug_dir,
-            )
-        if session.promoted_records:
-            promo_branch = branch.add('[bold]Promoted[/bold]')
-            for record in session.promoted_records:
-                promo_branch.add(
-                    _promoted_file_node(record, session.promoted_apply_result),
-                )
+    _add_root_branch_to_tree(
+        tree,
+        root_aliases,
+        records_by_owner,
+        session,
+        debug_dir,
+    )
     for member_name, m_aliases in member_aliases.items():
         branch = tree.add(f'[bold]Member: {member_name}[/bold]')
         for alias in m_aliases:

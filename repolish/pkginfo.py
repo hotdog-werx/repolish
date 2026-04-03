@@ -55,26 +55,39 @@ def resolve_package_identity(package_attr: str | None) -> tuple[str, str]:
     module_name = _resolve_module_name(package_attr)
 
     if module_name != top_level:
-        # Namespace sub-package: packages_distributions() only knows the shared
-        # top-level key (e.g. 'devkit') and may return the wrong distribution
-        # when multiple sub-packages share a namespace.  Use RECORD scanning.
-        project_name = _project_from_distribution_files(module_name)
-        if not project_name:
-            project_name = _project_from_direct_url(module_name)
-        if not project_name:
-            # Last resort: if only one distribution claims this namespace
-            # top-level, it must be the right one (ambiguity only arises with
-            # multiple sub-packages sharing a namespace, e.g. devkit-python +
-            # devkit-workspace both under 'devkit').
-            candidates = _project_from_distributions_list(top_level)
-            if len(candidates) == 1:
-                project_name = candidates[0]
+        project_name = _resolve_namespace_project(module_name, top_level)
     else:
-        project_name = _project_from_distributions(top_level)
-        if not project_name:
-            project_name = _project_from_direct_url(module_name)
+        project_name = _resolve_flat_project(top_level, module_name)
 
     return module_name, project_name
+
+
+def _resolve_namespace_project(module_name: str, top_level: str) -> str:
+    """Resolve the distribution name for a namespace sub-package.
+
+    Tries RECORD scanning first, then direct_url fallback, then a last-resort
+    single-candidate check on the shared namespace top-level.
+    """
+    project = _project_from_distribution_files(module_name)
+    if not project:
+        project = _project_from_direct_url(module_name)
+    if not project:
+        # Last resort: if only one distribution claims this namespace
+        # top-level, it must be the right one (ambiguity only arises with
+        # multiple sub-packages sharing a namespace, e.g. devkit-python +
+        # devkit-workspace both under 'devkit').
+        candidates = _project_from_distributions_list(top_level)
+        if len(candidates) == 1:
+            project = candidates[0]
+    return project
+
+
+def _resolve_flat_project(top_level: str, module_name: str) -> str:
+    """Resolve the distribution name for a flat (non-namespace) package."""
+    project = _project_from_distributions(top_level)
+    if not project:
+        project = _project_from_direct_url(module_name)
+    return project
 
 
 def _resolve_module_name(package_attr: str) -> str:
@@ -149,6 +162,14 @@ def _project_from_distributions_list(top_level: str) -> list[str]:
         return []
 
 
+def _dist_owns_path(dist: Distribution, pkg_path: Path) -> bool:
+    """Return ``True`` when any installed file of *dist* is located under *pkg_path*."""
+    files = dist.files
+    if files is None:
+        return False
+    return any(pkg_path in Path(str(dist.locate_file(f))).resolve().parents for f in files)
+
+
 def _project_from_distribution_files(module_name: str) -> str:
     """Return the distribution name that owns *module_name* by scanning RECORD files.
 
@@ -168,12 +189,8 @@ def _project_from_distribution_files(module_name: str) -> str:
 
     for dist in distributions():
         try:
-            files = dist.files
-            if files is None:
-                continue
-            for f in files:
-                if pkg_path in Path(str(dist.locate_file(f))).resolve().parents:
-                    return dist.metadata['Name'] or ''
+            if _dist_owns_path(dist, pkg_path):
+                return dist.metadata['Name'] or ''
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 'package_match_error',
@@ -203,10 +220,16 @@ def _project_from_direct_url(module_name: str) -> str:
         return ''
 
     pkg_path = Path(next(iter(pkg_spec.submodule_search_locations))).resolve()
+    return _best_direct_url_match(pkg_path)
 
-    # Collect all matching distributions and pick the most specific one
-    # (longest source path).  A broad workspace root (e.g. the repolish repo)
-    # would otherwise shadow a nested provider installed from a sub-directory.
+
+def _best_direct_url_match(pkg_path: Path) -> str:
+    """Return the distribution name whose ``direct_url.json`` source contains *pkg_path*.
+
+    Picks the most specific match (longest source path) to avoid a broad
+    workspace root shadowing a nested provider installed from a sub-directory.
+    Returns ``''`` when no match is found.
+    """
     best_name = ''
     best_len = -1
     for dist in distributions():
@@ -216,7 +239,6 @@ def _project_from_direct_url(module_name: str) -> str:
             if src_len > best_len:
                 best_len = src_len
                 best_name = dist.metadata['Name'] or ''
-
     return best_name
 
 
