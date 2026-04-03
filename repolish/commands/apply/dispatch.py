@@ -5,6 +5,7 @@ from repolish.commands.apply.display import (
 )
 from repolish.commands.apply.options import ApplyCommandOptions, ApplyOptions
 from repolish.commands.apply.session import run_session
+from repolish.commands.apply.utils import CoordinateOptions
 from repolish.config.topology import find_workspace_root
 
 
@@ -44,10 +45,12 @@ def apply_command(params: ApplyCommandOptions) -> int:
             note_running_from_member(config_dir, root, rel)
             return coordinate_sessions(
                 (root / 'repolish.yaml').resolve(),
-                check_only=params.check,
-                strict=params.strict,
-                member=str(rel),
-                skip_post_process=params.skip_post_process,
+                CoordinateOptions(
+                    check_only=params.check,
+                    strict=params.strict,
+                    member=str(rel),
+                    skip_post_process=params.skip_post_process,
+                ),
             )
 
     # --standalone: single-session only, no note printed.
@@ -63,9 +66,11 @@ def apply_command(params: ApplyCommandOptions) -> int:
 
     return coordinate_sessions(
         config_path,
-        check_only=params.check,
-        strict=params.strict,
-        member=params.member,
-        root_only=params.root_only,
-        skip_post_process=params.skip_post_process,
+        CoordinateOptions(
+            check_only=params.check,
+            strict=params.strict,
+            member=params.member,
+            root_only=params.root_only,
+            skip_post_process=params.skip_post_process,
+        ),
     )

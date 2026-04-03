@@ -3,10 +3,22 @@
 import contextlib
 import os
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from repolish.providers.models import GlobalContext, get_global_context
 from repolish.providers.models.context import WorkspaceContext
+
+
+@dataclass
+class CoordinateOptions:
+    """Run-time options threaded through all coordinate_sessions helpers."""
+
+    check_only: bool
+    strict: bool = False
+    member: str | None = None
+    root_only: bool = False
+    skip_post_process: bool = field(default=False)
 
 
 @contextlib.contextmanager

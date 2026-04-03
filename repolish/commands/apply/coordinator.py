@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import filecmp
 import shutil
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,11 @@ from repolish.commands.apply.display import (
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import apply_session, run_session
-from repolish.commands.apply.utils import build_global_context, chdir
+from repolish.commands.apply.utils import (
+    CoordinateOptions,
+    build_global_context,
+    chdir,
+)
 from repolish.config.loader import load_config_file
 from repolish.config.topology import (
     detect_workspace,
@@ -39,6 +44,16 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class PromotionWinner:
+    """A resolved promoted file ready to be written (or checked) at the repo root."""
+
+    dest: str
+    source_file: Path
+    member_name: str
+    mapping: TemplateMapping
+
+
 def _resolve_source_file(
     source_template: str,
     member_render_dir: Path,
@@ -56,30 +71,32 @@ def _resolve_source_file(
 
 def _conflict_winner(
     dest: str,
-    prev: tuple[Path, str, TemplateMapping],
-    challenger: tuple[Path, str, TemplateMapping],
-) -> tuple[Path, str, TemplateMapping] | None:
+    prev: PromotionWinner,
+    challenger: PromotionWinner,
+) -> PromotionWinner | None:
     """Return the winning entry after resolving a promotion conflict, or None on hard error."""
-    prev_path, prev_member, _ = prev
-    source_file, member_name, mapping = challenger
-    strategy = mapping.promote_conflict
+    strategy = challenger.mapping.promote_conflict
     if strategy == 'error':
         logger.error(
             'promote_conflict_error',
             dest=dest,
-            member_a=prev_member,
-            member_b=member_name,
+            member_a=prev.member_name,
+            member_b=challenger.member_name,
             suggestion='set promote_conflict="last_wins" to suppress this',
         )
         return None
     if strategy == 'last_wins':
         return challenger
-    if not filecmp.cmp(str(prev_path), str(source_file), shallow=False):
+    if not filecmp.cmp(
+        str(prev.source_file),
+        str(challenger.source_file),
+        shallow=False,
+    ):
         logger.error(
             'promote_conflict_not_identical',
             dest=dest,
-            member_a=prev_member,
-            member_b=member_name,
+            member_a=prev.member_name,
+            member_b=challenger.member_name,
             suggestion=(
                 'both members rendered different content; '
                 'set promote_conflict="last_wins" or resolve the template divergence'
@@ -96,8 +113,8 @@ def _normalize_mapping(mapping_val: str | TemplateMapping) -> TemplateMapping:
 
 def _iter_pending_promotions(
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
-) -> Iterator[tuple[str, TemplateMapping, Path, str]]:
-    """Yield ``(dest, mapping, source_file, member_name)`` for all valid promoted mappings."""
+) -> Iterator[PromotionWinner]:
+    """Yield a :class:`PromotionWinner` for each valid promoted mapping across all members."""
     for m, session, _opts in member_sessions:
         member_render_dir = session.config.config_dir / '.repolish' / '_' / 'render' / 'repolish'
         for (
@@ -119,64 +136,61 @@ def _iter_pending_promotions(
                     member=m.name,
                 )
                 continue
-            yield dest, mapping, source_file, m.name
+            yield PromotionWinner(
+                dest=dest,
+                source_file=source_file,
+                member_name=m.name,
+                mapping=mapping,
+            )
 
 
 def _collect_promotion_winners(
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
-) -> dict[str, tuple[Path, str, TemplateMapping]] | None:
+) -> dict[str, PromotionWinner] | None:
     """Return the winning source for each promoted destination, or ``None`` on hard conflict."""
-    winners: dict[str, tuple[Path, str, TemplateMapping]] = {}
+    winners: dict[str, PromotionWinner] = {}
 
-    for dest, mapping, source_file, member_name in _iter_pending_promotions(
-        member_sessions,
-    ):
-        challenger = (source_file, member_name, mapping)
-        if dest not in winners:
-            winners[dest] = challenger
+    for winner in _iter_pending_promotions(member_sessions):
+        if winner.dest not in winners:
+            winners[winner.dest] = winner
             continue
-        result = _conflict_winner(dest, winners[dest], challenger)
+        result = _conflict_winner(winner.dest, winners[winner.dest], winner)
         if result is None:
             return None
-        winners[dest] = result
+        winners[winner.dest] = result
 
     return winners
 
 
 def _record_root_override(
-    dest: str,
-    member_name: str,
-    mapping: TemplateMapping,
+    winner: PromotionWinner,
     root_session: ResolvedSession,
 ) -> FileRecord:
     """Mark a root-owned dest as overridden and return the member's promoted FileRecord."""
     for i, rec in enumerate(root_session.providers.file_records):
-        if rec.path == dest:
+        if rec.path == winner.dest:
             root_session.providers.file_records[i] = FileRecord(
                 path=rec.path,
                 mode=rec.mode,
                 owner=rec.owner,
                 source=rec.source,
                 overlay_dir=rec.overlay_dir,
-                promoted_from=member_name,
+                promoted_from=winner.member_name,
                 overridden_by=rec.owner,
             )
             break
     return FileRecord(
-        path=dest,
+        path=winner.dest,
         mode=FileMode.REGULAR,
-        owner=member_name,
-        source=mapping.source_template,
-        promoted_from=member_name,
+        owner=winner.member_name,
+        source=winner.mapping.source_template,
+        promoted_from=winner.member_name,
         overridden_by='root',
     )
 
 
 def _apply_promoted_file(
-    dest: str,
-    source_file: Path,
-    member_name: str,
-    mapping: TemplateMapping,
+    winner: PromotionWinner,
     dest_file: Path,
     *,
     check_only: bool,
@@ -184,14 +198,14 @@ def _apply_promoted_file(
     """Check or write a single promoted file. Returns ``(record, status)``."""
     if check_only:
         if not dest_file.exists() or not filecmp.cmp(
-            str(source_file),
+            str(winner.source_file),
             str(dest_file),
             shallow=False,
         ):
             logger.info(
                 'promoted_file_differs',
-                dest=dest,
-                member=member_name,
+                dest=winner.dest,
+                member=winner.member_name,
                 _display_level=1,
             )
             result = 'differs'
@@ -200,34 +214,34 @@ def _apply_promoted_file(
     else:
         dest_file.parent.mkdir(parents=True, exist_ok=True)
         if dest_file.exists() and filecmp.cmp(
-            str(source_file),
+            str(winner.source_file),
             str(dest_file),
             shallow=False,
         ):
             result = 'unchanged'
         else:
-            shutil.copy2(source_file, dest_file)
+            shutil.copy2(winner.source_file, dest_file)
             logger.info(
                 'promoted_file_written',
-                dest=dest,
-                member=member_name,
-                source=str(source_file),
+                dest=winner.dest,
+                member=winner.member_name,
+                source=str(winner.source_file),
                 _display_level=1,
             )
             result = 'written'
 
     record = FileRecord(
-        path=dest,
+        path=winner.dest,
         mode=FileMode.REGULAR,
-        owner=member_name,
-        source=mapping.source_template,
-        promoted_from=member_name,
+        owner=winner.member_name,
+        source=winner.mapping.source_template,
+        promoted_from=winner.member_name,
     )
     return record, result
 
 
 def _apply_winners(
-    winners: dict[str, tuple[Path, str, TemplateMapping]],
+    winners: dict[str, PromotionWinner],
     root_session: ResolvedSession,
     *,
     check_only: bool,
@@ -242,19 +256,14 @@ def _apply_winners(
     promoted_records: list[FileRecord] = []
     promoted_result: dict[str, str] = {}
 
-    for dest, (source_file, member_name, mapping) in winners.items():
+    for dest, winner in winners.items():
         if dest in root_owned_paths:
-            promoted_records.append(
-                _record_root_override(dest, member_name, mapping, root_session),
-            )
+            promoted_records.append(_record_root_override(winner, root_session))
             promoted_result[dest] = 'overridden_by_root'
             continue
 
         record, result = _apply_promoted_file(
-            dest,
-            source_file,
-            member_name,
-            mapping,
+            winner,
             root_base_dir / dest,
             check_only=check_only,
         )
@@ -329,10 +338,7 @@ def _validate_member_filter(mono_ctx: WorkspaceContext, member: str) -> bool:
 def _resolve_member_sessions(
     mono_ctx: WorkspaceContext,
     config_dir: Path,
-    *,
-    check_only: bool,
-    strict: bool,
-    skip_post_process: bool,
+    opts: CoordinateOptions,
 ) -> list[tuple[MemberInfo, ResolvedSession, ApplyOptions]]:
     """Resolve every member session, returning a list of (member, session, opts) triples."""
     sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]] = []
@@ -344,16 +350,16 @@ def _resolve_member_sessions(
             package_dir=member_dir,
             members=mono_ctx.members,
         )
-        opts = ApplyOptions(
+        apply_opts = ApplyOptions(
             config_path=(member_dir / 'repolish.yaml').resolve(),
-            check_only=check_only,
-            strict=strict,
-            skip_post_process=skip_post_process,
+            check_only=opts.check_only,
+            strict=opts.strict,
+            skip_post_process=opts.skip_post_process,
             global_context=build_global_context(workspace),
         )
         with chdir(member_dir):
-            session = resolve_session(opts)
-        sessions.append((m, session, opts))
+            session = resolve_session(apply_opts)
+        sessions.append((m, session, apply_opts))
     return sessions
 
 
@@ -362,10 +368,7 @@ def _resolve_root_session(
     mono_ctx: WorkspaceContext,
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
     config_dir: Path,
-    *,
-    check_only: bool,
-    strict: bool,
-    skip_post_process: bool,
+    opts: CoordinateOptions,
 ) -> ResolvedSession:
     """Resolve the root session with all member data injected."""
     all_member_entries = [e for _, s, _ in member_sessions for e in s.provider_entries]
@@ -375,36 +378,33 @@ def _resolve_root_session(
         root_dir=config_dir,
         members=mono_ctx.members,
     )
-    opts = ApplyOptions(
+    apply_opts = ApplyOptions(
         config_path=config_path.resolve(),
-        check_only=check_only,
-        strict=strict,
-        skip_post_process=skip_post_process,
+        check_only=opts.check_only,
+        strict=opts.strict,
+        skip_post_process=opts.skip_post_process,
         global_context=build_global_context(workspace),
         extra_provider_entries=all_member_entries or None,
         extra_inputs=all_member_inputs or None,
     )
     with chdir(config_dir):
-        return resolve_session(opts)
+        return resolve_session(apply_opts)
 
 
 def _apply_member_sessions(
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
-    member_filter: str | None,
-    *,
-    check_only: bool,
-    skip_post_process: bool,
+    opts: CoordinateOptions,
 ) -> tuple[int, list[ResolvedSession]]:
-    """Apply each member session, honouring the member filter. Returns ``(rc, completed)``."""
+    """Apply each member session, honouring opts.member as a filter. Returns ``(rc, completed)``."""
     completed: list[ResolvedSession] = []
-    for m, session, opts in member_sessions:
-        if member_filter and str(m.path) != member_filter and m.name != member_filter:
+    for m, session, apply_opts in member_sessions:
+        if opts.member and str(m.path) != opts.member and m.name != opts.member:
             continue
-        with chdir(opts.config_path.parent):
+        with chdir(apply_opts.config_path.parent):
             rc = apply_session(
                 session,
-                check_only=check_only,
-                skip_post_process=skip_post_process,
+                check_only=opts.check_only,
+                skip_post_process=opts.skip_post_process,
             )
         if rc != 0:
             return rc, completed
@@ -417,9 +417,7 @@ def _run_root_pass(
     root_session: ResolvedSession,
     config_dir: Path,
     completed_sessions: list[ResolvedSession],
-    *,
-    check_only: bool,
-    skip_post_process: bool,
+    opts: CoordinateOptions,
 ) -> int:
     """Run the promotion pass then apply the root session; append root to completed on success.
 
@@ -429,17 +427,17 @@ def _run_root_pass(
     rc = _apply_promotion_pass(
         member_sessions,
         root_session,
-        check_only=check_only,
+        check_only=opts.check_only,
     )
     if rc not in (0, 2):
         return rc
-    promotion_stale = check_only and rc == 2
+    promotion_stale = opts.check_only and rc == 2
 
     with chdir(config_dir):
         rc = apply_session(
             root_session,
-            check_only=check_only,
-            skip_post_process=skip_post_process,
+            check_only=opts.check_only,
+            skip_post_process=opts.skip_post_process,
         )
     if rc != 0:
         return rc
@@ -452,32 +450,22 @@ def _run_apply_phase(
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
     root_session: ResolvedSession,
     config_dir: Path,
-    *,
-    member: str | None,
-    root_only: bool,
-    check_only: bool,
-    skip_post_process: bool,
+    opts: CoordinateOptions,
 ) -> tuple[int, list[ResolvedSession]]:
     """Run the member and root apply phases; return ``(rc, completed_sessions)``."""
     completed: list[ResolvedSession] = []
-    if not root_only:
-        rc, done = _apply_member_sessions(
-            member_sessions,
-            member,
-            check_only=check_only,
-            skip_post_process=skip_post_process,
-        )
+    if not opts.root_only:
+        rc, done = _apply_member_sessions(member_sessions, opts)
         if rc != 0:
             return rc, completed
         completed.extend(done)
-    if not member:
+    if not opts.member:
         rc = _run_root_pass(
             member_sessions,
             root_session,
             config_dir,
             completed,
-            check_only=check_only,
-            skip_post_process=skip_post_process,
+            opts,
         )
         if rc not in (0, 2):
             return rc, completed
@@ -490,15 +478,7 @@ def _run_apply_phase(
 # ---------------------------------------------------------------------------
 
 
-def coordinate_sessions(
-    config_path: Path,
-    *,
-    check_only: bool,
-    strict: bool = False,
-    member: str | None = None,
-    root_only: bool = False,
-    skip_post_process: bool = False,
-) -> int:
+def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
     """Orchestrate a full repolish run for a standalone project or monorepo.
 
     Resolve phase:
@@ -527,40 +507,29 @@ def coordinate_sessions(
         return run_session(
             ApplyOptions(
                 config_path=config_path.resolve(),
-                check_only=check_only,
-                strict=strict,
-                skip_post_process=skip_post_process,
+                check_only=opts.check_only,
+                strict=opts.strict,
+                skip_post_process=opts.skip_post_process,
             ),
         )
 
-    if member and not _validate_member_filter(mono_ctx, member):
+    if opts.member and not _validate_member_filter(mono_ctx, opts.member):
         return 1
 
-    member_sessions = _resolve_member_sessions(
-        mono_ctx,
-        config_dir,
-        check_only=check_only,
-        strict=strict,
-        skip_post_process=skip_post_process,
-    )
+    member_sessions = _resolve_member_sessions(mono_ctx, config_dir, opts)
     root_session = _resolve_root_session(
         config_path,
         mono_ctx,
         member_sessions,
         config_dir,
-        check_only=check_only,
-        strict=strict,
-        skip_post_process=skip_post_process,
+        opts,
     )
 
     rc, completed_sessions = _run_apply_phase(
         member_sessions,
         root_session,
         config_dir,
-        member=member,
-        root_only=root_only,
-        check_only=check_only,
-        skip_post_process=skip_post_process,
+        opts,
     )
     if rc not in (0, 2):
         return rc
