@@ -2,13 +2,16 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.commands.apply.symlinks import apply_symlinks
 from repolish.commands.apply.utils import chdir
 from repolish.config import RepolishConfigFile, load_config_file
+from repolish.config.resolution import resolve_config
 from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
 )
 from repolish.linker.health import ensure_providers_ready
+from repolish.linker.orchestrator import collect_provider_symlinks
 from repolish.providers.models.context import WorkspaceContext
 
 logger = get_logger(__name__)
@@ -49,6 +52,12 @@ def _link_config(config_path: Path) -> int:
             _display_level=1,
         )
         return 1
+    resolved = resolve_config(config)
+    resolved_symlinks = collect_provider_symlinks(
+        resolved.providers,
+        config.providers,
+    )
+    apply_symlinks(resolved_symlinks, resolved.providers)
     return 0
 
 

@@ -50,7 +50,6 @@ class {{ short_prefix }}MemberHandler(ModeHandler[{{ context_class }}, {{ inputs
     @override
     def create_default_symlinks(
         self,
-        context: {{ context_class }},
     ) -> list[Symlink]:
         """Return symlinks to create in member workspaces."""
         return []

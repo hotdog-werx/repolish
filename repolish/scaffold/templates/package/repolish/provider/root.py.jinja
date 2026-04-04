@@ -50,7 +50,6 @@ class {{ short_prefix }}RootHandler(ModeHandler[{{ context_class }}, {{ inputs_c
     @override
     def create_default_symlinks(
         self,
-        context: {{ context_class }},
     ) -> list[Symlink]:
         """Return symlinks to create in root workspaces."""
         return []

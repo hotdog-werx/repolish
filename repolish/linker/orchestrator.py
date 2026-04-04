@@ -16,8 +16,6 @@ from repolish.config.models.provider import (
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
 from repolish.providers.models import Provider, Symlink
-from repolish.providers.models.context import BaseContext, GlobalContext
-from repolish.providers.models.provider import call_provider_method
 
 logger = get_logger(__name__)
 
@@ -68,14 +66,13 @@ def create_provider_symlinks(
 
 def _symlinks_from_module(
     mod: object,
-    context: BaseContext,
 ) -> list[ProviderSymlink]:
     """Return default symlinks declared by the ``Provider`` subclass in *mod*."""
     for val in vars(mod).values():
         if isclass(val) and issubclass(val, Provider) and val is not Provider:
             symlinks: list[Symlink] = cast(
                 'list[Symlink]',
-                call_provider_method(val(), 'create_default_symlinks', context),
+                val().create_default_symlinks(),
             )
             return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
     return []  # pragma: no cover - defensive fallback, we make sure that a provider is declared in repolish.py
@@ -83,13 +80,11 @@ def _symlinks_from_module(
 
 def _load_provider_default_symlinks(
     provider_root: Path,
-    context: BaseContext,
 ) -> list[ProviderSymlink]:
     """Import ``repolish.py`` from *provider_root* and return its default symlinks.
 
     Finds the ``Provider`` subclass instance in the module and calls
-    :meth:`~repolish.providers.models.Provider.create_default_symlinks` via
-    :func:`call_provider_method` so that mode handlers are respected.
+    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
     Returns an empty list when the file is absent, has no Provider instance,
     or raises an exception during loading.
     """
@@ -105,7 +100,7 @@ def _load_provider_default_symlinks(
             return []
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return _symlinks_from_module(mod, context)
+        return _symlinks_from_module(mod)
     except Exception:  # noqa: BLE001 # pragma: no cover - defence against broken repolish.py in a provider; hard to induce cleanly in tests
         logger.warning(
             'provider_default_symlinks_load_failed',
@@ -117,29 +112,18 @@ def _load_provider_default_symlinks(
 def collect_provider_symlinks(
     providers: dict[str, ResolvedProviderInfo],
     providers_config: dict[str, ProviderConfig],
-    global_context: GlobalContext | None = None,
 ) -> dict[str, list[ProviderSymlink]]:
     """Resolve the effective symlink list per provider without creating them.
 
     Explicit entries in ``repolish.yaml`` take priority; absent entries fall
-    back to the defaults declared in ``repolish.py``.  SessionBundle with no
+    back to the defaults declared in ``repolish.py``.  Providers with no
     effective symlinks are omitted from the result.
 
     Args:
         providers: Resolved provider map from :func:`~repolish.config.load_config`.
         providers_config: Raw provider config map from the YAML (carries the
             ``symlinks`` override field).
-        global_context: Optional global context.  When supplied, the workspace
-            mode it carries is forwarded to
-            :meth:`~repolish.providers.models.Provider.create_default_symlinks`
-            so that mode handlers can gate symlink creation on the current
-            workspace role (e.g. root-only symlinks).
     """
-    from repolish.providers.models.context import RepolishContext  # noqa: PLC0415
-
-    repolish_ctx = RepolishContext.model_validate(global_context.model_dump()) if global_context else RepolishContext()
-    base_ctx = BaseContext(repolish=repolish_ctx)
-
     result: dict[str, list[ProviderSymlink]] = {}
     for alias, info in providers.items():
         raw = providers_config.get(alias)
@@ -149,7 +133,6 @@ def collect_provider_symlinks(
         else:
             effective = _load_provider_default_symlinks(
                 info.provider_root,
-                base_ctx,
             )
         if effective:
             result[alias] = effective

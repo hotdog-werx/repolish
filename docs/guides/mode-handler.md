@@ -38,7 +38,7 @@ class RootHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
         # the root gets the aggregating task-runner config
         return {'poe_tasks.toml': '_repolish.poe_tasks.root.toml'}
 
-    def create_default_symlinks(self, context):
+    def create_default_symlinks(self):
         # only the root should expose this symlink
         return [Symlink(source='configs/root-config.yaml', target='.config/root.yaml')]
 
@@ -98,32 +98,35 @@ class RootHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
         return {f.name: str(f) for f in workflows}
 ```
 
-## Context-aware symlinks
+## Symlinks per mode
 
-`create_default_symlinks` receives the provider context so you can make
-decisions based on it — for example skipping a symlink in member mode:
+`create_default_symlinks` takes no arguments. Use separate mode handlers to
+return different symlinks per workspace role — a `root_mode` handler returns the
+symlinks and the `member_mode` handler simply returns `[]`:
 
 ```python
-class SmartHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
-    def create_default_symlinks(self, context):
-        if context.repolish.workspace.mode == 'member':
-            return []  # root-only symlink; skip for members
+class RootHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
+    def create_default_symlinks(self):
         return [Symlink(source='configs/shared.yaml', target='.shared.yaml')]
+
+
+class MemberHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
+    def create_default_symlinks(self):
+        return []  # no symlinks for members
 ```
 
-Because this hook is routed through `call_provider_method`, registering a mode
-handler is the idiomatic way to express this: a `root_mode` handler returns the
-symlinks and the `member_mode` handler simply returns `[]`.
+Symlinks are created by both `repolish link` and `repolish apply`, so they are
+always in place regardless of which command runs first.
 
 ## Supported hooks
 
 Every `Provider` hook is available on `ModeHandler`. Override only the ones that
 differ across modes:
 
-| Hook                      | Purpose                                      |
-| ------------------------- | -------------------------------------------- |
-| `provide_inputs`          | Emit data to other providers                 |
-| `finalize_context`        | Merge received inputs into context           |
-| `create_file_mappings`    | Return template→destination mappings         |
-| `create_anchors`          | Return anchor substitutions                  |
-| `create_default_symlinks` | Return symlinks to create (receives context) |
+| Hook                      | Purpose                              |
+| ------------------------- | ------------------------------------ |
+| `provide_inputs`          | Emit data to other providers         |
+| `finalize_context`        | Merge received inputs into context   |
+| `create_file_mappings`    | Return template→destination mappings |
+| `create_anchors`          | Return anchor substitutions          |
+| `create_default_symlinks` | Return symlinks to create            |

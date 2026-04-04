@@ -93,7 +93,6 @@ class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
     @override
     def create_default_symlinks(
         self,
-        context: {{ context_class }},
     ) -> list[Symlink]:
         """Return the default symlinks this provider wants created.
 

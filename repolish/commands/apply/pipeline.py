@@ -113,7 +113,6 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     resolved_symlinks = collect_provider_symlinks(
         config.providers,
         raw_config.providers,
-        effective_global_context,
     )
     ordered_aliases = _ordered_aliases(config)
 

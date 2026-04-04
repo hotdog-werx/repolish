@@ -50,7 +50,6 @@ class {{ short_prefix }}StandaloneHandler(ModeHandler[{{ context_class }}, {{ in
     @override
     def create_default_symlinks(
         self,
-        context: {{ context_class }},
     ) -> list[Symlink]:
         """Return symlinks to create in standalone workspaces."""
         return []

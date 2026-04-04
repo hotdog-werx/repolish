@@ -95,7 +95,6 @@ def render_with_jinja(ctx: RenderContext) -> None:
         logger.debug(
             'rendering_file',
             file=str(src),
-            context=ctx_to_use,
             provider=ctx.providers.template_sources.get(rel_str),
         )
 

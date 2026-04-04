@@ -8,7 +8,7 @@ from typing import IO
 
 from hotlog import get_logger
 from hotlog.config import get_config
-from hotlog.live import LiveLogger, live_logging
+from hotlog.live import live_logging
 
 logger = get_logger(__name__)
 
@@ -36,18 +36,13 @@ def _normalize_command(raw: object) -> Sequence[str]:
 def _run_argv(
     argv: Sequence[str],
     cwd: Path,
-    *,
-    live: LiveLogger | None = None,
 ) -> None:
     """Run an argv command in cwd, raise CalledProcessError on non-zero exit.
 
     Output (stdout + stderr) is captured and only printed when the current
     verbosity level is >= 1 (-v) or the command exits non-zero.
     """
-    if live is not None:
-        live.info('post_process_command', command=list(argv), cwd=str(cwd))
-    else:
-        logger.info('post_process_command', command=argv, cwd=str(cwd))
+    logger.info('post_process_command', command=list(argv), cwd=str(cwd))
     # Run the tokenized argv without a shell. This avoids shell=True based
     # injection risk while keeping behavior simple and convenient for
     # developers. If you need complex shell pipelines, commit a script and
@@ -103,9 +98,9 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
     if not normalised:
         return
     label = f'post-process ({len(normalised)} command{"s" if len(normalised) != 1 else ""})'
-    with live_logging(label) as live:
+    with live_logging(label):
         for argv in normalised:
-            _run_argv(argv, cwd, live=live)
+            _run_argv(argv, cwd)
 
 
 def ensure_dot_repolish(base_dir: Path) -> Path:
