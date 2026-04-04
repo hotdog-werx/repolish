@@ -435,3 +435,136 @@ def test_run_provider_link_no_extra_save(
 
     assert isinstance(result, ProviderFileInfo)
     assert result.resources_dir == '.repolish/mylib'
+
+
+def _cwd_provider_info(*_args: object, **_kwargs: object) -> ProviderFileInfo:
+    """Return a ProviderFileInfo whose resources_dir is under the current working directory."""
+    return ProviderFileInfo(
+        resources_dir=str(Path.cwd() / '.repolish' / 'lib'),
+        site_package_dir='/fake/source/lib',
+    )
+
+
+def test_run_monorepo_links_root_and_members(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """command() links root providers then each member's providers."""
+    monkeypatch.chdir(tmp_path)
+
+    root_config = tmp_path / 'repolish.yaml'
+    root_config.write_text("""
+providers:
+  root_lib:
+    cli: root-lib-link
+workspace:
+  members:
+    - packages/*
+""")
+
+    for name in ('pkg_a', 'pkg_b'):
+        member_dir = tmp_path / 'packages' / name
+        member_dir.mkdir(parents=True)
+        (member_dir / 'repolish.yaml').write_text(f"""
+providers:
+  {name}_lib:
+    cli: {name}-lib-link
+""")
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(root_config)
+
+    assert result == 0
+    # One call for root + one call per member = 3 total
+    assert mock_link.call_count == 3
+
+
+def test_run_monorepo_member_failure_stops_early(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """command() returns 1 immediately when a member provider fails."""
+    monkeypatch.chdir(tmp_path)
+
+    root_config = tmp_path / 'repolish.yaml'
+    root_config.write_text("""
+providers:
+  root_lib:
+    cli: root-lib-link
+workspace:
+  members:
+    - packages/*
+""")
+
+    for name in ('pkg_a', 'pkg_b'):
+        member_dir = tmp_path / 'packages' / name
+        member_dir.mkdir(parents=True)
+        (member_dir / 'repolish.yaml').write_text(f"""
+providers:
+  {name}_lib:
+    cli: {name}-lib-link
+""")
+
+    call_count = 0
+
+    def _side_effect(*_args: object, **_kwargs: object) -> ProviderFileInfo:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return _cwd_provider_info()
+        raise subprocess.CalledProcessError(1, 'cmd')
+
+    mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_side_effect,
+    )
+
+    result = run_link(root_config)
+
+    assert result == 1
+
+
+def test_run_monorepo_skips_member_without_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """command() silently skips member directories that have no repolish.yaml."""
+    monkeypatch.chdir(tmp_path)
+
+    root_config = tmp_path / 'repolish.yaml'
+    root_config.write_text("""
+providers:
+  root_lib:
+    cli: root-lib-link
+workspace:
+  members:
+    - packages/*
+""")
+
+    # pkg_a has a config; pkg_b does not.
+    pkg_a = tmp_path / 'packages' / 'pkg_a'
+    pkg_a.mkdir(parents=True)
+    (pkg_a / 'repolish.yaml').write_text("""
+providers:
+  pkg_a_lib:
+    cli: pkg-a-lib-link
+""")
+    (tmp_path / 'packages' / 'pkg_b').mkdir(parents=True)
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(root_config)
+
+    assert result == 0
+    # Root + pkg_a only (pkg_b is skipped)
+    assert mock_link.call_count == 2
