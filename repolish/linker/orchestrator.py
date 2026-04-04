@@ -127,10 +127,11 @@ def _load_provider_default_symlinks(
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return _symlinks_from_module(mod, mode, provider_root)
-    except Exception:  # noqa: BLE001 # pragma: no cover - defence against broken repolish.py in a provider; hard to induce cleanly in tests
+    except Exception as exc:  # noqa: BLE001 # pragma: no cover - defence against broken repolish.py in a provider; hard to induce cleanly in tests
         logger.warning(
             'provider_default_symlinks_load_failed',
             provider_root=str(provider_root),
+            error=str(exc),
         )
     return []  # pragma: no cover
 
