@@ -7,7 +7,7 @@ from rich.tree import Tree
 from repolish.commands.apply.debug import _file_context_slug, debug_file_slug
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
-from repolish.console import console
+from repolish.console import console, supports_hyperlinks
 from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
@@ -236,7 +236,11 @@ def _file_node(
     file_status = session.apply_result.get(record.path) if session.apply_result else None
     prefix, pfx_style = _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
     node.append(prefix, style=pfx_style)
-    link = f'link file://{file_ctx_file.absolute()}' if record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY) else ''
+    link = (
+        f'link file://{file_ctx_file.absolute()}'
+        if supports_hyperlinks and record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)
+        else ''
+    )
     node.append(record.path, style=link)
     mode_val = record.mode.value
     if mode_val not in ('regular', 'delete'):
@@ -328,7 +332,10 @@ def _provider_label(
     slug = debug_file_slug(ctx, alias)
     debug_file = debug_dir / f'provider-context.{slug}.json'
     label = Text()
-    label.append(alias, style=f'bold link file://{debug_file.absolute()}')
+    label.append(
+        alias,
+        style=f'bold link file://{debug_file.absolute()}' if supports_hyperlinks else 'bold',
+    )
     if ctx is not None and isinstance(ctx, BaseContext):
         label.append(f'@{ctx.repolish.provider.version}', style='dim')
     _append_provider_stat_suffix(label, records, syms, session)
