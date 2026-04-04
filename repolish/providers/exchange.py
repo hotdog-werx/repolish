@@ -541,4 +541,9 @@ def collect_provider_contributions(
     This mutates the provided accumulators in-place.
     """
     for provider_id, module_dict in module_cache:
-        _collect_provider_contribution(provider_id, module_dict, provider_contexts, accum)
+        _collect_provider_contribution(
+            provider_id,
+            module_dict,
+            provider_contexts,
+            accum,
+        )

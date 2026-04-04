@@ -50,7 +50,12 @@ def _run_provider_pipeline(
     instances = build_provider_metadata(module_cache)
     _set_provider_metadata(module_cache, instances, _opts.alias_map or {})
 
-    _populate_provider_context(module_cache, instances, provider_contexts, _opts.global_context)
+    _populate_provider_context(
+        module_cache,
+        instances,
+        provider_contexts,
+        _opts.global_context,
+    )
     _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
 
     all_providers_list: list[ProviderEntry] = _build_all_providers_list(
@@ -64,7 +69,10 @@ def _run_provider_pipeline(
         all_providers_list = all_providers_list + _opts.extra_provider_entries
 
     if _opts.context_overrides:
-        _apply_overrides_to_provider_contexts(provider_contexts, _opts.context_overrides)
+        _apply_overrides_to_provider_contexts(
+            provider_contexts,
+            _opts.context_overrides,
+        )
 
     if _opts.dry_run:
         emitted = collect_all_emitted_inputs(
@@ -97,7 +105,10 @@ def _run_provider_pipeline(
     )
 
     if _opts.context_overrides:
-        _apply_overrides_to_provider_contexts(provider_contexts, _opts.context_overrides)
+        _apply_overrides_to_provider_contexts(
+            provider_contexts,
+            _opts.context_overrides,
+        )
     _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
 
     collect_provider_contributions(module_cache, provider_contexts, accum)

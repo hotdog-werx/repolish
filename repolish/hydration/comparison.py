@@ -92,7 +92,11 @@ def _check_one_regular_file(
     dest = base_dir / rel
     if not dest.exists():
         return (rel_str, 'MISSING')
-    same, a_lines, b_lines = _compare_and_prepare_diff(out, dest, preserve=preserve)
+    same, a_lines, b_lines = _compare_and_prepare_diff(
+        out,
+        dest,
+        preserve=preserve,
+    )
     if same:
         return None
     ud = ''.join(
@@ -133,7 +137,13 @@ def _check_regular_files(  # noqa: PLR0913
         return []
     diffs: list[tuple[str, str]] = []
     for out in output_files:
-        result = _check_one_regular_file(out, setup_output, skip_files, base_dir, preserve=preserve)
+        result = _check_one_regular_file(
+            out,
+            setup_output,
+            skip_files,
+            base_dir,
+            preserve=preserve,
+        )
         if result:
             diffs.append(result)
     return diffs
