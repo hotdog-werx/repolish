@@ -112,8 +112,25 @@ def ensure_dot_repolish(base_dir: Path) -> Path:
     repolish_dir.mkdir(parents=True, exist_ok=True)
     gitignore = repolish_dir / '.gitignore'
     if not gitignore.exists():
-        gitignore.write_text('*\n', encoding='utf-8')
+        gitignore.write_text('*\n!_/\n', encoding='utf-8')
     return repolish_dir
+
+
+def ensure_meta_dir(base_dir: Path) -> Path:
+    """Create the .repolish/_/ meta directory and write a catch-all .gitignore if absent.
+
+    Tools that need access to specific paths inside _/ (e.g. dprint reaching
+    _/render/) should negate those paths in their own config.  The .gitignore
+    here ignores everything so nothing leaks into version control by default.
+
+    Returns the .repolish/_/ Path.
+    """
+    meta_dir = base_dir / '.repolish' / '_'
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = meta_dir / '.gitignore'
+    if not gitignore.exists():
+        gitignore.write_text('*\n', encoding='utf-8')
+    return meta_dir
 
 
 def read_text_utf8(path: Path) -> str:

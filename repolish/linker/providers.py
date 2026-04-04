@@ -9,7 +9,7 @@ from hotlog import get_logger
 
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
-from repolish.utils import ensure_dot_repolish, open_utf8
+from repolish.utils import ensure_dot_repolish, ensure_meta_dir, open_utf8
 
 logger = get_logger(__name__)
 
@@ -60,8 +60,7 @@ def write_provider_info_file(
         config_dir: Directory containing the ``repolish.yaml`` file.
     """
     info_file = get_provider_info_path(provider_name, config_dir)
-    info_file.parent.mkdir(parents=True, exist_ok=True)
-
+    ensure_meta_dir(config_dir)
     logger.debug(
         'saving_provider_info',
         provider=provider_name,
