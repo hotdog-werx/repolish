@@ -15,7 +15,7 @@ from repolish.config.models.provider import (
 )
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
-from repolish.providers.models import Provider, Symlink
+from repolish.providers.models import ModeHandler, Provider, Symlink
 
 logger = get_logger(__name__)
 
@@ -64,29 +64,55 @@ def create_provider_symlinks(
     )
 
 
+def _mode_handler_cls(
+    inst: Provider,  # type: ignore[type-arg]
+    mode: str,
+) -> type[ModeHandler] | None:  # type: ignore[type-arg]
+    """Return the mode handler class registered on *inst* for *mode*."""
+    if mode == 'root':
+        return inst.root_mode
+    if mode == 'member':
+        return inst.member_mode
+    return inst.standalone_mode
+
+
 def _symlinks_from_module(
     mod: object,
+    mode: str,
+    provider_root: Path,
 ) -> list[ProviderSymlink]:
-    """Return default symlinks declared by the ``Provider`` subclass in *mod*."""
+    """Return default symlinks for *mode* declared by the ``Provider`` (and its handler) in *mod*.
+
+    Provider-level symlinks are shared across all modes; handler-level symlinks
+    are mode-specific additions.  Both are combined and returned together.
+    """
     for val in vars(mod).values():
         if isclass(val) and issubclass(val, Provider) and val is not Provider:
-            symlinks: list[Symlink] = cast(
-                'list[Symlink]',
-                val().create_default_symlinks(),
+            inst = val()
+            inst.templates_root = provider_root
+            # Global symlinks defined on the Provider itself (all modes).
+            all_symlinks: list[Symlink] = list(
+                cast('list[Symlink]', inst.create_default_symlinks()),
             )
-            return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in symlinks]
+            # Mode-specific symlinks from the registered handler.
+            handler_cls = _mode_handler_cls(inst, mode)
+            if handler_cls is not None:
+                handler = handler_cls()
+                handler.templates_root = provider_root / mode
+                all_symlinks += handler.create_default_symlinks()
+            return [ProviderSymlink(source=Path(s.source), target=Path(s.target)) for s in all_symlinks]
     return []  # pragma: no cover - defensive fallback, we make sure that a provider is declared in repolish.py
 
 
 def _load_provider_default_symlinks(
     provider_root: Path,
+    mode: str,
 ) -> list[ProviderSymlink]:
-    """Import ``repolish.py`` from *provider_root* and return its default symlinks.
+    """Import ``repolish.py`` from *provider_root* and return its default symlinks for *mode*.
 
-    Finds the ``Provider`` subclass instance in the module and calls
-    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
-    Returns an empty list when the file is absent, has no Provider instance,
-    or raises an exception during loading.
+    Finds the ``Provider`` subclass and calls ``create_default_symlinks`` on both
+    the provider and its registered mode handler (if any).  Returns an empty list
+    when the file is absent, has no Provider subclass, or raises during loading.
     """
     repolish_py = provider_root / 'repolish.py'
     if not repolish_py.exists():
@@ -100,7 +126,7 @@ def _load_provider_default_symlinks(
             return []
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return _symlinks_from_module(mod)
+        return _symlinks_from_module(mod, mode, provider_root)
     except Exception:  # noqa: BLE001 # pragma: no cover - defence against broken repolish.py in a provider; hard to induce cleanly in tests
         logger.warning(
             'provider_default_symlinks_load_failed',
@@ -112,17 +138,20 @@ def _load_provider_default_symlinks(
 def collect_provider_symlinks(
     providers: dict[str, ResolvedProviderInfo],
     providers_config: dict[str, ProviderConfig],
+    mode: str = 'standalone',
 ) -> dict[str, list[ProviderSymlink]]:
     """Resolve the effective symlink list per provider without creating them.
 
     Explicit entries in ``repolish.yaml`` take priority; absent entries fall
-    back to the defaults declared in ``repolish.py``.  Providers with no
-    effective symlinks are omitted from the result.
+    back to the defaults declared in ``repolish.py`` (both provider-level and
+    mode-handler-level).  Providers with no effective symlinks are omitted.
 
     Args:
         providers: Resolved provider map from :func:`~repolish.config.load_config`.
         providers_config: Raw provider config map from the YAML (carries the
             ``symlinks`` override field).
+        mode: Workspace mode (``'root'``, ``'member'``, or ``'standalone'``)
+            used to select the correct :class:`~repolish.providers.models.ModeHandler`.
     """
     result: dict[str, list[ProviderSymlink]] = {}
     for alias, info in providers.items():
@@ -133,6 +162,7 @@ def collect_provider_symlinks(
         else:
             effective = _load_provider_default_symlinks(
                 info.provider_root,
+                mode,
             )
         if effective:
             result[alias] = effective

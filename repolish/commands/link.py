@@ -32,7 +32,7 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
     return list(config.providers.keys())
 
 
-def _link_config(config_path: Path) -> int:
+def _link_config(config_path: Path, mode: str = 'standalone') -> int:
     """Run ensure_providers_ready for the config at *config_path*. Returns 0 or 1."""
     config = load_config_file(config_path)
     if not config.providers:
@@ -56,6 +56,7 @@ def _link_config(config_path: Path) -> int:
     resolved_symlinks = collect_provider_symlinks(
         resolved.providers,
         config.providers,
+        mode=mode,
     )
     apply_symlinks(resolved_symlinks, resolved.providers)
     return 0
@@ -79,7 +80,7 @@ def _link_members(mono_ctx: WorkspaceContext, config_dir: Path) -> int:
             continue
         logger.info('linking_member', member=m.name, _display_level=1)
         with chdir(member_dir):
-            rc = _link_config(member_config)
+            rc = _link_config(member_config, mode='member')
         if rc != 0:
             return rc
     return 0
@@ -99,7 +100,7 @@ def command(config_path: Path) -> int:
 
     if mono_ctx is not None:
         # Root pass first, then every member.
-        rc = _link_config(config_path)
+        rc = _link_config(config_path, mode='root')
         if rc != 0:
             return rc
         return _link_members(mono_ctx, config_dir)
@@ -108,4 +109,4 @@ def command(config_path: Path) -> int:
         logger.warning('no_providers_configured', _display_level=1)
         return 0
 
-    return _link_config(config_path)
+    return _link_config(config_path, mode='standalone')
