@@ -1,3 +1,4 @@
+import contextlib
 import os
 import shlex
 import subprocess
@@ -98,7 +99,11 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
     if not normalised:
         return
     label = f'post-process ({len(normalised)} command{"s" if len(normalised) != 1 else ""})'
-    with live_logging(label):
+    in_ci = bool(os.environ.get('CI'))
+    ctx = contextlib.nullcontext() if in_ci else live_logging(label)
+    if in_ci:
+        logger.info('post_process', label=label)
+    with ctx:
         for argv in normalised:
             _run_argv(argv, cwd)
 
