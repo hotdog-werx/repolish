@@ -5,49 +5,44 @@ repo_url: https://github.com/hotdog-werx/repolish
 repo_name: hotdog-werx/repolish
 
 nav:
+  - Home: index.md
+
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quick-start.md
+
+  - How It Works:
+      - Overview: how-it-works/overview.md
+      - Providers: how-it-works/providers.md
+      - Templates: how-it-works/templates.md
+      - Preprocessors: how-it-works/preprocessors.md
+      - Context: how-it-works/context.md
+      - File Modes: how-it-works/file-modes.md
+
+  - Developer Control:
+      - You Are in Charge: developer-control/index.md
+      - Pause a File: developer-control/pause.md
+      - Override a Template: developer-control/template-overrides.md
+      - Override Context: developer-control/context-overrides.md
+      - Local Providers: developer-control/local-providers.md
+      - Preserve Your Edits: developer-control/anchors.md
+
   - Configuration:
-      - Overview: configuration/overview.md
-      - Config File: configuration/config-file.md
-      - Providers: configuration/providers.md
-      - Context: configuration/context.md
-      # - Overrides: wip.md
-      # - Anchors: wip.md
-  # - Providers:
-  #     - Overview: wip.md
-  # - Creating Providers: wip.md
-  # - Context Functions: wip.md
-  # - File Operations: wip.md
-  # - Templating:
-  #     - Overview: wip.md
-  # - Template Structure: wip.md
-  # - File Mappings: wip.md
-  # - Cookiecutter Integration: wip.md
-  # - Processing:
-  #     - Overview: wip.md
-  # - Anchors: wip.md
-  # - Regex Patterns: wip.md
-  # - Text Replacement: wip.md
-  # - Post-Processing: wip.md
-  - Operations:
-      # - Overview: wip.md
-      - CLI Commands: operations/cli.md
-      # - Check Mode: wip.md
-      # - Apply Mode: wip.md
-      # - Diff Output: wip.md
+      - repolish.yaml: configuration/config-file.md
+      - Provider Settings: configuration/providers.md
+      - Anchors & Overrides: configuration/overrides.md
+
+  - CLI Reference:
+      - repolish apply / check: operations/cli.md
+      - repolish link: operations/link.md
+      - repolish-debugger: operations/debugger.md
+
   - Guides:
-      # - Python Projects: guides/python.md
-      - Monorepo Support: guides/monorepo.md
+      - Writing a Provider: guides/writing-a-provider.md
+      - Monorepo Setup: guides/monorepo.md
       - Mode Handlers: guides/mode-handler.md
       - Provider Patterns: guides/patterns.md
       - Resource Linker: guides/linker.md
-      - Debugging Preprocessors: guides/debugger.md
-      - Preprocessors: guides/preprocessors.md
-      - Templates: guides/templates.md
-      - Provider Migration: guides/provider-migration.md
-      # - Troubleshooting: wip.md
 
 # Configuration
 theme:

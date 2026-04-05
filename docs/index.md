@@ -1,91 +1,71 @@
 # Repolish
 
-A hybrid templating and diff/patch system for maintaining repository consistency
-while preserving local customizations.
+You have ten repositories. They all follow roughly the same structure — similar
+CI pipelines, similar tooling config, similar README conventions. One day the
+team decides to upgrade the linter version. You update it in one repo, maybe
+two. A week later someone opens a PR in a third repo and the old linter fires on
+brand-new code. You fix it there too. A month later you find repo seven still
+running the original version. This is the slow drift that repolish is built to
+stop.
 
-## Why this exists
+## The idea in one sentence
 
-Teams often need to enforce repository-level conventions — CI config, build
-tools, metadata, shared docs — while letting individual projects keep local
-customizations. The naive approaches are painful:
+Repolish lets a team package their repository standards into **providers**, then
+push those standards consistently across every project that opts in — without
+destroying the local changes that developers have made and own.
 
-- Copying templates into many repos means drift over time and manual syncs.
-- Running destructive templating can overwrite local changes developers rely on.
+## What is a provider?
 
-Repolish solves this by combining templating (to generate canonical files) with
-a set of careful, reversible operations that preserve useful local content.
-Instead of blindly replacing files, Repolish can:
+A provider is a package (or a local directory) that supplies:
 
-- Fill placeholders from provider-supplied context.
-- Apply anchor-driven replacements to keep developer-customized sections intact.
-- Track provider-specified deletions and record provenance so reviewers can see
-  why a path was requested for deletion.
+- **Templates** — the canonical version of files like `pyproject.toml`,
+  `.github/workflows/ci.yml`, or `CONTRIBUTING.md`.
+- **Context** — data the templates need to render correctly for a specific
+  project (repo name, owner, language version, etc.).
+- **Anchors** — hooks that tell repolish "preserve whatever the developer wrote
+  in this block; don't overwrite it".
 
-## Key concepts
+Without providers there is nothing to apply. Repolish itself is the engine;
+providers are the content. Your team writes one or more providers and every repo
+that includes them in its `repolish.yaml` gets the same standards applied
+automatically.
 
-**Providers** supply templates and context. Each provider lives in a template
-directory and may include a `repolish.py` module that exports
-`create_context()`, `create_anchors()`, and/or `create_delete_files()` helpers.
+## How it flows
 
-**Anchors** are markers placed in templates (and optionally in project files)
-that mark blocks or regex lines to preserve. Block anchors (`repolish-start` /
-`repolish-end`) preserve entire sections; regex anchors (`repolish-regex`) keep
-individual lines matching a pattern.
+```mermaid
+flowchart TD
+    A[repolish.yaml] -->|declares providers| B[Providers]
+    B -->|supply templates + context + anchors| C[Merge & render]
+    C -->|Jinja2 renders with merged context| D[Preprocess]
+    D -->|anchor pass preserves your local edits| E{Mode}
+    E -->|--check| F[Report drift\nno files touched]
+    E -->|apply| G[Write changes\nto project]
+```
 
-**File mappings** let providers conditionally select which template file to copy
-to a given destination, allowing clean filenames without `{% if %}` clutter.
+Run `repolish --check` in CI to catch drift before it merges. Run
+`repolish apply` locally (or in an automated PR) to pull in updates from
+providers.
 
-**Create-only files** are copied once on first run and skipped on subsequent
-runs, making them ideal for initial scaffolding that users own after creation.
+## You are always in control
 
-**Delete semantics** let providers request file removals. A `!` prefix negates
-(keeps) a path. A `delete_history` provenance record is maintained so reviewers
-can see why a path was flagged.
+Repolish is a tool that works _for_ you, not against you. If a provider ships a
+broken template, or introduces a change you are not ready to absorb right now,
+you never have to stop working. Add the affected file to `paused_files` in your
+`repolish.yaml` and repolish will silently skip it until you remove it:
 
-## How it works
+```yaml
+paused_files:
+  - .github/workflows/ci.yml # provider update pending, resume after v2.3
+```
 
-1. Load providers configured in `repolish.yaml`.
-2. Merge provider contexts; config-level context overrides provider values.
-3. Merge anchors from providers and config.
-4. Stage all provider template directories into a single merged template under
-   `.repolish/setup-input`.
-5. Preprocess staged templates by applying anchor-driven replacements using
-   local project files.
-6. Render the merged template into `.repolish/setup-output`.
-7. In `--check` mode: compare generated files to project files and report diffs,
-   missing files, or paths that providers wanted deleted but are still present.
-8. In apply mode: copy generated files into the project and apply deletions.
+That is the quick escape hatch. The
+[Developer Control](developer-control/index.md) section documents every tool
+available to you: pausing files, overriding templates, patching context, and
+running a fully local provider when you need total independence from upstream.
 
-## Why it is useful
+## Where to go next
 
-- **Safe consistency**: teams get centralized templates without forcing
-  destructive rollouts.
-- **Clear explainability**: the `delete_history` provenance makes it easy to
-  review why a file was targeted for deletion or kept.
-- **CI-friendly**: `--check` detects drift; structured logs and diffs make it
-  straightforward to require PRs to run repolish before merging.
-
----
-
-!!! warning "Cookiecutter support removed"
-
-    Apple was here!  As of the v1 release all rendering is handled via Jinja2.
-    The old Cookiecutter engine and the `no_cookiecutter` setting have been
-    removed from the configuration schema and dependencies.  Projects do not
-    need to take any action unless they still reference the deprecated
-    configuration key; simply delete it and rerun your migration/test suite.
-
-    *Templates may still use `cookiecutter.*` variable names for backward
-    compatibility; the corresponding values are injected into the context.*
-
-    See the [Templates guide](guides/templates.md) for more details.
-
-## Documentation
-
-- [Installation](getting-started/installation.md)
-- [Quick Start](getting-started/quick-start.md)
-- [Configuration](configuration/overview.md)
-- [Preprocessors](guides/preprocessors.md)
-- [Templates](guides/templates.md)
-- [Provider Patterns](guides/patterns.md)
-- [CLI Commands](operations/cli.md)
+- [Installation](getting-started/installation.md) — get repolish installed
+- [Quick Start](getting-started/quick-start.md) — run your first check and apply
+- [How It Works](how-it-works/overview.md) — deeper look at the pipeline
+- [Developer Control](developer-control/index.md) — all your escape hatches

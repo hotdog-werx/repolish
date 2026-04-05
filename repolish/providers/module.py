@@ -246,8 +246,11 @@ def _load_module_cache(directories: list[str]) -> list[tuple[str, dict]]:
     cache: list[tuple[str, dict]] = []
     for directory in directories:
         module_path = Path(directory) / 'repolish.py'
-        module_dict = get_module(str(module_path))
         provider_id = Path(directory).as_posix()
+        if not module_path.exists():
+            cache.append((provider_id, {}))
+            continue
+        module_dict = get_module(str(module_path))
 
         # Detect and instantiate class-based providers
         _maybe_instantiate_provider(module_dict)
