@@ -74,5 +74,5 @@ def command(
         )
         console.print()
     console.rule('[bold]Result')
-    console.print(result)
+    console.print(result, markup=False, highlight=False)
     return 0

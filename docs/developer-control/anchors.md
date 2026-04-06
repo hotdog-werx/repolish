@@ -23,14 +23,23 @@ The marker style (`##`) can be any comment prefix that fits the file type — `#
 
 ### How it works
 
+Block anchor replacements come from the **provider**, not from your project
+file. The provider's `create_anchors()` method (or the `anchors:` key in
+`repolish.yaml`) returns a dict mapping anchor names to replacement strings.
+
 1. The provider's template ships the anchor with default content between the
    markers.
-2. On first apply, repolish writes the default content.
-3. You edit the content between the markers to suit your project.
-4. On subsequent applies, repolish detects the markers in your file and
-   preserves what you wrote instead of reverting to the default.
+2. During preprocessing, repolish replaces the block with whatever the
+   provider's `create_anchors()` returns for that key.
+3. If the provider returns nothing for a key, the default content is kept.
+4. The marker lines are stripped from the final written file.
 
-### Example — keeping custom dependencies in a Makefile target
+This means the provider decides what the block contains on every apply. To keep
+a section static from the provider's perspective, the provider simply returns
+the same value every time. For sections you want to own entirely, see
+[`paused_files`](pause.md) instead.
+
+### Example — provider injects custom install extras
 
 Provider template:
 
@@ -40,15 +49,19 @@ pip install -e ".[dev]"
 ## repolish-end[install-extras]
 ```
 
-After first apply you add your project-specific extras:
+Provider `create_anchors()`:
 
-```makefile
-## repolish-start[install-extras]
-pip install -e ".[dev,docs,gpu]"
-## repolish-end[install-extras]
+```python
+def create_anchors(self, context: Ctx) -> dict[str, str]:
+    extras = ",".join(["dev", *context.extra_groups])
+    return {"install-extras": f'pip install -e ".[{extras}]"'}
 ```
 
-Repolish will keep `pip install -e ".[dev,docs,gpu]"` on every future apply.
+Applied result (marker lines stripped):
+
+```makefile
+pip install -e ".[dev,docs,gpu]"
+```
 
 ## Regex anchors
 

@@ -71,6 +71,10 @@ def test_repolish_apply_creates_readme(
     assert readme.exists(), 'README.simple-provider.md was not created by repolish apply'
     content = readme.read_text(encoding='utf-8')
     assert 'Hello, world!' in content
+    # Anchor markers must never appear in the final written file — preprocessing
+    # injects the replacement and strips the marker lines before Jinja2 runs.
+    assert 'repolish-start' not in content
+    assert 'repolish-end' not in content
 
 
 def test_file_context_debug_file_created(
