@@ -44,6 +44,14 @@ nav:
       - Provider Patterns: guides/patterns.md
       - Resource Linker: guides/linker.md
 
+  - Tutorial:
+      - Introduction: tutorial/index.md
+      - Part 1 — Workspace Provider: tutorial/01-workspace-provider.md
+      - Part 2 — Python Provider: tutorial/02-python-provider.md
+      - Part 3 — The Sync Problem: tutorial/03-keeping-in-sync.md
+      - Part 4 — Going Monorepo: tutorial/04-monorepo.md
+      - Part 5 — Everything Together: tutorial/05-using-all-providers.md
+
 # Configuration
 theme:
   name: material

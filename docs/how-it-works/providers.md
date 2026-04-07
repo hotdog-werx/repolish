@@ -42,9 +42,6 @@ class Ctx(BaseContext):
 
 
 class MyProvider(Provider[Ctx, BaseInputs]):
-    def get_provider_name(self) -> str:
-        return 'my-provider'
-
     def create_context(self) -> Ctx:
         return Ctx()
 
@@ -52,7 +49,7 @@ class MyProvider(Provider[Ctx, BaseInputs]):
         return {'install-extras': 'pip install -e ".[dev]"'}
 ```
 
-`get_provider_name()` and `create_context()` are the only required methods.
+`create_context()` is the only required method.
 All others have default no-op implementations.
 
 ## How providers are loaded

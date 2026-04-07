@@ -67,5 +67,6 @@ running a fully local provider when you need total independence from upstream.
 
 - [Installation](getting-started/installation.md) — get repolish installed
 - [Quick Start](getting-started/quick-start.md) — run your first check and apply
+- [Tutorial](tutorial/index.md) — build two providers from scratch and discover why each feature exists
 - [How It Works](how-it-works/overview.md) — deeper look at the pipeline
 - [Developer Control](developer-control/index.md) — all your escape hatches
