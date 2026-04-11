@@ -26,9 +26,9 @@ work-in-progress branch.
 **Circular-feeling dependencies.** `devkit-python` imports `WorkspaceInputs`
 from `devkit-workspace`. If the workspace provider's input schema changes, you
 must update the Python provider immediately and release both together. With
-separate repos, "releasing together" means careful branch coordination,
-version bumps in two places, and a brief window where PyPI has a broken
-combination published.
+separate repos, "releasing together" means careful branch coordination, version
+bumps in two places, and a brief window where PyPI has a broken combination
+published.
 
 **Testing is integration testing across repos.** To verify that the python
 provider's `provide_inputs` output actually reaches the workspace provider's
@@ -37,27 +37,31 @@ a dev dependency and install from git, but then you are managing two dev
 dependency chains and CI becomes complicated.
 
 **Consumer projects drift differently.** Each project pins its own provider
-versions. After three months your five projects are running different versions of
-the workspace provider with a mix of configs that were each correct at the time
-they were applied but are now inconsistent with each other.
+versions. After three months your five projects are running different versions
+of the workspace provider with a mix of configs that were each correct at the
+time they were applied but are now inconsistent with each other.
 
-**The feedback loop is too long.** The cycle of "edit provider → build →
-publish dev release → install in test project → apply → check diff" takes longer
-than the edit itself. You start batching changes to amortise the overhead, which
+**The feedback loop is too long.** The cycle of "edit provider → build → publish
+dev release → install in test project → apply → check diff" takes longer than
+the edit itself. You start batching changes to amortise the overhead, which
 means bigger, harder-to-review diffs and more opportunities for mistakes.
 
 ## The realisation
 
 The pain is not fundamental to the approach — the providers themselves are a
-good idea. The problem is that they are artificially separated. They were put
-in different repos because that felt like the "one package per repo" right
-thing to do, not because they need to be independent.
+good idea. The problem is that they are artificially separated. They were put in
+different repos because that felt like the "one package per repo" right thing to
+do, not because they need to be independent.
 
 They are not independent. They share a message contract (`WorkspaceInputs`).
 They are always deployed together. Their tests need to run together. Their
 versions should be tied together.
 
 What if they lived in the same repository?
+
+The tags `devkit-workspace:v0.2.0` and `devkit-python:v0.1.0` represent the last
+state of the two-repo setup. Part 4 starts fresh from those baselines and merges
+them into a single `devkit` monorepo.
 
 ---
 

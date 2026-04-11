@@ -38,8 +38,8 @@ is accepted, so you can use the comment syntax that fits the file type:
 /* repolish-start[block] */      ← CSS / C
 ```
 
-If no replacement is provided for a key, the default content between the
-markers is kept (the markers themselves are still stripped).
+If no replacement is provided for a key, the default content between the markers
+is kept (the markers themselves are still stripped).
 
 ## Regex anchors
 

@@ -6,11 +6,11 @@ through `TemplateMapping` entries returned by `create_file_mappings()`.
 
 ## Modes at a glance
 
-| Mode          | Destination exists | Destination absent       |
-| ------------- | ------------------ | ------------------------ |
-| `REGULAR`     | Overwrite          | Create                   |
-| `CREATE_ONLY` | Skip               | Create once              |
-| `DELETE`      | Delete             | Nothing (already gone)   |
+| Mode          | Destination exists | Destination absent     |
+| ------------- | ------------------ | ---------------------- |
+| `REGULAR`     | Overwrite          | Create                 |
+| `CREATE_ONLY` | Skip               | Create once            |
+| `DELETE`      | Delete             | Nothing (already gone) |
 
 ## REGULAR (default)
 
@@ -24,8 +24,8 @@ repolish overwrites the destination with the rendered output.
 
 ## CREATE_ONLY
 
-A create-only file is written once and never touched again. Ideal for
-scaffolded stubs that the developer will own from the start:
+A create-only file is written once and never touched again. Ideal for scaffolded
+stubs that the developer will own from the start:
 
 ```python
 from repolish import BaseContext, BaseInputs, FileMode, Provider, TemplateMapping
@@ -68,8 +68,8 @@ wins**.
 
 ## Conditional files and the `_repolish.` prefix
 
-Files whose names start with `_repolish.` are staged only when a mapping
-selects them. They are the mechanism for providing multiple alternatives for one
+Files whose names start with `_repolish.` are staged only when a mapping selects
+them. They are the mechanism for providing multiple alternatives for one
 destination path:
 
 ```

@@ -33,6 +33,17 @@ def scaffold(
             help='Class-name prefix override (defaults to the last segment of --package).',
         ),
     ] = None,
+    monorepo: Annotated[
+        bool,
+        Parameter(
+            name=['--monorepo'],
+            help=(
+                'Generate the full monorepo provider layout with root, member, '
+                'and standalone mode handlers. By default a simpler single-file '
+                'provider is generated.'
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Scaffold a new repolish provider package.
 
@@ -48,7 +59,7 @@ def scaffold(
 
         cwd = Path.cwd()
         dest = (cwd / directory).resolve()
-        written = generate(package, dest, prefix)
+        written = generate(package, dest, prefix, simple=not monorepo)
         if not written:
             logger.info(
                 'scaffold: nothing to write — all files already exist',

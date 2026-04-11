@@ -5,14 +5,23 @@ what a consumer project actually looks like when it uses both providers.
 
 ## Installing the providers
 
-The consumer project installs both providers from PyPI (or from git during
-development):
+By Part 5 the two providers live in the `devkit` monorepo on GitHub and are
+tagged at `v1.0.0`. Both packages are published from the same repository, so a
+single `uv add` call pulls both:
 
 ```bash
-uv add --dev devkit-workspace devkit-python
+uv add \
+  git+https://github.com/your-org/devkit@v1.0.0#subdirectory=packages/workspace \
+  git+https://github.com/your-org/devkit@v1.0.0#subdirectory=packages/python
 ```
 
-Link them so repolish knows where their resources live:
+If your team also publishes to PyPI, the command simplifies to:
+
+```bash
+uv add devkit-workspace devkit-python
+```
+
+Either way, link them so repolish knows where their resources live:
 
 ```bash
 repolish link devkit-workspace
@@ -21,8 +30,8 @@ repolish link devkit-python
 
 This writes `.repolish/_/provider-info.workspace.json` and
 `.repolish/_/provider-info.python.json` — small JSON files that record where
-each provider's templates live. You commit these files so every developer and
-CI run uses exactly the same provider discovery.
+each provider's templates live. You commit these files so every developer and CI
+run uses exactly the same provider discovery.
 
 ## The `repolish.yaml`
 
@@ -31,25 +40,25 @@ providers:
   workspace:
     cli: devkit-workspace-link
     context_overrides:
-      dprint_version: '0.51.0'    # pin a newer dprint for this project
+      dprint_version: '0.51.0' # pin a newer dprint for this project
 
   python:
     cli: devkit-python-link
     context_overrides:
-      ruff_version: '0.9.3'       # pin a specific ruff
+      ruff_version: '0.9.3' # pin a specific ruff
 
 post_process:
   - poe format
 ```
 
 Provider order matters: the workspace provider runs first and declares
-`get_inputs_schema() -> type[WorkspaceInputs]`. The python provider runs
-second and emits `WorkspaceInputs` payloads. The loader routes those payloads
-to the workspace provider's `finalize_context` before any file is written.
+`get_inputs_schema() -> type[WorkspaceInputs]`. The python provider runs second
+and emits `WorkspaceInputs` payloads. The loader routes those payloads to the
+workspace provider's `finalize_context` before any file is written.
 
 `post_process` runs after rendering is complete. Running `poe format` there
-means the formatter (dprint + ruff) cleans up the generated output before it
-is compared to your project files, so you never see a diff caused purely by
+means the formatter (dprint + ruff) cleans up the generated output before it is
+compared to your project files, so you never see a diff caused purely by
 formatting.
 
 ## Apply for the first time
@@ -101,21 +110,24 @@ of what would change. Use this in CI to catch drift early:
 You do not need to fork the providers to make local adjustments.
 
 **Pin a version in one project:**
+
 ```yaml
 providers:
   workspace:
     cli: devkit-workspace-link
     context_overrides:
-      dprint_version: '0.48.0'  # this project lags behind on purpose
+      dprint_version: '0.48.0' # this project lags behind on purpose
 ```
 
 **Pause a file you want to own entirely:**
+
 ```yaml
 paused_files:
-  - dprint.json    # we manage our own formatter config
+  - dprint.json # we manage our own formatter config
 ```
 
 **Override a single template:**
+
 ```yaml
 providers:
   python:
@@ -126,9 +138,9 @@ providers:
 
 **Keep a custom block inside a managed file:**
 
-Add anchor markers around the section you own. The provider leaves those
-markers in place and those sections are controlled by what `create_anchors`
-returns — if you want project-specific injections, use `config.anchors`:
+Add anchor markers around the section you own. The provider leaves those markers
+in place and those sections are controlled by what `create_anchors` returns — if
+you want project-specific injections, use `config.anchors`:
 
 ```yaml
 anchors:
@@ -150,5 +162,30 @@ You have now seen everything repolish can do:
 - [Developer Control](../developer-control/index.md) — the full reference for
   pausing, overriding, and anchoring
 - [Configuration](../configuration/config-file.md) — every `repolish.yaml` field
-- [Writing a Provider](../guides/writing-a-provider.md) — scaffold a new provider
-  with `repolish scaffold`
+- [Writing a Provider](../guides/writing-a-provider.md) — scaffold a new
+  provider with `repolish scaffold`
+
+## Checkpoint
+
+Tag `my-project` to mark the completed tutorial state:
+
+```bash
+git add -A && git commit -m "chore: apply devkit monorepo providers (part 5)"
+git tag part-5
+```
+
+You now have a full tag history in `my-project` that tells the story:
+
+| Tag       | What it represents                                      |
+| --------- | ------------------------------------------------------- |
+| `initial` | Empty project, no repolish                              |
+| `part-1`  | Workspace provider applied (`devkit-workspace:v0.1.0`)  |
+| `part-2`  | Python provider added (`devkit-python:v0.1.0`)          |
+| `part-5`  | Full setup from the `devkit` monorepo (`devkit:v1.0.0`) |
+
+```bash
+# See the full journey in one command
+git log --oneline initial..part-5
+# Or compare any two states
+git diff initial part-5
+```

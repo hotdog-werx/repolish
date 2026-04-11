@@ -64,7 +64,7 @@ def test_generate_renders_names_into_files(
     case: NameCase,
 ) -> None:
     """generate() derives all class names from the repo name and injects them into templates."""
-    written = generate(case.package_name, tmp_path)
+    written = generate(case.package_name, tmp_path, simple=False)
 
     assert written  # at least one file must be created
 
@@ -116,7 +116,7 @@ def test_generate_renders_names_into_files(
 
 def test_generate_package_dir_uses_package_name(tmp_path: Path) -> None:
     """The 'package/' template prefix is replaced with the actual package name."""
-    generate('my_provider', tmp_path)
+    generate('my_provider', tmp_path, simple=False)
 
     # none of the output paths should have a literal 'package' directory
     for path in tmp_path.rglob('*'):
@@ -129,8 +129,29 @@ def test_generate_package_dir_uses_package_name(tmp_path: Path) -> None:
 
 
 def test_generate_creates_all_expected_files(tmp_path: Path) -> None:
-    """generate() writes every expected file into the output directory."""
+    """generate() in simple mode writes the expected flat file set."""
     written = generate('acme_base', tmp_path)
+
+    relative = {p.relative_to(tmp_path).as_posix() for p in written}
+    expected = {
+        'README.md',
+        'pyproject.toml',
+        'repolish.yaml',
+        'acme_base/__init__.py',
+        'acme_base/py.typed',
+        'acme_base/repolish/__init__.py',
+        'acme_base/repolish/linker.py',
+        'acme_base/repolish/models.py',
+        'acme_base/repolish/provider.py',
+        'acme_base/resources/templates/repolish.py',
+        'acme_base/resources/templates/repolish/.gitkeep',
+    }
+    assert relative == expected
+
+
+def test_generate_creates_all_expected_files_monorepo(tmp_path: Path) -> None:
+    """generate() in monorepo mode writes the full mode-handler file set."""
+    written = generate('acme_base', tmp_path, simple=False)
 
     relative = {p.relative_to(tmp_path).as_posix() for p in written}
     expected = {
@@ -172,8 +193,8 @@ def test_generate_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_generate_provider_py_contains_all_methods(tmp_path: Path) -> None:
-    """The scaffolded provider package contains all Provider and ModeHandler stubs."""
-    generate('my_lib', tmp_path)
+    """The monorepo scaffold contains all Provider and ModeHandler stubs."""
+    generate('my_lib', tmp_path, simple=False)
     provider_dir = tmp_path / 'my_lib' / 'repolish' / 'provider'
 
     # provider/__init__.py has Provider-level methods and registers mode handlers

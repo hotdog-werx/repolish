@@ -5,8 +5,8 @@ preprocesses, and renders before writing to your project.
 
 ## Directory layout
 
-Every provider stores its templates under `templates/repolish/` relative to
-the provider root:
+Every provider stores its templates under `templates/repolish/` relative to the
+provider root:
 
 ```
 my-provider/
@@ -80,8 +80,8 @@ def create_file_mappings(context):
     return {'.github/workflows/ci.yml': src}
 ```
 
-Unconditional files (no `_repolish.` prefix) are always staged and rendered.
-See [File Modes](file-modes.md) for create-only and delete behaviours.
+Unconditional files (no `_repolish.` prefix) are always staged and rendered. See
+[File Modes](file-modes.md) for create-only and delete behaviours.
 
 ## What never reaches your project
 

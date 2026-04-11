@@ -7,54 +7,43 @@ uses the workspace provider is a Python project.
 
 ## Creating the Python provider
 
-Same structure as before:
+Bootstrap the new package the same way as the workspace provider:
 
-```
-devkit-python/
-├── pyproject.toml
-└── devkit/
-    └── python/
-        ├── __init__.py
-        ├── py.typed
-        └── repolish/
-            ├── __init__.py
-            └── provider.py
-        └── resources/
-            └── templates/
-                ├── repolish.py
-                └── repolish/
-                    └── .github/
-                        └── workflows/
-                            └── ci.yml.jinja
+```bash
+mkdir devkit-python && cd devkit-python
+cat > mise.toml << 'EOF'
+[tools]
+uv = "latest"
+EOF
+mise trust && mise install
+uvx repolish scaffold . --package devkit.python
 ```
 
-`pyproject.toml`:
+The scaffold creates the same 11-file structure as before, with the package
+namespace `devkit.python` and an entry point `devkit-python-link`.
+
+One extra step: the Python provider sends messages to the workspace provider
+using `WorkspaceInputs`, so it needs `devkit-workspace` as a dependency. Add it
+to the generated `pyproject.toml`:
 
 ```toml
 [project]
 name = "devkit-python"
 version = "0.1.0"
-dependencies = ["repolish", "devkit-workspace"]
-
-[project.scripts]
-devkit-python-link = "repolish.linker:main"
-
-[tool.repolish.provider]
-templates_dir = "devkit/python/resources/templates"
+dependencies = ["repolish", "devkit-workspace"] # <-- add devkit-workspace
 ```
 
-The dependency on `devkit-workspace` is intentional — the Python provider will
-send messages to the workspace provider, and both need to agree on the message
-schema.
+The dependency on `devkit-workspace` is intentional — both providers need to
+agree on the same message schema.
 
 ## The task problem
 
 The Python provider needs to add ruff tasks to `poe_tasks.toml`. But
 `poe_tasks.toml` is owned by the workspace provider: it is that provider's
-template, rendered by that provider. The obvious move — give the Python
-provider its own copy of the template — means the two providers now fight over
-the same file. Every time you add another provider (docs, security, database...)
-you would be doing this again.
+template, rendered by that provider. The obvious move — give the Python provider
+its own copy of the template — means the two providers now fight over the same
+file. Every time you add another provider (docs, security, database...) you
+would be doing this again.
 
 What you actually want is a way for the Python provider to **tell** the
 workspace provider "here are tasks I need you to add to the file you manage".
@@ -165,13 +154,37 @@ check-ruff.cmd = "ruff check . && ruff format --check ."
 ```
 
 The loader routes `WorkspaceInputs` payloads to any provider whose second type
-parameter is `WorkspaceInputs` — in this case the workspace provider. The
-Python provider does not need to know whether a workspace provider is present.
-If it is, the tasks appear. If it is not, the payload is silently dropped.
+parameter is `WorkspaceInputs` — in this case the workspace provider. The Python
+provider does not need to know whether a workspace provider is present. If it
+is, the tasks appear. If it is not, the payload is silently dropped.
 
 ## Apply it
 
-With both providers linked:
+Push `devkit-python` to GitHub so `my-project` can install it the same way it
+installed the workspace provider:
+
+```bash
+# in devkit-python
+git init && git add -A
+git commit -m "feat: initial python provider"
+git remote add origin https://github.com/your-org/devkit-python
+git push origin main
+```
+
+In `my-project`, add the second provider alongside the first:
+
+```bash
+uv add git+https://github.com/your-org/devkit-python@v0.1.0
+```
+
+Because `devkit-python` declares `devkit-workspace` as a dependency, `uv` pulls
+both packages. Link the new provider:
+
+```bash
+repolish link devkit-python
+```
+
+Now `repolish.yaml` lists both:
 
 ```yaml
 providers:
@@ -194,6 +207,40 @@ poe check-ruff
 
 Any project that adds `devkit-python` automatically gets the ruff tasks wired
 into the workspace task runner — no manual editing, no template duplication.
+
+## Checkpoint
+
+Tag both provider repositories and the consumer project.
+
+In `devkit-python`:
+
+```bash
+git add -A && git commit -m "feat: python provider v0.1.0"
+git tag v0.1.0
+git push origin main --tags
+```
+
+In `devkit-workspace` (the input schema changed — bump to `v0.2.0`):
+
+```bash
+git add -A && git commit -m "feat: add WorkspaceInputs and finalize_context"
+git tag v0.2.0
+git push origin main --tags
+```
+
+In `my-project`:
+
+```bash
+git add -A && git commit -m "chore: apply python provider"
+git tag part-2
+```
+
+Compare `part-1` to `part-2` in `my-project` to see the ruff tasks appear in
+`poe_tasks.toml`:
+
+```bash
+git diff part-1 part-2
+```
 
 ---
 

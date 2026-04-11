@@ -133,15 +133,43 @@ def _output_path(template_rel: Path, pkg_dir: Path) -> Path:
     return out
 
 
-def _collect_templates() -> list[Path]:
-    """Return all ``.jinja`` template paths relative to the templates root."""
-    return [p.relative_to(_TEMPLATES_DIR) for p in _TEMPLATES_DIR.rglob('*.jinja')]
+_MONOREPO_ONLY: frozenset[str] = frozenset(
+    {
+        'package/repolish/provider/__init__.py.jinja',
+        'package/repolish/provider/root.py.jinja',
+        'package/repolish/provider/member.py.jinja',
+        'package/repolish/provider/standalone.py.jinja',
+    },
+)
+_SIMPLE_ONLY: frozenset[str] = frozenset(
+    {
+        'package/repolish/provider.py.jinja',
+    },
+)
+
+
+def _collect_templates(*, simple: bool) -> list[Path]:
+    """Return ``.jinja`` template paths relative to the templates root.
+
+    When *simple* is ``True`` the monorepo mode-handler files are excluded and
+    the flat ``provider.py.jinja`` is included instead.  When *simple* is
+    ``False`` the flat provider template is excluded and the full monorepo set
+    is included.
+    """
+    exclude = _SIMPLE_ONLY if not simple else _MONOREPO_ONLY
+    return [
+        p.relative_to(_TEMPLATES_DIR)
+        for p in _TEMPLATES_DIR.rglob('*.jinja')
+        if p.relative_to(_TEMPLATES_DIR).as_posix() not in exclude
+    ]
 
 
 def generate(
     package_name: str,
     output_dir: Path,
     prefix: str | None = None,
+    *,
+    simple: bool = True,
 ) -> list[Path]:
     """Render all scaffold templates into *output_dir*.
 
@@ -150,6 +178,10 @@ def generate(
         output_dir: Directory to write files into.  Created automatically.
         prefix: Optional class-name prefix override.  Defaults to the last
             ``_``-segment of ``package_name``.
+        simple: When ``True`` (default) generate a single flat ``provider.py``
+            with no monorepo mode handlers.  Pass ``False`` to generate the
+            full ``provider/`` sub-package with ``root``, ``member``, and
+            ``standalone`` handlers.
 
     Returns:
         List of paths that were written (skipped files are not included).
@@ -173,7 +205,7 @@ def generate(
     }
 
     written: list[Path] = []
-    for template_rel in sorted(_collect_templates()):
+    for template_rel in sorted(_collect_templates(simple=simple)):
         out_rel = _output_path(template_rel, ctx.pkg_dir)
         dest = output_dir / out_rel
         if dest.exists():

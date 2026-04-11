@@ -8,12 +8,12 @@ combined.
 
 Context is assembled from four sources, applied in this order (later wins):
 
-| # | Source                     | Where it is defined                        |
-|---|----------------------------|--------------------------------------------|
-| 1 | Global context             | Injected by repolish automatically         |
-| 2 | Provider `create_context()`| Each provider's module or `Provider` class |
-| 3 | Config `context:`          | `repolish.yaml` top-level `context:` key   |
-| 4 | Config `context_overrides:`| Per-provider `context_overrides:` key      |
+| # | Source                      | Where it is defined                        |
+| - | --------------------------- | ------------------------------------------ |
+| 1 | Global context              | Injected by repolish automatically         |
+| 2 | Provider `create_context()` | Each provider's module or `Provider` class |
+| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key   |
+| 4 | Config `context_overrides:` | Per-provider `context_overrides:` key      |
 
 Providers are loaded in the order listed under `providers:` in `repolish.yaml`.
 Each provider's `create_context()` can read the merged context produced so far,
@@ -53,8 +53,8 @@ class MyProvider(Provider[Ctx, BaseInputs]):
         return Ctx()
 ```
 
-`BaseContext` already includes the `repolish` namespace, so typed providers
-get `ctx.repolish.repo.owner` without any extra fields.
+`BaseContext` already includes the `repolish` namespace, so typed providers get
+`ctx.repolish.repo.owner` without any extra fields.
 
 If you need to derive values from a prior provider's output, override
 `finalize_context()` instead — it runs after all providers have emitted their
@@ -74,7 +74,7 @@ context:
 ## Context overrides per provider
 
 `context_overrides:` under a provider entry sets values that are passed to that
-specific provider's `create_context()` *and* merged into the final context:
+specific provider's `create_context()` _and_ merged into the final context:
 
 ```yaml
 providers:

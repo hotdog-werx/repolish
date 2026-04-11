@@ -28,6 +28,47 @@ Both packages are members of a `uv` workspace. They share a lock file, share
 tooling, and can import each other during development without any extra
 installation steps.
 
+## Scaffolding inside the monorepo
+
+The two providers you built in Parts 1 and 2 handle a single deployment mode
+(`standalone`). Inside a monorepo a provider can be invoked three ways:
+
+- **root** — running against the repo root (assembles contributions from all
+  members)
+- **member** — running against one member package
+- **standalone** — the classic single-project case
+
+Re-scaffold each package with `--monorepo` to get the split structure:
+
+```bash
+mkdir devkit && cd devkit
+git init
+
+# workspace provider
+uvx repolish scaffold packages/workspace --package devkit.workspace --monorepo
+
+# python provider
+uvx repolish scaffold packages/python --package devkit.python --monorepo
+```
+
+Each package now has a `provider/` sub-package instead of a flat `provider.py`:
+
+```
+packages/workspace/devkit/workspace/repolish/
+├── __init__.py
+├── linker.py
+├── models.py
+└── provider/
+    ├── __init__.py   ← WorkspaceProvider class + root_mode/member_mode attrs
+    ├── root.py       ← RootHandler
+    ├── member.py     ← MemberHandler
+    └── standalone.py ← StandaloneHandler
+```
+
+Copy your existing templates and models from the old individual repos into the
+new directories. The `provider/__init__.py` wires up the three handlers; the
+rest of this part explains what to put in each one.
+
 ## Self-applying providers
 
 The first thing that happens when you set this up is something pleasing: the
@@ -42,10 +83,10 @@ providers:
     provider_root: packages/python/devkit/python/resources
 ```
 
-`provider_root` points directly at the provider's local resources directory.
-No build, no install, no publish required. Run `repolish apply` and the
-workspace provider generates `mise.toml` and `poe_tasks.toml` for the devkit
-repo itself — including the ruff tasks contributed by the python provider.
+`provider_root` points directly at the provider's local resources directory. No
+build, no install, no publish required. Run `repolish apply` and the workspace
+provider generates `mise.toml` and `poe_tasks.toml` for the devkit repo itself —
+including the ruff tasks contributed by the python provider.
 
 This feedback loop is immediate. Edit a template, run `repolish apply`, see the
 result. Fix it, apply again.
@@ -82,8 +123,8 @@ once. It runs separately for each place that has a `repolish.yaml`:
 - Once for each member package that has its own `repolish.yaml`
 
 Each of these runs is a **session** — a group of providers loaded and executed
-together. Member sessions run first. The root session runs last, and it can
-see what every member session contributed.
+together. Member sessions run first. The root session runs last, and it can see
+what every member session contributed.
 
 ### Two context objects
 
@@ -108,14 +149,14 @@ ctx.repolish.provider.session.member_path  # e.g. 'packages/workspace'
 
 The difference matters when a single provider is present in multiple sessions.
 `repolish.workspace` tells you about the repository as a whole.
-`repolish.provider.session` tells you exactly which part of the repo *this
-particular run* is targeting.
+`repolish.provider.session` tells you exactly which part of the repo _this
+particular run_ is targeting.
 
 ### The `mise.toml` problem
 
 `mise.toml` installs tools for the whole repo. It belongs at the root, not
-inside every package. But the workspace provider managed it in Part 1 — so
-when it runs as a member session inside `packages/workspace/`, it would write
+inside every package. But the workspace provider managed it in Part 1 — so when
+it runs as a member session inside `packages/workspace/`, it would write
 `packages/workspace/mise.toml`, which is wrong.
 
 The fix is to check the session mode in `create_file_mappings()` and return
@@ -144,17 +185,16 @@ tasks), but `mise.toml` and `dprint.json` only appear at the root.
 
 Member sessions run first. Each member's `provide_inputs` can emit payloads —
 and those payloads are forwarded to the root session's providers. The root
-session's `finalize_context` sees inputs from **all** member sessions
-combined.
+session's `finalize_context` sees inputs from **all** member sessions combined.
 
 This is the mechanism that makes aggregation possible. A member says "here are
-my tasks" by emitting a `WorkspaceInputs` payload. The root's workspace
-provider collects them all in `finalize_context` and renders a single
-`poe_tasks.toml` that contains every member's contribution.
+my tasks" by emitting a `WorkspaceInputs` payload. The root's workspace provider
+collects them all in `finalize_context` and renders a single `poe_tasks.toml`
+that contains every member's contribution.
 
 Within a session, inputs flow in load order (provider A → provider B). Across
-sessions, member inputs flow to root. Members cannot see each other's inputs
-and cannot see root session inputs — the boundary is one-directional.
+sessions, member inputs flow to root. Members cannot see each other's inputs and
+cannot see root session inputs — the boundary is one-directional.
 
 The session identity fields make this useful:
 
@@ -171,9 +211,8 @@ return [WorkspaceInputs(
 
 ### Using `ModeHandler` for cleaner separation
 
-When root and member behaviour diverge across multiple methods, a
-`ModeHandler` subclass keeps each case readable without branching inside every
-method:
+When root and member behaviour diverge across multiple methods, a `ModeHandler`
+subclass keeps each case readable without branching inside every method:
 
 ```python
 from repolish import ModeHandler, override
@@ -203,8 +242,8 @@ class WorkspaceProvider(Provider[WorkspaceContext, WorkspaceInputs]):
 ```
 
 Repolish dispatches to the right handler automatically based on the workspace
-mode. If a mode has no handler set (e.g. `standalone_mode` is not assigned),
-the provider falls back to its own methods directly — the same as if no
+mode. If a mode has no handler set (e.g. `standalone_mode` is not assigned), the
+provider falls back to its own methods directly — the same as if no
 `ModeHandler` were involved at all.
 
 ## What you gain
@@ -216,8 +255,18 @@ the provider falls back to its own methods directly — the same as if no
   reviewable, and bisectable.
 - **Single CI pipeline** — one workflow runs all provider tests, including the
   integration tests that need both providers installed.
-- **Self-managing** — `repolish apply` keeps the devkit repo's own tooling up
-  to date from the same templates the providers ship to consumers.
+- **Self-managing** — `repolish apply` keeps the devkit repo's own tooling up to
+  date from the same templates the providers ship to consumers.
+
+## Checkpoint
+
+Tag the new `devkit` monorepo. You will point consumers at this repo (or its
+PyPI releases) from Part 5 onward.
+
+```bash
+git add -A && git commit -m "feat: initial devkit monorepo combining workspace and python providers"
+git tag v1.0.0
+```
 
 ---
 
