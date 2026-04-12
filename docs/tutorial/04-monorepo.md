@@ -117,9 +117,9 @@ packages/workspace/devkit/workspace/repolish/
 > **Important:** The scaffold generates empty stubs — every
 > `create_file_mappings`, `provide_inputs`, and `finalize_context` returns `{}`
 > or `[]` by default. You must fill them in with the actual logic described in
-> the "Final provider shapes" section below. The mapping values must also omit
-> the `.jinja` extension: repolish strips it during staging, so
-> `'_repolish.mise.toml'` is correct, not `'_repolish.mise.toml.jinja'`.
+> the "Final provider shapes" section below. Mapping values may include or omit
+> the `.jinja` extension — repolish strips it automatically, so both
+> `'_repolish.mise.toml'` and `'_repolish.mise.toml.jinja'` resolve correctly.
 
 1. Create `packages/workspace/` and `packages/python/` and run the scaffold
    commands above.
