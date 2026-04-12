@@ -22,8 +22,9 @@ A provider is a package (or a local directory) that supplies:
   `.github/workflows/ci.yml`, or `CONTRIBUTING.md`.
 - **Context** — data the templates need to render correctly for a specific
   project (repo name, owner, language version, etc.).
-- **Anchors** — hooks that tell repolish "preserve whatever the developer wrote
-  in this block; don't overwrite it".
+- **Preprocessor directives** — inline markers embedded in templates that
+  capture values from your existing project files (versions, config entries,
+  pinned tool versions, custom sections) so local state survives every apply.
 
 Without providers there is nothing to apply. Repolish itself is the engine;
 providers are the content. Your team writes one or more providers and every repo
@@ -37,7 +38,7 @@ flowchart TD
     A[repolish.yaml] -->|declares providers| B[Providers]
     B -->|supply templates + context + anchors| C[Merge & render]
     C -->|Jinja2 renders with merged context| D[Preprocess]
-    D -->|anchor pass preserves your local edits| E{Mode}
+    D -->|capture local edits from project files| E{Mode}
     E -->|--check| F[Report drift\nno files touched]
     E -->|apply| G[Write changes\nto project]
 ```

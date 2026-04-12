@@ -8,12 +8,17 @@ combined.
 
 Context is assembled from four sources, applied in this order (later wins):
 
-| # | Source                      | Where it is defined                        |
-| - | --------------------------- | ------------------------------------------ |
-| 1 | Global context              | Injected by repolish automatically         |
-| 2 | Provider `create_context()` | Each provider's module or `Provider` class |
-| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key   |
-| 4 | Config `context_overrides:` | Per-provider `context_overrides:` key      |
+| # | Source                      | Where it is defined                                | Merge behaviour                                     |
+| - | --------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| 1 | Global context              | Injected by repolish automatically                 | always present                                      |
+| 2 | Provider `create_context()` | Each provider's module or `Provider` class         | shallow merge                                       |
+| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key           | **shallow** — replaces each top-level key wholesale |
+| 4 | Config `context_overrides:` | Per-provider or top-level `context_overrides:` key | **deep** — dot-notation paths patch nested fields   |
+
+The distinction between `context:` and `context_overrides:` matters when a
+provider exposes a nested object (e.g. `tools.uv.version`). With `context:` you
+must supply the whole top-level key; with `context_overrides:` you target only
+the field you want to change.
 
 Providers are loaded in the order listed under `providers:` in `repolish.yaml`.
 Each provider's `create_context()` can read the merged context produced so far,
@@ -62,30 +67,57 @@ initial context and received any cross-provider inputs.
 
 ## Config-level context
 
-Values under `context:` in `repolish.yaml` override provider defaults for the
-whole project:
+Values under `context:` in `repolish.yaml` are merged into the final context
+using a **shallow `update`**. Each top-level key replaces whatever the provider
+produced for that key in full. If a provider returns a nested object and you
+only want to change one field inside it, you would have to repeat the entire
+object under `context:` — which defeats the point.
 
 ```yaml
 context:
-  python_version: '3.12'
+  python_version: '3.12' # simple scalar: fine
   author: 'Acme Corp'
 ```
 
+For overriding a single nested field, use `context_overrides:` instead (see
+below).
+
 ## Context overrides per provider
 
-`context_overrides:` under a provider entry sets values that are passed to that
-specific provider's `create_context()` _and_ merged into the final context:
+`context_overrides:` under a provider entry (or at the top level of
+`repolish.yaml`) applies changes using **dot-notation paths**. This lets you
+reach into a nested object and patch exactly the field you care about, without
+touching anything else:
 
 ```yaml
 providers:
   my-provider:
     cli: my-provider-link
     context_overrides:
-      use_ruff: false
+      repolish.provider.python_version: '3.12' # patches one nested field
+      use_ruff: false # simple key also works
+```
+
+The same syntax works at the top level of `repolish.yaml`:
+
+```yaml
+context_overrides:
+  my_provider.tools.0.version: '0.8.0' # patch a list element
+  my_provider.some_flag: true
+```
+
+Nested dict form is also accepted and flattened automatically:
+
+```yaml
+context_overrides:
+  my_provider:
+    some_flag: true
+    'tools.0.version': '0.8.0'
 ```
 
 This is especially useful when the same provider is consumed with different
-settings in a monorepo.
+settings in a monorepo, or when a provider namespace contains a deep structure
+that you want to patch without duplicating it.
 
 ## What context is available in templates
 

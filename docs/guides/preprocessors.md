@@ -1,70 +1,32 @@
 # Preprocessors
 
-Repolish uses preprocessor directives in template files to define how content
-should be processed and replaced. These directives allow you to create flexible
-templates that can preserve local customizations while maintaining consistency.
+Repolish uses preprocessor directives embedded directly in template files.
+Before Jinja2 runs, repolish reads these directives, captures values from your
+existing project file, and injects them back so local state survives every
+apply. All directive lines are stripped from the final output.
 
-## Block Anchors
-
-Block anchors allow you to define sections of content that can be replaced
-entirely or preserved with defaults.
-
-### Syntax
-
-```markdown
-## repolish-start[anchor-name]
-
-Default content goes here
-
-## repolish-end[anchor-name]
-```
-
-### Usage
-
-Block anchors are replaced with content from the context under the same key
-name. If no content is provided in the context, the default content between the
-markers is preserved.
-
-**Example:**
-
-```yaml
-# Template
-## repolish-start[header]
-# Default Header
-Welcome to our project!
-## repolish-end[header]
-
-# Context
-header: |
-  # Custom Header
-  Welcome to My Awesome Project!
-```
-
-**Result:**
-
-```markdown
-# Custom Header
-
-Welcome to My Awesome Project!
-```
+Regex and multiregex directives are the primary mechanism — they are
+self-contained in the template, require no provider code, and read from the
+project file automatically. Block anchors are a simpler option for cases where
+the provider (not the project file) controls a section.
 
 ## Regex Replacements
 
-Regex replacements allow you to preserve specific values from existing files
-using regular expressions.
+Regex directives preserve individual values — versions, config entries, author
+fields — by matching them in your existing file.
 
 ### Syntax
 
-```markdown
-## repolish-regex[anchor-name]: pattern
-
+```
+## repolish-regex[name]: pattern
 default_value
 ```
 
 ### Usage
 
-The regex pattern captures values from the target file, and the default value is
-used when no match is found.
+The pattern runs against the current project file. If a match is found, the
+captured group (or full match if no group) replaces the template line. If no
+match is found, the default line is kept.
 
 **Example:**
 
@@ -84,9 +46,9 @@ __version__ = "1.2.3"
 
 ## Multiregex Replacements
 
-Multiregex replacements allow you to process entire configuration sections with
-multiple key-value pairs, extracting all values from a block and replacing
-template defaults.
+Multiregex directives handle structured blocks — a `[tools]` section in TOML, a
+`requirements` list — preserving locally pinned values while allowing the
+provider to add new keys.
 
 ### Syntax
 
@@ -100,9 +62,9 @@ key3 = "default3"
 
 ### Usage
 
-The `multiregex-block` defines the pattern to extract the entire block from the
-target file. The `multiregex` pattern defines how to extract individual
-key-value pairs within that block.
+The `multiregex-block` pattern locates the entire section in the project file.
+The `multiregex` pattern extracts individual key-value pairs within it. Existing
+values are preserved for matching keys; new provider keys are appended.
 
 **Example:**
 
@@ -131,21 +93,82 @@ dprint = "0.50.1"
 starship = "1.0.0"
 ```
 
+## Block Anchors
+
+Block anchors mark a section in the template whose content is supplied by the
+provider's `create_anchors()` method (which can generate content dynamically
+from context) or by an `anchors:` mapping in `repolish.yaml` (project-level
+overrides win). If no replacement is provided, the default content between the
+markers is kept. All marker lines are stripped — the final project file is
+clean.
+
+The tradeoff compared to regex directives: to customise the injected content you
+set it in `repolish.yaml`, because editing the file directly won't stick — the
+next apply will overwrite it with whatever the provider computes. Regex and
+multiregex directives avoid this by reading from the file itself, so the file is
+always the source of truth.
+
+### Syntax
+
+```
+## repolish-start[anchor-name]
+
+Default content goes here
+
+## repolish-end[anchor-name]
+```
+
+### Usage
+
+Block anchors are replaced with content from the provider's `create_anchors()`
+return value or the project's `anchors:` key in `repolish.yaml`, keyed by anchor
+name. If no replacement is provided for a key, the default content between the
+markers is preserved.
+
+**Example:**
+
+```yaml
+# Template
+## repolish-start[header]
+# Default Header
+Welcome to our project!
+## repolish-end[header]
+
+# Context
+header: |
+  # Custom Header
+  Welcome to My Awesome Project!
+```
+
+**Result:**
+
+```markdown
+# Custom Header
+
+Welcome to My Awesome Project!
+```
+
 ## Processing Order
 
 Preprocessors are applied in the following order:
 
-1. **Block anchors** - Replace entire sections
-2. **Regex replacements** - Replace individual values
-3. **Multiregex replacements** - Replace multiple values in blocks
+1. **Block anchors** — replacement from provider code or config
+2. **Regex directives** — capture from the current project file
+3. **Multiregex directives** — structured block capture from the current project
+   file
 
 ## Best Practices
 
-- Use descriptive anchor names that clearly indicate their purpose
-- Test your regex patterns thoroughly to ensure they match the expected content
-- For complex configurations, consider using multiregex for entire sections
-- Keep default values in templates to ensure files work without context
-- Use the debugger to validate your preprocessor patterns
+- Prefer regex and multiregex directives — they live in the template file itself
+  and require no extra provider code.
+- Use descriptive names that clearly indicate their purpose (e.g.
+  `tools-versions`, `version-string`).
+- Test your regex patterns thoroughly to ensure they match the expected content.
+- Keep default values in templates so they work correctly for new projects where
+  no existing file exists yet.
+- Use block anchors only when the provider (not the project) should control the
+  section content.
+- Use the debugger (`repolish preview`) to validate your preprocessor patterns.
 
 ## Practical examples
 
@@ -184,7 +207,7 @@ project file is preserved in the staged template. The generated output keeps the
 local custom `RUN` command while the rest of the Dockerfile comes from the
 template.
 
-### pyproject.toml (regex anchor + block anchor)
+### pyproject.toml (regex directive + block anchor)
 
 Template (`templates/my-template/repolish/pyproject.toml`):
 
@@ -215,19 +238,19 @@ requests = "^2.30"
 ## repolish-end[extra-deps]
 ```
 
-The `repolish-regex[keep]` anchor ensures the local `version = "0.2.0"` line is
-preserved instead of being replaced by the template's `0.1.0`. The `extra-deps`
-block is preserved whole-cloth, letting projects keep local dependency
-additions.
+The `repolish-regex[keep]` directive ensures the local `version = "0.2.0"` line
+is preserved instead of being replaced by the template's `0.1.0`. The
+`extra-deps` block is preserved whole-cloth, letting projects keep local
+dependency additions.
 
 **Tips**
 
-- Use meaningful anchor names (`install`, `readme`, `extra-deps`) so reviewers
+- Use meaningful names (`install`, `readme`, `extra-deps`) so reviewers
   immediately understand what the preserved section contains.
-- Regex anchors are applied line-by-line; prefer simple, easy-to-read patterns
-  to avoid surprises.
-- Anchors are processed before template rendering, so template substitutions
-  still work around preserved sections.
+- Regex directives are applied line-by-line; prefer simple, easy-to-read
+  patterns to avoid surprises.
+- Preprocessing runs before Jinja2 rendering, so template substitutions still
+  work around preserved sections.
 
 ## Regex capture groups
 
@@ -291,21 +314,22 @@ cat2:
 When your regex is too greedy, tighten it or add explicit parentheses around the
 intended capture so Repolish can reliably hydrate the template.
 
-## Anchor scope and uniqueness
+## Directive scope and uniqueness
 
-Anchors can come from three places and are merged in this order:
+Directive names are **global identifiers** across all templates in a session.
+For block anchors specifically, replacements can come from three places, merged
+in this order:
 
 1. **Provider templates**: any `## repolish-start[...]` /
    `## repolish-regex[...]` markers present inside provider template files.
-2. **Provider code**: a provider's `create_anchors()` callable can return an
-   anchors mapping (key → replacement text) used during preprocessing.
+2. **Provider code**: a provider's `create_anchors()` callable can return a
+   mapping (key → replacement text) used during preprocessing.
 3. **Config-level anchors**: the `anchors` mapping in `repolish.yaml` applies
    last and overrides earlier values.
 
-Anchor keys are **global identifiers** — they must be unique across the entire
-merged template set. If two template files from different providers use the same
-anchor key, the later provider's value wins, which can produce surprising
-results.
+Directive (and anchor) keys must be unique across the entire merged template
+set. If two template files from different providers use the same name, the later
+provider's value wins, which can produce surprising results.
 
 ### Example conflict
 
@@ -317,9 +341,9 @@ Two providers accidentally use the same key `init`:
   `## repolish-end[init]`
 
 The `init` block from whichever provider is processed last will replace the
-other. For predictable behavior, scope anchor keys to the file or provider: e.g.
+other. For predictable behavior, scope names to the file or provider: e.g.
 `docker-install` or `readme-intro`.
 
-**Best practice**: prefix anchor keys with the file or provider name when the
-content is file-scoped. This avoids accidental collisions when multiple
+**Best practice**: prefix directive names with the file or provider name when
+the content is file-scoped. This avoids accidental collisions when multiple
 providers contribute templates with similarly-named sections.

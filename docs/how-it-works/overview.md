@@ -9,7 +9,7 @@ a diff appeared, and where to look when something is not behaving as expected.
 Every repolish run has two phases: **resolve** and **apply** (or **check**).
 
 ```mermaid
-flowchart LR
+flowchart
     subgraph Resolve
         A[Load config] --> B[Register providers]
         B --> C[Build context]
