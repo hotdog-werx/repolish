@@ -171,7 +171,12 @@ def _resolve_single_provider(
         provider_info = _try_auto_link(alias, provider_config, config_dir)
 
     if provider_info:
-        if provider_config.provider_root:
+        if provider_config.provider_root and provider_config.cli:
+            # Only warn when both cli AND provider_root are set — that means
+            # the CLI-written provider-info is shadowing an explicit local
+            # fallback directory.  When only provider_root is set repolish
+            # itself wrote the provider-info during registration, so the
+            # warning would fire spuriously on every apply.
             logger.warning(
                 'provider_root_ignored',
                 alias=alias,
