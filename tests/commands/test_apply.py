@@ -336,7 +336,7 @@ def test_check_only_with_diffs_returns_2(
     ).return_value = None
     mocker.patch(
         'repolish.commands.apply.check.check_generated_output',
-    ).return_value = ['some_diff']
+    ).return_value = [('some_diff', 'diff content')]
     mocker.patch(
         'repolish.commands.apply.check.rich_print_diffs',
     ).return_value = None

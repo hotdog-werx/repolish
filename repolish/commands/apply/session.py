@@ -123,7 +123,7 @@ def apply_session(
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
-        return finish_check(
+        rc, check_result = finish_check(
             CheckContext(
                 setup_output=setup_output,
                 providers=providers,
@@ -133,6 +133,8 @@ def apply_session(
                 disable_auto_staging=is_root_pass,
             ),
         )
+        session.apply_result = check_result
+        return rc
 
     session.apply_result = apply_generated_output(
         setup_output,

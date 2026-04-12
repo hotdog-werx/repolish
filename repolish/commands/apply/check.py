@@ -42,8 +42,12 @@ def render_templates(
     return 0
 
 
-def finish_check(ctx: CheckContext) -> int:
-    """Run check mode: report diffs and symlink issues; return 2 if any, else 0."""
+def finish_check(ctx: CheckContext) -> tuple[int, dict[str, str]]:
+    """Run check mode: report diffs and symlink issues; return (rc, check_result).
+
+    ``check_result`` maps each drifted path to ``'drift'`` for use in the
+    summary tree.  ``rc`` is 2 when any issues are found, else 0.
+    """
     diffs = check_generated_output(
         ctx.setup_output,
         ctx.providers,
@@ -63,4 +67,5 @@ def finish_check(ctx: CheckContext) -> int:
             issues=symlink_issues,
             suggestion='run `repolish apply` to fix symlinks',
         )
-    return 2 if (diffs or symlink_issues) else 0
+    check_result = {path: 'drift' for path, _ in diffs}
+    return 2 if (diffs or symlink_issues) else 0, check_result

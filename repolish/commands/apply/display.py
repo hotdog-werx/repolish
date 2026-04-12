@@ -34,6 +34,7 @@ _MODE_STYLE: dict[str, str] = {
 _FILE_STATUS_PREFIX: dict[str | None, tuple[str, str]] = {
     'unchanged': ('~ ', 'dim cyan'),
     'deleted': ('✗ ', 'dim red'),
+    'drift': ('✗ ', 'red'),
 }
 
 # (prefix, prefix_style, annotation_fmt, annotation_style) keyed by promoted status
@@ -274,11 +275,13 @@ def _append_applied_stats(
     written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
     unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
     deleted = sum(1 for p in record_paths if session.apply_result.get(p) == 'deleted')
+    drift = sum(1 for p in record_paths if session.apply_result.get(p) == 'drift')
     skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
     stat_items = [
         (written, '[green]{n} written[/green]'),
         (unchanged, '[dim]{n} unchanged[/dim]'),
         (deleted, '[dim red]{n} deleted[/dim red]'),
+        (drift, '[red]{n} drift[/red]'),
         (skipped, '[yellow]{n} skipped[/yellow]'),
         (len(syms), '[blue]{n} symlinks[/blue]'),
     ]
