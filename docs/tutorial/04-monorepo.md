@@ -33,8 +33,8 @@ Both packages are members of a `uv` workspace. They share a lock file, share
 tooling, and can import each other during development without any extra
 installation steps.
 
-Before anything else, create a `mise.toml` at the repo root so that mise can
-set up the Python environment and auto-activate the `.venv` that `uv` creates:
+Before anything else, create a `mise.toml` at the repo root so that mise can set
+up the Python environment and auto-activate the `.venv` that `uv` creates:
 
 ```toml
 [settings]
@@ -72,8 +72,8 @@ dev = [
 ```
 
 Create this file at the repo root before running any `uv` commands. It tells
-`uv` that `packages/workspace` and `packages/python` are workspace members,
-so a single `uv lock` at the root resolves all dependencies together.
+`uv` that `packages/workspace` and `packages/python` are workspace members, so a
+single `uv lock` at the root resolves all dependencies together.
 
 ## Scaffolding inside the monorepo
 
@@ -114,12 +114,12 @@ packages/workspace/devkit/workspace/repolish/
 
 **What you need to do:**
 
-> **Important:** The scaffold generates empty stubs — every `create_file_mappings`,
-> `provide_inputs`, and `finalize_context` returns `{}` or `[]` by default.
-> You must fill them in with the actual logic described in the "Final provider
-> shapes" section below. The mapping values must also omit the `.jinja`
-> extension: repolish strips it during staging, so `'_repolish.mise.toml'` is
-> correct, not `'_repolish.mise.toml.jinja'`.
+> **Important:** The scaffold generates empty stubs — every
+> `create_file_mappings`, `provide_inputs`, and `finalize_context` returns `{}`
+> or `[]` by default. You must fill them in with the actual logic described in
+> the "Final provider shapes" section below. The mapping values must also omit
+> the `.jinja` extension: repolish strips it during staging, so
+> `'_repolish.mise.toml'` is correct, not `'_repolish.mise.toml.jinja'`.
 
 1. Create `packages/workspace/` and `packages/python/` and run the scaffold
    commands above.
@@ -131,9 +131,9 @@ packages/workspace/devkit/workspace/repolish/
    configs are referenced as symlinks, not discovered automatically).
 4. Copy the contents of `models.py` from each old repo into the corresponding
    `models.py` in the new package.
-5. The provider logic (handlers, `provide_inputs`, `finalize_context`) goes
-   into the appropriate `root.py`, `member.py`, and `standalone.py` files
-   described below.
+5. The provider logic (handlers, `provide_inputs`, `finalize_context`) goes into
+   the appropriate `root.py`, `member.py`, and `standalone.py` files described
+   below.
 
 > **Why `_repolish.*`?** Any template file whose name starts with `_repolish.`
 > is excluded from automatic discovery. Repolish will only render it when a
@@ -142,8 +142,8 @@ packages/workspace/devkit/workspace/repolish/
 > every mode regardless of which handler is active. With the prefix, each
 > handler controls exactly what gets written and where.
 
-The `provider/__init__.py` wires up the three handlers; the
-rest of this part explains what to put in each one.
+The `provider/__init__.py` wires up the three handlers; the rest of this part
+explains what to put in each one.
 
 ## Self-applying providers
 
@@ -152,8 +152,8 @@ The first thing that happens when you set this up is something pleasing: the
 
 ### Updating package dependencies
 
-Before running anything, update each package's `pyproject.toml` so they agree
-on the same version of `repolish` and so `devkit-python` can import from
+Before running anything, update each package's `pyproject.toml` so they agree on
+the same version of `repolish` and so `devkit-python` can import from
 `devkit-workspace` without a git URL.
 
 In `packages/workspace/pyproject.toml`:
@@ -163,7 +163,7 @@ In `packages/workspace/pyproject.toml`:
 name = "devkit-workspace"
 version = "0.2.0"
 dependencies = [
-    "repolish>=0.1.0",
+  "repolish>=0.1.0",
 ]
 ```
 
@@ -175,8 +175,8 @@ using `{ workspace = true }` instead of a git URL:
 name = "devkit-python"
 version = "0.1.0"
 dependencies = [
-    "repolish>=0.1.0",
-    "devkit-workspace",
+  "repolish>=0.1.0",
+  "devkit-workspace",
 ]
 
 [tool.uv.sources]
@@ -306,13 +306,13 @@ class WorkspaceProvider(Provider[WorkspaceContext, WorkspaceInputs]):
 
 Returning `None` for a path tells repolish to skip that file entirely for this
 session. Members get their own `poe_tasks.toml` (containing only their own
-tasks), but `mise.toml` only appears at the root. `dprint.json` is a config
-file delivered via symlink, not a template, so it is not listed in mappings.
+tasks), but `mise.toml` only appears at the root. `dprint.json` is a config file
+delivered via symlink, not a template, so it is not listed in mappings.
 
 > **Don't do this in practice.** Once `provide_inputs`, `finalize_context`, and
-> `create_context` also diverge by mode, this single-function approach becomes
-> a wall of conditionals. That is exactly what `ModeHandler` was designed to
-> avoid — see the next section.
+> `create_context` also diverge by mode, this single-function approach becomes a
+> wall of conditionals. That is exactly what `ModeHandler` was designed to avoid
+> — see the next section.
 
 ### Cross-session inputs: members talk to root
 
@@ -513,11 +513,10 @@ format-dprint.cmd = "dprint fmt --config .repolish/devkit-workspace/configs/dpri
 
 ### `devkit-python`
 
-The Python provider has no file mappings of its own — it only emits inputs.
-All three modes do the same thing, so `StandaloneHandler` covers the
-`my-project` case and the flat `provider.py` from Part 2 can be reused as-is
-for standalone. In the monorepo, the member handler emits ruff tasks upward to
-the root session:
+The Python provider has no file mappings of its own — it only emits inputs. All
+three modes do the same thing, so `StandaloneHandler` covers the `my-project`
+case and the flat `provider.py` from Part 2 can be reused as-is for standalone.
+In the monorepo, the member handler emits ruff tasks upward to the root session:
 
 ```python
 # member.py
@@ -530,25 +529,27 @@ check-ruff.cmd = "uvx ruff check ."
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 ```
 
-The root session's `WorkspaceProvider.finalize_context` collects this along
-with every other member's contribution and renders a unified `poe_tasks.toml`.
+The root session's `WorkspaceProvider.finalize_context` collects this along with
+every other member's contribution and renders a unified `poe_tasks.toml`.
 
 > **Simplification opportunity.** `WorkspaceRootHandler` and
 > `WorkspaceStandaloneHandler` share identical `provide_inputs` and
-> `finalize_context` logic. Once everything is working you can extract that
-> into a shared helper module and import it from both — keeping each handler
-> class thin. That refactor is left as an exercise for the reader.
+> `finalize_context` logic. Once everything is working you can extract that into
+> a shared helper module and import it from both — keeping each handler class
+> thin. That refactor is left as an exercise for the reader.
 
 ## Checkpoint
 
 **Concrete steps to complete before moving on:**
 
 1. Create `mise.toml` at the repo root and run `mise trust && mise install`.
-2. Create `pyproject.toml` at the repo root (uv workspace root, `package = false`).
+2. Create `pyproject.toml` at the repo root (uv workspace root,
+   `package = false`).
 3. Scaffold both packages with `--monorepo`.
 4. Copy templates, configs, and models from the old separate repos.
-5. Update `packages/workspace/pyproject.toml` and `packages/python/pyproject.toml`
-   with matching `repolish` version floors and `devkit-workspace = { workspace = true }`.
+5. Update `packages/workspace/pyproject.toml` and
+   `packages/python/pyproject.toml` with matching `repolish` version floors and
+   `devkit-workspace = { workspace = true }`.
 6. Run `uv lock -U && uv sync` from the repo root.
 7. Implement `RootHandler`, `MemberHandler`, and `StandaloneHandler` for each
    provider using the shapes above.

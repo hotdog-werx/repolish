@@ -139,11 +139,26 @@ def _copy_mapping_file(
     return 'written'
 
 
+def _resolve_mapping_source(
+    dest_path: str,
+    source_path: str | TemplateMapping,
+) -> str | None:
+    """Return the resolved source string, or None if the mapping has no source.
+
+    Logs a warning when a ``TemplateMapping`` with no source is encountered.
+    """
+    source_str = get_source_str_from_mapping(source_path)
+    if not source_str and isinstance(source_path, TemplateMapping):
+        logger.warning('mapping_without_source', dest=dest_path)
+    return source_str
+
+
 def _apply_file_mappings(
     file_mappings: dict[str, str | TemplateMapping],
     setup_output: Path,
     base_dir: Path,
     create_only_files_set: set[str],
+    paused_files: frozenset[str],
 ) -> dict[str, str]:
     """Process file_mappings: copy source -> destination with rename.
 
@@ -155,12 +170,10 @@ def _apply_file_mappings(
     """
     status: dict[str, str] = {}
     for dest_path, source_path in file_mappings.items():
-        source_str = get_source_str_from_mapping(source_path)
-        # When mapping has no source (e.g. TemplateMapping with None) skip
+        if dest_path in paused_files:
+            continue
+        source_str = _resolve_mapping_source(dest_path, source_path)
         if not source_str:
-            if isinstance(source_path, TemplateMapping):
-                # warn rather than debug so misconfigured providers are visible
-                logger.warning('mapping_without_source', dest=dest_path)
             continue
 
         result = _copy_mapping_file(
@@ -180,7 +193,6 @@ def apply_generated_output(
     providers: SessionBundle,
     base_dir: Path,
     *,
-    paused_files: frozenset[str] = frozenset(),
     disable_auto_staging: bool = False,
 ) -> dict[str, str]:
     """Copy generated files into the project root and apply deletions.
@@ -195,13 +207,14 @@ def apply_generated_output(
     Args:
         setup_output: Path to the rendered output directory.
         providers: SessionBundle object with delete_files list and file_mappings.
+            ``providers.paused_files`` controls which paths are skipped.
         base_dir: Base directory where the project root is located.
-        paused_files: POSIX-style paths that repolish must not touch this run.
         disable_auto_staging: When True, only files declared in
             ``create_file_mappings`` are written.  Auto-staged files (those
             present in the provider's ``repolish/`` tree but not explicitly
             mapped) are silently skipped.  Set this for monorepo root passes.
     """
+    paused_files = providers.paused_files
     output_files = collect_output_files(setup_output)
     mapped_sources = {s for v in providers.file_mappings.values() if (s := get_source_str_from_mapping(v)) is not None}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
@@ -250,6 +263,7 @@ def apply_generated_output(
         setup_output,
         base_dir,
         create_only_files_set,
+        paused_files,
     )
 
     # Now apply deletions at the project root as the final step

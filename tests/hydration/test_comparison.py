@@ -305,13 +305,16 @@ def test_check_skips_paused_regular_file(tmp_path: Path) -> None:
     base_dir.mkdir()
     (base_dir / 'config.toml').write_text('developer = true')
 
-    providers = SessionBundle(delete_files=[], delete_history={})
+    providers = SessionBundle(
+        delete_files=[],
+        delete_history={},
+        paused_files=frozenset({'config.toml'}),
+    )
 
     diffs = check_generated_output(
         setup_output,
         providers,
         base_dir,
-        paused_files=frozenset({'config.toml'}),
     )
     assert diffs == []
 
@@ -328,13 +331,42 @@ def test_check_skips_paused_deletion(tmp_path: Path) -> None:
     providers = SessionBundle(
         delete_files=[Path('legacy.txt')],
         delete_history={},
+        paused_files=frozenset({'legacy.txt'}),
     )
 
     diffs = check_generated_output(
         setup_output,
         providers,
         base_dir,
-        paused_files=frozenset({'legacy.txt'}),
+    )
+    assert diffs == []
+
+
+def test_check_skips_paused_file_mapping(tmp_path: Path) -> None:
+    """A mapped file in paused_files produces no diff even when content differs."""
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish').mkdir(parents=True)
+    (setup_output / 'repolish' / '_repolish.mise.toml').write_text(
+        'provider version',
+    )
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    (base_dir / 'mise.toml').write_text(
+        'developer version\n# my custom comment',
+    )
+
+    providers = SessionBundle(
+        delete_files=[],
+        delete_history={},
+        file_mappings={'mise.toml': '_repolish.mise.toml'},
+        paused_files=frozenset({'mise.toml'}),
+    )
+
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
     )
     assert diffs == []
 

@@ -22,7 +22,6 @@ class CheckContext:
     setup_output: Path
     providers: SessionBundle
     base_dir: Path
-    paused: frozenset[str]
     resolved_symlinks: dict[str, list]
     provider_infos: dict[str, ResolvedProviderInfo]
     disable_auto_staging: bool = False
@@ -49,7 +48,6 @@ def finish_check(ctx: CheckContext) -> int:
         ctx.setup_output,
         ctx.providers,
         ctx.base_dir,
-        paused_files=ctx.paused,
         disable_auto_staging=ctx.disable_auto_staging,
     )
     symlink_issues = check_symlinks(ctx.resolved_symlinks, ctx.provider_infos)

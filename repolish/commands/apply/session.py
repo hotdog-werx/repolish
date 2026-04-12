@@ -107,6 +107,7 @@ def apply_session(
             files=sorted(paused),
             suggestion='remove entries from paused_files once the provider is fixed',
         )
+    providers.paused_files = paused
 
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, base_dir)
@@ -127,7 +128,6 @@ def apply_session(
                 setup_output=setup_output,
                 providers=providers,
                 base_dir=base_dir,
-                paused=paused,
                 resolved_symlinks=resolved_symlinks,
                 provider_infos=config.providers,
                 disable_auto_staging=is_root_pass,
@@ -138,7 +138,6 @@ def apply_session(
         setup_output,
         providers,
         base_dir,
-        paused_files=paused,
         disable_auto_staging=is_root_pass,
     )
     apply_symlinks(resolved_symlinks, config.providers)

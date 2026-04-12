@@ -207,13 +207,16 @@ def test_apply_skips_paused_regular_file(tmp_path: Path) -> None:
     base_dir.mkdir()
     (base_dir / 'managed.txt').write_text('developer version')
 
-    providers = SessionBundle(file_mappings={}, create_only_files=[])
+    providers = SessionBundle(
+        file_mappings={},
+        create_only_files=[],
+        paused_files=frozenset({'managed.txt'}),
+    )
 
     apply_generated_output(
         setup_output,
         providers,
         base_dir,
-        paused_files=frozenset({'managed.txt'}),
     )
 
     # developer's local copy must be untouched
@@ -234,16 +237,44 @@ def test_apply_skips_paused_deletion(tmp_path: Path) -> None:
         delete_files=[Path('keep_me.txt')],
         file_mappings={},
         create_only_files=[],
+        paused_files=frozenset({'keep_me.txt'}),
     )
 
     apply_generated_output(
         setup_output,
         providers,
         base_dir,
-        paused_files=frozenset({'keep_me.txt'}),
     )
 
     assert kept.exists()
+
+
+def test_apply_skips_paused_file_mapping(tmp_path: Path) -> None:
+    """A mapped file (from create_file_mappings) in paused_files is not overwritten."""
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+    (repolish_dir / '_repolish.mise.toml').write_text('provider version')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'mise.toml').write_text(
+        'developer version\n# my custom comment',
+    )
+
+    providers = SessionBundle(
+        file_mappings={'mise.toml': '_repolish.mise.toml'},
+        create_only_files=[],
+        paused_files=frozenset({'mise.toml'}),
+    )
+
+    apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+    )
+
+    assert (base_dir / 'mise.toml').read_text() == 'developer version\n# my custom comment'
 
 
 def test_apply_skips_suppressed_sources(tmp_path: Path) -> None:

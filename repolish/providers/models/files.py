@@ -167,6 +167,11 @@ class SessionBundle(BaseModel):
     session wants promoted to the repo root.  Collected from
     ``promote_file_mappings()`` on member providers; empty for root and
     standalone sessions."""
+    paused_files: frozenset[str] = Field(default_factory=frozenset)
+    """POSIX-style destination paths that repolish must not touch this run.
+    Populated from ``config.paused_files`` at session setup time; analogous to
+    ``suppressed_sources`` but driven by project config rather than provider
+    declarations."""
 
 
 def _records_from_template_sources(

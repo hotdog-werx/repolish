@@ -215,6 +215,7 @@ def _check_file_mappings(
     base_dir: Path,
     *,
     preserve: bool,
+    paused_files: frozenset[str],
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
@@ -226,6 +227,8 @@ def _check_file_mappings(
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     for dest_path, source_path in providers.file_mappings.items():
+        if dest_path in paused_files:
+            continue
         if _should_skip_mapping(
             dest_path,
             delete_files_set,
@@ -256,13 +259,13 @@ def check_generated_output(
     providers: SessionBundle,
     base_dir: Path,
     *,
-    paused_files: frozenset[str] = frozenset(),
     disable_auto_staging: bool = False,
 ) -> list[tuple[str, str]]:
     """Compare generated output to project files and report diffs and deletions.
 
     Returns a list of (relative_path, message_or_unified_diff). Empty when no diffs found.
     """
+    paused_files = providers.paused_files
     output_files = collect_output_files(setup_output)
     diffs: list[tuple[str, str]] = []
 
@@ -296,6 +299,7 @@ def check_generated_output(
             setup_output,
             base_dir,
             preserve=preserve,
+            paused_files=paused_files,
         ),
     )
 
