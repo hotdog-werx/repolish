@@ -16,25 +16,21 @@ cat > mise.toml << 'EOF'
 uv = "latest"
 EOF
 mise trust && mise install
+```
+
+```bash
 uvx repolish scaffold . --package devkit.python
 ```
 
+> **Note:** substitute the git URL if repolish is not yet on PyPI:
+>
+> ```bash
+> uvx --from "git+https://github.com/hotdog-werx/repolish.git@master" \
+>     repolish scaffold . --package devkit.python
+> ```
+
 The scaffold creates the same 11-file structure as before, with the package
 namespace `devkit.python` and an entry point `devkit-python-link`.
-
-One extra step: the Python provider sends messages to the workspace provider
-using `WorkspaceInputs`, so it needs `devkit-workspace` as a dependency. Add it
-to the generated `pyproject.toml`:
-
-```toml
-[project]
-name = "devkit-python"
-version = "0.1.0"
-dependencies = ["repolish", "devkit-workspace"] # <-- add devkit-workspace
-```
-
-The dependency on `devkit-workspace` is intentional — both providers need to
-agree on the same message schema.
 
 ## The task problem
 
@@ -59,19 +55,19 @@ In `devkit-workspace`, add an inputs model to `models.py`:
 from repolish import BaseContext, BaseInputs
 
 
-class WorkspaceContext(BaseContext):
+class WorkspaceProviderContext(BaseContext):
     dprint_version: str = '0.49.0'
     uv_version: str = '0.5.0'
     poe_version: str = '0.29.0'
     extra_poe_tasks: list[str] = []       # populated by finalize_context
 
 
-class WorkspaceInputs(BaseInputs):
+class WorkspaceProviderInputs(BaseInputs):
     poe_tasks_block: str = ''
     """A TOML snippet to inject into the poe_tasks.toml template."""
 ```
 
-Update `WorkspaceProvider` to use `WorkspaceInputs` as its second type
+Update `WorkspaceProvider` to use `WorkspaceProviderInputs` as its second type
 parameter, send its own tasks via `provide_inputs`, and collect everything in
 `finalize_context`:
 
@@ -79,11 +75,11 @@ parameter, send its own tasks via `provide_inputs`, and collect everything in
 from repolish import FinalizeContextOptions, ProvideInputsOptions, override
 
 
-class WorkspaceProvider(Provider[WorkspaceContext, WorkspaceInputs]):
+class WorkspaceProvider(Provider[WorkspaceProviderContext, WorkspaceProviderInputs]):
     @override
     def provide_inputs(
         self,
-        opt: ProvideInputsOptions[WorkspaceContext],
+        opt: ProvideInputsOptions[WorkspaceProviderContext],
     ) -> list[BaseInputs]:
         tasks = '''\
 format.help = "run all formatters"
@@ -92,71 +88,101 @@ format.sequence = ["format-dprint"]
 format-dprint.help = "run dprint"
 format-dprint.cmd = "dprint fmt"
 '''
-        return [WorkspaceInputs(poe_tasks_block=tasks)]
+        return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 
     @override
     def finalize_context(
         self,
-        opt: FinalizeContextOptions[WorkspaceContext, WorkspaceInputs],
-    ) -> WorkspaceContext:
+        opt: FinalizeContextOptions[WorkspaceProviderContext, WorkspaceProviderInputs],
+    ) -> WorkspaceProviderContext:
         blocks = [inp.poe_tasks_block for inp in opt.received_inputs if inp.poe_tasks_block]
         opt.own_context.extra_poe_tasks = blocks
         return opt.own_context
 ```
 
-The second type parameter `WorkspaceInputs` is all repolish needs to know which
-payloads to route to this provider — no override required. The workspace
-provider sends its own format tasks through the same `provide_inputs` path as
-every other provider. There is no special case.
+The second type parameter `WorkspaceProviderInputs` is all repolish needs to
+know which payloads to route to this provider — no override required. The
+workspace provider sends its own format tasks through the same `provide_inputs`
+path as every other provider. There is no special case.
 
 Update `poe_tasks.toml.jinja` to render whatever arrived in `extra_poe_tasks`,
 including the workspace provider's own contribution:
 
 ```toml
 [tool.poe.tasks]
-{% for block in extra_poe_tasks %}
+{%- for block in extra_poe_tasks %}
 {{ block }}
-{% endfor %}
+{%- endfor %}
 ```
 
 No anchor markers — this is a fully generated file. Jinja handles composition;
 the block anchor system is for preserving user edits inside files that already
 exist on disk, which is a different problem.
 
+Commit and publish these changes to `devkit-workspace` so `devkit-python` can
+depend on the updated schema:
+
+```bash
+# in devkit-workspace
+git add -A && git commit -m "feat: add WorkspaceProviderInputs and finalize_context"
+git tag v0.2.0
+git push origin main
+git push origin v0.2.0
+```
+
 ## Sending the message from the Python provider
 
-In `devkit-python`, import `WorkspaceInputs` and emit the ruff tasks:
+`devkit-python` needs to import `WorkspaceProviderInputs` from
+`devkit-workspace`, so add it as a dependency first, pinned to the tag you just
+pushed:
+
+```toml
+[project]
+name = "devkit-python"
+version = "0.1.0"
+dependencies = [
+  "repolish",
+  "devkit-workspace @ git+https://github.com/your-org/devkit-workspace@v0.2.0",
+]
+```
+
+Then run `uv lock -U && uv sync` to install it.
+
+Now import `WorkspaceProviderInputs` and emit the ruff tasks:
 
 ```python
-from devkit.workspace.repolish.models import WorkspaceInputs
 from repolish import BaseInputs, Provider, ProvideInputsOptions, override
 
+from devkit.python.repolish.models import (
+    PythonProviderContext,
+    PythonProviderInputs,
+)
 
-class PythonContext(BaseContext):
-    ruff_version: str = '0.9.0'
+from devkit.workspace.repolish.models import WorkspaceProviderInputs
 
 
-class PythonProvider(Provider[PythonContext, BaseInputs]):
+class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     @override
-    def create_context(self) -> PythonContext:
-        return PythonContext()
+    def create_context(self) -> PythonProviderContext:
+        return PythonProviderContext()
 
     @override
     def provide_inputs(
         self,
-        opt: ProvideInputsOptions[PythonContext],
+        opt: ProvideInputsOptions[PythonProviderContext],
     ) -> list[BaseInputs]:
         tasks = '''\
 check-ruff.help = "run ruff linter and formatter check"
-check-ruff.cmd = "ruff check . && ruff format --check ."
+check-ruff.cmd = "uvx ruff check ."
 '''
-        return [WorkspaceInputs(poe_tasks_block=tasks)]
+        return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 ```
 
-The loader routes `WorkspaceInputs` payloads to any provider whose second type
-parameter is `WorkspaceInputs` — in this case the workspace provider. The Python
-provider does not need to know whether a workspace provider is present. If it
-is, the tasks appear. If it is not, the payload is silently dropped.
+The loader routes `WorkspaceProviderInputs` payloads to any provider whose
+second type parameter is `WorkspaceProviderInputs` — in this case the workspace
+provider. The Python provider does not need to know whether a workspace provider
+is present. If it is, the tasks appear. If it is not, the payload is silently
+dropped.
 
 ## Apply it
 
@@ -167,8 +193,22 @@ installed the workspace provider:
 # in devkit-python
 git init && git add -A
 git commit -m "feat: initial python provider"
-git remote add origin https://github.com/your-org/devkit-python
-git push origin main
+```
+
+Create an empty repository on GitHub (no README, no `.gitignore`), then connect
+and push:
+
+```bash
+git remote add origin git@github.com:your-org/devkit-python.git
+git branch -M main
+git push -u origin main
+```
+
+Tag and push the initial release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 In `my-project`, add the second provider alongside the first:
@@ -177,14 +217,19 @@ In `my-project`, add the second provider alongside the first:
 uv add git+https://github.com/your-org/devkit-python@v0.1.0
 ```
 
-Because `devkit-python` declares `devkit-workspace` as a dependency, `uv` pulls
-both packages. Link the new provider:
+Because `devkit-python` declares `devkit-workspace@v0.2.0` as a dependency, `uv`
+will resolve `devkit-workspace` to `v0.2.0`. If `my-project` still has
+`devkit-workspace` listed as a direct dependency pinned to `v0.1.0` you have two
+options:
 
-```bash
-repolish link devkit-python
-```
+- **Bump it** — update the ref to `@v0.2.0` so the pin matches.
+- **Remove it** — drop the direct dependency entirely and let `devkit-python`
+  pull the right version transitively.
 
-Now `repolish.yaml` lists both:
+Either works; removing it is simpler since `devkit-python` already declares the
+correct version.
+
+Update `repolish.yaml` to include the new provider:
 
 ```yaml
 providers:
@@ -194,12 +239,29 @@ providers:
     cli: devkit-python-link
 ```
 
+`repolish apply` will link any unlinked provider automatically, so the explicit
+link step is optional. Run apply directly:
+
 ```bash
 repolish apply
 ```
 
 `poe_tasks.toml` now contains both the workspace formatter tasks and the ruff
-check tasks, assembled by the workspace provider from inputs it received. Run:
+check tasks, assembled by the workspace provider from inputs it received.
+
+`my-project` does not have any Python files yet, so ruff has nothing to check.
+Add one:
+
+```python
+# python_script.py
+def main():
+    print("Hello, World!")
+
+if __name__ == "__main__":
+    main()
+```
+
+Then run:
 
 ```bash
 poe check-ruff
@@ -210,25 +272,12 @@ into the workspace task runner — no manual editing, no template duplication.
 
 ## Checkpoint
 
-Tag both provider repositories and the consumer project.
+Both provider repositories were already tagged and pushed during this part:
 
-In `devkit-python`:
+- `devkit-workspace` — `v0.2.0` (schema update)
+- `devkit-python` — `v0.1.0` (initial release)
 
-```bash
-git add -A && git commit -m "feat: python provider v0.1.0"
-git tag v0.1.0
-git push origin main --tags
-```
-
-In `devkit-workspace` (the input schema changed — bump to `v0.2.0`):
-
-```bash
-git add -A && git commit -m "feat: add WorkspaceInputs and finalize_context"
-git tag v0.2.0
-git push origin main --tags
-```
-
-In `my-project`:
+Tag `my-project` to mark the end of Part 2:
 
 ```bash
 git add -A && git commit -m "chore: apply python provider"
