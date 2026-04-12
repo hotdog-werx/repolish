@@ -6,32 +6,31 @@ what a consumer project actually looks like when it uses both providers.
 ## Installing the providers
 
 By Part 5 the two providers live in the `devkit` monorepo on GitHub and are
-tagged at `v1.0.0`. Both packages are published from the same repository, so a
-single `uv add` call pulls both:
+tagged at `v1.0.0`. Both packages are published from the same repository.
+`devkit-python` declares `devkit-workspace` as a Python dependency, so a single
+install pulls both:
 
 ```bash
-uv add \
-  git+https://github.com/your-org/devkit@v1.0.0#subdirectory=packages/workspace \
-  git+https://github.com/your-org/devkit@v1.0.0#subdirectory=packages/python
+uv add git+https://github.com/your-org/devkit@v1.0.0#subdirectory=packages/python
 ```
 
-If your team also publishes to PyPI, the command simplifies to:
+If your team also publishes to PyPI:
 
 ```bash
-uv add devkit-workspace devkit-python
+uv add devkit-python
 ```
 
-Either way, link them so repolish knows where their resources live:
+Then link the providers so repolish knows where their resources live. With both
+providers listed in `repolish.yaml`, a single command handles everything:
 
 ```bash
-repolish link devkit-workspace
-repolish link devkit-python
+repolish link
 ```
 
 This writes `.repolish/_/provider-info.workspace.json` and
 `.repolish/_/provider-info.python.json` — small JSON files that record where
-each provider's templates live. You commit these files so every developer and CI
-run uses exactly the same provider discovery.
+each provider's templates live. Commit these so every developer and CI run uses
+exactly the same provider discovery.
 
 ## The `repolish.yaml`
 
@@ -39,13 +38,8 @@ run uses exactly the same provider discovery.
 providers:
   workspace:
     cli: devkit-workspace-link
-    context_overrides:
-      dprint_version: '0.51.0' # pin a newer dprint for this project
-
   python:
     cli: devkit-python-link
-    context_overrides:
-      ruff_version: '0.9.3' # pin a specific ruff
 
 post_process:
   - poe format
@@ -60,6 +54,45 @@ workspace provider's `finalize_context` before any file is written.
 means the formatter (dprint + ruff) cleans up the generated output before it is
 compared to your project files, so you never see a diff caused purely by
 formatting.
+
+## One missing piece
+
+If you followed Part 4 to the letter, linked both providers, and ran
+`repolish apply` right now, `my-project` would get a valid `mise.toml` and a
+`poe_tasks.toml` — but the file would only contain the format tasks. The
+`check-ruff` task would be absent.
+
+The reason: the scaffold generates an empty stub for
+`PythonStandaloneHandler.provide_inputs`. The `MemberHandler` was filled in
+during Part 4 because the monorepo needed it; the `StandaloneHandler` was never
+touched. In standalone mode there is no root session to aggregate for, so the
+Python provider must emit its tasks directly the same way the member handler
+does — it just targets `WorkspaceProviderInputs` instead of routing through its
+own inputs type.
+
+Go back to the devkit monorepo and fill in the stub:
+
+```python
+# packages/python/devkit/python/repolish/provider/standalone.py
+class PythonStandaloneHandler(ModeHandler[PythonProviderContext, PythonProviderInputs]):
+    @override
+    def provide_inputs(self, opt):
+        tasks = '''\
+check-ruff.help = "run ruff linter and formatter check"
+check-ruff.cmd = "uvx ruff check ."
+'''
+        return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
+```
+
+Then update the lock file and sync from the devkit root:
+
+```bash
+uv lock -U && uv sync
+```
+
+Back in `my-project`, repolish picks up the updated provider immediately (it
+runs from the installed package, so no reinstall needed after a `uv sync`). Now
+`repolish apply` produces the full output.
 
 ## Apply for the first time
 
@@ -87,8 +120,6 @@ Your project now has:
 mise.toml          ← tools pinned, versions from context
 poe_tasks.toml     ← workspace tasks + ruff check tasks
 dprint.json        ← formatter config
-.github/workflows/
-  ci.yml           ← from the python provider
 ```
 
 ## Checking for drift
@@ -109,16 +140,6 @@ of what would change. Use this in CI to catch drift early:
 
 You do not need to fork the providers to make local adjustments.
 
-**Pin a version in one project:**
-
-```yaml
-providers:
-  workspace:
-    cli: devkit-workspace-link
-    context_overrides:
-      dprint_version: '0.48.0' # this project lags behind on purpose
-```
-
 **Pause a file you want to own entirely:**
 
 ```yaml
@@ -126,32 +147,27 @@ paused_files:
   - dprint.json # we manage our own formatter config
 ```
 
-**Override a single template:**
-
-```yaml
-providers:
-  python:
-    cli: devkit-python-link
-    template_overrides:
-      .github/workflows/ci.yml: local-templates/ci.yml
-```
-
 **Keep a custom block inside a managed file:**
 
-Add anchor markers around the section you own. The provider leaves those markers
-in place and those sections are controlled by what `create_anchors` returns — if
-you want project-specific injections, use `config.anchors`:
+Templates can expose anchor regions that you control per-project via
+`config.anchors`. For example, if `poe_tasks.toml` has an anchor marker for
+additional tasks, you can inject project-specific entries without touching the
+template:
 
 ```yaml
 anchors:
-  # Override the poe-tasks anchor to add a project-specific task
   poe-tasks: |
-    format.sequence = ["format-dprint", "check-ruff", "build-docs"]
-
-    format-dprint.cmd = "dprint fmt"
-    check-ruff.cmd = "ruff check . && ruff format --check ."
+    build-docs.help = "build the mkdocs site"
     build-docs.cmd = "mkdocs build"
 ```
+
+What anchors are available depends on the provider — check its documentation.
+
+**Override context values:**
+
+Providers can expose named values that projects may override via
+`context_overrides`. Whether a value is overridable and what it controls is up
+to the provider — check the provider's documentation to see what is available.
 
 ## Where to go next
 
