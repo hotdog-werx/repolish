@@ -134,3 +134,74 @@ The `repolish` namespace is always available:
 ```yaml
 # repo: {{ repolish.repo.owner }}/{{ repolish.repo.name }}
 ```
+
+## Inspecting context after an apply
+
+Every `repolish apply` run writes debug JSON files into `.repolish/_/` so you
+can see exactly what context each provider and each file received.
+
+### Per-provider: `provider-context.<role>.<alias>.json`
+
+One file per provider, named after its session role and alias:
+
+```
+.repolish/_/provider-context.standalone.my-provider.json
+.repolish/_/provider-context.root.devkit-workspace.json
+.repolish/_/provider-context.pkg-alpha.devkit-python.json
+```
+
+Each file contains:
+
+```json
+{
+  "alias": "my-provider",
+  "context": { ... },   // the full merged context this provider contributed
+  "files": [            // files this provider manages
+    { "path": "pyproject.toml", "mode": "regular", "source": "pyproject.toml.jinja" }
+  ]
+}
+```
+
+In terminals that support hyperlinks, the provider name in the summary tree is a
+clickable link that opens this file directly.
+
+### Per-file: `file-ctx/file-context.<slug>.json`
+
+One file per rendered template, named after the destination path (`/` replaced
+with `--`):
+
+```
+.repolish/_/file-ctx/file-context.pyproject.toml.json
+.repolish/_/file-ctx/file-context.src--mylib--__init__.py.json
+```
+
+Each file records what was injected during rendering:
+
+```json
+{
+  "dest": "pyproject.toml",
+  "owner": "my-provider",
+  "source_template": "pyproject.toml.jinja",
+  "provider_context_file": "provider-context.standalone.my-provider.json",
+  "extra_context": {} // any mapping-level extra_context on top of provider context
+}
+```
+
+`extra_context` is populated when a `TemplateMapping` carries additional keys
+that override or extend the provider context for that specific file only. If
+`extra_context` is empty, the file was rendered purely from its provider's
+context.
+
+In terminals that support hyperlinks, each file name in the summary tree is a
+clickable link that opens this file directly.
+
+### Workflow
+
+When a template renders unexpectedly, the typical workflow is:
+
+1. Run `repolish apply` (or `repolish apply --check`).
+2. Click the file name in the summary tree to open its `file-context` JSON.
+3. Check `extra_context` — if it is non-empty, those keys shadowed the provider
+   context.
+4. Click `provider_context_file` in that JSON to open the provider snapshot and
+   inspect the full `context` object to see every key available in the template.
