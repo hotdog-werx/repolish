@@ -11,7 +11,15 @@ def get_source_str_from_mapping(
     value is assumed to have been validated at an earlier stage by the
     `SessionBundle` pydantic model, therefore this function is intentionally
     concise and not defensive beyond the runtime `isinstance` check.
+
+    Trailing ``.jinja`` is stripped here so providers can reference templates
+    by their full on-disk name (e.g. ``_repolish.mise.toml.jinja``) or by the
+    rendered name (``_repolish.mise.toml``) — repolish strips the suffix when
+    staging, so both spellings resolve to the same file.
     """
     if isinstance(source_path, TemplateMapping):
-        return source_path.source_template
-    return source_path
+        src = source_path.source_template
+        return src.removesuffix('.jinja') if src else src
+    if source_path is None:
+        return None
+    return source_path.removesuffix('.jinja')

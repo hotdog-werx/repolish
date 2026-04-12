@@ -140,6 +140,27 @@ def test_apply_file_mapping_copy_without_prefix(tmp_path: Path):
     assert out_file.read_text() == 'old mapped'
 
 
+def test_apply_file_mapping_strips_jinja_suffix(tmp_path: Path):
+    """A mapping value with a .jinja suffix resolves to the staged (stripped) file."""
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+    # staged file has no .jinja extension (repolish strips it at staging)
+    (repolish_dir / '_repolish.mise.toml').write_text('staged content')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = SessionBundle(
+        file_mappings={'mise.toml': '_repolish.mise.toml.jinja'},
+        create_only_files=[],
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    assert (base_dir / 'mise.toml').read_text() == 'staged content'
+
+
 def test_mapping_without_source_logs_warning(
     tmp_path: Path,
     mocker: MockerFixture,
