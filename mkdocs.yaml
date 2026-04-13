@@ -34,8 +34,12 @@ nav:
       - Provider Python API: configuration/context.md
 
   - CLI Reference:
-      - apply / check: operations/cli.md
-      - Preprocessor Debugger: guides/debugger.md
+      - cli/index.md
+      - apply: cli/apply.md
+      - link: cli/link.md
+      - lint: cli/lint.md
+      - preview: cli/preview.md
+      - scaffold: cli/scaffold.md
 
   - Guides:
       - Templates: guides/templates.md
