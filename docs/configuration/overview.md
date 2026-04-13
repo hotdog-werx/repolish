@@ -9,10 +9,11 @@ conceptual introduction to how things fit together, start with
 
 ### [repolish.yaml schema](config-file.md)
 
-The full list of top-level keys accepted by `repolish.yaml` - `providers`,
-`providers_order`, `template_overrides`, `context`, `context_overrides`,
-`anchors`, `delete_files`, `post_process`, and `paused_files`. Covers the
-Pydantic model behind the file and notes on schema evolution.
+The full list of top-level keys accepted by `repolish.yaml` — `providers`,
+`providers_order`, `template_overrides`, `workspace`, `context`,
+`context_overrides`, `anchors`, `delete_files`, `post_process`, and
+`paused_files`. Covers the Pydantic model behind the file and notes on schema
+evolution.
 
 ### [Provider settings](providers.md)
 

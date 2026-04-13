@@ -23,6 +23,22 @@ Repolish cannot run without at least one provider configured.
   paths, values must name a provider defined elsewhere in the configuration. A
   validator ensures that all referenced providers actually exist.
 
+- **`workspace`** _(optional mapping)_ - enables workspace (monorepo) mode. When
+  present, repolish runs a session for the root and one for each discovered
+  member. Accepts one optional sub-key:
+
+  - **`members`** _(list of strings, optional)_ - repo-relative paths to
+    workspace members. When set, overrides auto-detection from
+    `[tool.uv.workspace]` in the root `pyproject.toml`. Omit to let repolish
+    discover members automatically.
+
+  ```yaml
+  workspace:
+    members:
+      - packages/core
+      - packages/utils
+  ```
+
 ## Providers subsection
 
 The `providers` key is a dictionary whose keys are **aliases** - short names

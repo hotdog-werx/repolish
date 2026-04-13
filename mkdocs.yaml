@@ -18,6 +18,7 @@ nav:
       - Preprocessors: how-it-works/preprocessors.md
       - Context: how-it-works/context.md
       - File Modes: how-it-works/file-modes.md
+      - Monorepo: how-it-works/monorepo.md
 
   - Developer Control:
       - You Are in Charge: developer-control/index.md
