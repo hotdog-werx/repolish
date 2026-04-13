@@ -5,15 +5,15 @@ Before Jinja2 runs, repolish reads these directives, captures values from your
 existing project file, and injects them back so local state survives every
 apply. All directive lines are stripped from the final output.
 
-Regex and multiregex directives are the primary mechanism — they are
+Regex and multiregex directives are the primary mechanism - they are
 self-contained in the template, require no provider code, and read from the
 project file automatically. Block anchors are a simpler option for cases where
 the provider (not the project file) controls a section.
 
 ## Regex Replacements
 
-Regex directives preserve individual values — versions, config entries, author
-fields — by matching them in your existing file.
+Regex directives preserve individual values - versions, config entries, author
+fields - by matching them in your existing file.
 
 ### Syntax
 
@@ -46,8 +46,8 @@ __version__ = "1.2.3"
 
 ## Multiregex Replacements
 
-Multiregex directives handle structured blocks — a `[tools]` section in TOML, a
-`requirements` list — preserving locally pinned values while allowing the
+Multiregex directives handle structured blocks - a `[tools]` section in TOML, a
+`requirements` list - preserving locally pinned values while allowing the
 provider to add new keys.
 
 ### Syntax
@@ -99,11 +99,11 @@ Block anchors mark a section in the template whose content is supplied by the
 provider's `create_anchors()` method (which can generate content dynamically
 from context) or by an `anchors:` mapping in `repolish.yaml` (project-level
 overrides win). If no replacement is provided, the default content between the
-markers is kept. All marker lines are stripped — the final project file is
+markers is kept. All marker lines are stripped - the final project file is
 clean.
 
 The tradeoff compared to regex directives: to customise the injected content you
-set it in `repolish.yaml`, because editing the file directly won't stick — the
+set it in `repolish.yaml`, because editing the file directly won't stick - the
 next apply will overwrite it with whatever the provider computes. Regex and
 multiregex directives avoid this by reading from the file itself, so the file is
 always the source of truth.
@@ -152,14 +152,14 @@ Welcome to My Awesome Project!
 
 Preprocessors are applied in the following order:
 
-1. **Block anchors** — replacement from provider code or config
-2. **Regex directives** — capture from the current project file
-3. **Multiregex directives** — structured block capture from the current project
+1. **Block anchors** - replacement from provider code or config
+2. **Regex directives** - capture from the current project file
+3. **Multiregex directives** - structured block capture from the current project
    file
 
 ## Best Practices
 
-- Prefer regex and multiregex directives — they live in the template file itself
+- Prefer regex and multiregex directives - they live in the template file itself
   and require no extra provider code.
 - Use descriptive names that clearly indicate their purpose (e.g.
   `tools-versions`, `version-string`).
@@ -264,7 +264,7 @@ to the entire match (group 0).
 **Safeguard trimming**: As a conservative safeguard Repolish trims the captured
 block to a contiguous region based on indentation, so that incidental following
 sections are not accidentally pulled in. The canonical way to express intent is
-an explicit capture group — authors should prefer to capture exactly what they
+an explicit capture group - authors should prefer to capture exactly what they
 mean.
 
 ### Example

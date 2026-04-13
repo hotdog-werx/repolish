@@ -10,8 +10,8 @@ than reading it from the project), block anchors offer a simpler alternative.
 
 ## Regex directives
 
-The most common directive preserves a single line — a version string, a config
-value, an author field — by matching it in your existing file and pulling it
+The most common directive preserves a single line - a version string, a config
+value, an author field - by matching it in your existing file and pulling it
 into the template:
 
 ```
@@ -22,7 +22,7 @@ __version__ = "0.0.0"
 Repolish runs the pattern against the current file. If a match is found, the
 captured group replaces the line. If not, the default line is used.
 
-### Example — preserving a version string
+### Example - preserving a version string
 
 Provider template:
 
@@ -37,9 +37,9 @@ yet.
 
 ## Block anchors
 
-For cases where the provider needs to inject computed content into a section —
+For cases where the provider needs to inject computed content into a section -
 content that changes based on context, like assembling install extras from a
-list — use a block anchor:
+list - use a block anchor:
 
 ```
 ## repolish-start[my-section]
@@ -47,9 +47,9 @@ list — use a block anchor:
 ## repolish-end[my-section]
 ```
 
-The marker style (`##`) can be any comment prefix that fits the file type — `#`,
+The marker style (`##`) can be any comment prefix that fits the file type - `#`,
 `//`, `--`, etc. What matters is the `repolish-start[name]` /
-`repolish-end[name]` text. All marker lines are stripped — the final project
+`repolish-end[name]` text. All marker lines are stripped - the final project
 file is clean.
 
 ### How it works
@@ -63,11 +63,11 @@ file is clean.
 4. The marker lines are stripped from the final written file.
 
 The tradeoff: to customise the injected content you override it in
-`repolish.yaml`, because editing the file directly won't stick — the next apply
+`repolish.yaml`, because editing the file directly won't stick - the next apply
 overwrites it with whatever the provider computes. With regex directives the
 file is always the source of truth.
 
-### Example — provider injects custom install extras
+### Example - provider injects custom install extras
 
 Provider template:
 
@@ -97,7 +97,7 @@ Use **regex or multiregex directives** when:
 
 - You want the template to read local values automatically (versions, pinned
   tools, project-specific config).
-- The content lives in the file itself — readable and editable without opening
+- The content lives in the file itself - readable and editable without opening
   any config file.
 - The project file is the source of truth.
 

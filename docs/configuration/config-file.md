@@ -8,24 +8,24 @@ make the behaviour explicit and to document a couple of subtle features.
 
 ## Top‑level keys
 
-Most keys are optional and will be defaulted, but **`providers` is required** –
+Most keys are optional and will be defaulted, but **`providers` is required** -
 Repolish cannot run without at least one provider configured.
 
-- **`providers`** _(mapping of str to `ProviderConfig`)_ – the core of the
+- **`providers`** _(mapping of str to `ProviderConfig`)_ - the core of the
   configuration. Each entry describes one provider and its resource linking
   options (see below).
 
-- **`providers_order`** _(list of strings)_ – an explicit ordering for
+- **`providers_order`** _(list of strings)_ - an explicit ordering for
   processing providers. If omitted, YAML key order is used instead.
 
-- **`template_overrides`** _(mapping of str to str)_ – allows you to pin a given
+- **`template_overrides`** _(mapping of str to str)_ - allows you to pin a given
   output path to a specific provider, regardless of ordering. Keys are glob-like
   paths, values must name a provider defined elsewhere in the configuration. A
   validator ensures that all referenced providers actually exist.
 
 ## Providers subsection
 
-The `providers` key is a dictionary whose keys are **aliases** – short names
+The `providers` key is a dictionary whose keys are **aliases** - short names
 used by configuration and in logged events. The value for each alias is a
 `ProviderConfig` model that currently looks like::
 
@@ -41,7 +41,7 @@ Each provider entry must specify at least one of `cli` or `provider_root`; they
 may also be combined. See the [Provider configuration](providers.md) guide for
 the full resolution rules and CLI protocol.
 
-- **`cli`** – a shell command (string) that will be executed by `repolish link`.
+- **`cli`** - a shell command (string) that will be executed by `repolish link`.
   The command must write a `.provider-info.json` file under the
   `.repolish/<alias>` directory; this JSON describes the template directory and
   any default symlinks. Libraries that ship a link CLI (e.g., `codeguide-link`)
@@ -49,12 +49,12 @@ the full resolution rules and CLI protocol.
   `repolish link`; failure of one provider does not prevent the others from
   running.
 
-- **`provider_root`** – path to the root of the provider package (the directory
+- **`provider_root`** - path to the root of the provider package (the directory
   that contains `repolish.py` and the `repolish/` template subfolder). The path
   is resolved relative to the configuration file’s directory. Use this for
   providers that are checked in locally rather than distributed as a package.
 
-- **`resources_dir`** – optional path to the directory from which symlinks are
+- **`resources_dir`** - optional path to the directory from which symlinks are
   created into the project. When omitted it defaults to `provider_root`. Specify
   this when the symlink root lives inside a subdirectory of `provider_root`.
 
@@ -78,11 +78,30 @@ assigned to `cli`.
 
 ### Symlinks
 
-Each provider may also optionally supply a `symlinks` list. Entries are objects
-with `source` and `target` keys; the source path is interpreted relative to the
-provider's own resource directory, and the target is relative to the root of the
-project. If the list is omitted, the provider’s defaults are used; an empty list
-disables all symlinks.
+Each provider may declare default symlinks in its `create_default_symlinks()`
+method. The `symlinks` key in `repolish.yaml` lets you override those defaults
+per-project:
+
+- **Omit `symlinks`** - use whatever the provider declares as defaults.
+- **`symlinks: []`** - disable all symlinks for this provider.
+- **Explicit list** - use exactly this list; the provider's defaults are
+  ignored.
+
+```yaml
+providers:
+  mylib:
+    cli: mylib-link
+    symlinks:
+      - source: configs/.editorconfig
+        target: .editorconfig
+      - source: configs/.gitignore
+        target: .gitignore
+```
+
+Each entry has a `source` path (relative to the provider's `resources_dir`) and
+a `target` path (relative to the project root). This is the mechanism for adding
+symlinks the provider doesn't ship by default, or for trimming ones you don't
+want.
 
 ## Notes on schema evolution
 

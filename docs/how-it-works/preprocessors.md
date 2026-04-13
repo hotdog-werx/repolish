@@ -1,12 +1,12 @@
 # Preprocessors
 
 Before Jinja2 runs, repolish applies a preprocessing pass to every staged
-template. This pass handles three kinds of directives — all of which are
+template. This pass handles three kinds of directives - all of which are
 stripped from the final output so your project files stay clean.
 
 The most common directives are **regex** and **multiregex**: they live inside
 the template file itself and read values directly from your current project
-file. This makes templates self-contained — no separate config or provider code
+file. This makes templates self-contained - no separate config or provider code
 is needed to preserve local state. Block anchors are a simpler alternative for
 cases where the provider (not the project file) decides what a section contains.
 
@@ -14,7 +14,7 @@ cases where the provider (not the project file) decides what a section contains.
 
 A regex directive captures a value from your **existing project file** and
 injects it back into the template. This is how individual lines survive provider
-updates — versions you have already bumped, author fields, local config entries.
+updates - versions you have already bumped, author fields, local config entries.
 
 ```python
 ## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
@@ -52,10 +52,10 @@ A block anchor marks a section in the template whose content is supplied by the
 provider's `create_anchors()` method (which can generate content dynamically
 from context, such as assembling install extras from a list) or by an `anchors:`
 mapping in `repolish.yaml` (project-level overrides win). All marker lines are
-stripped — the final project file is clean.
+stripped - the final project file is clean.
 
 The tradeoff compared to regex directives: to customise the injected content you
-set it in `repolish.yaml`, because editing the file directly won't stick — the
+set it in `repolish.yaml`, because editing the file directly won't stick - the
 next apply overwrites it with whatever the provider computes.
 
 ```makefile
@@ -75,7 +75,7 @@ def create_anchors(self, context: Ctx) -> dict[str, str]:
 ```
 
 After preprocessing, the marker lines are gone and the injected content is in
-place — exactly what Jinja2 will render.
+place - exactly what Jinja2 will render.
 
 The marker comment style is flexible. Any prefix before `repolish-start[name]`
 is accepted, so you can use the comment syntax that fits the file type:

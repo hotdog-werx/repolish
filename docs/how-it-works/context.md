@@ -12,8 +12,8 @@ Context is assembled from four sources, applied in this order (later wins):
 | - | --------------------------- | -------------------------------------------------- | --------------------------------------------------- |
 | 1 | Global context              | Injected by repolish automatically                 | always present                                      |
 | 2 | Provider `create_context()` | Each provider's module or `Provider` class         | shallow merge                                       |
-| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key           | **shallow** — replaces each top-level key wholesale |
-| 4 | Config `context_overrides:` | Per-provider or top-level `context_overrides:` key | **deep** — dot-notation paths patch nested fields   |
+| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key           | **shallow** - replaces each top-level key wholesale |
+| 4 | Config `context_overrides:` | Per-provider or top-level `context_overrides:` key | **deep** - dot-notation paths patch nested fields   |
 
 The distinction between `context:` and `context_overrides:` matters when a
 provider exposes a nested object (e.g. `tools.uv.version`). With `context:` you
@@ -62,7 +62,7 @@ class MyProvider(Provider[Ctx, BaseInputs]):
 `ctx.repolish.repo.owner` without any extra fields.
 
 If you need to derive values from a prior provider's output, override
-`finalize_context()` instead — it runs after all providers have emitted their
+`finalize_context()` instead - it runs after all providers have emitted their
 initial context and received any cross-provider inputs.
 
 ## Config-level context
@@ -71,7 +71,7 @@ Values under `context:` in `repolish.yaml` are merged into the final context
 using a **shallow `update`**. Each top-level key replaces whatever the provider
 produced for that key in full. If a provider returns a nested object and you
 only want to change one field inside it, you would have to repeat the entire
-object under `context:` — which defeats the point.
+object under `context:` - which defeats the point.
 
 ```yaml
 context:
@@ -201,7 +201,7 @@ When a template renders unexpectedly, the typical workflow is:
 
 1. Run `repolish apply` (or `repolish apply --check`).
 2. Click the file name in the summary tree to open its `file-context` JSON.
-3. Check `extra_context` — if it is non-empty, those keys shadowed the provider
+3. Check `extra_context` - if it is non-empty, those keys shadowed the provider
    context.
 4. Click `provider_context_file` in that JSON to open the provider snapshot and
    inspect the full `context` object to see every key available in the template.

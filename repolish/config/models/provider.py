@@ -52,9 +52,11 @@ class ProviderConfig(BaseModel):
     resources_dir: str | None = Field(
         default=None,
         description=(
-            'Root of the linked resources directory inside the project '
-            '(e.g. .repolish/mylib/). Defaults to provider_root when not set. '
-            'Requires provider_root to be set.'
+            'Root of the provider resources directory inside the project '
+            '(e.g. .repolish/mylib/). Typically the parent of provider_root; '
+            'may also contain sibling folders such as configs/. '
+            'Symlink source paths are resolved relative to this directory. '
+            'Falls back to provider_root when not set. Requires provider_root to be set.'
         ),
     )
     symlinks: list[ProviderSymlink] | None = Field(
