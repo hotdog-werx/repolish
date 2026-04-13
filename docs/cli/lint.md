@@ -8,8 +8,8 @@ repolish lint PROVIDER_DIR
 
 ## Arguments
 
-| Argument | Description |
-| --- | --- |
+| Argument       | Description                                                   |
+| -------------- | ------------------------------------------------------------- |
 | `PROVIDER_DIR` | Path to the provider root directory containing `repolish.py`. |
 
 ## What it does
@@ -23,10 +23,10 @@ This catches typos and missing fields before you run `repolish apply`.
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| 0 | All templates rendered cleanly. |
-| 1 | One or more templates failed (missing variable, load error, etc.). |
+| Code | Meaning                                                            |
+| ---- | ------------------------------------------------------------------ |
+| 0    | All templates rendered cleanly.                                    |
+| 1    | One or more templates failed (missing variable, load error, etc.). |
 
 ## Example
 

@@ -10,16 +10,16 @@ repolish preview [OPTIONS] DEBUG_FILE
 
 ## Arguments
 
-| Argument | Description |
-| --- | --- |
+| Argument     | Description                                                             |
+| ------------ | ----------------------------------------------------------------------- |
 | `DEBUG_FILE` | Path to a YAML file describing the template and optional target/config. |
 
 ## Options
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `--show-patterns` | off | Print the patterns extracted from the template (anchor tags and regex markers). |
-| `--show-steps` | off | Print intermediate processing steps. |
+| Option            | Default | Description                                                                     |
+| ----------------- | ------- | ------------------------------------------------------------------------------- |
+| `--show-patterns` | off     | Print the patterns extracted from the template (anchor tags and regex markers). |
+| `--show-steps`    | off     | Print intermediate processing steps.                                            |
 
 ## Debug file format
 

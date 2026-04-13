@@ -5,89 +5,117 @@ preprocesses, and renders before writing to your project.
 
 ## Directory layout
 
-Every provider stores its templates under `templates/repolish/` relative to the
-provider root:
+A provider's root directory contains two items repolish cares about:
 
 ```
 my-provider/
-├── repolish.py
-└── templates/
-    └── repolish/           ← everything here gets staged
-        ├── Makefile
-        ├── pyproject.toml
-        ├── _repolish.pyproject.poetry.toml   ← conditional variant
-        └── .github/
-            └── workflows/
-                └── ci.yml
+├── repolish.py        ← provider logic
+└── repolish/          ← template directory: everything here gets staged
+    ├── Makefile
+    ├── pyproject.toml
+    ├── _repolish.pyproject.poetry.toml   ← conditional variant
+    └── .github/
+        └── workflows/
+            └── ci.yml
 ```
 
-The `repolish/` subdirectory is what repolish copies into the staging area
-(`.repolish/_/stage/`). Files outside it are provider infrastructure and are
-never written to your project.
+The `repolish/` subdirectory is copied into the staging area
+(`.repolish/_/stage/`). Files outside it — including `repolish.py` — are
+provider infrastructure and are never written to your project.
 
 ## Jinja2 rendering
 
-Any file can contain Jinja2 expressions. Context variables come from the merged
-provider context and are available by name:
+Any file can contain Jinja2 expressions. Context fields from your `BaseContext`
+subclass are exposed as top-level variables:
 
 ```toml
 [tool.poetry]
 name = "{{ package_name }}"
-python_requires = ">={% raw %}{{{% endraw %} python_version {% raw %}}}{% endraw %}"
-```
-
-The special `repolish` namespace is always available and provides
-repository-level metadata:
-
-```toml
-# {{ repolish.repo.owner }}/{{ repolish.repo.name }}
+version = "{{ version }}"
 ```
 
 Jinja2 rendering is opt-in at the file level — files without any `{{ }}` or
 `{% %}` expressions are copied verbatim, so binary files and files with literal
 curly braces are safe.
 
+### The `repolish` namespace
+
+The `repolish` namespace is always injected alongside your context fields:
+
+| Variable                          | Type          | Description                         |
+| --------------------------------- | ------------- | ----------------------------------- |
+| `repolish.repo.owner`             | `str`         | GitHub repository owner             |
+| `repolish.repo.name`              | `str`         | GitHub repository name              |
+| `repolish.year`                   | `int`         | Current calendar year               |
+| `repolish.provider.alias`         | `str`         | Provider alias from `repolish.yaml` |
+| `repolish.provider.version`       | `str`         | Provider package version string     |
+| `repolish.provider.major_version` | `int \| None` | Integer major version               |
+| `repolish.provider.package_name`  | `str`         | Python package name                 |
+| `repolish.provider.project_name`  | `str`         | Project/repository name             |
+
+```jinja
+# Managed by {{ repolish.provider.alias }} v{{ repolish.provider.version }}
+# © {{ repolish.year }} {{ repolish.repo.owner }}/{{ repolish.repo.name }}
+```
+
 ### `.jinja` extension
 
 Files with a `.jinja` extension are rendered and the extension is stripped from
-the output name. This is useful when you need syntax highlighting in your editor
-for the template source:
+the output name — useful for syntax highlighting in your editor:
 
 ```
-templates/repolish/pyproject.toml.jinja  →  pyproject.toml
+repolish/pyproject.toml.jinja  →  pyproject.toml
+repolish/Dockerfile.jinja      →  Dockerfile
 ```
 
-## Conditional files
-
-Files whose names start with `_repolish.` are **conditional** — they are staged
-only when explicitly mapped to a destination by `create_file_mappings()`. This
-lets you ship multiple alternative versions of a file without resorting to
-`{% if %}` in the filename or path:
+To generate a file that itself ends in `.jinja` (e.g. a Jinja template shipped
+inside your project), use a double extension. The outer `.jinja` is the repolish
+marker and is stripped; the inner one becomes the output extension:
 
 ```
-templates/repolish/
-├── _repolish.ci.github.yml
-└── _repolish.ci.gitlab.yml
+repolish/my-template.jinja.jinja  →  my-template.jinja
 ```
 
-```python
-def create_file_mappings(context):
-    src = (
-        '_repolish.ci.github.yml'
-        if context['use_github']
-        else '_repolish.ci.gitlab.yml'
-    )
-    return {'.github/workflows/ci.yml': src}
+## Auto-staging
+
+Every file under `repolish/` is **auto-staged**: copied to the project at its
+natural relative path on every `repolish apply`, with no extra configuration:
+
+```
+repolish/README.md                →  README.md
+repolish/pyproject.toml           →  pyproject.toml
+repolish/.github/workflows/ci.yml →  .github/workflows/ci.yml
 ```
 
-Unconditional files (no `_repolish.` prefix) are always staged and rendered. See
-[File Modes](file-modes.md) for create-only and delete behaviours.
+Use `create_file_mappings()` only when you need to redirect a template to a
+different destination or pick between alternatives at runtime.
+
+## Conditional files and the `_repolish.` prefix
+
+Files whose names start with `_repolish.` are **staging-only** — they are never
+auto-staged and only reach the project when explicitly mapped to a destination
+by `create_file_mappings()`:
+
+```
+repolish/
+├── README.md                  # always staged
+├── _repolish.ci.github.yml    # only staged when mapped
+└── _repolish.ci.gitlab.yml    # only staged when mapped
+```
+
+The `_repolish.` prefix has no runtime special meaning. Any file that appears as
+a mapping _source_ is excluded from auto-staging regardless of name. The prefix
+is a convention that prevents accidental auto-staging at an ugly path and makes
+staging-only files easy to spot.
+
+See [File Modes](file-modes.md) for `TemplateMapping`, `FileMode.CREATE_ONLY`,
+`FileMode.DELETE`, and extra-context options.
 
 ## What never reaches your project
 
-- The `_repolish.` prefix files that were not selected by any mapping
-- Marker lines from anchor directives (`## repolish-start[...]`, etc.)
+- `_repolish.*` files not selected by any mapping
+- Marker lines from preprocessor directives (`## repolish-start[...]`, etc.)
 - The `.jinja` extension
-- Anything outside `templates/repolish/`
+- Anything outside `repolish/`
 
 The output in `.repolish/_/render/` is always clean before it is applied.

@@ -158,8 +158,8 @@ push pattern from the member toward the root instead.
 - `finalize_context()` runs before `create_file_mappings()`, so any context
   values derived from received inputs are available when you build your file
   mappings.
-- The loader routes `provide_inputs()` payloads by schema match, not by name.
-  A payload is delivered to every provider whose `get_inputs_schema()` returns a
+- The loader routes `provide_inputs()` payloads by schema match, not by name. A
+  payload is delivered to every provider whose `get_inputs_schema()` returns a
   compatible type - if no receiver declares a matching schema the payload is
   silently dropped.
 - When implementing a provider that supports multiple workspace modes, check

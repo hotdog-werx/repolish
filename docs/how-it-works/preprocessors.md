@@ -27,6 +27,23 @@ found, the default template line is used unchanged.
 
 The directive line itself is always removed from the output.
 
+### Capture group behavior
+
+If your pattern includes a capturing group (parentheses), repolish uses the
+first capture group as the replacement value. With no capturing group the entire
+match is used. Prefer explicit groups when you want only part of the match:
+
+```python
+## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
+__version__ = "0.0.0"
+# captures just the version string, e.g. 1.2.3
+```
+
+As a conservative safeguard, repolish also trims the captured text to a
+contiguous region based on indentation. This prevents a greedy pattern from
+accidentally pulling in the following section. When a pattern is too broad,
+tighten it or add explicit parentheses to delimit exactly what should be kept.
+
 ## Multiregex directives
 
 For structured blocks (a `[tools]` section in a TOML file, a `requirements`
@@ -43,8 +60,7 @@ dprint = "0.0.0"
 
 The block pattern locates the relevant section; the line pattern extracts
 key-value pairs. Your existing versions are preserved for matching keys; new
-provider keys are appended. See the
-[Preprocessors guide](../guides/preprocessors.md) for the full multiregex spec.
+provider keys are appended.
 
 ## Block anchors
 
@@ -117,3 +133,31 @@ Then run:
 ```bash
 repolish preview anchor_example.yaml
 ```
+
+## Directive naming and uniqueness
+
+Directive names are **global identifiers** across all templates in a run. Two
+templates from different providers can each have a `## repolish-start[init]`
+block, but the replacement value for `init` is a single string - the later
+provider's value wins and the earlier one is silently discarded.
+
+To avoid this, scope names to the file or provider:
+
+```
+docker-init       ← instead of just "init"
+readme-badges     ← instead of "badges"
+mylib-version     ← instead of "version"
+```
+
+The same rule applies to regex and multiregex directive names. A regex named
+`version` in one template will silently conflict with a `version` directive in
+another template that is processed later.
+
+Block anchor replacements come from three places, merged in this order:
+
+1. Provider code - `create_anchors()` return value.
+2. Config-level anchors - the `anchors:` mapping in `repolish.yaml` (wins over
+   provider code).
+
+Regex and multiregex directives only read from the current project file; they
+are not affected by `repolish.yaml` anchors.

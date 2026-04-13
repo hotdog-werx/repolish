@@ -8,17 +8,17 @@ repolish scaffold [OPTIONS] DIRECTORY
 
 ## Arguments
 
-| Argument | Description |
-| --- | --- |
+| Argument    | Description                                                                             |
+| ----------- | --------------------------------------------------------------------------------------- |
 | `DIRECTORY` | Destination directory. Created if it does not exist. Use `.` for the current directory. |
 
 ## Options
 
-| Option | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--package NAME`, `-p NAME` | yes | - | Python package name. Use simple names for flat packages (e.g. `devkit_workspace`) or dot-notation for namespace packages (e.g. `devkit.workspace`). |
-| `--prefix PREFIX` | no | last segment of `--package` | Class-name prefix for generated provider classes (e.g. `Devkit` produces `DevkitProvider`, `DevkitContext`). |
-| `--monorepo` | no | off | Generate the full monorepo layout with `RootModeHandler`, `MemberModeHandler`, and `StandaloneModeHandler` classes. By default a simpler single-file provider is generated. |
+| Option                      | Required | Default                     | Description                                                                                                                                                                 |
+| --------------------------- | -------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--package NAME`, `-p NAME` | yes      | -                           | Python package name. Use simple names for flat packages (e.g. `devkit_workspace`) or dot-notation for namespace packages (e.g. `devkit.workspace`).                         |
+| `--prefix PREFIX`           | no       | last segment of `--package` | Class-name prefix for generated provider classes (e.g. `Devkit` produces `DevkitProvider`, `DevkitContext`).                                                                |
+| `--monorepo`                | no       | off                         | Generate the full monorepo layout with `RootModeHandler`, `MemberModeHandler`, and `StandaloneModeHandler` classes. By default a simpler single-file provider is generated. |
 
 ## What it does
 

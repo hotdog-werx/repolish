@@ -1,186 +1,80 @@
-# Preprocessors
+# Preprocessor patterns
 
-Repolish uses preprocessor directives embedded directly in template files.
-Before Jinja2 runs, repolish reads these directives, captures values from your
-existing project file, and injects them back so local state survives every
-apply. All directive lines are stripped from the final output.
+This guide shows how to apply preprocessor directives to common real-world
+scenarios. For a full explanation of how each directive works, see
+[Preprocessors](../how-it-works/preprocessors.md).
 
-Regex and multiregex directives are the primary mechanism - they are
-self-contained in the template, require no provider code, and read from the
-project file automatically. Block anchors are a simpler option for cases where
-the provider (not the project file) controls a section.
+## Choosing the right directive
 
-## Regex Replacements
+| Situation                                                        | Directive    |
+| ---------------------------------------------------------------- | ------------ |
+| Preserve a single line value (version, author, URL)              | `regex`      |
+| Preserve an entire structured block (tool versions, deps list)   | `multiregex` |
+| Let the provider inject dynamic content a developer can override | block anchor |
 
-Regex directives preserve individual values - versions, config entries, author
-fields - by matching them in your existing file.
+Default to `regex` and `multiregex` - they live entirely in the template, need
+no provider code, and the project file is always the source of truth. Use block
+anchors only when the provider (not the project file) should own a section.
 
-### Syntax
+---
 
-```
-## repolish-regex[name]: pattern
-default_value
-```
+## Preserving a version string (regex)
 
-### Usage
-
-The pattern runs against the current project file. If a match is found, the
-captured group (or full match if no group) replaces the template line. If no
-match is found, the default line is kept.
-
-**Example:**
+The most common use: keep whatever version the developer has in their file
+rather than resetting it to the provider default on every apply.
 
 ```python
-# Template
-## repolish-regex[version]: __version__ = "(.+?)"
+# repolish/src/mylib/__init__.py.jinja
+## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
 __version__ = "0.0.0"
-
-# Target file contains: __version__ = "1.2.3"
 ```
 
-**Result:**
+If the project file already contains `__version__ = "1.4.2"` the regex captures
+`1.4.2` and that line is used in the output. New projects without the file get
+the default `"0.0.0"`.
 
-```python
-__version__ = "1.2.3"
-```
+The captured group (inside the parentheses) is what gets substituted. If you
+omit the group the entire regex match is used instead.
 
-## Multiregex Replacements
+---
 
-Multiregex directives handle structured blocks - a `[tools]` section in TOML, a
-`requirements` list - preserving locally pinned values while allowing the
-provider to add new keys.
+## Preserving versioned tool entries (multiregex)
 
-### Syntax
+Tool version files (`mise.toml`, `.tool-versions`, etc.) list many tools whose
+versions the developer manages locally. You want to ship sensible defaults but
+never clobber versions the developer has already updated.
 
-```ini
-## repolish-multiregex-block[block-name]: block_pattern
-## repolish-multiregex[block-name]: item_pattern
-key1 = "default1"
-key2 = "default2"
-key3 = "default3"
-```
-
-### Usage
-
-The `multiregex-block` pattern locates the entire section in the project file.
-The `multiregex` pattern extracts individual key-value pairs within it. Existing
-values are preserved for matching keys; new provider keys are appended.
-
-**Example:**
-
-```ini
-# Template
+```toml
+# repolish/.mise.toml.jinja
 [tools]
 ## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
 ## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
 uv = "0.0.0"
 dprint = "0.0.0"
 starship = "0.0.0"
-
-# Target file contains:
-[tools]
-uv = "0.7.20"
-dprint = "0.50.1"
-starship = "1.0.0"
 ```
 
-**Result:**
+The block pattern locates the `[tools]` section; the line pattern extracts each
+`key = "value"` pair. On apply:
 
-```ini
-[tools]
-uv = "0.7.20"
-dprint = "0.50.1"
-starship = "1.0.0"
-```
+- Keys already present in the project file keep their current values.
+- New keys from the template are appended.
+- Keys removed from the template are left untouched in the project file
+  (repolish does not delete lines it did not put there).
 
-## Block Anchors
+---
 
-Block anchors mark a section in the template whose content is supplied by the
-provider's `create_anchors()` method (which can generate content dynamically
-from context) or by an `anchors:` mapping in `repolish.yaml` (project-level
-overrides win). If no replacement is provided, the default content between the
-markers is kept. All marker lines are stripped - the final project file is
-clean.
+## Letting the developer own a section (block anchor)
 
-The tradeoff compared to regex directives: to customise the injected content you
-set it in `repolish.yaml`, because editing the file directly won't stick - the
-next apply will overwrite it with whatever the provider computes. Regex and
-multiregex directives avoid this by reading from the file itself, so the file is
-always the source of truth.
-
-### Syntax
-
-```
-## repolish-start[anchor-name]
-
-Default content goes here
-
-## repolish-end[anchor-name]
-```
-
-### Usage
-
-Block anchors are replaced with content from the provider's `create_anchors()`
-return value or the project's `anchors:` key in `repolish.yaml`, keyed by anchor
-name. If no replacement is provided for a key, the default content between the
-markers is preserved.
-
-**Example:**
-
-```yaml
-# Template
-## repolish-start[header]
-# Default Header
-Welcome to our project!
-## repolish-end[header]
-
-# Context
-header: |
-  # Custom Header
-  Welcome to My Awesome Project!
-```
-
-**Result:**
-
-```markdown
-# Custom Header
-
-Welcome to My Awesome Project!
-```
-
-## Processing Order
-
-Preprocessors are applied in the following order:
-
-1. **Block anchors** - replacement from provider code or config
-2. **Regex directives** - capture from the current project file
-3. **Multiregex directives** - structured block capture from the current project
-   file
-
-## Best Practices
-
-- Prefer regex and multiregex directives - they live in the template file itself
-  and require no extra provider code.
-- Use descriptive names that clearly indicate their purpose (e.g.
-  `tools-versions`, `version-string`).
-- Test your regex patterns thoroughly to ensure they match the expected content.
-- Keep default values in templates so they work correctly for new projects where
-  no existing file exists yet.
-- Use block anchors only when the provider (not the project) should control the
-  section content.
-- Use the debugger (`repolish preview`) to validate your preprocessor patterns.
-
-## Practical examples
-
-### Dockerfile (block anchor)
-
-Template (`templates/my-template/repolish/Dockerfile`):
+Use a block anchor when the provider should supply content that a developer can
+override for their project, but editing the file directly would not work
+(repolish would overwrite it on the next apply).
 
 ```dockerfile
+# repolish/Dockerfile.jinja
 FROM python:3.11-slim
 
 ## repolish-start[install]
-# install system deps
 RUN apt-get update && apt-get install -y build-essential libssl-dev
 ## repolish-end[install]
 
@@ -188,162 +82,102 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir .
 ```
 
-Local project `Dockerfile` (developer has custom install needs):
+The provider can compute the default dynamically:
 
-```dockerfile
-FROM python:3.11-slim
-
-## repolish-start[install]
-# custom build deps for project X
-RUN apt-get update && apt-get install -y locales libpq-dev
-## repolish-end[install]
-
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+```python
+def create_anchors(self, context: Ctx) -> dict[str, str]:
+    packages = ' '.join(context.system_packages)
+    return {'install': f'RUN apt-get update && apt-get install -y {packages}'}
 ```
 
-When Repolish preprocesses the template, the `install` block from the local
-project file is preserved in the staged template. The generated output keeps the
-local custom `RUN` command while the rest of the Dockerfile comes from the
-template.
+A developer who needs extra system packages overrides it in `repolish.yaml`:
 
-### pyproject.toml (regex directive + block anchor)
+```yaml
+anchors:
+  install: |
+    RUN apt-get update && apt-get install -y locales libpq-dev
+```
 
-Template (`templates/my-template/repolish/pyproject.toml`):
+Project-level `anchors:` always win over provider code.
+
+---
+
+## Giving developers an append zone (regex tail capture)
+
+A common pattern for files like `.gitignore` or GitHub Actions workflow files:
+place a sentinel comment near the end of the template and capture everything
+from that comment to the end of the file. Developers can add lines after the
+sentinel and they will survive every apply.
+
+```yaml
+# repolish/.github/workflows/ci.yaml.jinja
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pytest
+
+## repolish-regex[additional-jobs]: ^## post-release jobs([\s\S]*)$
+## post-release jobs - add your custom jobs here
+```
+
+The `[\s\S]*` matches any characters including newlines, so everything the
+developer writes after the sentinel comment is captured and reinjected. If no
+match is found (e.g. a fresh project) the default line is kept.
+
+The same pattern works in `.gitignore`:
+
+```gitignore
+# repolish/.gitignore.jinja
+.venv/
+__pycache__/
+dist/
+.repolish/_/
+
+## repolish-regex[project-ignores]: ^## project-specific patterns([\s\S]*)$
+## project-specific patterns - add your own below
+```
+
+Developers append patterns below the sentinel line; repolish preserves them on
+every apply.
+
+---
+
+## Combining directives (pyproject.toml)
+
+A single template can mix regex and anchor directives to handle different parts
+of the file independently.
 
 ```toml
-[tool.poetry]
-name = "{{ cookiecutter.package_name }}"
+# repolish/pyproject.toml.jinja
+[project]
+name = "{{ project_name }}"
+## repolish-regex[version]: ^version\s*=\s*"(.+?)"$
 version = "0.1.0"
-## repolish-regex[keep]: ^version\s*=\s*".*"
 
-description = "A short description"
-
-## repolish-start[extra-deps]
-# optional extra deps (preserved when present)
-## repolish-end[extra-deps]
+## repolish-start[optional-deps]
+# no optional dependencies by default
+## repolish-end[optional-deps]
 ```
 
-Local `pyproject.toml` (developer bumped version and added extras):
+The regex keeps the version the developer has already bumped. The anchor lets
+the provider (or the developer via `repolish.yaml`) inject optional dependency
+groups without touching the rest of the file.
 
-```toml
-[tool.poetry]
-name = "myproj"
-version = "0.2.0"
+---
 
-description = "Local project description"
+## Tips
 
-## repolish-start[extra-deps]
-requests = "^2.30"
-## repolish-end[extra-deps]
-```
-
-The `repolish-regex[keep]` directive ensures the local `version = "0.2.0"` line
-is preserved instead of being replaced by the template's `0.1.0`. The
-`extra-deps` block is preserved whole-cloth, letting projects keep local
-dependency additions.
-
-**Tips**
-
-- Use meaningful names (`install`, `readme`, `extra-deps`) so reviewers
-  immediately understand what the preserved section contains.
-- Regex directives are applied line-by-line; prefer simple, easy-to-read
-  patterns to avoid surprises.
-- Preprocessing runs before Jinja2 rendering, so template substitutions still
-  work around preserved sections.
-
-## Regex capture groups
-
-Two important behaviors control what is extracted and inserted:
-
-**Capture group preference**: If your regex includes a capturing group
-(parentheses), Repolish prefers the first capture group (group 1) as the block
-to insert into the template. If there are no capture groups, Repolish falls back
-to the entire match (group 0).
-
-**Safeguard trimming**: As a conservative safeguard Repolish trims the captured
-block to a contiguous region based on indentation, so that incidental following
-sections are not accidentally pulled in. The canonical way to express intent is
-an explicit capture group - authors should prefer to capture exactly what they
-mean.
-
-### Example
-
-Template excerpt:
-
-```toml
-cat1:
-  - line1
-  - line2
-  ## repolish-regex[cat1-filter]: (^\s*# cat1-filter-additional-paths.*\n(?:\s+.*\n)*)
-  # cat1-filter-additional-paths
-
-cat2:
-  - from-template
-  ## repolish-regex[cat2-filter]: (^\s*# cat2-filter-additional-paths.*\n(?:\s+.*\n)*)
-  # cat2-filter-additional-paths
-```
-
-Local file excerpt:
-
-```toml
-cat1:
-  - line1
-  - line2
-  # cat1-filter-additional-paths
-  - extra
-
-cat2:
-  - from-template
-```
-
-Result after preprocessing:
-
-```toml
-cat1:
-  - line1
-  - line2
-  # cat1-filter-additional-paths
-  - extra
-
-cat2:
-  - from-template
-  # cat2-filter-additional-paths
-```
-
-When your regex is too greedy, tighten it or add explicit parentheses around the
-intended capture so Repolish can reliably hydrate the template.
-
-## Directive scope and uniqueness
-
-Directive names are **global identifiers** across all templates in a session.
-For block anchors specifically, replacements can come from three places, merged
-in this order:
-
-1. **Provider templates**: any `## repolish-start[...]` /
-   `## repolish-regex[...]` markers present inside provider template files.
-2. **Provider code**: a provider's `create_anchors()` callable can return a
-   mapping (key → replacement text) used during preprocessing.
-3. **Config-level anchors**: the `anchors` mapping in `repolish.yaml` applies
-   last and overrides earlier values.
-
-Directive (and anchor) keys must be unique across the entire merged template
-set. If two template files from different providers use the same name, the later
-provider's value wins, which can produce surprising results.
-
-### Example conflict
-
-Two providers accidentally use the same key `init`:
-
-- `templates/a/Dockerfile` contains `## repolish-start[init]` …
-  `## repolish-end[init]`
-- `templates/b/README.md` also contains `## repolish-start[init]` …
-  `## repolish-end[init]`
-
-The `init` block from whichever provider is processed last will replace the
-other. For predictable behavior, scope names to the file or provider: e.g.
-`docker-install` or `readme-intro`.
-
-**Best practice**: prefix directive names with the file or provider name when
-the content is file-scoped. This avoids accidental collisions when multiple
-providers contribute templates with similarly-named sections.
+- **Name directives to their scope.** `docker-install` is safer than `install`
+  because directive names are global - two providers accidentally using the same
+  name will conflict silently. See
+  [Directive naming and uniqueness](../how-it-works/preprocessors.md#directive-naming-and-uniqueness).
+- **Keep default values realistic.** The defaults are what new projects get
+  before any local file exists. A semver `"0.0.0"` or a sensible tool version is
+  better than an empty string.
+- **Use `repolish preview` to test patterns** before running a full apply. See
+  [repolish preview](../cli/preview.md).
+- **Preprocessing runs before Jinja2.** Values captured from the project file
+  are substituted first; Jinja2 expressions in the rest of the template still
+  render normally around them.

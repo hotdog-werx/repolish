@@ -8,8 +8,8 @@ repolish link [OPTIONS]
 
 ## Options
 
-| Option | Default | Description |
-| --- | --- | --- |
+| Option                     | Default         | Description                                   |
+| -------------------------- | --------------- | --------------------------------------------- |
 | `--config PATH`, `-c PATH` | `repolish.yaml` | Path to the repolish YAML configuration file. |
 
 ## What it does
@@ -25,11 +25,11 @@ For providers that declare a `cli` entry, the CLI is called in two steps:
 2. `<cli>` (without flags) - performs the actual linking (e.g. symlinking
    package resources into `.repolish/<name>/`).
 
-For providers that only have `provider_root` set, the static paths from the
-YAML are registered directly without calling any CLI.
+For providers that only have `provider_root` set, the static paths from the YAML
+are registered directly without calling any CLI.
 
-After `repolish link` succeeds, subsequent `repolish apply` calls use the
-cached registration and skip the CLI entirely on the fast path.
+After `repolish link` succeeds, subsequent `repolish apply` calls use the cached
+registration and skip the CLI entirely on the fast path.
 
 ## When to run it
 
@@ -38,5 +38,5 @@ cached registration and skip the CLI entirely on the fast path.
 - Whenever a provider's resources have moved on disk.
 
 You do not need to run `repolish link` before every `repolish apply`. The
-`apply` command will re-register automatically when a cached path is missing
-or stale.
+`apply` command will re-register automatically when a cached path is missing or
+stale.
