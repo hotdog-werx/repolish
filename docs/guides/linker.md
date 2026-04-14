@@ -95,28 +95,17 @@ Automatically handles platform differences:
 ### Provider Info for Auto-Discovery
 
 When you run `mylib-link`, a `.provider-info.json` file is automatically created
-in `.repolish/mylib/`. This file contains metadata about the provider, including
-the location of its templates directory.
-
-Repolish uses this information to automatically discover template directories
-when you have `providers_order` configured but no explicit `directories` field.
-This allows for a simpler, cleaner `repolish.yaml`:
+in `.repolish/mylib/`. This file contains metadata about the provider including
+the location of its templates directory, which repolish uses to locate templates
+without needing a `provider_root` entry in `repolish.yaml`:
 
 ```yaml
-# No directories needed!
-providers_order:
-  - mylib
-
 providers:
   mylib:
     cli: mylib-link
-
-context:
-  package_name: 'my-project'
 ```
 
-See the [Configuration guide](../configuration/overview.md) for more details on
-auto-discovery.
+That's all you need — no `provider_root` or manual path configuration.
 
 ### Updating Resources
 
@@ -286,41 +275,19 @@ mylib-link = "mylib.cli_link:main"
 
 ### Symlink
 
-A simple dataclass representing a symlink configuration for the decorator API.
-
-```python
-from dataclasses import dataclass
-
-@dataclass
-class Symlink:
-    source: str  # Path relative to provider resources
-    target: str  # Path relative to repo root
-```
-
-**Parameters:**
-
-- `source` (str): Path relative to the provider's resources directory (e.g.,
-  `'configs/.editorconfig'`)
-- `target` (str): Path relative to the repository root (e.g., `'.editorconfig'`)
-
-**Note:** Use forward slashes (`/`) for paths on all platforms (Windows, macOS,
-Linux). Python's `pathlib` handles cross-platform compatibility automatically.
-
-**Example:**
+A dataclass representing a symlink from provider resources to the project root.
+Import it from `repolish.linker`:
 
 ```python
 from repolish.linker import Symlink
 
-# Create a symlink configuration
 symlink = Symlink(
-    source='configs/.editorconfig',
-    target='.editorconfig',
+    source='configs/.editorconfig',  # relative to the provider's resources dir
+    target='.editorconfig',          # relative to the repo root
 )
 ```
 
-This is the user-facing API for defining symlinks in the `resource_linker`
-decorator. Internally, these are converted to `ProviderSymlink` models for
-validation and processing.
+Use forward slashes on all platforms — `pathlib` handles the rest.
 
 ## Low-Level API
 
@@ -356,21 +323,16 @@ is_symlink = link_resources(
 
 ### create_additional_link
 
-Create additional symlinks from repo to provider resources (used by repolish
-orchestration).
+Create an additional symlink from a provider resource to the project root.
 
 ```python
+from pathlib import Path
 from repolish.linker import create_additional_link
 
-cli_info = {
-    'library_name': 'codeguide',
-    'source_dir': '/path/to/site-packages/codeguide/resources',
-    'target_dir': '/path/to/project/.repolish/codeguide',
-}
-
 create_additional_link(
-    cli_info=cli_info,
-    source='configs/.editorconfig',  # Relative to resources
+    resources_dir=Path('.repolish/mylib'),
+    provider_name='mylib',
+    source='configs/.editorconfig',  # Relative to resources_dir
     target='.editorconfig',           # Relative to repo root
     force=False,
 )
@@ -378,13 +340,11 @@ create_additional_link(
 
 **Parameters:**
 
-- `cli_info` (dict): Information from CLI's `--info` output
-  - `library_name`: Name of the library
-  - `source_dir`: Absolute path to library's resources
-  - `target_dir`: Absolute path where resources are linked
-- `source` (str): Path relative to provider's resources
-- `target` (str): Path relative to repository root
-- `force` (bool): If True, remove existing target before linking
+- `resources_dir` (Path): Absolute path to the provider's resource directory
+- `provider_name` (str): Provider alias from `repolish.yaml`
+- `source` (str): Path relative to the provider's resources (e.g., `'configs/.editorconfig'`)
+- `target` (str): Path relative to repository root (e.g., `'.editorconfig'`)
+- `force` (bool): If True, remove existing target before creating link
 
 **Returns:** `True` if symlink was created, `False` if copied
 

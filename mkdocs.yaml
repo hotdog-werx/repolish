@@ -47,7 +47,6 @@ nav:
       - Preprocessors: guides/preprocessors.md
       - Monorepo Setup: guides/monorepo.md
       - Mode Handlers: guides/mode-handler.md
-      - Provider Patterns: guides/patterns.md
       - Resource Linker: guides/linker.md
       - Provider Migration: guides/provider-migration.md
 

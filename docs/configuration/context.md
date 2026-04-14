@@ -165,3 +165,45 @@ push pattern from the member toward the root instead.
 - When implementing a provider that supports multiple workspace modes, check
   `opt.own_context.repolish.workspace.mode` inside `provide_inputs()` to decide
   what (if anything) to broadcast.
+- **Project-configurable context:** a provider can expose an `*_args` or
+  `*_config` field in its context model as a hook for projects to influence how
+  context is derived. The project sets the field via `context_overrides:` and
+  the provider reads it in `finalize_context()` (which runs after all overrides
+  are applied) to generate the rest of its context:
+
+  ```python
+  from pydantic import BaseModel
+  from repolish import BaseContext, BaseInputs, FinalizeContextOptions, Provider
+
+
+  class MyProviderArgs(BaseModel):
+      api_version: str = 'v1'
+
+
+  class MyProviderCtx(BaseContext):
+      my_provider_args: MyProviderArgs = MyProviderArgs()
+      api_url: str = 'https://api.example.com/v1'
+
+
+  class MyProvider(Provider[MyProviderCtx, BaseInputs]):
+      def create_context(self) -> MyProviderCtx:
+          return MyProviderCtx()
+
+      def finalize_context(
+          self,
+          opt: FinalizeContextOptions[MyProviderCtx, BaseInputs],
+      ) -> MyProviderCtx:
+          ver = opt.own_context.my_provider_args.api_version
+          opt.own_context.api_url = f'https://api.example.com/{ver}'
+          return opt.own_context
+  ```
+
+  ```yaml
+  # repolish.yaml — project-side override
+  context_overrides:
+    my_provider_args:
+      api_version: v2
+  ```
+
+  This is a convention, not a framework feature. The provider decides which
+  fields to treat as inputs and how to act on them.

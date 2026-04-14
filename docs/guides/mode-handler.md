@@ -25,8 +25,7 @@ to the provider's own implementation (or the base-class no-op if neither defines
 it).
 
 ```python
-from repolish import ModeHandler, Provider
-from repolish.providers.models.context import BaseContext, BaseInputs, Symlink
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider, Symlink
 
 
 class WorkspaceCtx(BaseContext):
@@ -100,9 +99,15 @@ class RootHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
 
 ## Symlinks per mode
 
-`create_default_symlinks` takes no arguments. Use separate mode handlers to
-return different symlinks per workspace role — a `root_mode` handler returns the
-symlinks and the `member_mode` handler simply returns `[]`:
+`create_default_symlinks` takes no context argument. This is intentional:
+`repolish link` also calls this method when registering the provider, and at
+that point no typed context has been built yet. Keep the return values static —
+use `self.templates_root` for path construction if needed, but do not rely on
+any context fields.
+
+Use separate mode handlers to return different symlinks per workspace role — a
+`root_mode` handler returns the symlinks and the `member_mode` handler simply
+returns `[]`:
 
 ```python
 class RootHandler(ModeHandler[WorkspaceCtx, BaseInputs]):
