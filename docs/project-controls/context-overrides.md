@@ -56,7 +56,7 @@ Both forms are equivalent.
 !!! note `context_overrides` requires the provider to use the class-based
 `Provider[Ctx, Inputs]` pattern with typed context fields. It will not work on
 older module-level providers that return plain dicts. See
-[Provider Migration](../guides/provider-migration.md) if yours is not yet
+[Provider Migration](../provider-development/provider-migration.md) if yours is not yet
 migrated.
 
 ## Merge order

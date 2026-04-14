@@ -3,7 +3,7 @@
 This section is the reference for every `repolish.yaml` key and for the Python
 provider API. Use it when you know what you are looking for. If you want a
 conceptual introduction to how things fit together, start with
-[How It Works](../how-it-works/overview.md).
+[How It Works](../concepts/overview.md).
 
 ## Pages in this section
 

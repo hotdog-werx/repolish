@@ -60,7 +60,7 @@ paused_files:
 ```
 
 That is the quick escape hatch. The
-[Developer Control](developer-control/index.md) section documents every tool
+[Developer Control](project-controls/index.md) section documents every tool
 available to you: pausing files, overriding templates, patching context, and
 running a fully local provider when you need total independence from upstream.
 
@@ -70,5 +70,5 @@ running a fully local provider when you need total independence from upstream.
 - [Quick Start](getting-started/quick-start.md) — run your first check and apply
 - [Tutorial](tutorial/index.md) — build two providers from scratch and discover
   why each feature exists
-- [How It Works](how-it-works/overview.md) — deeper look at the pipeline
-- [Developer Control](developer-control/index.md) — all your escape hatches
+- [How It Works](concepts/overview.md) — deeper look at the pipeline
+- [Developer Control](project-controls/index.md) — all your escape hatches

@@ -69,4 +69,4 @@ implementations.
 When the same provider needs different behaviour in a monorepo root vs a package
 member, attach `ModeHandler` subclasses to the provider class instead of writing
 `if mode == ...` branches. See the
-[Mode Handlers guide](../guides/mode-handler.md) for details.
+[Mode Handlers guide](../provider-development/mode-handler.md) for details.

@@ -4,7 +4,7 @@ This page covers the Python side of writing a provider: how to define a typed
 context model, how to use the `Provider` base class, how to attach per-file
 extra context, and how to coordinate with other providers. For how context
 sources are merged and how to override values from `repolish.yaml`, see
-[Context](../how-it-works/context.md).
+[Context](../concepts/context.md).
 
 ## Defining a context model
 
@@ -66,7 +66,7 @@ the same name for that file only.
 
 You can inspect what context a specific file received after `repolish apply` by
 looking at `.repolish/_/file-ctx/file-context.<slug>.json`. See
-[Inspecting context after an apply](../how-it-works/context.md#inspecting-context-after-an-apply).
+[Inspecting context after an apply](../concepts/context.md#inspecting-context-after-an-apply).
 
 ## Cross-provider coordination
 

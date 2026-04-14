@@ -154,7 +154,7 @@ This example only scratches the surface. Providers can:
 
 - supply multiple templates from the same context
 - preserve hand-edited sections in the output with
-  [preprocessor directives](../guides/preprocessors.md)
+  [preprocessor directives](../provider-development/preprocessors.md)
 - accept inputs from other providers
 - delete obsolete files as part of migration
 
@@ -163,9 +163,9 @@ packages, follow the [Tutorial](../tutorial/index.md).
 
 Other useful references:
 
-- [Configuration reference](../configuration/overview.md) - all `repolish.yaml`
+- [Configuration reference](../provider-development/overview.md) - all `repolish.yaml`
   fields
-- [Templates guide](../guides/templates.md) - file mappings and create-only
+- [Templates guide](../provider-development/templates.md) - file mappings and create-only
   files
-- [Context](../how-it-works/context.md) - how context values are sourced and
+- [Context](../concepts/context.md) - how context values are sourced and
   overridden

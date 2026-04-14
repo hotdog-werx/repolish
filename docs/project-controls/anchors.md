@@ -113,6 +113,6 @@ just a section of it.
 
 ## Further reading
 
-The [Preprocessors guide](../how-it-works/preprocessors.md) covers multiregex
+The [Preprocessors guide](../concepts/preprocessors.md) covers multiregex
 directives (matching structured blocks like `[tools]` sections), processing
 order, and debugging with `repolish preview`.

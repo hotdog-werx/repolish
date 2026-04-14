@@ -1,7 +1,7 @@
 # Monorepo Setup
 
 Task reference for configuring and running repolish in a uv workspace. See
-[Monorepo](../how-it-works/monorepo.md) for the conceptual overview of
+[Monorepo](../concepts/monorepo.md) for the conceptual overview of
 sessions, the resolve/apply split, and cross-session data channels.
 
 ## Quick start
@@ -56,7 +56,7 @@ branching — see the [Mode Handlers](mode-handler.md) guide.
 
 Member sessions emit inputs upward to the root via `provide_inputs`; the root
 collects them in `finalize_context`. See
-[Monorepo](../how-it-works/monorepo.md) for the cross-session channel detail.
+[Monorepo](../concepts/monorepo.md) for the cross-session channel detail.
 
 ## CLI flags
 

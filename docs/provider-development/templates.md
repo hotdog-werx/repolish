@@ -3,7 +3,7 @@
 Templates are files under a provider's `repolish/` directory. On every
 `repolish apply` they are rendered with Jinja2 and written to your project.
 
-See [Templates](../how-it-works/templates.md) for the full reference on
+See [Templates](../concepts/templates.md) for the full reference on
 directory layout, Jinja2 rendering, the `repolish.*` namespace, and the `.jinja`
 extension.
 
@@ -93,7 +93,7 @@ You can combine `CREATE_ONLY` with conditional selection — use an `if/else` to
 pick the source, then wrap it in
 `TemplateMapping(..., file_mode=FileMode.CREATE_ONLY)`.
 
-See [File Modes](../how-it-works/file-modes.md) for the full `TemplateMapping`
+See [File Modes](../concepts/file-modes.md) for the full `TemplateMapping`
 reference, `FileMode.DELETE`, and extra-context options.
 
 ## Tips

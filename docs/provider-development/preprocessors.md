@@ -2,7 +2,7 @@
 
 This guide shows how to apply preprocessor directives to common real-world
 scenarios. For a full explanation of how each directive works, see
-[Preprocessors](../how-it-works/preprocessors.md).
+[Preprocessors](../concepts/preprocessors.md).
 
 ## Choosing the right directive
 
@@ -172,12 +172,12 @@ groups without touching the rest of the file.
 - **Name directives to their scope.** `docker-install` is safer than `install`
   because directive names are global - two providers accidentally using the same
   name will conflict silently. See
-  [Directive naming and uniqueness](../how-it-works/preprocessors.md#directive-naming-and-uniqueness).
+  [Directive naming and uniqueness](../concepts/preprocessors.md#directive-naming-and-uniqueness).
 - **Keep default values realistic.** The defaults are what new projects get
   before any local file exists. A semver `"0.0.0"` or a sensible tool version is
   better than an empty string.
 - **Use `repolish preview` to test patterns** before running a full apply. See
-  [repolish preview](../cli/preview.md).
+  [repolish preview](../reference/preview.md).
 - **Preprocessing runs before Jinja2.** Values captured from the project file
   are substituted first; Jinja2 expressions in the rest of the template still
   render normally around them.

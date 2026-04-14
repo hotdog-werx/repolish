@@ -140,7 +140,7 @@ There are two anchor types:
     ```
 
 The regex anchor (`repolish-regex`) works differently — see the
-[Anchors](../developer-control/anchors.md) page for the full picture including
+[Anchors](../project-controls/anchors.md) page for the full picture including
 regex and multiregex anchors.
 
 ---
@@ -225,7 +225,7 @@ Apply when you are ready:
 repolish apply
 ```
 
-From there the [Configuration reference](../configuration/config-file.md) covers
+From there the [Configuration reference](../provider-development/config-file.md) covers
 every field in `repolish.yaml`, and the
-[Developer Control](../developer-control/index.md) section shows how to handle
+[Developer Control](../project-controls/index.md) section shows how to handle
 situations where a provider update is not ready for your project yet.
