@@ -292,6 +292,27 @@ def test_lint_missing_templates_dir(tmp_path: Path) -> None:
     assert command(provider_dir) == 1
 
 
+def test_lint_unmapped_conditional_source(tmp_path: Path) -> None:
+    """A _repolish.* template not referenced in create_file_mappings triggers a warning.
+
+    This exercises the ``if unmapped:`` block inside :func:`command` that
+    reports forgotten conditional sources — template files that would be
+    silently skipped during apply because they were never wired to a
+    destination via ``create_file_mappings``.
+    """
+    provider_dir = _make_provider(
+        tmp_path,
+        _CLASS_PROVIDER_BASE,
+        {
+            # Regular template — clean, no lint issues.
+            'README.md': '# {{ package_name }}\n',
+            # Conditional file NOT referenced in create_file_mappings.
+            '_repolish.orphan.toml': '[tool]\nname = "{{ package_name }}"\n',
+        },
+    )
+    assert command(provider_dir) == 1
+
+
 def test_lint_module_style_provider_fails_load(tmp_path: Path) -> None:
     # Module-style providers (no Provider subclass) are not supported in v1;
     # the command should report the failure and return exit code 1.

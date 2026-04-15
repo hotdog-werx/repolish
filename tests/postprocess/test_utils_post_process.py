@@ -92,6 +92,25 @@ def test__run_argv_output_inherited_when_verbose(
         configure_logging(verbosity=resolve_verbosity(verbose=0))
 
 
+def test_run_post_process_ci_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In CI mode run_post_process logs the label instead of showing a spinner.
+
+    When the ``CI`` environment variable is set, :func:`run_post_process` uses
+    a plain ``nullcontext`` (no spinner) and emits a structured log entry so
+    the CI log captures what's running without interactive Rich output.
+    """
+    monkeypatch.setenv('CI', '1')
+    target = tmp_path / 'ci_out.txt'
+    cmds = [
+        [sys.executable, '-c', f"open('{target.as_posix()}','w').write('ci')"],
+    ]
+    utils.run_post_process(cmds, tmp_path)
+    assert target.read_text() == 'ci'
+
+
 def test_run_post_process_combination(tmp_path: Path):
     # mix of None, empty, list, and string commands — last command creates a file
     target = tmp_path / 'out.txt'

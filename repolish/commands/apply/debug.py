@@ -25,7 +25,10 @@ def _to_jsonable(value: object) -> object:
         return {k: _to_jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(item) for item in value]
-    if isinstance(value, (set, frozenset)):
+    # pragma: no cover — Pydantic model_dump() serialises set/frozenset fields
+    # to plain lists before _to_jsonable is called, so this branch is never
+    # reached in practice; retained for correctness if callers evolve.
+    if isinstance(value, (set, frozenset)):  # pragma: no cover
         return [_to_jsonable(item) for item in value]
     return value
 
