@@ -12,6 +12,10 @@ Bootstrap the new package the same way as the workspace provider:
 ```bash
 mkdir devkit-python && cd devkit-python
 cat > mise.toml << 'EOF'
+[settings]
+experimental = true
+python.uv_venv_auto = true
+
 [tools]
 uv = "latest"
 EOF

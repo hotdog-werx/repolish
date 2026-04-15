@@ -5,7 +5,9 @@ repo_url: https://github.com/hotdog-werx/repolish
 repo_name: hotdog-werx/repolish
 
 nav:
-  - Home: index.md
+  - Home:
+      - index.md
+      - AI Agent Reference: llms.md
 
   - Getting Started:
       - Installation: getting-started/installation.md

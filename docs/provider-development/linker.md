@@ -1,8 +1,47 @@
 # Resource Linker
 
-The `repolish.linker` module helps libraries link their resources (templates,
-configs, docs) to projects. Each library provides its own CLI that users run to
-create links, enabling a decentralized resource distribution model.
+## Why linking?
+
+Python tools that read configuration files — linters, formatters, task runners —
+need those files somewhere on disk. The usual options are: commit them into
+every repo (drift over time) or generate them (repolish's job). But there is a
+third path that node.js developers have used for years: ship the config _inside
+the library_ and let the package manager land it locally.
+
+```
+./node_modules/eslint-config-my-org/index.js   ← node
+./.repolish/my-provider/ruff.toml              ← repolish
+```
+
+When a user runs `repolish link` (or the provider's own `myprovider-link`
+command), the provider's resources are written to `.repolish/<provider-name>/`.
+That path is short, stable, and local to the project. Tools can point straight
+at it. No `.venv` traversal, no hard-coded site-packages paths.
+
+For tools that insist on config at the project root, add a symlink:
+
+```yaml
+providers:
+  myprovider:
+    cli: myprovider-link
+    symlinks:
+      - source: ruff.toml
+        target: ruff.toml
+```
+
+The file lives once under `.repolish/`. The symlink makes it appear at the root.
+Update the provider, re-link, and every project is in sync.
+
+Symlinks at the project root should normally be added to `.gitignore`. The
+symlinks are absolute paths on the machine that ran `repolish link`, so they are
+not portable across clones. Anyone who checks out the repo runs `repolish link`
+once to recreate them.
+
+---
+
+The `repolish.linker` module helps libraries build that link CLI. Each library
+provides its own command that users run to create links, enabling a
+decentralized resource distribution model.
 
 ## Quick Start for Library Authors
 
@@ -342,7 +381,8 @@ create_additional_link(
 
 - `resources_dir` (Path): Absolute path to the provider's resource directory
 - `provider_name` (str): Provider alias from `repolish.yaml`
-- `source` (str): Path relative to the provider's resources (e.g., `'configs/.editorconfig'`)
+- `source` (str): Path relative to the provider's resources (e.g.,
+  `'configs/.editorconfig'`)
 - `target` (str): Path relative to repository root (e.g., `'.editorconfig'`)
 - `force` (bool): If True, remove existing target before creating link
 

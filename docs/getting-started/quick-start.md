@@ -163,9 +163,9 @@ packages, follow the [Tutorial](../tutorial/index.md).
 
 Other useful references:
 
-- [Configuration reference](../provider-development/overview.md) - all `repolish.yaml`
-  fields
-- [Templates guide](../provider-development/templates.md) - file mappings and create-only
-  files
+- [Configuration reference](../provider-development/overview.md) - all
+  `repolish.yaml` fields
+- [Templates guide](../provider-development/templates.md) - file mappings and
+  create-only files
 - [Context](../concepts/context.md) - how context values are sourced and
   overridden

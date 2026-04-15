@@ -15,6 +15,47 @@ providers in order and merging their contributions.
 | Delete requests | `TemplateMapping(None, None, FileMode.DELETE)` in mappings    |
 | Symlinks        | `create_default_symlinks()` or the `symlinks:` config key     |
 
+### Resources and symlinks
+
+Templates are not the only thing a provider ships. A provider package can also
+carry static resources — configuration files, scripts, schemas — that tools in
+your project need to read directly from disk.
+
+When a user runs `repolish link`, those resources land at:
+
+```
+.repolish/<provider-name>/ruff.toml
+.repolish/<provider-name>/scripts/check.sh
+```
+
+This is the same idea as `node_modules/eslint-config-my-org/index.js`: the
+configuration lives right next to the project, at a short, stable path, without
+having to dig through `.venv/lib/python3.x/site-packages/...`. Tools that read
+config files — linters, formatters, task runners — can point straight at
+`.repolish/<provider-name>/ruff.toml` and just work.
+
+For tools that expect config at the project root, the `symlinks:` key in
+`repolish.yaml` (or `create_default_symlinks()` in code) surfaces those files
+where they need to be:
+
+```yaml
+providers:
+  myprovider:
+    cli: myprovider-link
+    symlinks:
+      - source: ruff.toml
+        target: ruff.toml
+```
+
+The file lives once under `.repolish/`. The symlink makes it appear at the root.
+Every project that links to the same provider stays in sync automatically the
+next time the provider is updated.
+
+Symlinks at the project root should normally be added to `.gitignore`. The
+symlinks are absolute paths on the machine that ran `repolish link`, so they are
+not portable across clones. Anyone who checks out the repo runs `repolish link`
+once to recreate them.
+
 ## Writing a provider
 
 A provider is a Python package with a `repolish.py` that contains a `Provider`

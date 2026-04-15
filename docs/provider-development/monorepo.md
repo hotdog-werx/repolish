@@ -1,8 +1,8 @@
 # Monorepo Setup
 
 Task reference for configuring and running repolish in a uv workspace. See
-[Monorepo](../concepts/monorepo.md) for the conceptual overview of
-sessions, the resolve/apply split, and cross-session data channels.
+[Monorepo](../concepts/monorepo.md) for the conceptual overview of sessions, the
+resolve/apply split, and cross-session data channels.
 
 ## Quick start
 
@@ -30,8 +30,8 @@ The root session runs first; each member session runs in discovery order.
 
 Auto-staging — the automatic copy of every file under `provider/repolish/` to
 the project — is **disabled for root sessions**. A provider running with
-`mode == 'root'` must return all desired output paths from `create_file_mappings`.
-Nothing is written implicitly.
+`mode == 'root'` must return all desired output paths from
+`create_file_mappings`. Nothing is written implicitly.
 
 Auto-staging continues to work normally for `'standalone'` and `'member'`
 sessions.
@@ -55,16 +55,16 @@ multiple hooks, `ModeHandler` subclasses keep each role readable without inline
 branching — see the [Mode Handlers](mode-handler.md) guide.
 
 Member sessions emit inputs upward to the root via `provide_inputs`; the root
-collects them in `finalize_context`. See
-[Monorepo](../concepts/monorepo.md) for the cross-session channel detail.
+collects them in `finalize_context`. See [Monorepo](../concepts/monorepo.md) for
+the cross-session channel detail.
 
 ## CLI flags
 
-| Flag                       | Description                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `--root-only`              | Run only the root session; skip all member sessions                                              |
-| `--member <path-or-name>`  | Run only the named member session (by repo-relative path or package name); skip the root session |
-| `--standalone`             | Bypass workspace detection entirely; run a single-session apply in the current directory         |
+| Flag                      | Description                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------ |
+| `--root-only`             | Run only the root session; skip all member sessions                                              |
+| `--member <path-or-name>` | Run only the named member session (by repo-relative path or package name); skip the root session |
+| `--standalone`            | Bypass workspace detection entirely; run a single-session apply in the current directory         |
 
 ```bash
 # Root session only (fast CI check for root files)
@@ -118,8 +118,8 @@ ignored even if they have a `repolish.yaml`.
 ## Debug output
 
 Each session writes per-provider context snapshots to `.repolish/_/` inside the
-directory where that session ran. The `workspace` field in each snapshot confirms
-the mode that was active:
+directory where that session ran. The `workspace` field in each snapshot
+confirms the mode that was active:
 
 ```json
 {
@@ -139,4 +139,3 @@ the mode that was active:
 
 Use `repolish apply --root-only` followed by inspecting `.repolish/_/` to verify
 root session context without running member sessions.
-

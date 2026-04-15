@@ -225,7 +225,7 @@ Apply when you are ready:
 repolish apply
 ```
 
-From there the [Configuration reference](../provider-development/config-file.md) covers
-every field in `repolish.yaml`, and the
+From there the [Configuration reference](../provider-development/config-file.md)
+covers every field in `repolish.yaml`, and the
 [Developer Control](../project-controls/index.md) section shows how to handle
 situations where a provider update is not ready for your project yet.

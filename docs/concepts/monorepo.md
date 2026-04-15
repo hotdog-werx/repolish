@@ -10,11 +10,11 @@ its own `repolish.yaml`.
 A **session** is a bounded group of providers that share information with each
 other. Each directory that has a `repolish.yaml` gets its own session:
 
-| Context           | Session role                               |
-| ----------------- | ------------------------------------------ |
+| Context            | Session role                              |
+| ------------------ | ----------------------------------------- |
 | Standalone project | one session, `mode = 'standalone'`        |
-| Monorepo root     | one session, `mode = 'root'`               |
-| Monorepo member   | one session per member, `mode = 'member'` |
+| Monorepo root      | one session, `mode = 'root'`              |
+| Monorepo member    | one session per member, `mode = 'member'` |
 
 Sessions are the unit of isolation and the unit of coordination. Providers
 within a session see each other's contexts and inputs freely. Communication
@@ -30,10 +30,10 @@ member C session  ──┘       (aggregates all member data)
 
 Cross-session data travels through two typed channels:
 
-| Channel          | Type                  | Description                                                                      |
-| ---------------- | --------------------- | -------------------------------------------------------------------------------- |
+| Channel            | Type                  | Description                                                                      |
+| ------------------ | --------------------- | -------------------------------------------------------------------------------- |
 | `provider_entries` | `list[ProviderEntry]` | The member's full provider list, available to root providers via `all_providers` |
-| `emitted_inputs` | `list[BaseInputs]`    | Inputs the member emitted, injected into the root's `finalize_context`           |
+| `emitted_inputs`   | `list[BaseInputs]`    | Inputs the member emitted, injected into the root's `finalize_context`           |
 
 ## Resolve/apply split
 
@@ -50,7 +50,8 @@ members). By the time any file is written, every session's full state is already
 known.
 
 This design makes cross-session interactions explicit and auditable — the entire
-dependency graph between sessions is visible before any filesystem changes happen.
+dependency graph between sessions is visible before any filesystem changes
+happen.
 
 ## Provider context fields
 
@@ -61,12 +62,12 @@ The loader injects workspace topology into every provider context under the
 
 Shared by all providers in the session — describes the repository as a whole:
 
-| Field        | Type                                      | Description                                                     |
-| ------------ | ----------------------------------------- | --------------------------------------------------------------- |
-| `mode`       | `'standalone'` \| `'root'` \| `'member'` | Execution role for this session                                 |
-| `root_dir`   | `Path`                                    | Absolute path to the monorepo root                              |
-| `package_dir` | `Path` \| `None`                           | Absolute path to the current member; `None` for root/standalone |
-| `members`    | `list[MemberInfo]`                        | All discovered workspace members                                |
+| Field         | Type                                     | Description                                                     |
+| ------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| `mode`        | `'standalone'` \| `'root'` \| `'member'` | Execution role for this session                                 |
+| `root_dir`    | `Path`                                   | Absolute path to the monorepo root                              |
+| `package_dir` | `Path` \| `None`                         | Absolute path to the current member; `None` for root/standalone |
+| `members`     | `list[MemberInfo]`                       | All discovered workspace members                                |
 
 `mode` defaults to `'standalone'` when no workspace is detected, so existing
 providers work unchanged in single-project repos.
@@ -75,11 +76,11 @@ providers work unchanged in single-project repos.
 
 Specific to this provider's own role in the current session:
 
-| Field         | Type                                      | Description                                                                  |
-| ------------- | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| `mode`        | `'standalone'` \| `'root'` \| `'member'` | Same as `workspace.mode`                                                     |
-| `member_name` | `str`                                     | Package name of this member (e.g. `pkg-alpha`); `'_root'` for root; `''` for standalone |
-| `member_path` | `str`                                     | Repo-relative POSIX path (e.g. `packages/pkg-alpha`); `'.'` for root/standalone |
+| Field         | Type                                     | Description                                                                             |
+| ------------- | ---------------------------------------- | --------------------------------------------------------------------------------------- |
+| `mode`        | `'standalone'` \| `'root'` \| `'member'` | Same as `workspace.mode`                                                                |
+| `member_name` | `str`                                    | Package name of this member (e.g. `pkg-alpha`); `'_root'` for root; `''` for standalone |
+| `member_path` | `str`                                    | Repo-relative POSIX path (e.g. `packages/pkg-alpha`); `'.'` for root/standalone         |
 
 The two objects differ when a single provider package is installed in multiple
 sessions. `repolish.workspace` describes the whole repository;
@@ -90,8 +91,8 @@ particular provider invocation is targeting.
 
 Each entry in `repolish.workspace.members`:
 
-| Field             | Type              | Description                                           |
-| ----------------- | ----------------- | ----------------------------------------------------- |
-| `path`            | `Path`            | Repo-relative path to the member directory            |
-| `name`            | `str`             | Package name from the member's `pyproject.toml`       |
+| Field              | Type             | Description                                            |
+| ------------------ | ---------------- | ------------------------------------------------------ |
+| `path`             | `Path`           | Repo-relative path to the member directory             |
+| `name`             | `str`            | Package name from the member's `pyproject.toml`        |
 | `provider_aliases` | `frozenset[str]` | Provider keys declared in the member's `repolish.yaml` |

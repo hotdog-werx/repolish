@@ -60,11 +60,19 @@ minimal `mise.toml` so `uv` is available:
 ```bash
 mkdir devkit-workspace && cd devkit-workspace
 cat > mise.toml << 'EOF'
+[settings]
+experimental = true
+python.uv_venv_auto = true
+
 [tools]
 uv = "latest"
 EOF
 mise trust && mise install
 ```
+
+`experimental = true` and `python.uv_venv_auto = true` tell mise to activate the
+`uv`-managed virtualenv automatically when you enter the directory. Without
+them, `repolish` and other project tools won't be on your PATH after `uv sync`.
 
 With `uv` available, use `uvx` to run `repolish scaffold` without installing
 anything permanently:

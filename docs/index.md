@@ -72,3 +72,11 @@ running a fully local provider when you need total independence from upstream.
   why each feature exists
 - [How It Works](concepts/overview.md) — deeper look at the pipeline
 - [Developer Control](project-controls/index.md) — all your escape hatches
+
+## Working with an AI assistant
+
+If you are using an AI coding assistant to help configure or extend repolish,
+point it at the [AI Agent Reference](llms.md) page first. That single page gives
+the assistant a complete map of what repolish does, how the config file is
+structured, and where to look for deeper detail — so it can help you without
+guessing.

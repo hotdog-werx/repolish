@@ -3,8 +3,8 @@
 Templates are files under a provider's `repolish/` directory. On every
 `repolish apply` they are rendered with Jinja2 and written to your project.
 
-See [Templates](../concepts/templates.md) for the full reference on
-directory layout, Jinja2 rendering, the `repolish.*` namespace, and the `.jinja`
+See [Templates](../concepts/templates.md) for the full reference on directory
+layout, Jinja2 rendering, the `repolish.*` namespace, and the `.jinja`
 extension.
 
 ## Choosing a feature

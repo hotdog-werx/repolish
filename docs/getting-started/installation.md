@@ -70,4 +70,5 @@ install steps are needed.
   check
 - [Tutorial](../tutorial/index.md) - a step-by-step walkthrough that uses the
   mise + uvx path throughout
-- [Configuration](../provider-development/overview.md) - full `repolish.yaml` reference
+- [Configuration](../provider-development/overview.md) - full `repolish.yaml`
+  reference

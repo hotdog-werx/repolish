@@ -45,13 +45,13 @@ class MyProvider(Provider[Ctx, BaseInputs]):
 ```
 
 Use `BaseContext` (not a plain `BaseModel`) so the provider gets the built-in
-`repolish` namespace (`repolish.repo.owner`, `repolish.year`, etc.) without
-any extra fields.
+`repolish` namespace (`repolish.repo.owner`, `repolish.year`, etc.) without any
+extra fields.
 
-Each `repolish.py` must contain exactly one `Provider` subclass. The loader
-will find it automatically. If you import another provider class (e.g. a shared
-base) at module level, declare `__all__` listing only the intended class so the
-loader knows which one to use.
+Each `repolish.py` must contain exactly one `Provider` subclass. The loader will
+find it automatically. If you import another provider class (e.g. a shared base)
+at module level, declare `__all__` listing only the intended class so the loader
+knows which one to use.
 
 ## 2. Template namespace: drop `cookiecutter.`
 
@@ -77,9 +77,10 @@ variable references in your templates.
 ## Troubleshooting
 
 **Template references a key from another provider:** move the value into this
-provider's `create_context()`, or pass it via `TemplateMapping(...,
-extra_context=...)`, or keep the template under the provider that owns the
-context.
+provider's `create_context()`, or pass it via
+`TemplateMapping(...,
+extra_context=...)`, or keep the template under the
+provider that owns the context.
 
 **Multiple Provider subclasses in one module:** define `__all__` listing only
 the intended class. The loader raises a clear error if it finds more than one

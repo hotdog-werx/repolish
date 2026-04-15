@@ -173,11 +173,12 @@ to the provider — check the provider's documentation to see what is available.
 
 You have now seen everything repolish can do:
 
-- [Concepts](../concepts/overview.md) — if you want to understand the
-  internals of what you just used
+- [Concepts](../concepts/overview.md) — if you want to understand the internals
+  of what you just used
 - [Project Controls](../project-controls/index.md) — the full reference for
   pausing, overriding, and anchoring
-- [Provider Development](../provider-development/config-file.md) — every `repolish.yaml` field and the Python API
+- [Provider Development](../provider-development/config-file.md) — every
+  `repolish.yaml` field and the Python API
 
 ## Checkpoint
 
