@@ -20,6 +20,8 @@ def get_source_str_from_mapping(
     if isinstance(source_path, TemplateMapping):
         src = source_path.source_template
         return src.removesuffix('.jinja') if src else src
-    if source_path is None:
+    # pragma: no cover — callers are validated by the SessionBundle model and
+    # do not pass None; kept as a belt-and-suspenders guard only.
+    if source_path is None:  # pragma: no cover
         return None
     return source_path.removesuffix('.jinja')

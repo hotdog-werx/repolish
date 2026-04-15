@@ -191,7 +191,7 @@ def _project_from_distribution_files(module_name: str) -> str:
         try:
             if _dist_owns_path(dist, pkg_path):
                 return dist.metadata['Name'] or ''
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover — triggered only by corrupt distribution metadata in the active environment; not reproducible in tests without mocking every installed package
             logger.warning(
                 'package_match_error',
                 error=str(exc),

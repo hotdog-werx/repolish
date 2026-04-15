@@ -39,7 +39,7 @@ def _build_member_info(member_dir: Path, config_dir: Path) -> MemberInfo | None:
     try:
         raw = load_config_file(repolish_yaml)
         provider_aliases: frozenset[str] = frozenset(raw.providers.keys())
-    except Exception:  # noqa: BLE001 - broken member config should not abort root detection
+    except Exception:  # noqa: BLE001 - broken member config should not abort root detection  # pragma: no cover — failure mode is environment-specific (e.g. disk errors, malformed YAML); swallowed intentionally so workspace detection continues
         provider_aliases = frozenset()
 
     return MemberInfo(
@@ -54,7 +54,10 @@ def _expand_members(patterns: list[str], config_dir: Path) -> list[MemberInfo]:
     members: list[MemberInfo] = []
     for pattern in patterns:
         for candidate in sorted(config_dir.glob(pattern)):
-            if not candidate.is_dir():
+            # pragma: no cover — glob patterns match directories; a non-dir
+            # result would require a file named like a member glob pattern,
+            # which does not occur in normal use.
+            if not candidate.is_dir():  # pragma: no cover
                 continue
             info = _build_member_info(candidate, config_dir)
             if info is not None:

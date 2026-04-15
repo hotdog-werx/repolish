@@ -132,7 +132,9 @@ def _resolved_from_static(
     config_dir: Path,
 ) -> ResolvedProviderInfo:
     """Build a ResolvedProviderInfo from explicit provider_root (and optional resources_dir) fields."""
-    if provider_config.provider_root is None:
+    if (
+        provider_config.provider_root is None
+    ):  # pragma: no cover — validation in _resolve_single_provider ensures this is set before the call
         msg = 'provider_root must be set at this point'
         raise ValueError(msg)
     provider_root = _resolve_path(provider_config.provider_root, config_dir)

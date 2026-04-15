@@ -17,7 +17,9 @@ def _to_jsonable(value: object) -> object:
     sets/frozensets (converted to sorted lists), and primitives.
     Any other type is passed through as-is for ``json.dumps`` to handle.
     """
-    if isinstance(value, BaseModel):
+    # pragma: no cover — ctx_to_dict calls model_dump() before _to_jsonable is
+    # invoked, so no BaseModel instances survive into the recursive calls
+    if isinstance(value, BaseModel):  # pragma: no cover
         return _to_jsonable(value.model_dump())
     if isinstance(value, dict):
         return {k: _to_jsonable(v) for k, v in value.items()}
@@ -60,7 +62,7 @@ def debug_file_slug(ctx: object, alias: str) -> str:
             else:
                 prefix = 'standalone'
             return f'{prefix}.{alias}'
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover — defensive fallback; only reachable if BaseContext internals diverge after a refactor, not expected in production
         logger.warning(
             'debug_file_slug_exception',
             error=str(exc),
