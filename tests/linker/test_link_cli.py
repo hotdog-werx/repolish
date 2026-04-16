@@ -596,3 +596,138 @@ class P(Provider[BaseContext, BaseInputs]):
 
     assert len(symlinks) == 1
     assert symlinks[0].target.name == '.editorconfig'
+
+
+# ---------------------------------------------------------------------------
+# Additional link.py coverage tests
+# ---------------------------------------------------------------------------
+from repolish.commands.link import (  # noqa: E402
+    _link_config,
+    _link_members,
+    _print_link_tree,
+)
+
+
+def test_print_link_tree_with_symlinks(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """_print_link_tree prints summary when sections contain symlinks."""
+    import io  # noqa: PLC0415
+
+    from rich.console import Console  # noqa: PLC0415
+
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.commands.link.console', test_console)
+
+    sl = ProviderSymlink(
+        source=tmp_path / 'src/.editorconfig',
+        target=tmp_path / '.editorconfig',
+    )
+    sections = [('Standalone', {'my-provider': [sl]})]
+    _print_link_tree(sections)
+
+    output = out.getvalue()
+    assert 'link summary' in output
+    assert 'Standalone' in output
+    assert '.editorconfig' in output
+
+
+def test_link_config_no_providers(tmp_path: Path) -> None:
+    """_link_config returns (0, {}) immediately when config has no providers."""
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text('providers: {}\n')
+    rc, syms = _link_config(config_file)
+    assert rc == 0
+    assert syms == {}
+
+
+def test_link_config_appends_member_section_with_symlinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """_link_members appends a section when syms is non-empty."""
+    monkeypatch.chdir(tmp_path)
+    member_dir = tmp_path / 'packages' / 'pkg_a'
+    member_dir.mkdir(parents=True)
+    (member_dir / 'repolish.yaml').write_text(
+        'providers:\n  pkg_a_lib:\n    cli: pkg-a-lib-link\n',
+    )
+
+    sl = ProviderSymlink(
+        source=member_dir / 'src/.editorconfig',
+        target=member_dir / '.editorconfig',
+    )
+
+    mocker.patch(
+        'repolish.commands.link._link_config',
+        return_value=(0, {'pkg_a_lib': [sl]}),
+    )
+
+    from repolish.providers.models.workspace import MemberInfo, WorkspaceContext  # noqa: PLC0415
+
+    mono_ctx = WorkspaceContext(
+        mode='root',
+        root_dir=tmp_path,
+        members=[
+            MemberInfo(
+                path=member_dir.relative_to(tmp_path),
+                name='pkg_a',
+                provider_aliases=frozenset({'pkg_a_lib'}),
+            ),
+        ],
+    )
+
+    rc, sections = _link_members(mono_ctx, tmp_path)
+    assert rc == 0
+    assert len(sections) == 1
+    assert sections[0][0] == 'Member: pkg_a'
+
+
+def test_command_returns_nonzero_when_root_link_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """command() returns 1 immediately when root provider linking fails in monorepo mode."""
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(
+        'providers:\n  root_lib:\n    cli: root-lib-link\nworkspace:\n  members:\n    - packages/*\n',
+    )
+    (tmp_path / 'packages').mkdir()
+
+    mocker.patch('repolish.commands.link._link_config', return_value=(1, {}))
+
+    result = run_link(config_file)
+    assert result == 1
+
+
+def test_command_appends_root_syms_section(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """command() appends a Root section when root_syms is non-empty."""
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(
+        'providers:\n  root_lib:\n    cli: root-lib-link\nworkspace:\n  members:\n    - packages/*\n',
+    )
+    (tmp_path / 'packages').mkdir()
+
+    sl = ProviderSymlink(
+        source=tmp_path / 'src/.editorconfig',
+        target=tmp_path / '.editorconfig',
+    )
+    mocker.patch(
+        'repolish.commands.link._link_config',
+        return_value=(0, {'root_lib': [sl]}),
+    )
+    mocker.patch('repolish.commands.link._link_members', return_value=(0, []))
+    mocker.patch('repolish.commands.link._print_link_tree')
+
+    result = run_link(config_file)
+    assert result == 0

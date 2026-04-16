@@ -117,8 +117,10 @@ def _link_members(
     for m in mono_ctx.members:
         member_dir = (config_dir / m.path).resolve()
         member_config = member_dir / 'repolish.yaml'
-        if not member_config.exists():
-            continue
+        # pragma: no cover — detect_workspace_from_config already filters out members
+        # without repolish.yaml via _build_member_info; this guard is a safety net only
+        if not member_config.exists():  # pragma: no cover
+            continue  # pragma: no cover
         logger.info('linking_member', member=m.name, _display_level=1)
         with chdir(member_dir):
             rc, syms = _link_config(member_config, mode='member')

@@ -308,6 +308,9 @@ def test_lint_unmapped_conditional_source(tmp_path: Path) -> None:
             'README.md': '# {{ package_name }}\n',
             # Conditional file NOT referenced in create_file_mappings.
             '_repolish.orphan.toml': '[tool]\nname = "{{ package_name }}"\n',
+            # Nested template creates a subdirectory so _unmapped_in_dir's
+            # `if not item.is_file(): continue` branch is exercised.
+            'sub/helper.md': '# helper\n',
         },
     )
     assert command(provider_dir) == 1

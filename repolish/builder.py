@@ -225,8 +225,10 @@ def _copy_mode_overlay_dir(  # noqa: PLR0913
     purposes.  The colon separator is safe because provider aliases are
     derived from directory or YAML key names and never contain colons.
     """
-    if not mode_dir.is_dir():
-        return
+    # pragma: no cover — stage_templates already checks `if mode_dir.is_dir()` before
+    # calling this function; this guard is a safety net that cannot be reached normally
+    if not mode_dir.is_dir():  # pragma: no cover
+        return  # pragma: no cover
 
     # annotate alias so the caller can tell this file came from the overlay
     annotated_alias = f'{alias}:{mode_name}' if alias is not None else None
