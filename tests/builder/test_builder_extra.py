@@ -289,7 +289,7 @@ def test_stage_templates_mode_overlay_skips_unmapped_conditional(
     (root_dir / 'regular.txt').write_text('regular')
 
     staging = tmp_path / 'staging'
-    _, sources = stage_templates(
+    _, _sources = stage_templates(
         staging,
         [('p', prov)],
         workspace_mode='root',

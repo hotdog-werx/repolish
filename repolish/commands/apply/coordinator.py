@@ -531,7 +531,5 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
         config_dir,
         opts,
     )
-    if rc not in (0, 2):
-        return rc
     print_summary_tree(completed_sessions)
     return rc
