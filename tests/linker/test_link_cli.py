@@ -1,3 +1,4 @@
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -5,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_mock
+from rich.console import Console
 
 from repolish.commands.link import (
     _get_provider_names,
@@ -25,6 +27,7 @@ from repolish.linker import (
     save_provider_info,
 )
 from repolish.linker.orchestrator import _load_provider_default_symlinks
+from repolish.providers.models.workspace import MemberInfo, WorkspaceContext
 
 
 @pytest.mark.parametrize(
@@ -613,10 +616,6 @@ def test_print_link_tree_with_symlinks(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """_print_link_tree prints summary when sections contain symlinks."""
-    import io  # noqa: PLC0415
-
-    from rich.console import Console  # noqa: PLC0415
-
     out = io.StringIO()
     test_console = Console(file=out, force_terminal=False, no_color=True)
     mocker.patch('repolish.commands.link.console', test_console)
@@ -665,8 +664,6 @@ def test_link_config_appends_member_section_with_symlinks(
         'repolish.commands.link._link_config',
         return_value=(0, {'pkg_a_lib': [sl]}),
     )
-
-    from repolish.providers.models.workspace import MemberInfo, WorkspaceContext  # noqa: PLC0415
 
     mono_ctx = WorkspaceContext(
         mode='root',

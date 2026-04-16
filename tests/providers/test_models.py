@@ -13,6 +13,7 @@ from repolish.providers.models import (
     Provider,
     ProviderInfo,
 )
+from repolish.providers.models.context import _get_owner_repo
 from repolish.providers.models.provider import _get_provider_generic_args
 
 
@@ -222,8 +223,6 @@ def test_get_global_context_falls_back_when_git_raises() -> None:
 
 def test_get_owner_repo_raises_for_non_github_url() -> None:
     """_get_owner_repo raises ValueError when the remote URL is not a GitHub URL."""
-    from repolish.providers.models.context import _get_owner_repo  # noqa: PLC0415
-
     with (
         mock.patch(
             'subprocess.check_output',

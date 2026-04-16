@@ -250,7 +250,9 @@ def test_stage_templates_mode_overlay(tmp_path: Path) -> None:
     assert not (proj_none / 'member_only.txt').exists()
 
 
-def test_stage_templates_mode_overlay_skips_overridden_file(tmp_path: Path) -> None:
+def test_stage_templates_mode_overlay_skips_overridden_file(
+    tmp_path: Path,
+) -> None:
     """template_overrides suppress files in mode overlay dirs (builder.py line 241)."""
     prov = tmp_path / 'p'
     (prov / 'repolish').mkdir(parents=True)
@@ -272,7 +274,9 @@ def test_stage_templates_mode_overlay_skips_overridden_file(tmp_path: Path) -> N
     assert 'secret.txt' not in sources
 
 
-def test_stage_templates_mode_overlay_skips_unmapped_conditional(tmp_path: Path) -> None:
+def test_stage_templates_mode_overlay_skips_unmapped_conditional(
+    tmp_path: Path,
+) -> None:
     """Conditional files not in mapped_sources are skipped in overlay dirs (builder.py line 249)."""
     prov = tmp_path / 'p'
     (prov / 'repolish').mkdir(parents=True)
