@@ -248,3 +248,51 @@ def test_stage_templates_mode_overlay(tmp_path: Path) -> None:
     assert (proj_none / 'shared.txt').read_text() == 'base shared'
     assert not (proj_none / 'root_only.txt').exists()
     assert not (proj_none / 'member_only.txt').exists()
+
+
+def test_stage_templates_mode_overlay_skips_overridden_file(tmp_path: Path) -> None:
+    """template_overrides suppress files in mode overlay dirs (builder.py line 241)."""
+    prov = tmp_path / 'p'
+    (prov / 'repolish').mkdir(parents=True)
+    (prov / 'repolish' / 'base.txt').write_text('base')
+    root_dir = prov / 'root'
+    root_dir.mkdir()
+    (root_dir / 'secret.txt').write_text('should be suppressed')
+
+    staging = tmp_path / 'staging'
+    _, sources = stage_templates(
+        staging,
+        [('p', prov)],
+        workspace_mode='root',
+        # suppress 'secret.txt' from all providers (None value = suppress)
+        template_overrides={'secret.txt': None},
+    )
+    # The suppressed file must not appear in staging
+    assert not (staging / 'repolish' / 'secret.txt').exists()
+    assert 'secret.txt' not in sources
+
+
+def test_stage_templates_mode_overlay_skips_unmapped_conditional(tmp_path: Path) -> None:
+    """Conditional files not in mapped_sources are skipped in overlay dirs (builder.py line 249)."""
+    prov = tmp_path / 'p'
+    (prov / 'repolish').mkdir(parents=True)
+    (prov / 'repolish' / 'base.txt').write_text('base')
+    root_dir = prov / 'root'
+    root_dir.mkdir()
+    # Conditional file: starts with _repolish.
+    (root_dir / '_repolish.ci.toml').write_text('[ci]')
+    # Regular file: always staged
+    (root_dir / 'regular.txt').write_text('regular')
+
+    staging = tmp_path / 'staging'
+    _, sources = stage_templates(
+        staging,
+        [('p', prov)],
+        workspace_mode='root',
+        # mapped_sources does NOT include '_repolish.ci.toml'
+        mapped_sources=set(),
+    )
+    # Unmapped conditional file must be absent
+    assert not (staging / 'repolish' / '_repolish.ci.toml').exists()
+    # Regular file is staged normally
+    assert (staging / 'repolish' / 'regular.txt').exists()

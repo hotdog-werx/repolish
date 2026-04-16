@@ -631,3 +631,63 @@ def test_print_files_summary_includes_symlink_only_provider(
     }
     # Should not raise; the symlink-only provider must appear in output.
     _print_files_summary(providers, symlinks)
+
+
+def test_apply_session_overlay_alias_split(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_session splits 'alias:mode' annotations into template_overlay_dirs."""
+    from repolish.commands.apply.options import ResolvedSession  # noqa: PLC0415
+    from repolish.commands.apply.session import apply_session  # noqa: PLC0415
+    from repolish.config.models import RepolishConfig  # noqa: PLC0415
+    from repolish.providers.models import GlobalContext  # noqa: PLC0415
+    from repolish.providers.models.workspace import WorkspaceContext  # noqa: PLC0415
+
+    pid = str(tmp_path / 'my-provider')
+    config = RepolishConfig(config_dir=tmp_path, providers={}, paused_files=[])
+    global_context = GlobalContext(workspace=WorkspaceContext(mode='root'))
+    providers = SessionBundle()
+
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=global_context,
+        providers=providers,
+        aliases=['my-provider'],
+        alias_to_pid={'my-provider': pid},
+        pid_to_alias={pid: 'my-provider'},
+        resolved_symlinks={},
+    )
+
+    base = tmp_path / 'base'
+    inp = tmp_path / 'input'
+    out = tmp_path / 'output'
+    for d in (base, inp, out):
+        d.mkdir(parents=True, exist_ok=True)
+
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+        return_value=(base, inp, out),
+    )
+    # Return a source annotated with ':root' to trigger lines 76-77
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={'file.md': 'my-provider:root'},
+    )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch('repolish.commands.apply.session.write_file_context_debug_files')
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
+    mocker.patch(
+        'repolish.commands.apply.session.render_templates',
+        return_value=0,
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.finish_check',
+        return_value=(0, {}),
+    )
+
+    rc = apply_session(session, check_only=True)
+
+    assert rc == 0
+    assert session.providers.template_overlay_dirs == {'file.md': 'root'}
