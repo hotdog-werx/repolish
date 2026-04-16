@@ -1,15 +1,23 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 from repolish.config.models import (
     ProviderConfig,
     ProviderFileInfo,
     RepolishConfigFile,
 )
-from repolish.config.resolution import _resolved_from_info, resolve_config
+from repolish.config.resolution import (
+    _resolve_single_provider,
+    _resolved_from_info,
+    resolve_config,
+)
 
 
 @dataclass
@@ -107,3 +115,29 @@ def test_resolved_from_info_provider_root(
     )
 
     assert result.provider_root == (tmp_path / case.expected_suffix).resolve()
+
+
+def test_provider_root_ignored_warning_when_cli_and_root_both_set(
+    tmp_path: Path,
+    mocker: 'MockerFixture',
+) -> None:
+    """When provider-info exists and both cli + provider_root are configured, a warning fires."""
+    provider_info = ProviderFileInfo(
+        resources_dir='.repolish/mylib',
+        site_package_dir=str(tmp_path / 'mylib' / 'resources'),
+    )
+    mocker.patch(
+        'repolish.config.resolution.load_provider_info',
+        return_value=provider_info,
+    )
+    mock_warn = mocker.patch('repolish.config.resolution.logger.warning')
+    provider_config = ProviderConfig(
+        cli='mylib-link',
+        provider_root='.repolish/mylib',
+    )
+
+    _resolve_single_provider('mylib', provider_config, tmp_path)
+
+    mock_warn.assert_called_once()
+    event = mock_warn.call_args[0][0]
+    assert event == 'provider_root_ignored'

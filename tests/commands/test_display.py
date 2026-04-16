@@ -14,9 +14,13 @@ if TYPE_CHECKING:
 import pytest
 from rich.console import Console
 
-from repolish.commands.apply.display import print_summary_tree
+from repolish.commands.apply.display import (
+    print_files_summary,
+    print_summary_tree,
+)
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config.models import RepolishConfig
+from repolish.config.models.provider import ProviderSymlink
 from repolish.providers.models import (
     FileMode,
     FileRecord,
@@ -334,3 +338,76 @@ def test_summary_tree_mixed_written_unchanged(
     output = _capture(mocker, [session])
     assert '1 written' in output
     assert '1 unchanged' in output
+
+
+def _capture_files_summary(
+    mocker: MockerFixture,
+    providers: SessionBundle,
+    symlinks: dict | None = None,
+) -> str:
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.commands.apply.display.console', test_console)
+    print_files_summary(providers, symlinks)
+    return out.getvalue()
+
+
+def test_print_files_summary_overlay_dir_shown(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Records with overlay_dir and no source show the overlay dir as source column."""
+    providers = SessionBundle(
+        file_records=[
+            FileRecord(
+                path='README.md',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+                overlay_dir='root',
+            ),
+        ],
+        file_mappings={},
+    )
+    output = _capture_files_summary(mocker, providers)
+    assert 'README.md' in output
+    assert 'root/' in output
+
+
+def test_print_files_summary_symlinks_only_owner(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """An alias present only in the symlinks dict (no file records) still gets a table."""
+    providers = SessionBundle(file_records=[], file_mappings={})
+    symlinks = {
+        'sym-provider': [
+            ProviderSymlink(
+                source=tmp_path / 'configs/.editorconfig',
+                target=tmp_path / '.editorconfig',
+            ),
+        ],
+    }
+    output = _capture_files_summary(mocker, providers, symlinks)
+    assert 'sym-provider' in output
+
+
+def test_summary_tree_overlay_dir_shown(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A FileRecord with overlay_dir and no source shows the dir as source in the tree."""
+    session = _make_session_with_result(
+        tmp_path,
+        file_records=[
+            FileRecord(
+                path='README.md',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+                overlay_dir='root',
+            ),
+        ],
+        apply_result={'README.md': 'written'},
+    )
+    output = _capture(mocker, [session])
+    assert 'README.md' in output
+    assert 'root/' in output

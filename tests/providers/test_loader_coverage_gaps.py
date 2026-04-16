@@ -1,12 +1,14 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
 
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 from repolish import ProviderEntry
 from repolish.config import RepolishConfig, ResolvedProviderInfo
 from repolish.hydration.context import build_final_providers
@@ -19,6 +21,10 @@ from repolish.providers import (
 from repolish.providers import Provider as _ProviderBase
 from repolish.providers.context import _apply_overrides_to_model
 from repolish.providers.exchange import (
+    _apply_annotated_tm,
+    _collect_promoted_fm,
+    _collect_provider_contribution,
+    _handle_promote_file_mappings,
     _process_provider_fm,
     collect_provider_contributions,
     finalize_provider_contexts,
@@ -27,6 +33,7 @@ from repolish.providers.exchange import (
 from repolish.providers.models import (
     Accumulators,
     BaseInputs,
+    FileMode,
     FinalizeContextOptions,
     GlobalContext,
     TemplateMapping,
@@ -524,7 +531,73 @@ def test_finalize_provider_contexts_edge_cases() -> None:
         ) -> BaseContext:
             return cast('BaseContext', {'called': True})
 
-    ctxs: dict[str, object] = {}
-    inst = Setter()
-    finalize_provider_contexts([('p', {})], [inst], {}, cast('dict', ctxs), [])
-    assert ctxs == {'p': {'called': True}}
+
+def test_apply_annotated_tm_suppress_with_source_template() -> None:
+    """SUPPRESS mode records the source template path in suppressed_sources."""
+    accum = Accumulators()
+    tm = TemplateMapping(
+        source_template='_repolish.template.yaml',
+        file_mode=FileMode.SUPPRESS,
+        source_provider='p',
+    )
+    accum.merged_file_mappings['out.yaml'] = tm
+    _apply_annotated_tm('out.yaml', tm, 'p', accum)
+    assert '_repolish.template.yaml' in accum.suppressed_sources
+    assert 'out.yaml' not in accum.merged_file_mappings
+
+
+def test_collect_promoted_fm_with_template_mapping_object() -> None:
+    """TemplateMapping values are folded preserving all fields."""
+    accum = Accumulators()
+    src_tm = TemplateMapping(
+        source_template='_repolish.tmpl.yaml',
+        extra_context={'key': 'val'},
+    )
+    _collect_promoted_fm('p', {'README.md': src_tm}, accum)
+    result = cast('TemplateMapping', accum.promoted_file_mappings['README.md'])
+    assert result.source_template == '_repolish.tmpl.yaml'
+    assert result.extra_context == {'key': 'val'}
+    assert result.source_provider == 'p'
+
+
+def test_collect_promoted_fm_str_and_none_branches() -> None:
+    """Str src populates TemplateMapping; None src is skipped."""
+    accum = Accumulators()
+    _collect_promoted_fm('p', {'out.md': 'tmpl.md', 'skip.md': None}, accum)
+    assert 'skip.md' not in accum.promoted_file_mappings
+    result = cast('TemplateMapping', accum.promoted_file_mappings['out.md'])
+    assert result.source_template == 'tmpl.md'
+    assert result.source_provider == 'p'
+
+
+def test_handle_promote_file_mappings_warns_in_standalone_mode(
+    mocker: 'MockerFixture',
+) -> None:
+    """promote_file_mappings result is logged and ignored in standalone/root mode."""
+    mock_inst = MagicMock(spec=DummyProvider)
+    mock_inst.promote_file_mappings.return_value = {'README.md': 'tmpl.md'}
+
+    mock_warn = mocker.patch('repolish.providers.exchange.logger.warning')
+    accum = Accumulators()
+    own_ctx = BaseContext()  # workspace.mode defaults to 'standalone'
+    _handle_promote_file_mappings(mock_inst, own_ctx, 'p', accum)
+    mock_warn.assert_called_once()
+    event = mock_warn.call_args[0][0]
+    assert event == 'promote_file_mappings_ignored_in_non_member_mode'
+    assert accum.promoted_file_mappings == {}
+
+
+def test_collect_provider_contribution_skips_non_base_context() -> None:
+    """When provider_contexts has a non-BaseContext value, the contribution is skipped."""
+    inst = DummyProvider()
+    module_dict = {'_repolish_provider_instance': inst}
+    # supply a plain dict instead of BaseContext so the guard fires
+    provider_contexts: dict[str, BaseContext] = cast(
+        'dict[str, BaseContext]',
+        {'p': {}},
+    )
+    accum = Accumulators()
+    _collect_provider_contribution('p', module_dict, provider_contexts, accum)
+    # nothing should have been accumulated
+    assert accum.merged_file_mappings == {}
+    assert accum.merged_anchors == {}

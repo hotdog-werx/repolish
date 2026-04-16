@@ -105,8 +105,8 @@ def _role_label(ctx: object) -> str:
                 return 'root'
             if info.mode == 'member' and info.member_name:
                 return f'member: {info.member_name}'
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover — defensive: BaseContext.repolish is always valid; only a deeply broken ctx object would trigger this
+        logger.warning(  # pragma: no cover
             'role_label_exception',
             error=str(exc),
             ctx_type=type(ctx).__name__,

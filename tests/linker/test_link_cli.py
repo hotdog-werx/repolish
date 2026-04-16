@@ -24,6 +24,7 @@ from repolish.linker import (
     run_provider_link,
     save_provider_info,
 )
+from repolish.linker.orchestrator import _load_provider_default_symlinks
 
 
 @pytest.mark.parametrize(
@@ -568,3 +569,30 @@ providers:
     assert result == 0
     # Root + pkg_a only (pkg_b is skipped)
     assert mock_link.call_count == 2
+
+
+def test_load_provider_default_symlinks_via_mode_handler(
+    tmp_path: Path,
+) -> None:
+    """Mode handler's create_default_symlinks() is called and combined with provider symlinks."""
+    repolish_src = """\
+from repolish import Provider, ModeHandler, BaseContext, BaseInputs, Symlink
+
+
+class RootHandler(ModeHandler):
+    def create_default_symlinks(self):
+        return [Symlink(source='configs/.editorconfig', target='.editorconfig')]
+
+
+class P(Provider[BaseContext, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return BaseContext()
+"""
+    (tmp_path / 'repolish.py').write_text(repolish_src)
+
+    symlinks = _load_provider_default_symlinks(tmp_path, 'root')
+
+    assert len(symlinks) == 1
+    assert symlinks[0].target.name == '.editorconfig'
