@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.0.0] <a name="1.0.0" href="#1.0.0">-</a> April 17, 2026
+
+### 🚀 Features
+
+- [**breaking**] V1 - providers-first config, monorepo orchestration, and full
+  documentation (#35) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#35](https://github.com/hotdog-werx/repolish/pull/35)
+
+[1.0.0]: https://github.com/hotdog-werx/repolish/compare/0.8.1...1.0.0
+
 ## [0.8.1] <a name="0.8.1" href="#0.8.1">-</a> April 17, 2026
 
 ### 🐛 Bug Fixes
