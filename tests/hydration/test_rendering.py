@@ -4,13 +4,10 @@ from textwrap import dedent
 
 import pytest
 from pydantic import BaseModel
-from pytest_mock import MockerFixture
 
 from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
 from repolish.hydration.rendering import (
-    RenderContext,
-    _choose_ctx_for_file,
     render_template,
 )
 from repolish.hydration.staging import prepare_staging, preprocess_templates
@@ -66,64 +63,35 @@ def test_render_template_renders_with_jinja(tmp_path: Path):
     assert (setup_output / 'repolish' / 'foo').read_text() == 'value=hello'
 
 
-def test_choose_ctx_for_file_logs(mocker: MockerFixture, tmp_path: Path):
-    """Choosing context for a path emits debug information."""
-
-    class CtxA(BaseContext):
-        a: int = 2
-
-    providers = SessionBundle(
-        provider_contexts={'p': CtxA()},
-        template_sources={'tpl.txt': 'p'},
-    )
-
-    render_ctx = RenderContext(
-        setup_input=tmp_path,
-        setup_output=tmp_path,
-        providers=providers,
-    )
-
-    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
-    result = _choose_ctx_for_file('tpl.txt', render_ctx)
-    assert result.get('a') == 2
-    mock_logger.debug.assert_any_call(
-        'choose_context_for_file',
-        rel='tpl.txt',
-        pid='p',
-        normalized_pid='p',
-    )
-
-
-def test_choose_ctx_for_file_normalizes_windows_pid(
-    mocker: MockerFixture,
+def test_render_resolves_context_with_windows_style_pid(
     tmp_path: Path,
 ):
-    """A mismatched Windows-style provider id should still resolve."""
+    """A backslash-style provider id in template_sources still resolves to the correct context."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'greet.txt.jinja').write_text(
+        'hello={{ x }}',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
 
     class CtxX(BaseContext):
         x: int = 9
 
     providers = SessionBundle(
         provider_contexts={'P/subdir': CtxX()},
-        # template_sources comes from builder; simulate backslash pid
-        template_sources={'f.txt': 'P\\subdir'},
+        # Simulate the backslash pid that Windows staging produces
+        template_sources={'greet.txt': 'P\\subdir'},
     )
+    preprocess_templates(setup_input, providers, base_dir)
 
-    render_ctx = RenderContext(
-        setup_input=tmp_path,
-        setup_output=tmp_path,
-        providers=providers,
-    )
+    render_template(setup_input, providers, setup_output)
 
-    mock_logger = mocker.patch('repolish.hydration.rendering.logger')
-    result = _choose_ctx_for_file('f.txt', render_ctx)
-    assert result.get('x') == 9
-    mock_logger.debug.assert_any_call(
-        'choose_context_for_file',
-        rel='f.txt',
-        pid='P\\subdir',
-        normalized_pid='P/subdir',
-    )
+    out = setup_output / 'repolish' / 'greet.txt'
+    assert out.read_text() == 'hello=9'
 
 
 def test_render_with_jinja_exposes_context_as_top_level_variables(

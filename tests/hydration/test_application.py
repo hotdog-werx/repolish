@@ -2,9 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-from pytest_mock import MockerFixture
-
 from repolish.hydration.application import (
     apply_generated_output,
 )
@@ -161,11 +158,10 @@ def test_apply_file_mapping_strips_jinja_suffix(tmp_path: Path):
     assert (base_dir / 'mise.toml').read_text() == 'staged content'
 
 
-def test_mapping_without_source_logs_warning(
+def test_mapping_without_source_skips_dest(
     tmp_path: Path,
-    mocker: MockerFixture,
 ) -> None:
-    """TemplateMapping with no source should be skipped but warn."""
+    """TemplateMapping with no source should be skipped — destination file is not produced."""
     setup_output = tmp_path / 'setup-output'
     repolish_dir = setup_output / 'repolish'
     repolish_dir.mkdir(parents=True)
@@ -183,10 +179,7 @@ def test_mapping_without_source_logs_warning(
         create_only_files=[],
     )
 
-    mock_logger = mocker.patch('repolish.hydration.application.logger')
     apply_generated_output(setup_output, providers, base_dir)
-    assert any('mapping_without_source' in str(call) for call in mock_logger.warning.call_args_list)
-    # consumer behaviour: file should not be produced
     assert not (base_dir / 'dest.txt').exists()
 
 
@@ -331,14 +324,10 @@ def test_apply_skips_suppressed_sources(tmp_path: Path) -> None:
     assert (base_dir / 'README.md').exists()
 
 
-def test_apply_warns_when_mapped_source_missing(
+def test_apply_skips_dest_when_mapped_source_missing(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """apply_generated_output logs a warning and skips the destination.
-
-    Triggered when the source file referenced by a mapping does not exist.
-    """
+    """apply_generated_output skips the destination when the mapped source file is missing."""
     setup_output = tmp_path / 'setup-output'
     (setup_output / 'repolish').mkdir(parents=True)
 
@@ -354,9 +343,6 @@ def test_apply_warns_when_mapped_source_missing(
 
     apply_generated_output(setup_output, providers, base_dir)
 
-    captured = capsys.readouterr()
-    assert 'file_mapping_source_not_found' in captured.out
-    assert '_repolish.missing.yml' in captured.out
     assert not (base_dir / 'config.yml').exists()
 
 

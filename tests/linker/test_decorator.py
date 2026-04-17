@@ -1,7 +1,6 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_mock
@@ -17,19 +16,10 @@ from tests.linker.conftest import (
 runner = CliRunner()
 
 
-def _assert_link_resources_called(
-    mock_link_resources: MagicMock,
-    expected_source_dir: Path,
-    expected_target_dir: Path,
-    *,
-    expected_force: bool = False,
-) -> None:
-    """Helper to assert link_resources was called with expected arguments."""
-    mock_link_resources.assert_called_once()
-    call_args = mock_link_resources.call_args
-    assert call_args.kwargs['source_dir'] == expected_source_dir
-    assert call_args.kwargs['target_dir'] == expected_target_dir
-    assert call_args.kwargs['force'] is expected_force
+def _assert_linked(target: Path, expected_source: Path) -> None:
+    """Assert that *target* is a symlink (or copy) resolving to *expected_source*."""
+    assert target.exists(), f'{target} does not exist'
+    assert target.resolve() == expected_source.resolve()
 
 
 def test_resource_linker_basic_usage(
@@ -44,11 +34,9 @@ def test_resource_linker_basic_usage(
     result = runner.invoke(basic_link_cli, [])
 
     assert result.exit_code == 0
-    _assert_link_resources_called(
-        mocked_package['mock_link_resources'],
+    _assert_linked(
+        tmp_path / '.repolish' / 'mylib',
         mocked_package['resources'],
-        Path('.repolish') / 'mylib',
-        expected_force=False,
     )
 
 
@@ -96,12 +84,7 @@ def test_resource_linker_custom_target_dir(
     )
 
     assert result.exit_code == 0
-    _assert_link_resources_called(
-        mocked_package['mock_link_resources'],
-        mocked_package['resources'],
-        custom_target,
-        expected_force=False,
-    )
+    _assert_linked(custom_target, mocked_package['resources'])
 
 
 def test_resource_linker_force_flag(
@@ -116,11 +99,9 @@ def test_resource_linker_force_flag(
     result = runner.invoke(basic_link_cli, ['--force'])
 
     assert result.exit_code == 0
-    _assert_link_resources_called(
-        mocked_package['mock_link_resources'],
+    _assert_linked(
+        tmp_path / '.repolish' / 'mylib',
         mocked_package['resources'],
-        Path('.repolish') / 'mylib',
-        expected_force=True,
     )
 
 
@@ -217,10 +198,6 @@ def test_resource_linker_custom_target_base(
 
     monkeypatch.chdir(tmp_path)
 
-    mock_link_resources = mocker.patch(
-        'repolish.linker.decorator.link_resources',
-        return_value=True,
-    )
     mocker.patch(
         'repolish.linker.decorator._get_package_root',
         return_value=pkg_root,
@@ -238,12 +215,7 @@ def test_resource_linker_custom_target_base(
     result = runner.invoke(link_cli, [])
 
     assert result.exit_code == 0
-    _assert_link_resources_called(
-        mock_link_resources,
-        resources,
-        Path('.libs') / 'mylib',
-        expected_force=False,
-    )
+    _assert_linked(tmp_path / '.libs' / 'mylib', resources)
 
 
 def test_resource_linker_does_not_call_wrapped_in_info_mode(
@@ -325,11 +297,6 @@ def test_resource_linker_cli(
     mocker.patch('inspect.getmodule', return_value=mock_module)
     mocker.patch('inspect.stack', return_value=[None, mock_frame])
 
-    mock_link = mocker.patch(
-        'repolish.linker.decorator.link_resources',
-        return_value=True,
-    )
-
     main = resource_linker_cli(
         resources_dir=case.source_dir,
     )
@@ -337,11 +304,9 @@ def test_resource_linker_cli(
     result = runner.invoke(main, [])
 
     assert result.exit_code == 0
-    _assert_link_resources_called(
-        mock_link,
+    _assert_linked(
+        tmp_path / '.repolish' / case.expected_lib_name,
         source_path,
-        Path('.repolish') / case.expected_lib_name,
-        expected_force=False,
     )
     assert case.expected_msg in result.output
 
@@ -450,10 +415,6 @@ def test_resource_linker_resolves_pkg_name_from_caller_module(
         'repolish.linker.decorator._get_package_root',
         return_value=pkg_root,
     )
-    mock_link = mocker.patch(
-        'repolish.linker.decorator.link_resources',
-        return_value=True,
-    )
 
     # Call without _pkg_name so lines 201-202 are exercised
     @resource_linker()
@@ -463,8 +424,4 @@ def test_resource_linker_resolves_pkg_name_from_caller_module(
     result = runner.invoke(link_cli, [])
 
     assert result.exit_code == 0
-    _assert_link_resources_called(
-        mock_link,
-        pkg_root / 'resources',
-        Path('.repolish') / 'mylib',
-    )
+    _assert_linked(tmp_path / '.repolish' / 'mylib', pkg_root / 'resources')

@@ -22,7 +22,6 @@ class MockedPackageDict(TypedDict):
 
     pkg_root: Path
     resources: Path
-    mock_link_resources: Any
 
 
 # Type alias for the cyclopts App returned by the resource_linker decorator.
@@ -56,10 +55,6 @@ def mocked_package(tmp_path: Path, mocker: pytest_mock.MockerFixture):
     return {
         'pkg_root': pkg_root,
         'resources': resources,
-        'mock_link_resources': mocker.patch(
-            'repolish.linker.decorator.link_resources',
-            return_value=True,
-        ),
     }
 
 

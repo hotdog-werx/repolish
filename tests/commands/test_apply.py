@@ -3,6 +3,11 @@ from pathlib import Path
 
 from pytest_mock import MockerFixture
 
+from repolish.commands.apply.check import (
+    CheckContext,
+    finish_check,
+    render_templates,
+)
 from repolish.commands.apply.display import (
     print_files_summary as _print_files_summary,
 )
@@ -260,94 +265,81 @@ def test_apply_command_runs_with_valid_provider(
     assert rv == 0
 
 
-def test_apply_returns_1_when_render_fails(
+def test_render_templates_returns_1_on_runtime_error(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
-    """command() returns 1 and logs render_failed when render_template raises RuntimeError."""
-    cfg_path = tmp_path / 'repolish.yaml'
-    cfg_path.write_text('')
-
-    fake_config = RepolishConfig(config_dir=tmp_path)
-
-    mocker.patch(
-        'repolish.commands.apply.pipeline.load_config',
-    ).return_value = fake_config
-    mocker.patch(
-        'repolish.commands.apply.session.prepare_staging',
-    ).return_value = (
-        tmp_path,
-        tmp_path / 'in',
-        tmp_path / 'out',
-    )
-    mocker.patch(
-        'repolish.commands.apply.staging.stage_templates',
-    ).return_value = None
-    mocker.patch(
-        'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = SessionBundle(
-        provider_contexts={},
-    )
-    mocker.patch(
-        'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
+    """render_templates returns 1 when render_template raises RuntimeError."""
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).side_effect = RuntimeError(
         "template rendering errors:\npyproject.toml: 'some_unknown' is undefined",
     )
 
-    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
-    assert rv == 1
+    rc = render_templates(tmp_path / 'in', SessionBundle(), tmp_path / 'out')
+    assert rc == 1
 
 
-def test_check_only_with_diffs_returns_2(
+def test_apply_session_returns_1_when_render_fails(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
-    """Exercise the check_only path when diffs are detected.
+    """apply_session returns 1 when rendering fails."""
+    config = RepolishConfig(config_dir=tmp_path)
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(workspace=WorkspaceContext(mode='standalone')),
+        providers=SessionBundle(provider_contexts={}),
+        aliases=[],
+        alias_to_pid={},
+        pid_to_alias={},
+        resolved_symlinks={},
+    )
 
-    Lines 201-205: logger.error, rich_print_diffs and return 2 are only
-    reached when check_only=True and check_generated_output returns diffs.
-    """
-    cfg_path = tmp_path / 'repolish.yaml'
-    cfg_path.write_text('')
-
-    fake_config = RepolishConfig(config_dir=tmp_path)
-
-    mocker.patch(
-        'repolish.commands.apply.pipeline.load_config',
-    ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.session.prepare_staging',
-    ).return_value = (
-        tmp_path,
-        tmp_path / 'in',
-        tmp_path / 'out',
+        return_value=(tmp_path, tmp_path / 'in', tmp_path / 'out'),
     )
+    mocker.patch('repolish.commands.apply.session.create_staged_template', return_value={})
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch('repolish.commands.apply.session.write_file_context_debug_files')
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
     mocker.patch(
-        'repolish.commands.apply.staging.stage_templates',
-    ).return_value = None
-    mocker.patch(
-        'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = SessionBundle(
-        provider_contexts={},
+        'repolish.commands.apply.session.render_templates',
+        return_value=1,
     )
-    mocker.patch(
-        'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
-    mocker.patch(
-        'repolish.commands.apply.check.render_template',
-    ).return_value = None
+
+    rc = apply_session(session)
+    assert rc == 1
+
+
+def test_finish_check_returns_2_when_diffs_found(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """finish_check returns rc=2 when check_generated_output reports diffs."""
     mocker.patch(
         'repolish.commands.apply.check.check_generated_output',
     ).return_value = [('some_diff', 'diff content')]
     mocker.patch(
         'repolish.commands.apply.check.rich_print_diffs',
-    ).return_value = None
+    )
+    mocker.patch(
+        'repolish.commands.apply.check.check_symlinks',
+        return_value=[],
+    )
 
-    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=True))
-    assert rv == 2
+    ctx = CheckContext(
+        setup_output=tmp_path,
+        providers=SessionBundle(),
+        base_dir=tmp_path,
+        resolved_symlinks={},
+        provider_infos={},
+    )
+    rc, result = finish_check(ctx)
+    assert rc == 2
+    assert 'some_diff' in result
 
 
 def _base_mocks(
@@ -551,16 +543,13 @@ def test_template_sources_translated_from_alias_to_pid(
     }
 
 
-def test_paused_files_logged_as_warning(
+def test_paused_files_set_on_session(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
-    """When paused_files is non-empty a warning is emitted listing the files."""
-    cfg_path = tmp_path / 'repolish.yaml'
-    cfg_path.write_text('')
-
+    """apply_session populates providers.paused_files from config.paused_files."""
     provider_dir = tmp_path / 'template_a'
-    fake_config = RepolishConfig(
+    config = RepolishConfig(
         config_dir=tmp_path,
         providers_order=['template_a'],
         providers={
@@ -572,53 +561,51 @@ def test_paused_files_logged_as_warning(
         },
         paused_files=['src/generated.py', 'README.md'],
     )
+    providers = SessionBundle(provider_contexts={})
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+        providers=providers,
+        aliases=['template_a'],
+        alias_to_pid={'template_a': provider_dir.as_posix()},
+        pid_to_alias={provider_dir.as_posix(): 'template_a'},
+        resolved_symlinks={},
+    )
 
-    mocker.patch(
-        'repolish.commands.apply.pipeline.load_config',
-    ).return_value = fake_config
     mocker.patch(
         'repolish.commands.apply.session.prepare_staging',
-    ).return_value = (
-        tmp_path,
-        tmp_path / 'in',
-        tmp_path / 'out',
+        return_value=(tmp_path, tmp_path / 'in', tmp_path / 'out'),
     )
     mocker.patch(
-        'repolish.commands.apply.staging.stage_templates',
-    ).return_value = (
-        tmp_path / 'staging',
-        {},
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={},
     )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
     mocker.patch(
-        'repolish.commands.apply.pipeline.build_final_providers',
-    ).return_value = SessionBundle(
-        provider_contexts={},
+        'repolish.commands.apply.session.write_file_context_debug_files',
     )
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
     mocker.patch(
-        'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
-    mocker.patch(
-        'repolish.commands.apply.check.render_template',
-    ).return_value = None
-    mocker.patch(
-        'repolish.commands.apply.check.check_generated_output',
-    ).return_value = []
+        'repolish.commands.apply.session.render_templates',
+        return_value=0,
+    )
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
-    ).return_value = {}
+        return_value={},
+    )
+    mocker.patch('repolish.commands.apply.session.apply_symlinks')
 
-    mock_logger = mocker.patch('repolish.commands.apply.session.logger')
-
-    run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
-
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if call.args and call.args[0] == 'files_paused'
-    ]
-    assert warning_calls, 'expected a files_paused warning'
-    assert set(warning_calls[0].kwargs['files']) == {
-        'src/generated.py',
-        'README.md',
-    }
+    rc = apply_session(session)
+    assert rc == 0
+    assert session.providers.paused_files == frozenset(
+        {
+            'src/generated.py',
+            'README.md',
+        },
+    )
 
 
 def test_print_files_summary_includes_symlink_only_provider(
