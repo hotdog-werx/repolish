@@ -62,7 +62,9 @@ def _process_single_template_file(
         anchors_dictionary=anchors_mapping,
     )
     if new_text != tpl_text:
+        src_mode = tpl.stat().st_mode
         tpl.write_text(new_text, encoding='utf-8')
+        tpl.chmod(src_mode)
 
 
 def preprocess_templates(

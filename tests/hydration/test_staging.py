@@ -1,15 +1,16 @@
 """Tests for hydration staging functionality."""
 
+import sys
 import textwrap
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
+
+import pytest
 
 from repolish.builder import create_cookiecutter_template
-from repolish.hydration.staging import preprocess_templates
+from repolish.config import RepolishConfig
+from repolish.hydration.staging import prepare_staging, preprocess_templates
 from repolish.loader import Providers
-
-if TYPE_CHECKING:
-    from repolish.config import RepolishConfig
 
 
 def write_file(p: Path, content: str) -> None:
@@ -70,3 +71,43 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
         cast('RepolishConfig', Cfg()),
         tmp_path,
     )
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
+def test_preprocess_templates_preserves_executable_bit(tmp_path: Path) -> None:
+    """The executable bit on a staged script is preserved after anchor preprocessing."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    script = tpl / 'repolish' / 'run.sh'
+    script.write_text(
+        '#!/bin/bash\n## repolish-start[body]\necho default\nrepolish-end[body]\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, _setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    # Local project file has different anchor content — triggers the write_text branch
+    base_dir.mkdir(parents=True, exist_ok=True)
+    (base_dir / 'run.sh').write_text(
+        '#!/bin/bash\n## repolish-start[body]\necho custom\nrepolish-end[body]\n',
+        encoding='utf-8',
+    )
+
+    # Mark the staged copy executable (mirrors what a provider ships)
+    staged = setup_input / '{{cookiecutter._repolish_project}}' / 'run.sh'
+    staged.chmod(0o755)
+
+    providers = Providers(
+        context={},
+        anchors={},
+        delete_files=[],
+        delete_history={},
+    )
+    preprocess_templates(setup_input, providers, config, base_dir)
+
+    assert staged.stat().st_mode & 0o111, 'executable bit must be preserved after anchor preprocessing'

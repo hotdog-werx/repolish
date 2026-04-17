@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from textwrap import dedent
 from unittest.mock import patch
@@ -812,3 +813,30 @@ def test_render_template_raises_when_templatemappings_and_cookiecutter_enabled(
         match=r'TemplateMapping entries require config\.no_cookiecutter=True',
     ):
         render_template(setup_input, providers, setup_output, config)
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
+def test_render_template_preserves_executable_bit(tmp_path: Path) -> None:
+    """The executable bit on a template file is preserved in the rendered output."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    script = tpl / 'repolish' / 'setup.sh'
+    script.write_text('#!/bin/bash\necho hello\n', encoding='utf-8')
+    script.chmod(0o755)
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    create_cookiecutter_template(setup_input, [tpl])
+
+    providers = Providers(context={})
+    preprocess_templates(setup_input, providers, config, base_dir)
+
+    config.no_cookiecutter = True
+    render_template(setup_input, providers, setup_output, config)
+
+    out = setup_output / 'repolish' / 'setup.sh'
+    assert out.exists()
+    assert out.stat().st_mode & 0o111, 'executable bit must be preserved after rendering'
