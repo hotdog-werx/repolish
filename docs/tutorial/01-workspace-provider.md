@@ -54,25 +54,38 @@ local differences.
 
 ## Creating the provider package
 
-A provider is a Python package. Create a new directory for it and give it a
-minimal `mise.toml` so `uv` is available:
+A provider is a Python package. Create a new directory for it and bootstrap it
+with a package manager so `uv` is available:
 
-```bash
-mkdir devkit-workspace && cd devkit-workspace
-cat > mise.toml << 'EOF'
-[settings]
-experimental = true
-python.uv_venv_auto = true
+=== "With mise"
 
-[tools]
-uv = "latest"
-EOF
-mise trust && mise install
-```
+    ```bash
+    mkdir devkit-workspace && cd devkit-workspace
+    cat > mise.toml << 'EOF'
+    [settings]
+    experimental = true
+    python.uv_venv_auto = true
 
-`experimental = true` and `python.uv_venv_auto = true` tell mise to activate the
-`uv`-managed virtualenv automatically when you enter the directory. Without
-them, `repolish` and other project tools won't be on your PATH after `uv sync`.
+    [tools]
+    uv = "latest"
+    EOF
+    mise trust && mise install
+    ```
+
+    `experimental = true` and `python.uv_venv_auto = true` tell mise to
+    activate the `uv`-managed virtualenv automatically when you enter the
+    directory. Without them, `repolish` and other project tools won't be on
+    your PATH after `uv sync`.
+
+=== "With uv already installed"
+
+    ```bash
+    mkdir devkit-workspace && cd devkit-workspace
+    ```
+
+    If you already have `uv` on your PATH (e.g. installed via `pip`,
+    `pipx`, or your system package manager), no extra tooling file is needed.
+    You can skip straight to scaffolding.
 
 With `uv` available, use `uvx` to run `repolish scaffold` without installing
 anything permanently:

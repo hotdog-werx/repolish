@@ -9,18 +9,26 @@ uses the workspace provider is a Python project.
 
 Bootstrap the new package the same way as the workspace provider:
 
-```bash
-mkdir devkit-python && cd devkit-python
-cat > mise.toml << 'EOF'
-[settings]
-experimental = true
-python.uv_venv_auto = true
+=== "With mise"
 
-[tools]
-uv = "latest"
-EOF
-mise trust && mise install
-```
+    ```bash
+    mkdir devkit-python && cd devkit-python
+    cat > mise.toml << 'EOF'
+    [settings]
+    experimental = true
+    python.uv_venv_auto = true
+
+    [tools]
+    uv = "latest"
+    EOF
+    mise trust && mise install
+    ```
+
+=== "With uv already installed"
+
+    ```bash
+    mkdir devkit-python && cd devkit-python
+    ```
 
 ```bash
 uvx repolish scaffold . --package devkit.python

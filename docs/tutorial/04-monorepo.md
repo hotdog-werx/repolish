@@ -33,26 +33,38 @@ Both packages are members of a `uv` workspace. They share a lock file, share
 tooling, and can import each other during development without any extra
 installation steps.
 
-Before anything else, create a `mise.toml` at the repo root so that mise can set
-up the Python environment and auto-activate the `.venv` that `uv` creates:
+Before anything else, bootstrap the repo so that `uv` is available:
 
-```toml
-[settings]
-experimental = true
-python.uv_venv_auto = true
+=== "With mise"
 
-[tools]
-uv = "latest"
-```
+    Create a `mise.toml` at the repo root so mise can set up the Python
+    environment and auto-activate the `.venv` that `uv` creates:
 
-Run `mise trust && mise install` after creating this file. This is the same
-bootstrap step used in Part 1 — the devkit repo needs its own environment just
-like any consumer project does.
+    ```toml
+    [settings]
+    experimental = true
+    python.uv_venv_auto = true
 
-Note that this `mise.toml` is a bootstrap file you create manually. The
-workspace provider will later overwrite it with its managed version when you run
-`repolish apply`, so make sure the provider's `mise.toml.jinja` template
-includes the `[settings]` block too.
+    [tools]
+    uv = "latest"
+    ```
+
+    Run `mise trust && mise install` after creating this file. This is the
+    same bootstrap step used in Part 1 — the devkit repo needs its own
+    environment just like any consumer project does.
+
+    Note that this `mise.toml` is a bootstrap file you create manually. The
+    workspace provider will later overwrite it with its managed version when
+    you run `repolish apply`, so make sure the provider's
+    `mise.toml.jinja` template includes the `[settings]` block too.
+
+=== "With uv already installed"
+
+    If you already have `uv` on your PATH, no `mise.toml` is needed for
+    bootstrapping. Skip straight to scaffolding below.
+
+    Once your workspace provider is managing `mise.toml`, it will create
+    the file for you on `repolish apply`.
 
 The root `pyproject.toml` declares the workspace and shared dev dependencies —
 it is not a package itself:
