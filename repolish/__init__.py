@@ -1,5 +1,3 @@
-from typing_extensions import override
-
 from .providers.models import (
     BaseContext,
     BaseInputs,
@@ -30,5 +28,4 @@ __all__ = [
     'TemplateMapping',
     'call_provider_method',
     'get_provider_context',
-    'override',
 ]

@@ -5,6 +5,7 @@ from devkit.python.repolish.models import (
 from devkit.workspace.repolish.models import (
     WorkspaceProviderInputs,
 )
+from typing_extensions import override
 
 from repolish import (
     BaseInputs,
@@ -12,7 +13,6 @@ from repolish import (
     ProvideInputsOptions,
     Provider,
     TemplateMapping,
-    override,
 )
 
 
@@ -82,7 +82,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     @override
     def create_file_mappings(
         self,
-        context: PythonProviderContext,  # noqa: ARG002
+        context: PythonProviderContext,
     ) -> dict[str, str | TemplateMapping | None]:
         """Map destination paths to template sources.
 
@@ -100,7 +100,7 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
     @override
     def create_anchors(
         self,
-        context: PythonProviderContext,  # noqa: ARG002
+        context: PythonProviderContext,
     ) -> dict[str, str]:
         """Supply anchor replacement values for this provider's templates.
 

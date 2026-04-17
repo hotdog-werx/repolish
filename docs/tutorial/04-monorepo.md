@@ -291,7 +291,9 @@ The naive fix is to check the session mode in `create_file_mappings()` and
 return `None` for files that don't belong at the current level:
 
 ```python
-from repolish import TemplateMapping, override
+from typing_extensions import override
+
+from repolish import TemplateMapping
 
 
 class WorkspaceProvider(Provider[WorkspaceContext, WorkspaceInputs]):
@@ -348,7 +350,9 @@ When root and member behaviour diverge across multiple methods, a `ModeHandler`
 subclass keeps each case readable without branching inside every method:
 
 ```python
-from repolish import ModeHandler, override
+from typing_extensions import override
+
+from repolish import ModeHandler
 
 
 class RootHandler(ModeHandler[WorkspaceContext, WorkspaceInputs]):

@@ -76,7 +76,9 @@ parameter, send its own tasks via `provide_inputs`, and collect everything in
 `finalize_context`:
 
 ```python
-from repolish import FinalizeContextOptions, ProvideInputsOptions, override
+from typing_extensions import override
+
+from repolish import FinalizeContextOptions, ProvideInputsOptions
 
 
 class WorkspaceProvider(Provider[WorkspaceProviderContext, WorkspaceProviderInputs]):
@@ -155,7 +157,9 @@ Then run `uv lock -U && uv sync` to install it.
 Now import `WorkspaceProviderInputs` and emit the ruff tasks:
 
 ```python
-from repolish import BaseInputs, Provider, ProvideInputsOptions, override
+from typing_extensions import override
+
+from repolish import BaseInputs, Provider, ProvideInputsOptions
 
 from devkit.python.repolish.models import (
     PythonProviderContext,

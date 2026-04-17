@@ -1,4 +1,6 @@
-from repolish import BaseInputs, FinalizeContextOptions, Provider, ProvideInputsOptions, Symlink, TemplateMapping, override
+from typing_extensions import override
+
+from repolish import BaseInputs, FinalizeContextOptions, Provider, ProvideInputsOptions, Symlink, TemplateMapping
 
 from {{ package_name }}.repolish.models import (
     {{ context_class }},

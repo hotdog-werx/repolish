@@ -2,6 +2,7 @@ from devkit.workspace.repolish.models import (
     WorkspaceProviderContext,
     WorkspaceProviderInputs,
 )
+from typing_extensions import override
 
 from repolish import (
     BaseInputs,
@@ -9,7 +10,6 @@ from repolish import (
     ProvideInputsOptions,
     Provider,
     TemplateMapping,
-    override,
 )
 
 
@@ -71,7 +71,7 @@ class WorkspaceProvider(
     @override
     def create_file_mappings(
         self,
-        context: WorkspaceProviderContext,  # noqa: ARG002
+        context: WorkspaceProviderContext,
     ) -> dict[str, str | TemplateMapping | None]:
         """Map destination paths to template sources.
 
