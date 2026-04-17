@@ -2,6 +2,7 @@ from pathlib import Path
 
 from repolish.config import ProviderSymlink, ResolvedProviderInfo
 from repolish.linker.orchestrator import create_provider_symlinks
+from repolish.linker.windows_utils import normalize_windows_path
 
 
 def check_symlinks(
@@ -35,7 +36,8 @@ def _check_one_symlink(
     """Return an issue string if the symlink is wrong/missing, else None."""
     target_path = Path(symlink.target)
     if target_path.is_symlink():
-        actual = target_path.readlink().resolve()
+        actual = normalize_windows_path(target_path.readlink().resolve())
+        source_path = normalize_windows_path(source_path)
         if actual != source_path:
             return f'{alias}: symlink {symlink.target!s} → {actual!s} (expected → {source_path!s})'
         return None

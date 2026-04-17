@@ -329,7 +329,7 @@ def _validate_member_filter(mono_ctx: WorkspaceContext, member: str) -> bool:
 
     Logs an error and returns False when the name is unknown.
     """
-    if any(str(m.path) == member or m.name == member for m in mono_ctx.members):
+    if any(m.path.as_posix() == member or str(m.path) == member or m.name == member for m in mono_ctx.members):
         return True
     error_unknown_member(member, [m.name for m in mono_ctx.members])
     return False
