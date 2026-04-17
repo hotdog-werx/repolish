@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from textwrap import dedent
 from unittest.mock import patch
@@ -814,6 +815,10 @@ def test_render_template_raises_when_templatemappings_and_cookiecutter_enabled(
         render_template(setup_input, providers, setup_output, config)
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
 def test_render_template_preserves_executable_bit(tmp_path: Path) -> None:
     """The executable bit on a template file is preserved in the rendered output."""
     tpl = tmp_path / 'tpl'

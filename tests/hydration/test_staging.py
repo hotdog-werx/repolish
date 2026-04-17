@@ -1,8 +1,11 @@
 """Tests for hydration staging functionality."""
 
+import sys
 import textwrap
 from pathlib import Path
 from typing import cast
+
+import pytest
 
 from repolish.builder import create_cookiecutter_template
 from repolish.config import RepolishConfig
@@ -70,6 +73,10 @@ def test_unreadable_template_file_skipped(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
 def test_preprocess_templates_preserves_executable_bit(tmp_path: Path) -> None:
     """The executable bit on a staged script is preserved after anchor preprocessing."""
     tpl = tmp_path / 'tpl'
