@@ -48,6 +48,7 @@ nav:
       - Monorepo Setup: provider-development/monorepo.md
       - Mode Handlers: provider-development/mode-handler.md
       - Resource Linker: provider-development/linker.md
+      - Testing Providers: provider-development/testing.md
       - Provider Migration: provider-development/provider-migration.md
 
   - Reference:

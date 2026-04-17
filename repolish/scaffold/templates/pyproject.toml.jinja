@@ -10,6 +10,11 @@ dependencies = [
   "repolish",
 ]
 
+[dependency-groups]
+dev = [
+  "pytest",
+]
+
 [project.scripts]
 {{ repo_name }}-link = "{{ package_name }}.repolish.linker:main"
 

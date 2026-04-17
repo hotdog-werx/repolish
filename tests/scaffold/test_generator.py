@@ -113,6 +113,14 @@ def test_generate_renders_names_into_files(
     assert f'{case.repo_name}-link' in pyproject_text
     assert f'{case.package_name}.repolish.linker:main' in pyproject_text
 
+    # tests/test_provider.py uses the provider and context class names
+    test_file = tmp_path / 'tests' / 'test_provider.py'
+    assert test_file.exists()
+    test_text = test_file.read_text()
+    assert case.class_name in test_text
+    assert case.context_class in test_text
+    assert f'from {case.package_name}.repolish.provider import' in test_text
+
 
 def test_generate_package_dir_uses_package_name(tmp_path: Path) -> None:
     """The 'package/' template prefix is replaced with the actual package name."""
@@ -145,6 +153,8 @@ def test_generate_creates_all_expected_files(tmp_path: Path) -> None:
         'acme_base/repolish/provider.py',
         'acme_base/resources/templates/repolish.py',
         'acme_base/resources/templates/repolish/.gitkeep',
+        'tests/__init__.py',
+        'tests/test_provider.py',
     }
     assert relative == expected
 
@@ -169,6 +179,8 @@ def test_generate_creates_all_expected_files_monorepo(tmp_path: Path) -> None:
         'acme_base/repolish/provider/standalone.py',
         'acme_base/resources/templates/repolish.py',
         'acme_base/resources/templates/repolish/.gitkeep',
+        'tests/__init__.py',
+        'tests/test_provider.py',
     }
     assert relative == expected
 

@@ -27,3 +27,9 @@ The Python-side authoring reference: writing `create_context()` with a typed
 Pydantic model, using `BaseContext`, class-based `Provider` subclasses, per-file
 `TemplateMapping` extra context, cross-provider inputs via `provide_inputs()` /
 `finalize_context()`, and how to test provider context.
+
+### [Testing Providers](testing.md)
+
+Using `ProviderTestBed`, `make_context`, and `assert_snapshots` from
+`repolish.testing` to test provider hooks, template rendering, and mode-handler
+dispatch without the full CLI pipeline.

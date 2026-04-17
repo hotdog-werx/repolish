@@ -617,7 +617,12 @@ def test_print_link_tree_with_symlinks(
 ) -> None:
     """_print_link_tree prints summary when sections contain symlinks."""
     out = io.StringIO()
-    test_console = Console(file=out, force_terminal=False, no_color=True, width=1000)
+    test_console = Console(
+        file=out,
+        force_terminal=False,
+        no_color=True,
+        width=1000,
+    )
     mocker.patch('repolish.commands.link.console', test_console)
 
     sl = ProviderSymlink(
