@@ -90,6 +90,39 @@ repolish/.github/workflows/ci.yml →  .github/workflows/ci.yml
 Use `create_file_mappings()` only when you need to redirect a template to a
 different destination or pick between alternatives at runtime.
 
+## Mode overlay directories
+
+When a provider runs in a monorepo, repolish stages a mode-specific overlay
+directory **after** the base `repolish/` templates. The overlay directory is a
+sibling of `repolish/` named after the current mode — `root/`, `member/`, or
+`standalone/`:
+
+```
+my-provider/
+├── repolish.py
+├── repolish/                  ← base templates (all modes)
+│   ├── pyproject.toml
+│   └── README.md
+├── root/                      ← overlay for root sessions
+│   └── pyproject.toml         ← replaces repolish/pyproject.toml in root mode
+└── member/                    ← overlay for member sessions
+    └── pyproject.toml         ← replaces repolish/pyproject.toml in member mode
+```
+
+Overlay files replace base files at the same relative path. If
+`root/pyproject.toml` exists and the session mode is `root`, it replaces
+`repolish/pyproject.toml` in the staging tree. Files in the base directory that
+have no overlay counterpart are staged normally.
+
+This is a file-level alternative to branching inside `create_file_mappings()`.
+Use overlays when the template content itself differs across modes; use
+`create_file_mappings()` when the _destination path_ differs.
+
+`ModeHandler.templates_root` points to the overlay directory for the current
+mode, so handlers can discover mode-specific templates dynamically with
+`self.templates_root.glob(...)`. See
+[Mode Handlers](../provider-development/mode-handler.md) for details.
+
 ## Conditional files and the `_repolish.` prefix
 
 Files whose names start with `_repolish.` are **staging-only** — they are never

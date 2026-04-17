@@ -23,6 +23,42 @@ Repolish cannot run without at least one provider configured.
   paths, values must name a provider defined elsewhere in the configuration. A
   validator ensures that all referenced providers actually exist.
 
+- **`delete_files`** _(list of strings)_ - POSIX-style paths that repolish
+  should delete from the project after generation. A leading `!` negates a path,
+  cancelling a delete that a provider scheduled:
+
+  ```yaml
+  delete_files:
+    - legacy/old-config.ini # delete this
+    - '!legacy/keep-this.ini' # cancel a provider-scheduled delete
+  ```
+
+  Negation is evaluated in list order. This is useful when a provider's
+  `FileMode.DELETE` mapping removes a file that your project still needs.
+
+- **`post_process`** _(list of strings)_ - shell commands to run after
+  rendering, inside the `.repolish/_/render/` directory. This is where
+  formatters live — running `ruff format .` or `prettier --write .` here ensures
+  the diff and apply steps always operate on correctly formatted output.
+  Commands run in order; if any exits non-zero repolish stops immediately.
+
+  ```yaml
+  post_process:
+    - ruff format .
+    - ruff check --fix .
+  ```
+
+- **`paused_files`** _(list of strings)_ - POSIX-style file paths that repolish
+  should temporarily ignore. Paused files are excluded from both `--check`
+  comparison and `apply` writes. Use this to opt out of provider management for
+  specific files while a provider is being fixed or updated. See
+  [Pause a File](../project-controls/pause.md) for details.
+
+  ```yaml
+  paused_files:
+    - .github/workflows/ci.yml # provider#42 pending
+  ```
+
 - **`workspace`** _(optional mapping)_ - enables workspace (monorepo) mode. When
   present, repolish runs a session for the root and one for each discovered
   member. Accepts one optional sub-key:
@@ -51,6 +87,8 @@ class ProviderConfig(BaseModel):
     provider_root: Path | None = None
     resources_dir: Path | None = None
     symlinks: list[Symlink] | None = None
+    context: dict[str, Any] | None = None
+    context_overrides: dict[str, Any] = {}
 ```
 
 Each provider entry must specify at least one of `cli` or `provider_root`; they
@@ -73,6 +111,15 @@ the full resolution rules and CLI protocol.
 - **`resources_dir`** - optional path to the directory from which symlinks are
   created into the project. When omitted it defaults to `provider_root`. Specify
   this when the symlink root lives inside a subdirectory of `provider_root`.
+
+- **`context`** - optional mapping merged into this provider's context after
+  `create_context()` runs. Each top-level key replaces the provider's value
+  wholesale. See [Override Context](../project-controls/context-overrides.md).
+
+- **`context_overrides`** - dot-notation overrides applied after
+  `finalize_context()`. Allows surgical patching of nested context fields
+  without repeating the entire object. See
+  [Override Context](../project-controls/context-overrides.md).
 
 Shorthand notation is supported in the YAML. Instead of writing::
 

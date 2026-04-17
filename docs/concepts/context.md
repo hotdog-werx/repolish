@@ -8,12 +8,12 @@ combined.
 
 Context is assembled from four sources, applied in this order (later wins):
 
-| # | Source                      | Where it is defined                                | Merge behaviour                                     |
-| - | --------------------------- | -------------------------------------------------- | --------------------------------------------------- |
-| 1 | Global context              | Injected by repolish automatically                 | always present                                      |
-| 2 | Provider `create_context()` | Each provider's module or `Provider` class         | shallow merge                                       |
-| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key           | **shallow** - replaces each top-level key wholesale |
-| 4 | Config `context_overrides:` | Per-provider or top-level `context_overrides:` key | **deep** - dot-notation paths patch nested fields   |
+| # | Source                      | Where it is defined                        | Merge behaviour                                     |
+| - | --------------------------- | ------------------------------------------ | --------------------------------------------------- |
+| 1 | Global context              | Injected by repolish automatically         | always present                                      |
+| 2 | Provider `create_context()` | Each provider's module or `Provider` class | shallow merge                                       |
+| 3 | Config `context:`           | `repolish.yaml` top-level `context:` key   | **shallow** - replaces each top-level key wholesale |
+| 4 | Config `context_overrides:` | Per-provider `context_overrides:` key      | **deep** - dot-notation paths patch nested fields   |
 
 The distinction between `context:` and `context_overrides:` matters when a
 provider exposes a nested object (e.g. `tools.uv.version`). With `context:` you
@@ -84,10 +84,9 @@ below).
 
 ## Context overrides per provider
 
-`context_overrides:` under a provider entry (or at the top level of
-`repolish.yaml`) applies changes using **dot-notation paths**. This lets you
-reach into a nested object and patch exactly the field you care about, without
-touching anything else:
+`context_overrides:` under a provider entry applies changes using **dot-notation
+paths**. This lets you reach into a nested object and patch exactly the field
+you care about, without touching anything else:
 
 ```yaml
 providers:
@@ -98,21 +97,16 @@ providers:
       use_ruff: false # simple key also works
 ```
 
-The same syntax works at the top level of `repolish.yaml`:
-
-```yaml
-context_overrides:
-  my_provider.tools.0.version: '0.8.0' # patch a list element
-  my_provider.some_flag: true
-```
-
 Nested dict form is also accepted and flattened automatically:
 
 ```yaml
-context_overrides:
-  my_provider:
-    some_flag: true
-    'tools.0.version': '0.8.0'
+providers:
+  my-provider:
+    cli: my-provider-link
+    context_overrides:
+      my_provider:
+        some_flag: true
+        'tools.0.version': '0.8.0'
 ```
 
 This is especially useful when the same provider is consumed with different

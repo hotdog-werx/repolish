@@ -146,6 +146,66 @@ member providers are processed in separate per-package runs and will not appear
 here. If you need data that originates in a member, use the `provide_inputs()`
 push pattern from the member toward the root instead.
 
+## Options dataclasses
+
+The two hooks that participate in cross-provider coordination receive an options
+dataclass instead of a plain context.
+
+### `ProvideInputsOptions[ContextT]`
+
+Passed to `provide_inputs()`:
+
+| Field            | Type                  | Description                             |
+| ---------------- | --------------------- | --------------------------------------- |
+| `own_context`    | `ContextT`            | This provider's current context object  |
+| `all_providers`  | `list[ProviderEntry]` | Snapshot of every loaded provider       |
+| `provider_index` | `int`                 | Position of this provider in load order |
+
+### `FinalizeContextOptions[ContextT, InputT]`
+
+Passed to `finalize_context()`:
+
+| Field             | Type                  | Description                                  |
+| ----------------- | --------------------- | -------------------------------------------- |
+| `own_context`     | `ContextT`            | Context before input merging                 |
+| `received_inputs` | `list[InputT]`        | Payloads from providers whose schema matched |
+| `all_providers`   | `list[ProviderEntry]` | Snapshot of every loaded provider            |
+| `provider_index`  | `int`                 | Position of this provider in load order      |
+
+## Helper functions
+
+### `call_provider_method(inst, method_name, arg)`
+
+Routes a provider hook call through the mode handler dispatch. Orchestration
+code uses this instead of calling hooks directly so that `Provider` itself has
+no knowledge of mode dispatch.
+
+```python
+from repolish import call_provider_method
+
+result = call_provider_method(provider_instance, 'create_file_mappings', context)
+```
+
+Resolution: reads `context.repolish.workspace.mode`, looks up the matching
+`root_mode` / `member_mode` / `standalone_mode` handler, and calls the method on
+it. Falls back to the provider's own implementation when no handler is
+registered for the current mode.
+
+### `get_provider_context(provider_cls, providers)`
+
+Returns the context object for a specific provider class from the provider
+registry, without requiring that provider to broadcast anything via
+`provide_inputs()`:
+
+```python
+from repolish import get_provider_context
+
+peer_ctx = get_provider_context(OtherProvider, opt.all_providers)
+```
+
+Returns `None` if no matching provider is loaded. Passing the bare `Provider`
+base class is rejected (it would match everything).
+
 ## Promoting files to the repo root
 
 In a monorepo, a member provider can push files to the monorepo **root**

@@ -11,6 +11,8 @@ through `TemplateMapping` entries returned by `create_file_mappings()`.
 | `REGULAR`     | Overwrite          | Create                 |
 | `CREATE_ONLY` | Skip               | Create once            |
 | `DELETE`      | Delete             | Nothing (already gone) |
+| `KEEP`        | Cancel a delete    | Nothing                |
+| `SUPPRESS`    | Skip (dev use)     | Skip (dev use)         |
 
 ## REGULAR (default)
 
@@ -65,6 +67,46 @@ see why a path was flagged.
 
 If a path appears in both `delete_files` and `create_only_files`, **delete
 wins**.
+
+## KEEP
+
+A `KEEP` mapping explicitly cancels a `DELETE` scheduled by an earlier provider.
+This is only useful when multiple providers manage the same destination: the
+first provider requests deletion, and a later provider overrides the decision.
+
+```python
+def create_file_mappings(self, context):
+    return {
+        'old-config.ini': TemplateMapping(
+            'old-config.ini',
+            file_mode=FileMode.KEEP,
+        ),
+    }
+```
+
+Both decisions are recorded in `.repolish/_/delete-history/` so reviewers can
+see the full provenance chain.
+
+## SUPPRESS
+
+`SUPPRESS` tells repolish to skip staging and rendering for a file entirely.
+This is useful during provider development when a template is temporarily broken
+and you want the rest of the pipeline to proceed without it:
+
+```python
+def create_file_mappings(self, context):
+    return {
+        'broken-template.toml': TemplateMapping(
+            '_repolish.broken.toml',
+            file_mode=FileMode.SUPPRESS,
+        ),
+    }
+```
+
+`SUPPRESS` is a programmatic escape hatch for provider authors. Project users
+should use
+[`template_overrides: null`](../project-controls/template-overrides.md) to
+suppress a file from config instead.
 
 ## Conditional files and the `_repolish.` prefix
 

@@ -357,7 +357,7 @@ Set `workspace:` in the root `repolish.yaml`. Repolish discovers members from
 `workspace.members`). It runs a dry provider pass for each member, then a full
 pass for root and each member separately.
 
-Providers receive `context.repolish.monorepo.mode` — `"root"`, `"package"`, or
+Providers receive `context.repolish.workspace.mode` — `"root"`, `"member"`, or
 `"standalone"`. Use `ModeHandler` subclasses to attach mode-specific behaviour
 without `if mode == ...` branches.
 
