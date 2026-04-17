@@ -398,7 +398,7 @@ def _apply_member_sessions(
     """Apply each member session, honouring opts.member as a filter. Returns ``(rc, completed)``."""
     completed: list[ResolvedSession] = []
     for m, session, apply_opts in member_sessions:
-        if opts.member and str(m.path) != opts.member and m.name != opts.member:
+        if opts.member and m.path.as_posix() != opts.member and str(m.path) != opts.member and m.name != opts.member:
             continue
         with chdir(apply_opts.config_path.parent):
             rc = apply_session(
