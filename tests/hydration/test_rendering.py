@@ -574,6 +574,27 @@ def test_render_template_skips_suppressed_sources(tmp_path: Path) -> None:
     assert (setup_output / 'repolish' / 'good.txt').read_text() == 'ok'
 
 
+def test_render_template_preserves_executable_bit(tmp_path: Path) -> None:
+    """The executable bit on a template file is preserved in the rendered output."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    script = tpl / 'repolish' / 'setup.sh'
+    script.write_text('#!/bin/bash\necho hello\n', encoding='utf-8')
+    script.chmod(0o755)
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    providers = SessionBundle()
+    preprocess_templates(setup_input, providers, base_dir)
+    render_template(setup_input, providers, setup_output)
+
+    out = setup_output / 'repolish' / 'setup.sh'
+    assert out.exists()
+    assert out.stat().st_mode & 0o111, 'executable bit must be preserved after rendering'
+
+
 def test_render_template_skips_filemode_suppress(tmp_path: Path) -> None:
     """FileMode.SUPPRESS on a TemplateMapping prevents the source template from rendering."""
     tpl = tmp_path / 'tpl'

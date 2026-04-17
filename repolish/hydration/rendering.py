@@ -143,6 +143,7 @@ def _render_file(
     except (UndefinedError, TemplateSyntaxError) as exc:
         return str(exc)
     dest.write_text(rendered_txt, encoding='utf-8')
+    dest.chmod(src.stat().st_mode)
     return None
 
 

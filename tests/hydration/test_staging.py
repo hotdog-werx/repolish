@@ -106,6 +106,34 @@ def test_preprocess_templates_writes_file_when_anchor_content_changes(
     assert 'repolish-start' not in updated
 
 
+def test_preprocess_templates_preserves_executable_bit(tmp_path: Path) -> None:
+    """The executable bit on a staged script is preserved after anchor preprocessing."""
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+
+    # Staged script with an anchor block and executable bit
+    script = tpl_dir / 'run.sh'
+    script.write_text(
+        '#!/bin/bash\n## repolish-start[body]\necho default\nrepolish-end[body]\n',
+        encoding='utf-8',
+    )
+    script.chmod(0o755)
+
+    # Local project file has different anchor content (triggers the write_text branch)
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'run.sh').write_text(
+        '#!/bin/bash\n## repolish-start[body]\necho custom\nrepolish-end[body]\n',
+        encoding='utf-8',
+    )
+
+    providers = SessionBundle(anchors={}, delete_files=[], delete_history={})
+    preprocess_templates(setup_input, providers, base_dir)
+
+    assert script.stat().st_mode & 0o111, 'executable bit must be preserved after anchor preprocessing'
+
+
 # ---------------------------------------------------------------------------
 # Tests: unmapped _repolish.* files are excluded from the staging tree
 # ---------------------------------------------------------------------------
