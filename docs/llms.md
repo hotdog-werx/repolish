@@ -391,3 +391,52 @@ Full detail: [Monorepo](concepts/monorepo.md)
   errors, not empty strings.
 - There is no cookiecutter integration in v1; the old `{{ cookiecutter.x }}`
   namespace is gone.
+
+---
+
+## Testing providers
+
+The `repolish.testing` module gives provider authors a lightweight harness for
+exercising every provider hook without the full CLI pipeline, git repos, or
+installed wheels.
+
+```python
+from repolish.testing import ProviderTestBed, assert_snapshots, make_context
+```
+
+### Quick start
+
+```python
+from repolish.testing import ProviderTestBed
+from my_provider.repolish.provider import MyProvider
+
+bed = ProviderTestBed(MyProvider)
+ctx = bed.resolved_context
+fm  = bed.file_mappings()         # dict[str, str | TemplateMapping | None]
+anchors = bed.anchors()           # dict[str, str]
+rendered = bed.render_all()       # dict[dest_path, rendered_content]
+```
+
+### Key helpers
+
+| Helper                                 | Purpose                                                             |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `ProviderTestBed(ProviderClass)`       | Wraps a provider, calls `create_context()`, exposes lifecycle hooks |
+| `bed.render('template.jinja')`         | Render a single template with the provider's context                |
+| `bed.render_all()`                     | Render all mapped + auto-discovered templates                       |
+| `assert_snapshots(rendered, snap_dir)` | Compare rendered output against golden files; unified diff on fail  |
+| `make_context(mode=..., alias=...)`    | Factory for synthetic `RepolishContext` objects                     |
+
+### Testing mode handlers and inputs
+
+```python
+# mode-specific behavior
+bed_root   = ProviderTestBed(MyProvider, mode='root')
+bed_member = ProviderTestBed(MyProvider, mode='member')
+
+# cross-provider input exchange
+inputs = bed.provide_inputs()
+result = bed.finalize(received_inputs=[SomeInputs(flag=True)])
+```
+
+Full reference: [Testing Providers](provider-development/testing.md)

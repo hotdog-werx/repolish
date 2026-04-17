@@ -36,6 +36,8 @@
   <a href="https://hotdog-werx.github.io/repolish/concepts/overview/"><strong>Concepts</strong></a>
   &middot;
   <a href="https://hotdog-werx.github.io/repolish/provider-development/overview/"><strong>Provider Development</strong></a>
+  &middot;
+  <a href="https://hotdog-werx.github.io/repolish/llms/"><strong>AI Agent Reference</strong></a>
 </p>
 
 ---
