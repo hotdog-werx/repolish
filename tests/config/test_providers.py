@@ -63,9 +63,7 @@ class LoadProviderInfoCase:
     name: str
     info_content: str | None  # None means file doesn't exist
     provider_alias: str
-    expected_target_dir: str | None
-    expected_templates_dir: str | None = None
-    expected_library_name: str | None = None
+    expected_resources_dir: str | None
 
 
 @pytest.mark.parametrize(
@@ -73,40 +71,39 @@ class LoadProviderInfoCase:
     [
         LoadProviderInfoCase(
             name='valid_info_all_fields',
-            info_content="""{"target_dir": ".repolish/codeguide/resources",
-"source_dir": "/fake/source/codeguide",
-"templates_dir": "templates",
-"library_name": "codeguide"}""",
+            info_content=(
+                '{"resources_dir": ".repolish/codeguide/resources",'
+                ' "site_package_dir": "/fake/source/codeguide",'
+                ' "provider_root": ".repolish/codeguide/resources/templates"}'
+            ),
             provider_alias='base',
-            expected_target_dir='.repolish/codeguide/resources',
-            expected_templates_dir='templates',
-            expected_library_name='codeguide',
+            expected_resources_dir='.repolish/codeguide/resources',
         ),
         LoadProviderInfoCase(
             name='valid_info_required_only',
-            info_content='{"target_dir": ".repolish/python-tools/res", "source_dir": "/fake/source/python-tools"}',
+            info_content=(
+                '{"resources_dir": ".repolish/python-tools/res", "site_package_dir": "/fake/source/python-tools"}'
+            ),
             provider_alias='py',
-            expected_target_dir='.repolish/python-tools/res',
-            expected_templates_dir=None,
-            expected_library_name=None,
+            expected_resources_dir='.repolish/python-tools/res',
         ),
         LoadProviderInfoCase(
             name='file_missing',
             info_content=None,
             provider_alias='base',
-            expected_target_dir=None,
+            expected_resources_dir=None,
         ),
         LoadProviderInfoCase(
             name='invalid_json',
             info_content='{ not valid json }',
             provider_alias='base',
-            expected_target_dir=None,
+            expected_resources_dir=None,
         ),
         LoadProviderInfoCase(
             name='missing_required_field',
-            info_content='{"templates_dir": "templates"}',
+            info_content='{"site_package_dir": "/fake/source"}',
             provider_alias='base',
-            expected_target_dir=None,
+            expected_resources_dir=None,
         ),
     ],
     ids=lambda case: case.name,
@@ -120,10 +117,8 @@ def test_load_provider_info(tmp_path: Path, case: LoadProviderInfoCase):
 
     result = load_provider_info(case.provider_alias, tmp_path)
 
-    if case.expected_target_dir is None:
+    if case.expected_resources_dir is None:
         assert result is None
     else:
         assert result is not None
-        assert result.target_dir == case.expected_target_dir
-        assert result.templates_dir == case.expected_templates_dir
-        assert result.library_name == case.expected_library_name
+        assert result.resources_dir == case.expected_resources_dir

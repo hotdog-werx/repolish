@@ -1,0 +1,166 @@
+from hotlog import get_logger
+
+from repolish.commands.apply.check import (
+    CheckContext,
+    finish_check,
+    render_templates,
+)
+from repolish.commands.apply.debug import (
+    write_file_context_debug_files,
+    write_provider_debug_files,
+)
+from repolish.commands.apply.display import (
+    print_summary_tree,
+)
+from repolish.commands.apply.options import ApplyOptions, ResolvedSession
+from repolish.commands.apply.pipeline import resolve_session
+from repolish.commands.apply.staging import (
+    collect_mapped_sources,
+    create_staged_template,
+)
+from repolish.commands.apply.symlinks import apply_symlinks
+from repolish.hydration import (
+    apply_generated_output,
+    prepare_staging,
+    preprocess_templates,
+)
+from repolish.providers.models import build_file_records
+from repolish.utils import run_post_process
+from repolish.version import __version__
+
+logger = get_logger(__name__)
+
+
+def apply_session(
+    session: ResolvedSession,
+    *,
+    check_only: bool = False,
+    skip_post_process: bool = False,
+) -> int:
+    """Run the apply/check pipeline for an already-resolved session.
+
+    Performs staging, rendering, post-processing, then either checks for diffs
+    (``check_only=True``) or writes changes to disk.
+
+    Callers that sequence multiple sessions (e.g. ``coordinate_sessions``) call
+    this after collecting all resolved sessions so they can inspect cross-session
+    interactions before any files are written.
+    """
+    config = session.config
+    providers = session.providers
+    resolved_symlinks = session.resolved_symlinks
+    alias_to_pid = session.alias_to_pid
+    pid_to_alias = session.pid_to_alias
+    config_pid = config.config_dir.as_posix()
+
+    # staging must happen before we can report per-provider template ownership
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    sources = create_staged_template(
+        setup_input,
+        config,
+        mapped_sources=(
+            collect_mapped_sources(providers.file_mappings)
+            | collect_mapped_sources(providers.promoted_file_mappings)
+            | providers.suppressed_sources
+        ),
+        workspace_mode=session.global_context.workspace.mode,
+    )
+    # stage_templates records alias as the provider id; provider_contexts is
+    # keyed by the full directory path (pid).  Files from mode overlay dirs
+    # carry an annotated alias like 'myprovider:root'; split that off before
+    # resolving to pid so the renderer always gets a valid context key.
+    overlay_dirs: dict[str, str] = {}
+    pid_map: dict[str, str] = {}
+    for rel, raw_alias in sources.items():
+        if ':' in raw_alias:
+            base_alias, mode_suffix = raw_alias.split(':', 1)
+            overlay_dirs[rel] = mode_suffix
+        else:
+            base_alias = raw_alias
+        pid_map[rel] = alias_to_pid.get(base_alias, base_alias)
+    providers.template_sources = pid_map
+    providers.template_overlay_dirs = overlay_dirs
+    providers.file_records = build_file_records(
+        providers,
+        pid_to_alias,
+        config_pid,
+    )
+
+    # write per-provider debug JSON to .repolish/_/provider-context.<alias>.json
+    write_provider_debug_files(
+        base_dir,
+        config,
+        providers,
+        alias_to_pid,
+    )
+    # write per-rendered-file context debug JSON to .repolish/_/file-context.<slug>.json
+    write_file_context_debug_files(
+        base_dir,
+        providers,
+        alias_to_pid,
+    )
+
+    paused = frozenset(config.paused_files)
+    if paused:
+        logger.warning(
+            'files_paused',
+            files=sorted(paused),
+            suggestion='remove entries from paused_files once the provider is fixed',
+        )
+    providers.paused_files = paused
+
+    # Preprocess templates (anchor-driven replacements)
+    preprocess_templates(setup_input, providers, base_dir)
+
+    # Render templates using Jinja2
+    if render_templates(setup_input, providers, setup_output) != 0:
+        return 1
+
+    # Run any configured post-processing commands in the rendered output dir
+    post_cwd = setup_output / 'repolish'
+    if not skip_post_process:
+        run_post_process(config.post_process, post_cwd)
+
+    is_root_pass = session.global_context.workspace.mode == 'root'
+    if check_only:
+        rc, check_result = finish_check(
+            CheckContext(
+                setup_output=setup_output,
+                providers=providers,
+                base_dir=base_dir,
+                resolved_symlinks=resolved_symlinks,
+                provider_infos=config.providers,
+                disable_auto_staging=is_root_pass,
+            ),
+        )
+        session.apply_result = check_result
+        return rc
+
+    session.apply_result = apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        disable_auto_staging=is_root_pass,
+    )
+    apply_symlinks(resolved_symlinks, config.providers)
+    return 0
+
+
+def run_session(options: ApplyOptions) -> int:
+    """Run repolish for a single session.
+
+    Resolves providers then applies changes (or checks for diffs when
+    ``options.check_only`` is ``True``).  This is the entry point for
+    standalone project runs; ``coordinate_sessions`` calls :func:`resolve_session`
+    and :func:`apply_session` directly to gain visibility into all sessions
+    before any files are written.
+    """
+    logger.info('repolish_started', version=__version__)
+    session = resolve_session(options)
+    rc = apply_session(
+        session,
+        check_only=options.check_only,
+        skip_post_process=options.skip_post_process,
+    )
+    print_summary_tree([session])
+    return rc

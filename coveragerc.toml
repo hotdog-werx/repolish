@@ -1,0 +1,15 @@
+[tool.coverage.html]
+directory = ".coverage-files/htmlcov"
+
+[tool.coverage.report]
+omit = [
+  "repolish/scaffold/templates/**",
+]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "if typing.TYPE_CHECKING:",
+  "if TYPE_CHECKING:",
+  "\\.\\.\\.",
+]
+show_missing = true

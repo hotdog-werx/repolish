@@ -1,103 +1,84 @@
 # Repolish
 
-A hybrid templating and diff/patch system for maintaining repository consistency
-while preserving local customizations.
+_Package your standards. Own your edits._
 
-## Why this exists
+You have ten repositories. They all follow roughly the same structure — similar
+CI pipelines, similar tooling config, similar README conventions. One day the
+team decides to upgrade the linter version. You update it in one repo, maybe
+two. A week later someone opens a PR in a third repo and the old linter fires on
+brand-new code. You fix it there too. A month later you find repo seven still
+running the original version. This is the slow drift that repolish is built to
+stop.
 
-Teams often need to enforce repository-level conventions — CI config, build
-tools, metadata, shared docs — while letting individual projects keep local
-customizations. The naive approaches are painful:
+## The idea in one sentence
 
-- Copying templates into many repos means drift over time and manual syncs.
-- Running destructive templating can overwrite local changes developers rely on.
+Repolish lets a team package their repository standards into **providers**, then
+push those standards consistently across every project that opts in — without
+destroying the local changes that developers have made and own.
 
-Repolish solves this by combining templating (to generate canonical files) with
-a set of careful, reversible operations that preserve useful local content.
-Instead of blindly replacing files, Repolish can:
+## What is a provider?
 
-- Fill placeholders from provider-supplied context.
-- Apply anchor-driven replacements to keep developer-customized sections intact.
-- Track provider-specified deletions and record provenance so reviewers can see
-  why a path was requested for deletion.
+A provider is a package (or a local directory) that supplies:
 
-## Key concepts
+- **Templates** — the canonical version of files like `pyproject.toml`,
+  `.github/workflows/ci.yml`, or `CONTRIBUTING.md`.
+- **Context** — data the templates need to render correctly for a specific
+  project (repo name, owner, language version, etc.).
+- **Preprocessor directives** — inline markers embedded in templates that
+  capture values from your existing project files (versions, config entries,
+  pinned tool versions, custom sections) so local state survives every apply.
 
-**Providers** supply templates and context. Each provider lives in a template
-directory and may include a `repolish.py` module that exports
-`create_context()`, `create_anchors()`, and/or `create_delete_files()` helpers.
+Without providers there is nothing to apply. Repolish itself is the engine;
+providers are the content. Your team writes one or more providers and every repo
+that includes them in its `repolish.yaml` gets the same standards applied
+automatically.
 
-**Anchors** are markers placed in templates (and optionally in project files)
-that mark blocks or regex lines to preserve. Block anchors (`repolish-start` /
-`repolish-end`) preserve entire sections; regex anchors (`repolish-regex`) keep
-individual lines matching a pattern.
+## How it flows
 
-**File mappings** let providers conditionally select which template file to copy
-to a given destination, allowing clean filenames without `{% if %}` clutter.
+```mermaid
+flowchart TD
+    A[repolish.yaml] -->|declares providers| B[Providers]
+    B -->|supply templates + context + anchors| C[Merge & render]
+    C -->|Jinja2 renders with merged context| D[Preprocess]
+    D -->|capture local edits from project files| E{Mode}
+    E -->|--check| F[Report drift\nno files touched]
+    E -->|apply| G[Write changes\nto project]
+```
 
-**Create-only files** are copied once on first run and skipped on subsequent
-runs, making them ideal for initial scaffolding that users own after creation.
+Run `repolish --check` in CI to catch drift before it merges. Run
+`repolish apply` locally (or in an automated PR) to pull in updates from
+providers.
 
-**Delete semantics** let providers request file removals. A `!` prefix negates
-(keeps) a path. A `delete_history` provenance record is maintained so reviewers
-can see why a path was flagged.
+## You are always in control
 
-## How it works
+Repolish is a tool that works _for_ you, not against you. If a provider ships a
+broken template, or introduces a change you are not ready to absorb right now,
+you never have to stop working. Add the affected file to `paused_files` in your
+`repolish.yaml` and repolish will silently skip it until you remove it:
 
-1. Load providers configured in `repolish.yaml`.
-2. Merge provider contexts; config-level context overrides provider values.
-3. Merge anchors from providers and config.
-4. Stage all provider template directories into a single merged template under
-   `.repolish/setup-input`.
-5. Preprocess staged templates by applying anchor-driven replacements using
-   local project files.
-6. Render the merged template into `.repolish/setup-output`.
-7. In `--check` mode: compare generated files to project files and report diffs,
-   missing files, or paths that providers wanted deleted but are still present.
-8. In apply mode: copy generated files into the project and apply deletions.
+```yaml
+paused_files:
+  - .github/workflows/ci.yml # provider update pending, resume after v2.3
+```
 
-## Why it is useful
+That is the quick escape hatch. The
+[Developer Control](project-controls/index.md) section documents every tool
+available to you: pausing files, overriding templates, patching context, and
+running a fully local provider when you need total independence from upstream.
 
-- **Safe consistency**: teams get centralized templates without forcing
-  destructive rollouts.
-- **Clear explainability**: the `delete_history` provenance makes it easy to
-  review why a file was targeted for deletion or kept.
-- **CI-friendly**: `--check` detects drift; structured logs and diffs make it
-  straightforward to require PRs to run repolish before merging.
+## Where to go next
 
----
+- [Installation](getting-started/installation.md) — get repolish installed
+- [Quick Start](getting-started/quick-start.md) — run your first check and apply
+- [Tutorial](tutorial/index.md) — build two providers from scratch and discover
+  why each feature exists
+- [How It Works](concepts/overview.md) — deeper look at the pipeline
+- [Developer Control](project-controls/index.md) — all your escape hatches
 
-!!! warning "Cookiecutter deprecation & migration (planned for v1)"
+## Working with an AI assistant
 
-    Cookiecutter-based final rendering will be removed in the v1 release. You
-    can migrate now by enabling the opt-in native Jinja renderer
-    (`no_cookiecutter: true`) and validating your templates with
-    `repolish preview`.
-
-    **Why migrate**
-
-    - Jinja avoids Cookiecutter CLI/option quirks (arrays treated as options),
-      provides stricter validation (`StrictUndefined`) and clearer error
-      messages, and enables new features such as `tuple`-valued `file_mappings`
-      (per-file extra context).
-
-    **Quick migration steps**
-
-    1. Enable `no_cookiecutter: true` and run `repolish apply`.
-    2. Update templates to prefer top-level context access
-       (`{{ my_provider.* }}`) — the `cookiecutter` namespace remains available
-       during migration.
-    3. Follow the examples in the [Templates guide](guides/templates.md).
-
-    See also: [Loader context](configuration/context.md) for `file_mappings`
-    examples.
-
-## Documentation
-
-- [Installation](getting-started/installation.md)
-- [Quick Start](getting-started/quick-start.md)
-- [Configuration](configuration/overview.md)
-- [Preprocessors](guides/preprocessors.md)
-- [Templates](guides/templates.md)
-- [Provider Patterns](guides/patterns.md)
-- [CLI Commands](operations/cli.md)
+If you are using an AI coding assistant to help configure or extend repolish,
+point it at the [AI Agent Reference](llms.md) page first. That single page gives
+the assistant a complete map of what repolish does, how the config file is
+structured, and where to look for deeper detail — so it can help you without
+guessing.

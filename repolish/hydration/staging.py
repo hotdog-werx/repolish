@@ -4,8 +4,9 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.loader import Providers, TemplateMapping
 from repolish.preprocessors import replace_text, safe_file_read
+from repolish.providers import SessionBundle, TemplateMapping
+from repolish.utils import ensure_dot_repolish
 
 logger = get_logger(__name__)
 
@@ -16,13 +17,21 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
     Returns: (base_dir, setup_input_path, setup_output_path)
     """
     base_dir = config.config_dir
-    staging = base_dir / '.repolish'
-    setup_input = staging / 'setup-input'
-    setup_output = staging / 'setup-output'
+    staging = ensure_dot_repolish(base_dir)
+    setup_input = staging / '_' / 'stage'
+    setup_output = staging / '_' / 'render'
 
-    # clear output dir if present
+    # Clear transient outputs from previous runs while preserving provider-info
+    # registration files (provider-info.*.json, .all-providers.json) so that
+    # providers don't get re-linked on every apply.
     shutil.rmtree(setup_input, ignore_errors=True)
     shutil.rmtree(setup_output, ignore_errors=True)
+    promote_dir = staging / '_' / 'promote'
+    shutil.rmtree(promote_dir, ignore_errors=True)
+    scratch = staging / '_'
+    if scratch.exists():
+        for f in scratch.glob('provider-context.*.json'):
+            f.unlink(missing_ok=True)
     setup_input.mkdir(parents=True, exist_ok=True)
     setup_output.mkdir(parents=True, exist_ok=True)
 
@@ -48,7 +57,7 @@ def _process_single_template_file(
         )
         return
 
-    rel = tpl.relative_to(setup_input / '{{cookiecutter._repolish_project}}')
+    rel = tpl.relative_to(setup_input / 'repolish')
     rel_str = rel.as_posix()
 
     # For conditional files, use the mapped destination as local path
@@ -69,16 +78,16 @@ def _process_single_template_file(
 
 def preprocess_templates(
     setup_input: Path,
-    providers: Providers,
-    config: RepolishConfig,
+    providers: SessionBundle,
     base_dir: Path,
 ) -> None:
     """Apply anchor-driven replacements to files under setup_input.
 
     Local project files used for anchor-driven overrides are resolved relative
     to `base_dir` (usually the directory containing the config file).
+    Anchors originate exclusively from provider `create_anchors()` implementations.
     """
-    anchors_mapping = {**providers.anchors, **config.anchors}
+    anchors_mapping = providers.anchors
 
     # Build reverse mapping for conditional files. Support `TemplateMapping`
     # entries where `source_template` identifies the source template file.
@@ -88,7 +97,7 @@ def preprocess_templates(
         if isinstance(key, str):
             source_to_dest[key] = dest
 
-    for tpl in setup_input.rglob('*'):
+    for tpl in (setup_input / 'repolish').rglob('*'):
         if not tpl.is_file():
             continue
         _process_single_template_file(

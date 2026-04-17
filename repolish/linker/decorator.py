@@ -1,62 +1,49 @@
 """Decorator for creating library resource linking CLIs."""
 
-import argparse
 import inspect
 import json
-import os
-import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
+from typing import Annotated
 
+import cyclopts
+from cyclopts import Parameter
 from hotlog import (
-    add_verbosity_argument,
     configure_logging,
     get_logger,
     resolve_verbosity,
 )
-from rich.console import Console
 
-from repolish.config import ProviderInfo, ProviderSymlink
+from repolish.config.models.metadata import ProviderFileInfo
+from repolish.console import console
 from repolish.exceptions import ResourceLinkerError
 from repolish.linker.symlinks import link_resources
+from repolish.pkginfo import resolve_package_identity
 
 logger = get_logger(__name__)
 
-# Create Console with auto-detection: disable colors during tests
-# (similar to hotlog's get_console behavior)
-_force_terminal = True
-if 'pytest' in sys.modules or any(key.startswith('PYTEST_') for key in os.environ):
-    _force_terminal = False
 
-console = Console(force_terminal=_force_terminal)
+def _auto_detect_library_name(
+    caller_frame: inspect.FrameInfo,
+) -> tuple[str, str, str]:
+    """Resolve package identity from the caller's frame.
 
-
-@dataclass
-class Symlink:
-    """A symlink from provider resources to the project.
-
-    Simple dataclass for the decorator API. Accepts strings for paths.
-    """
-
-    source: str
-    target: str
-
-
-def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
-    """Auto-detect library name from the caller's package.
-
-    Converts package name to library name by replacing underscores with dashes
-    (Python packages use _, but repo/project names conventionally use -).
+    Uses :func:`repolish.pkginfo.resolve_package_identity` to derive the
+    canonical module name and distribution name from the caller's
+    ``__package__`` attribute.
 
     Args:
         caller_frame: Frame info of the caller
 
     Returns:
-        Library name derived from package name
+        ``(package_attr, pkg, project)`` where *package_attr* is the raw
+        ``__package__`` value, *pkg* is the canonical module name, and
+        *project* is the distribution name (may be ``''`` if unresolvable).
 
     Raises:
-        ResourceLinkerError: If library name cannot be determined
+        ResourceLinkerError: If the caller module or its package cannot be
+            determined.
     """
     caller_module = inspect.getmodule(caller_frame.frame)
     if caller_module is None or not hasattr(
@@ -69,141 +56,131 @@ def _auto_detect_library_name(caller_frame: inspect.FrameInfo) -> str:
         msg = 'Could not determine library name from caller module'
         raise ResourceLinkerError(msg)
 
-    package_name = caller_module.__package__
-    if package_name:  # pragma: no cover
-        # Use the top-level package name, converting underscores to dashes
-        return package_name.split('.')[0].replace('_', '-')
-
-    # This fallback is nearly impossible to trigger - a module with __package__ attribute
-    # set to None/empty is not a standard Python module scenario that developers can control.
-    msg = 'Could not determine library name: caller module has no package'  # pragma: no cover
-    raise ResourceLinkerError(msg)  # pragma: no cover
-
-
-def _create_argument_parser(
-    library_name: str,
-    resolved_source_dir: Path,
-    default_target_base_path: Path,
-) -> argparse.ArgumentParser:
-    """Create and configure the argument parser for the resource linker CLI.
-
-    Args:
-        library_name: Name of the library
-        resolved_source_dir: Resolved path to source directory
-        default_target_base_path: Base path for target directory
-
-    Returns:
-        Configured ArgumentParser instance
-    """
-    parser = argparse.ArgumentParser(
-        description=f'Link {library_name} resources to your project.',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    # add standard verbosity switch provided by hotlog
-    add_verbosity_argument(parser)
-
-    parser.add_argument(
-        '--source-dir',
-        type=Path,
-        default=resolved_source_dir,
-        help=f'Source directory containing {library_name} resources (default: {resolved_source_dir})',
-    )
-
-    parser.add_argument(
-        '--target-dir',
-        type=Path,
-        default=default_target_base_path / library_name,
-        help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
-    )
-
-    parser.add_argument(
-        '--force',
-        action='store_true',
-        help='Force recreation even if target already exists and is correct',
-    )
-
-    parser.add_argument(
-        '--info',
-        action='store_true',
-        help='Output JSON with source/target information instead of linking',
-    )
-
-    return parser
-
-
-def _get_package_root(caller_frame: inspect.FrameInfo) -> Path:
-    """Get the root directory of the package containing the caller."""
-    # Get the module where the decorator was called
-    caller_module = inspect.getmodule(caller_frame.frame)
-    if (
-        caller_module is None or not hasattr(caller_module, '__file__') or caller_module.__file__ is None
-    ):  # pragma: no cover - Edge case: module without __file__ (e.g., built-ins, interactive REPL)
-        msg = 'Could not determine package root from caller module'
+    package_attr = caller_module.__package__
+    if not package_attr:  # pragma: no cover
+        msg = 'Could not determine library name: caller module has no package'
         raise ResourceLinkerError(msg)
 
-    caller_file = Path(caller_module.__file__).resolve()
+    pkg, project = resolve_package_identity(package_attr)
+    return package_attr, pkg, project
 
-    # Get the package name (top-level package)
-    package_name = caller_module.__package__
-    if package_name:
-        # Split on '.' to get the top-level package
-        top_level_package = package_name.split('.')[0]
-    else:  # pragma: no cover - Fallback for standalone modules not in a package
-        # If no package, use the module's parent directory
-        return caller_file.parent
 
-    # Walk up from the caller's file until we find the package root
-    # The package root is the directory containing the top-level package
-    current = caller_file.parent
-    while current.name != top_level_package and current.parent != current:
-        current = current.parent
+def _get_package_root(module_name: str, caller_file: Path) -> Path:
+    """Return the directory that is the package root for *module_name*.
 
-    # Return the package root (the directory itself, not its parent)
-    return current
+    Uses :func:`importlib.util.find_spec` on the fully-resolved *module_name*
+    (as returned by :func:`~repolish.pkginfo.resolve_package_identity`) so
+    that both flat packages and namespace packages are handled correctly:
+
+    - Flat package ``devkit_zensical``:  spec points at ``devkit_zensical/``.
+    - Namespace package ``devkit.zensical``: spec points at
+      ``devkit/zensical/``, not the namespace root ``devkit/``.
+
+    Falls back to *caller_file*'s parent when the spec cannot be resolved
+    (e.g. standalone module not installed in the environment).
+
+    Args:
+        module_name: Canonical dotted module name from ``resolve_package_identity``.
+        caller_file: Resolved path of the calling module's ``__file__``,
+            used as a fallback when *module_name* cannot be found via
+            ``find_spec``.
+    """
+    if module_name:
+        spec = find_spec(module_name)
+        if spec and spec.submodule_search_locations:
+            # Reached only when the provider package is properly installed and
+            # find_spec resolves it to a real location.  Tests mock _get_package_root
+            # directly or use fake package names that find_spec cannot resolve, so
+            # this branch is only exercised in real-world provider usage.
+            return Path(
+                next(iter(spec.submodule_search_locations)),
+            ).resolve()  # pragma: no cover
+    return caller_file.parent
+
+
+def _build_provider_info(
+    resources_dir: Path,
+    pkg_dir: Path,
+    provider_root: str,
+    pkg_name: str,
+    proj_name: str,
+) -> ProviderFileInfo:
+    """Construct the `ProviderFileInfo` object emitted by the `--info` flag."""
+    return ProviderFileInfo(
+        resources_dir=str(resources_dir.absolute()),
+        provider_root=str((resources_dir / provider_root).absolute()) if provider_root else '',
+        site_package_dir=str(pkg_dir.absolute()),
+        package_name=pkg_name,
+        project_name=proj_name,
+    )
+
+
+def _link_and_notify(
+    pkg_dir: Path,
+    resources_dir: Path,
+    *,
+    force: bool,
+    library_name: str,
+    func: Callable,
+) -> None:
+    """Run link_resources and call the success callback, or raise SystemExit on failure."""
+    try:
+        is_symlink = link_resources(
+            source_dir=pkg_dir,
+            target_dir=resources_dir,
+            force=force,
+        )
+        link_type = 'symlink' if is_symlink else 'copy'
+        logger.info(
+            'resources_linked',
+            library_name=library_name,
+            link_type=link_type,
+            target=str(resources_dir),
+            _display_level=1,
+        )
+        func()
+    except Exception as e:
+        logger.exception('linking_failed', error=str(e))
+        raise SystemExit(1) from None
 
 
 def resource_linker(
     *,
-    library_name: str | None = None,
-    default_source_dir: str = 'resources',
+    resources_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_subdir: str = 'templates',
-    default_symlinks: list[Symlink] | None = None,
+    provider_root: str = 'templates',
     _caller_frame: inspect.FrameInfo | None = None,
+    _pkg_name: str = '',
+    _proj_name: str = '',
 ) -> Callable:
     """Decorator to create a CLI for linking library resources.
 
     This decorator wraps a function to create a simple CLI that links
-    a library's resource directory to a target location.
+    a library's resource directory into ``.repolish/<alias>/``.  That is
+    its only responsibility — symlink management is handled separately by
+    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
+
+    The library name (used for the default target subdirectory and CLI help
+    text) is auto-detected from the caller's top-level package name.
 
     Args:
-        library_name: Name of the library (used for default target subdirectory).
-            If not provided, auto-detects from the caller's top-level package name.
-        default_source_dir: Path to resources relative to package root (default: 'resources').
-            Can be overridden for custom locations (e.g., 'mylib/templates').
+        resources_dir: Path to the provider resources relative to the package root
+            (default: 'resources'). Mirrors `ProviderFileInfo.resources_dir`;
+            recorded as an absolute path in provider-info JSON.
         default_target_base: Default base directory for the target (default: .repolish)
-        templates_subdir: Subdirectory within resources containing templates (default: templates)
-        default_symlinks: List of Symlink objects defining default symlinks from provider resources.
-            Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
+        provider_root: Subdirectory within resources_dir where repolish.py and the template
+            tree live (default: 'templates'). Mirrors `ProviderFileInfo.provider_root`;
+            recorded as an absolute path in provider-info JSON.
+        _caller_frame: Internal — caller frame injected by :func:`resource_linker_cli`.
+        _pkg_name: Internal — pre-resolved module name; skips :func:`resolve_package_identity`
+            when provided by :func:`resource_linker_cli`.
+        _proj_name: Internal — pre-resolved distribution name; same as above.
 
     Example:
         ```python
-        from repolish.linker import resource_linker, Symlink
+        from repolish.linker import resource_linker
 
-        # Minimal usage - auto-detects library name from package
         @resource_linker()
-        def main():
-            print("Resources linked successfully!")
-
-        # With default symlinks
-        @resource_linker(
-            library_name='custom-name',
-            default_source_dir='templates',
-            default_symlinks=[
-                Symlink(source='configs/.editorconfig', target='.editorconfig'),
-                Symlink(source='configs/.gitignore', target='.gitignore'),
-            ],
-        )
         def main():
             print("Resources linked successfully!")
 
@@ -219,114 +196,119 @@ def resource_linker(
     # Get caller's frame to determine package root
     # Use provided frame (from resource_linker_cli) or inspect the stack
     caller_frame = _caller_frame if _caller_frame is not None else inspect.stack()[1]
-    package_root = _get_package_root(caller_frame)
 
-    # Auto-compute library_name if not provided
-    if library_name is None:
-        library_name = _auto_detect_library_name(caller_frame)
+    # Resolve package identity once; use it for both the package root and
+    # the library name so resolve_package_identity is not called twice.
+    # When called from resource_linker_cli, _pkg_name/_proj_name are already
+    # resolved and forwarded here to avoid a second lookup.
+    caller_module = inspect.getmodule(caller_frame.frame)
+    _caller_file = Path(getattr(caller_module, '__file__', '') or '').resolve()
+    if not _pkg_name:
+        _package_attr = getattr(caller_module, '__package__', '') or ''
+        _pkg_name, _proj_name = resolve_package_identity(_package_attr)
+    package_root = _get_package_root(_pkg_name, _caller_file)
+    library_name = _proj_name or _pkg_name.replace('_', '-')
 
-    # Resolve source dir relative to package root
-    # Convert to Path to handle both forward slashes (Unix) and backslashes (Windows)
-    resolved_source_dir = package_root / Path(default_source_dir)
+    resolved_resources_dir = package_root / Path(resources_dir)
     default_target_base_path = Path(default_target_base)
 
-    def decorator(func: Callable) -> Callable:
-        def wrapper() -> None:
-            parser = _create_argument_parser(
-                library_name,
-                resolved_source_dir,
-                default_target_base_path,
-            )
-            args = parser.parse_args()
-            # Configure logging using resolved verbosity (supports CI auto-detection)
-            verbosity = resolve_verbosity(args)
-            configure_logging(verbosity=verbosity)
+    def decorator(func: Callable) -> cyclopts.App:
+        link_app = cyclopts.App(
+            help=f'Link {library_name} resources to your project.',
+        )
 
-            # If --info mode, output JSON and exit
-            if args.info:
-                # Create ProviderInfo model and output as JSON
-                # Note: target_dir uses absolute() not resolve() to avoid following symlinks
-                # Convert Symlink to ProviderSymlink
-                provider_symlinks = [
-                    ProviderSymlink(
-                        source=Path(s.source),
-                        target=Path(s.target),
-                    )
-                    for s in (default_symlinks or [])
-                ]
-                info = ProviderInfo(
-                    target_dir=str(args.target_dir.absolute()),
-                    source_dir=str(args.source_dir.absolute()),
-                    templates_dir=templates_subdir,
+        @link_app.default
+        def _command(
+            *,
+            pkg_dir: Annotated[
+                Path,
+                Parameter(
+                    name=['--package-dir'],
+                    help=f'Source directory containing {library_name} resources (default: {resolved_resources_dir})',
+                ),
+            ] = resolved_resources_dir,
+            resources_dir: Annotated[
+                Path,
+                Parameter(
+                    name=['--resources-dir'],
+                    help=f'Target directory for linked resources (default: {default_target_base_path}/{library_name})',
+                ),
+            ] = default_target_base_path / library_name,
+            force: Annotated[
+                bool,
+                Parameter(
+                    help='Force recreation even if target already exists and is correct',
+                ),
+            ] = False,
+            info: Annotated[
+                bool,
+                Parameter(
+                    help='Output JSON with source/target information instead of linking',
+                ),
+            ] = False,
+            verbose: Annotated[
+                int,
+                Parameter(name=['-v', '--verbose'], count=True),
+            ] = 0,
+        ) -> None:
+            configure_logging(verbosity=resolve_verbosity(verbose=verbose))
+            if info:
+                info_obj = _build_provider_info(
+                    resources_dir,
+                    pkg_dir,
+                    provider_root,
+                    _pkg_name,
+                    _proj_name,
+                )
+                print(json.dumps(info_obj.model_dump(mode='json'), indent=2))  # noqa: T201
+            else:
+                _link_and_notify(
+                    pkg_dir,
+                    resources_dir,
+                    force=force,
                     library_name=library_name,
-                    symlinks=provider_symlinks,
-                )
-                print(json.dumps(info.model_dump(mode='json'), indent=2))  # noqa: T201 - Allow print for CLI output
-                return
-
-            try:
-                is_symlink = link_resources(
-                    source_dir=args.source_dir,
-                    target_dir=args.target_dir,
-                    force=args.force,
+                    func=func,
                 )
 
-                link_type = 'symlink' if is_symlink else 'copy'
-                logger.info(
-                    'resources_linked',
-                    library_name=library_name,
-                    link_type=link_type,
-                    target=str(args.target_dir),
-                    _display_level=1,
-                )
-
-                # Call the wrapped function (for custom messages or actions)
-                func()
-
-            except Exception as e:
-                logger.exception('linking_failed', error=str(e))
-                sys.exit(1)
-
-        return wrapper
+        return link_app
 
     return decorator
 
 
 def resource_linker_cli(
     *,
-    library_name: str | None = None,
-    default_source_dir: str = 'resources',
+    resources_dir: str = 'resources',
     default_target_base: str = '.repolish',
-    templates_subdir: str = 'templates',
-    default_symlinks: list[Symlink] | None = None,
-) -> Callable[[], None]:
+    provider_root: str = 'templates',
+) -> cyclopts.App:
     """Create a resource linker CLI function.
 
-    This is a simpler alternative to the @resource_linker decorator.
-    Just assign it to `main` and register it in your pyproject.toml.
+    This is a simpler alternative to the ``@resource_linker`` decorator.
+    Assign the result to ``main`` and register it as a project script.
+    The CLI's sole responsibility is linking the package resources into
+    ``.repolish/<alias>/``; default symlinks are declared instead via
+    :meth:`~repolish.providers.models.Provider.create_default_symlinks`.
+
+    The library name is auto-detected from the caller's top-level package name.
 
     Args:
-        library_name: Name of the library (used for default target subdirectory).
-            If not provided, auto-detects from the caller's top-level package name.
-        default_source_dir: Path to resources relative to package root (default: 'resources').
+        resources_dir: Path to the provider resources relative to the package root
+            (default: 'resources'). Mirrors `ProviderFileInfo.resources_dir`.
         default_target_base: Default base directory for the target (default: .repolish)
-        templates_subdir: Subdirectory within resources containing templates (default: templates)
-        default_symlinks: List of Symlink objects defining default symlinks from provider resources.
-            Users can override these in their repolish.yaml config by setting symlinks to [] or a custom list.
+        provider_root: Subdirectory within resources_dir where repolish.py and the template
+            tree live (default: 'templates'). Mirrors
+            `ProviderFileInfo.provider_root`; recorded as an absolute path
+            in provider-info JSON so the loader can locate the provider entry point.
 
     Returns:
-        A callable that runs the resource linking CLI
+        A :class:`cyclopts.App` that runs the resource linking CLI.
 
     Example:
         In your CLI module (e.g., mylib/cli.py):
         ```python
-        from repolish.linker import resource_linker_cli, Symlink
+        from repolish.linker import resource_linker_cli
 
-        main = resource_linker_cli(
-            default_symlinks=[
-                Symlink(source='configs/.editorconfig', target='.editorconfig'),
-            ],
-        )
+        main = resource_linker_cli()
         ```
 
         In pyproject.toml:
@@ -338,26 +320,28 @@ def resource_linker_cli(
     # Get caller's frame for library name detection
     caller_frame = inspect.stack()[1]
 
-    # Determine library name early
-    detected_library_name = _auto_detect_library_name(caller_frame) if library_name is None else library_name
+    # Resolve package identity early so the success message can use the
+    # detected library name before the decorator is applied.
+    _, _pkg, _proj = _auto_detect_library_name(caller_frame)
+    detected_library_name = _proj or _pkg.replace('_', '-')
 
     # Create a function with auto-generated success message
     def _success_message() -> None:
         """Auto-generated success message."""
         console.print(
-            f'- [bold cyan]{default_source_dir}[/bold cyan] from '
+            f'- [bold cyan]{resources_dir}[/bold cyan] from '
             f'[bold green]{detected_library_name}[/bold green] are now available',
         )
 
     # Apply the decorator to create the CLI
     # Pass the caller frame so resource_linker uses the correct package context
     decorator_factory = resource_linker(
-        library_name=library_name,
-        default_source_dir=default_source_dir,
+        resources_dir=resources_dir,
         default_target_base=default_target_base,
-        templates_subdir=templates_subdir,
-        default_symlinks=default_symlinks,
+        provider_root=provider_root,
         _caller_frame=caller_frame,
+        _pkg_name=_pkg,
+        _proj_name=_proj,
     )
 
     # Get the wrapped function and return it

@@ -1,0 +1,3 @@
+providers:
+  devkit-workspace:
+    cli: devkit-workspace-link

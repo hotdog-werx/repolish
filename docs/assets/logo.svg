@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!--
+    repolish logo mark — concentric diamonds
+    Outer ring: the standard frame, fills 80% of canvas for legibility at small sizes
+    Inner gem (4 facets): the polished result, lit from top-right
+  -->
+
+  <!-- Outer ring: clean diamond, 80% of canvas -->
+  <polygon
+    points="60,10 110,60 60,110 10,60"
+    fill="none"
+    stroke="#93c5fd"
+    stroke-width="5"
+    stroke-linejoin="miter"
+  />
+
+  <!-- Inner gem: four facets, lit from top-right, ~47% of canvas -->
+  <polygon points="60,30 90,60 60,60" fill="#93c5fd"/>
+  <polygon points="60,30 60,60 30,60" fill="#60a5fa"/>
+  <polygon points="90,60 60,90 60,60" fill="#2563eb"/>
+  <polygon points="30,60 60,90 60,60" fill="#1d4ed8"/>
+
+  <!-- Facet dividers -->
+  <line x1="60" y1="30" x2="60" y2="90" stroke="#eff6ff" stroke-width="2" opacity="0.8"/>
+  <line x1="30" y1="60" x2="90" y2="60" stroke="#eff6ff" stroke-width="2" opacity="0.8"/>
+
+  <!-- Inner diamond outline -->
+  <polygon
+    points="60,30 90,60 60,90 30,60"
+    fill="none"
+    stroke="#60a5fa"
+    stroke-width="2"
+    stroke-linejoin="miter"
+  />
+</svg>

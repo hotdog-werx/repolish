@@ -1,34 +1,31 @@
 from pydantic import BaseModel
 
 from repolish import (
+    BaseContext,
     FileMode,
     Provider,
     TemplateMapping,
 )  # re-exported for simple API
-from repolish.loader.models import BaseContext
 
 
 class Ctx(BaseContext):
     """Example provider context for the `template_a` example."""
 
     package_name: str = 'my-project'
+    alias: str = ''
 
 
 class TemplateAProvider(Provider[Ctx, BaseModel]):
     """Class-based example provider for the `template_a` example."""
 
-    def get_provider_name(self) -> str:
-        """Return the provider identifier for this example."""
-        return 'template_a'
-
     def create_context(self) -> Ctx:
         """Return this provider's Pydantic context model."""
-        return Ctx()
+        return Ctx(alias=self.alias)
 
     def create_file_mappings(
         self,
         context: Ctx,  # noqa: ARG002 - context is not used in this example
-    ) -> dict[str, str | TemplateMapping]:
+    ) -> dict[str, str | TemplateMapping | None]:
         """Return file mappings for this example.
 
         Uses a `TemplateMapping` with `FileMode.DELETE` to mark
@@ -38,7 +35,7 @@ class TemplateAProvider(Provider[Ctx, BaseModel]):
 
     def create_anchors(
         self,
-        _ctx: dict[str, object] | None = None,
+        context: Ctx,  # noqa: ARG002 - context is not used in this example
     ) -> dict[str, str]:
         """Return anchor replacements used by the example provider."""
         return {'extra-deps': '\nrequests = "^2.30"\n'}

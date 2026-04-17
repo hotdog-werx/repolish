@@ -1,0 +1,57 @@
+from typing_extensions import override
+
+from repolish import BaseInputs, FinalizeContextOptions, ModeHandler, ProvideInputsOptions, ProviderEntry, Symlink, TemplateMapping
+
+from {{ package_name }}.repolish.models import (
+    {{ context_class }},
+    {{ inputs_class }},
+)
+
+
+class {{ short_prefix }}RootHandler(ModeHandler[{{ context_class }}, {{ inputs_class }}]):
+    """Provider behavior specific to root-mode workspaces."""
+
+    @override
+    def provide_inputs(
+        self,
+        opt: ProvideInputsOptions[{{ context_class }}],
+    ) -> list[BaseInputs]:
+        """Broadcast data to other providers from a root workspace."""
+        return []
+
+    @override
+    def finalize_context(
+        self,
+        opt: FinalizeContextOptions[{{ context_class }}, {{ inputs_class }}],
+    ) -> {{ context_class }}:
+        """Merge inputs received from other providers (root workspace)."""
+        return opt.own_context
+
+    @override
+    def create_file_mappings(
+        self,
+        context: {{ context_class }},
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Map destination paths to template sources for root workspaces.
+
+        Use ``self.templates_root`` to discover mode-specific templates under
+        the provider's ``root/`` directory, e.g.::
+
+            list(self.templates_root.glob('.github/workflows/*.yaml'))
+        """
+        return {}
+
+    @override
+    def create_anchors(
+        self,
+        context: {{ context_class }},
+    ) -> dict[str, str]:
+        """Return anchor replacements for root workspace templates."""
+        return {}
+
+    @override
+    def create_default_symlinks(
+        self,
+    ) -> list[Symlink]:
+        """Return symlinks to create in root workspaces."""
+        return []

@@ -1,6 +1,5 @@
 from collections.abc import Callable
 
-import typer
 from hotlog import configure_logging, resolve_verbosity
 
 
@@ -17,12 +16,12 @@ def setup_logging(verbose: int) -> None:
 def run_cli_command(func: Callable[[], int]) -> None:
     """Execute a CLI command function with proper exception handling.
 
-    This is a convenience function for running CLI commands that return exit codes.
-    Any exception will bubble up so Typer shows the full traceback, successful execution will result
-    in typer.Exit(exit_code).
+    Any exception will bubble up so the CLI shows the full traceback.
+    A non-zero exit code is surfaced via :class:`SystemExit`.
 
     Args:
         func: A callable that takes no arguments and returns an exit code (int)
     """
     exit_code = func()
-    raise typer.Exit(exit_code)
+    if exit_code:
+        raise SystemExit(exit_code)

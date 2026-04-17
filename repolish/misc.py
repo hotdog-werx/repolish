@@ -1,7 +1,25 @@
-from pathlib import PurePosixPath
-from typing import cast
+import tomllib
+from functools import lru_cache
+from pathlib import Path, PurePosixPath
+from typing import Any, cast
 
 from pydantic import BaseModel
+
+
+@lru_cache(maxsize=128)
+def read_toml(path: Path) -> dict[str, Any] | None:
+    """Read and parse a TOML file, caching the result by resolved path.
+
+    Returns the parsed dictionary on success, or ``None`` when the file
+    cannot be read or parsed (missing file, permission error, decode error).
+    The cache is keyed on the resolved path, so the same file is never
+    parsed more than once per process.
+    """
+    try:
+        with path.open('rb') as fh:
+            return tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
 
 
 def ctx_to_dict(ctx: object | None) -> dict[str, object]:

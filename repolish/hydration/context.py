@@ -1,70 +1,42 @@
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
-from repolish.loader import Action, Decision, Providers, create_providers
-from repolish.loader.context import apply_context_overrides
 from repolish.misc import ctx_to_dict
+from repolish.providers import Action, Decision, SessionBundle, create_providers
+from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
-    """Return a mapping of provider alias -> loader provider id (posix path).
-
-    Falls back to an empty mapping when no `config.providers` are defined.
-    """
+    """Return a mapping of provider alias -> loader provider id (posix path)."""
     alias_to_pid: dict[str, str] = {}
-    if not config.providers:
-        return alias_to_pid
-
     for alias, info in config.providers.items():
-        alias_to_pid[alias] = (info.target_dir / info.templates_dir).as_posix()
+        alias_to_pid[alias] = info.provider_root.as_posix()
     return alias_to_pid
 
 
-def _merge_provider_contexts(
-    providers: Providers,
+def _build_override_maps(
     config: RepolishConfig,
     alias_to_pid: dict[str, str],
-) -> dict[str, object]:
-    """Merge provider-scoped contexts into a single merged context.
-
-    This updates `providers.provider_contexts` in-place and returns the
-    computed merged context starting from the loader-provided values.
-    """
-    merged_context: dict[str, object] = dict(providers.context)
-    if not config.providers:
-        return merged_context
-
+) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, str]]]:
+    """Return (provider_overrides, anchor_overrides) keyed by provider_id."""
+    provider_overrides: dict[str, dict[str, object]] = {}
+    anchor_overrides: dict[str, dict[str, str]] = {}
     for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, alias)
-
-        existing = providers.provider_contexts.get(pid)
-        merged = dict(ctx_to_dict(existing))
-
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+        merged: dict[str, object] = {}
         if info.context:
             merged.update(ctx_to_dict(info.context))
-
         if info.context_overrides:
-            apply_context_overrides(merged, info.context_overrides)
-
-        providers.provider_contexts[pid] = merged
-        merged_context.update(merged)
-
-    return merged_context
-
-
-def _apply_global_overrides(
-    merged_context: dict[str, object],
-    config: RepolishConfig,
-) -> None:
-    """Apply project-level dotted overrides and final context into merged_context."""
-    if config.context_overrides:
-        apply_context_overrides(merged_context, config.context_overrides)
-
-    merged_context.update(config.context)
+            merged.update(info.context_overrides)
+        if merged:
+            provider_overrides[pid] = merged
+        if info.anchors:
+            anchor_overrides[pid] = info.anchors
+    return provider_overrides, anchor_overrides
 
 
 def _apply_delete_overrides(
-    providers: Providers,
+    providers: SessionBundle,
     config: RepolishConfig,
 ) -> list[Path]:
     """Apply `config.delete_files` on top of provider delete decisions.
@@ -96,70 +68,59 @@ def _apply_delete_overrides(
     return list(delete_set)
 
 
-def build_final_providers(config: RepolishConfig) -> Providers:
-    """Build the final Providers object by merging provider contributions.
+def build_final_providers(
+    config: RepolishConfig,
+    *,
+    global_context: GlobalContext | None = None,
+    extra_provider_entries: list[ProviderEntry] | None = None,
+    extra_inputs: list[BaseInputs] | None = None,
+) -> SessionBundle:
+    """Build the final SessionBundle object from all configured providers.
 
-    - Loads providers from config.directories
-    - Applies per-provider context overrides defined in `config.providers[alias].context`
-      before merging, giving project config fine-grained control over each
-      provider's values.
-    - Merges config.context over provider.context
-    - Applies config.delete_files entries (with '!' negation) on top of
-      provider decisions and records provenance Decisions for config entries
+    - Loads providers from the directories referenced by configured providers.
+    - Applies per-provider context and overrides from `config.providers[alias]`
+      so that provider hooks see project-supplied values during execution.
+    - Applies `config.delete_files` entries (with '!' negation) on top of
+      provider decisions and records provenance Decisions for config entries.
+
+    When *global_context* is supplied it is forwarded to ``create_providers``
+    instead of calling ``get_global_context()`` — used by the monorepo
+    orchestrator to inject a pre-built context that carries the
+    ``MonorepoContext``.  *extra_provider_entries* and *extra_inputs* are
+    forwarded to the pipeline for member-to-root input routing.
     """
-    # construct per-provider override map that will be applied "early"
-    # inside the loader.  this ensures provider hooks see project-supplied
-    # values before they execute, matching the behaviour of the real
-    # application.  `create_providers` will merge these into the
-    # `provider_contexts` map before gathering inputs.
-    # provider IDs used by the loader are just the directory path passed
-    # to `create_providers`; this is effectively `info.target_dir`.
-    # build a small alias->provider-id map that mirrors the one used when
-    # resolving directories from providers.  when a provider specifies a
-    # non-empty `templates_dir` the loader will receive a path that includes
-    # that suffix, so the override key must match or the configuration will be
-    # ignored.  `_build_alias_to_pid` already performs this computation, so
-    # reuse it here rather than repeating the logic.
+    # build a per-provider override map from the project configuration.
+    # the loader applies these via `_apply_provider_overrides` which uses
+    # `apply_context_overrides` (dot-notation aware) and then re-validates
+    # the model, so each provider's typed context is the single source of truth.
     alias_to_pid = _build_alias_to_pid(config)
-
-    provider_overrides: dict[str, dict[str, object]] = {}
-    for alias, info in config.providers.items():
-        # prefer the canonical id from `alias_to_pid`; fall back to the raw
-        # `target_dir` if something went wrong (shouldn't happen for a
-        # resolved config, but defensive code is cheap).
-        pid = alias_to_pid.get(alias, info.target_dir.as_posix())
-
-        merged: dict[str, object] = {}
-        if info.context:
-            merged.update(ctx_to_dict(info.context))
-        if info.context_overrides:
-            merged.update(info.context_overrides)
-        if merged:
-            provider_overrides[pid] = merged
-
-    providers = create_providers(
-        [str(d) for d in config.directories],
-        base_context=config.context,
-        context_overrides=config.context_overrides,
-        provider_overrides=provider_overrides,
+    provider_overrides, anchor_overrides = _build_override_maps(
+        config,
+        alias_to_pid,
     )
 
-    alias_to_pid = _build_alias_to_pid(config)
-    merged_context = _merge_provider_contexts(providers, config, alias_to_pid)
-    _apply_global_overrides(merged_context, config)
+    # determine directories from provider info (alias_to_pid holds the
+    # normalized loader IDs constructed from target_dir)
+    # type is union because create_providers accepts either plain strings or
+    # (alias,path) tuples.  we only provide strings here, hence the explicit
+    # annotation to satisfy the type checker.
+    # pass (alias, pid) tuples so the loader can assign the config key to
+    # Provider.alias before create_context is called.
+    dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
+    result = create_providers(
+        dirs,
+        provider_overrides=provider_overrides,
+        anchor_overrides=anchor_overrides or None,
+        global_context=global_context,
+        extra_provider_entries=extra_provider_entries,
+        extra_inputs=extra_inputs,
+    )
+
+    # build_final_providers always performs a full pass (dry_run=False),
+    # so the result is always a SessionBundle object.
+    assert isinstance(result, SessionBundle)  # noqa: S101 - guaranteed by dry_run=False
+    providers = result
 
     delete_files = _apply_delete_overrides(providers, config)
-
-    # produce final Providers-like object.  Preserve provider-specific
-    # metadata from the loader so callers can make migration decisions and
-    # renderers can perform provider-scoped template contexts.
-    return Providers(
-        context=merged_context,
-        anchors=providers.anchors,
-        delete_files=delete_files,
-        delete_history=providers.delete_history,
-        file_mappings=providers.file_mappings,
-        create_only_files=providers.create_only_files,
-        provider_contexts=providers.provider_contexts,
-        provider_migrated=providers.provider_migrated,
-    )
+    providers.delete_files = delete_files
+    return providers

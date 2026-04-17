@@ -1,0 +1,25 @@
+# repolish
+
+> Package your standards. Own your edits.
+
+Repolish is a template-push system with drift detection. Teams package
+repository standards into providers; projects opt in via repolish.yaml and
+pull updates with `repolish apply` or detect drift with `repolish --check`.
+
+## Documentation
+
+- [Home](https://hotdog-werx.github.io/repolish/)
+- [Installation](https://hotdog-werx.github.io/repolish/getting-started/installation/)
+- [Quick Start](https://hotdog-werx.github.io/repolish/getting-started/quick-start/)
+- [Tutorial](https://hotdog-werx.github.io/repolish/tutorial/)
+- [Concepts](https://hotdog-werx.github.io/repolish/concepts/overview/)
+- [Provider Development](https://hotdog-werx.github.io/repolish/provider-development/overview/)
+- [Provider Python API](https://hotdog-werx.github.io/repolish/provider-development/context/)
+- [Testing Providers](https://hotdog-werx.github.io/repolish/provider-development/testing/)
+- [repolish.yaml Schema](https://hotdog-werx.github.io/repolish/provider-development/config-file/)
+- [Project Controls](https://hotdog-werx.github.io/repolish/project-controls/)
+- [Preprocessors](https://hotdog-werx.github.io/repolish/concepts/preprocessors/)
+- [Monorepo](https://hotdog-werx.github.io/repolish/concepts/monorepo/)
+- [Resource Linker](https://hotdog-werx.github.io/repolish/provider-development/linker/)
+- [CLI Reference](https://hotdog-werx.github.io/repolish/reference/)
+- [AI Agent Reference (full)](https://hotdog-werx.github.io/repolish/llms/)

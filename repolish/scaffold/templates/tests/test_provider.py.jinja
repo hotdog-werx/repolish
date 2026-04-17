@@ -1,0 +1,26 @@
+"""Tests for {{ class_name }}."""
+
+from {{ package_name }}.repolish.models import {{ context_class }}
+from {{ package_name }}.repolish.provider import {{ class_name }}
+from repolish.testing import ProviderTestBed
+
+
+class TestContext:
+    def test_default_context(self) -> None:
+        bed = ProviderTestBed({{ class_name }})
+        ctx = bed.resolved_context
+        assert isinstance(ctx, {{ context_class }})
+
+
+class TestFileMappings:
+    def test_file_mappings_returns_dict(self) -> None:
+        bed = ProviderTestBed({{ class_name }})
+        fm = bed.file_mappings()
+        assert isinstance(fm, dict)
+
+
+class TestAnchors:
+    def test_anchors_returns_dict(self) -> None:
+        bed = ProviderTestBed({{ class_name }})
+        anchors = bed.anchors()
+        assert isinstance(anchors, dict)

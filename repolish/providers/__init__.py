@@ -1,12 +1,43 @@
-"""Utilities for repolish providers.
+"""Loader package public barrel.
 
-This package provides helper functions and utilities that provider authors
-can use in their repolish.py files to simplify common tasks like extracting
-git repository information, working with files, and manipulating context data.
+This module re-exports the public loader API. Keep this file small and
+free of implementation logic so imports remain cheap and easy to
+reference from the rest of the codebase.
 """
 
-from repolish.providers.git import get_owner_repo
+from repolish.providers._log import logger
+from repolish.providers.models import (
+    Action,
+    BaseContext,
+    Decision,
+    FileMode,
+    ModeHandler,
+    Provider,
+    ProviderEntry,
+    ProviderInfo,
+    SessionBundle,
+    TemplateMapping,
+    call_provider_method,
+    get_provider_context,
+)
+from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
+from repolish.providers.orchestrator import create_providers
 
 __all__ = [
-    'get_owner_repo',
+    'Action',
+    'BaseContext',
+    'Decision',
+    'DryRunResult',
+    'FileMode',
+    'ModeHandler',
+    'PipelineOptions',
+    'Provider',
+    'ProviderEntry',
+    'ProviderInfo',
+    'SessionBundle',
+    'TemplateMapping',
+    'call_provider_method',
+    'create_providers',
+    'get_provider_context',
+    'logger',
 ]

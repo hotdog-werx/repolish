@@ -1,49 +1,63 @@
-site_name: repolish
-site_description: A hybrid templating and diff/patch system for maintaining repository consistency while preserving local customizations.
+site_name: Repolish Documentation
+site_description: Package your standards. Own your edits.
 site_url: https://hotdog-werx.github.io/repolish
 repo_url: https://github.com/hotdog-werx/repolish
 repo_name: hotdog-werx/repolish
 
 nav:
+  - Home:
+      - index.md
+      - AI Agent Reference: llms.md
+
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quick-start.md
-  - Configuration:
-      - Overview: configuration/overview.md
-      - Context: configuration/context.md
-      # - Overrides: wip.md
-      # - Anchors: wip.md
-  # - Providers:
-  #     - Overview: wip.md
-  # - Creating Providers: wip.md
-  # - Context Functions: wip.md
-  # - File Operations: wip.md
-  # - Templating:
-  #     - Overview: wip.md
-  # - Template Structure: wip.md
-  # - File Mappings: wip.md
-  # - Cookiecutter Integration: wip.md
-  # - Processing:
-  #     - Overview: wip.md
-  # - Anchors: wip.md
-  # - Regex Patterns: wip.md
-  # - Text Replacement: wip.md
-  # - Post-Processing: wip.md
-  - Operations:
-      # - Overview: wip.md
-      - CLI Commands: operations/cli.md
-      # - Check Mode: wip.md
-      # - Apply Mode: wip.md
-      # - Diff Output: wip.md
-  - Guides:
-      # - Python Projects: guides/python.md
-      - Provider Patterns: guides/patterns.md
-      - Resource Linker: guides/linker.md
-      - Debugging Preprocessors: guides/debugger.md
-      - Preprocessors: guides/preprocessors.md
-      - Templates: guides/templates.md
-      - Provider Migration: guides/provider-migration.md
-      # - Troubleshooting: wip.md
+
+  - Tutorial:
+      - Introduction: tutorial/index.md
+      - 1. Workspace Provider: tutorial/01-workspace-provider.md
+      - 2. Python Provider: tutorial/02-python-provider.md
+      - 3. The Sync Problem: tutorial/03-keeping-in-sync.md
+      - 4. Going Monorepo: tutorial/04-monorepo.md
+      - 5. Everything Together: tutorial/05-using-all-providers.md
+
+  - Concepts:
+      - Overview: concepts/overview.md
+      - Providers: concepts/providers.md
+      - Templates: concepts/templates.md
+      - Preprocessors: concepts/preprocessors.md
+      - Context: concepts/context.md
+      - File Modes: concepts/file-modes.md
+      - Monorepo: concepts/monorepo.md
+
+  - Project Controls:
+      - You Are in Charge: project-controls/index.md
+      - Pause a File: project-controls/pause.md
+      - Override a Template: project-controls/template-overrides.md
+      - Override Context: project-controls/context-overrides.md
+      - Local Providers: project-controls/local-providers.md
+      - Preserve Your Edits: project-controls/anchors.md
+
+  - Provider Development:
+      - Overview: provider-development/overview.md
+      - repolish.yaml Schema: provider-development/config-file.md
+      - Provider Settings: provider-development/providers.md
+      - Provider Python API: provider-development/context.md
+      - Templates: provider-development/templates.md
+      - Preprocessors: provider-development/preprocessors.md
+      - Monorepo Setup: provider-development/monorepo.md
+      - Mode Handlers: provider-development/mode-handler.md
+      - Resource Linker: provider-development/linker.md
+      - Testing Providers: provider-development/testing.md
+      - Provider Migration: provider-development/provider-migration.md
+
+  - Reference:
+      - reference/index.md
+      - apply: reference/apply.md
+      - link: reference/link.md
+      - lint: reference/lint.md
+      - preview: reference/preview.md
+      - scaffold: reference/scaffold.md
 
 # Configuration
 theme:
@@ -79,8 +93,8 @@ theme:
       toggle:
         icon: lucide/moon-star
         name: Switch to light mode
-  # favicon: assets/zensical.png
-  # logo: assets/zensical.svg
+  favicon: assets/logo.svg
+  logo: assets/logo.svg
   icon:
     tag:
       default: lucide/hash

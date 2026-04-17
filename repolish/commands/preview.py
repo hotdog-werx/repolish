@@ -3,8 +3,8 @@ from pathlib import Path
 import yaml
 from hotlog import get_logger
 from pydantic import BaseModel, Field
-from rich.console import Console
 
+from repolish.console import console
 from repolish.preprocessors import extract_patterns, replace_text
 
 logger = get_logger(__name__)
@@ -34,8 +34,6 @@ def command(
     show_steps: bool,
 ) -> int:
     """Run the preview preprocessor tool."""
-    console = Console()
-
     with Path(debug_file).open(encoding='utf-8') as f:
         data = yaml.safe_load(f)
     debug_config = DebugConfig.model_validate(data)
@@ -76,5 +74,5 @@ def command(
         )
         console.print()
     console.rule('[bold]Result')
-    console.print(result)
+    console.print(result, markup=False, highlight=False)
     return 0

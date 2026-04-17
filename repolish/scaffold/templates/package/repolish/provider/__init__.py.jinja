@@ -1,0 +1,105 @@
+from typing_extensions import override
+
+from repolish import BaseInputs, FinalizeContextOptions, ModeHandler, Provider, ProvideInputsOptions, ProviderEntry, Symlink, TemplateMapping
+
+from {{ package_name }}.repolish.models import (
+    {{ context_class }},
+    {{ inputs_class }},
+)
+from {{ package_name }}.repolish.provider.member import {{ short_prefix }}MemberHandler
+from {{ package_name }}.repolish.provider.root import {{ short_prefix }}RootHandler
+from {{ package_name }}.repolish.provider.standalone import {{ short_prefix }}StandaloneHandler
+
+
+class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
+    """{{ class_name }} repolish provider."""
+
+    root_mode = {{ short_prefix }}RootHandler
+    member_mode = {{ short_prefix }}MemberHandler
+    standalone_mode = {{ short_prefix }}StandaloneHandler
+
+    @override
+    def create_context(self) -> {{ context_class }}:
+        """Return the initial context for this provider.
+
+        The base implementation will attempt to construct the context using the
+        no-argument constructor of the type parameter.  Override when you need
+        to pass explicit arguments or perform other initialisation.
+        """
+        return {{ context_class }}()
+
+    @override
+    def provide_inputs(
+        self,
+        opt: ProvideInputsOptions[{{ context_class }}],
+    ) -> list[BaseInputs]:
+        """Broadcast data to other providers that declare a matching input schema.
+
+        Return a list of Pydantic model instances destined for other providers.
+        Return an empty list if this provider has nothing to share.
+        """
+        return []
+
+    @override
+    def finalize_context(
+        self,
+        opt: FinalizeContextOptions[{{ context_class }}, {{ inputs_class }}],
+    ) -> {{ context_class }}:
+        """Merge inputs received from other providers into this context.
+
+        Inspect ``opt.received_inputs``, update ``opt.own_context`` as needed,
+        and return it.  If this provider does not consume inputs, return
+        ``opt.own_context`` unchanged.
+        """
+        return opt.own_context
+
+    @override
+    def get_inputs_schema(self) -> type[{{ inputs_class }}]:
+        """Declare the Pydantic model class this provider accepts as input."""
+        return {{ inputs_class }}
+
+    @override
+    def create_file_mappings(
+        self,
+        context: {{ context_class }},
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Map destination paths to template sources.
+
+        Keys are POSIX paths relative to the consumer repo root.  Values can
+        be:
+        - a string — path to the source template inside ``resources/templates``
+        - a ``TemplateMapping`` — for CREATE_ONLY, DELETE, or KEEP semantics
+        - ``None`` — omit the file (no-op)
+
+        Use ``self.templates_root`` to discover templates dynamically, e.g.::
+            workflows = (self.templates_root / 'repolish' / '.github' / 'workflows').glob('*.yaml')
+
+        Note: mode handlers (root_mode / member_mode / standalone_mode) each
+        have their own ``create_file_mappings`` that is called instead of this
+        one when a matching handler is registered and the workspace mode is set.
+        """
+        return {}
+
+    @override
+    def create_anchors(
+        self,
+        context: {{ context_class }},
+    ) -> dict[str, str]:
+        """Supply anchor replacement values for this provider's templates.
+
+        Anchors are named placeholders inside template files that are replaced
+        before Jinja rendering.  Return an empty dict if no anchors are needed.
+        """
+        return {}
+
+    @override
+    def create_default_symlinks(
+        self,
+    ) -> list[Symlink]:
+        """Return the default symlinks this provider wants created.
+
+        Each :class:`~repolish.Symlink` has a ``source`` path (relative to the
+        provider's ``resources_dir``) and a ``target`` path (relative to the
+        project root).  Return an empty list if no symlinks are needed.
+        """
+        return []

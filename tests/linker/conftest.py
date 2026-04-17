@@ -1,13 +1,12 @@
 """Shared fixtures for linker tests."""
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import Any, TypedDict
 
+import cyclopts
 import pytest
 import pytest_mock
 
-from repolish.config import ProviderInfo
 from repolish.linker.decorator import resource_linker
 
 
@@ -23,15 +22,10 @@ class MockedPackageDict(TypedDict):
 
     pkg_root: Path
     resources: Path
-    mock_link_resources: Any
 
 
-class BasicLinkCliFixture(Protocol):
-    """Type for basic_link_cli fixture callable."""
-
-    def __call__(self) -> None:
-        """Execute the decorated link_cli function."""
-        ...
+# Type alias for the cyclopts App returned by the resource_linker decorator.
+BasicLinkCliFixture = cyclopts.App
 
 
 @pytest.fixture
@@ -61,20 +55,17 @@ def mocked_package(tmp_path: Path, mocker: pytest_mock.MockerFixture):
     return {
         'pkg_root': pkg_root,
         'resources': resources,
-        'mock_link_resources': mocker.patch(
-            'repolish.linker.decorator.link_resources',
-            return_value=True,
-        ),
     }
 
 
 @pytest.fixture
-def basic_link_cli(mocked_package: dict[str, Any]) -> Callable[[], None]:
+def basic_link_cli(mocked_package: dict[str, Any]) -> cyclopts.App:
     """Fixture that returns a basic decorated link_cli function."""
 
     @resource_linker(
-        library_name='mylib',
-        default_source_dir='resources',
+        _pkg_name='mylib',
+        _proj_name='mylib',
+        resources_dir='resources',
     )
     def link_cli() -> None:
         pass
@@ -97,13 +88,3 @@ def provider_resources_setup(tmp_path: Path) -> Path:
     provider_resources = tmp_path / '.repolish' / 'mylib'
     provider_resources.mkdir(parents=True)
     return provider_resources
-
-
-@pytest.fixture
-def basic_provider_info(tmp_path: Path) -> ProviderInfo:
-    """Create a basic ProviderInfo for testing."""
-    return ProviderInfo(
-        library_name='mylib',
-        target_dir=str(tmp_path / '.repolish' / 'mylib'),
-        source_dir='/fake/source/mylib',
-    )

@@ -1,5 +1,4 @@
 import json
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,38 +37,23 @@ class InvalidConfigCase:
             name='empty_config',
             config_data={},
             error_type=ConfigValidationError,
-            error_match='must specify either "directories" or "providers"',
+            error_match='must specify at least one provider',
         ),
         InvalidConfigCase(
             name='missing_required_fields',
-            config_data={'context': {'key': 'value'}},
+            config_data={},
             error_type=ConfigValidationError,
-            error_match='must specify either "directories" or "providers"',
+            error_match='must specify at least one provider',
         ),
         InvalidConfigCase(
-            name='invalid_provider_config_no_cli_or_directory',
+            name='invalid_provider_config_no_cli_or_provider_root',
             config_data={
                 'providers': {
-                    'test': {
-                        'templates_dir': 'templates',
-                    },
+                    'test': {},
                 },
             },
             error_type=ProviderConfigError,
-            error_match='Either cli or directory must be provided',
-        ),
-        InvalidConfigCase(
-            name='invalid_provider_config_both_cli_and_directory',
-            config_data={
-                'providers': {
-                    'test': {
-                        'cli': 'test-link',
-                        'directory': './templates',
-                    },
-                },
-            },
-            error_type=ProviderConfigError,
-            error_match='Cannot specify both cli and directory',
+            error_match='Either cli or provider_root must be provided',
         ),
         InvalidConfigCase(
             name='providers_order_references_undefined_provider',
@@ -77,7 +61,7 @@ class InvalidConfigCase:
                 'providers_order': ['base', 'undefined'],
                 'providers': {
                     'base': {
-                        'directory': './templates',
+                        'provider_root': './templates',
                     },
                 },
             },
@@ -89,7 +73,7 @@ class InvalidConfigCase:
             config_data={
                 'providers_order': ['base'],
                 'providers': {
-                    'base': {'directory': './templates'},
+                    'base': {'provider_root': './templates'},
                 },
                 'template_overrides': {'README.md': 'undefined'},
             },
@@ -106,7 +90,7 @@ class InvalidConfigCase:
                 },
             },
             error_type=DirectoryValidationError,
-            error_match='No directories resolved - providers may not be linked yet',
+            error_match='No providers resolved - configuration may be empty',
         ),
     ],
     ids=lambda case: case.name,
@@ -189,18 +173,17 @@ def test_load_config_with_provider_directory(
 
     # Create provider directory
     provider_dir = config_dir / 'my-provider'
-    templates_path = provider_dir / 'templates'
-    templates_path.mkdir(parents=True)
-    (templates_path / 'repolish.py').write_text(
+    provider_dir.mkdir(parents=True)
+    (provider_dir / 'repolish.py').write_text(
         'def create_context():\n    return {}\n',
     )
-    (templates_path / 'repolish').mkdir()
+    (provider_dir / 'repolish').mkdir()
 
     config_data = {
         'providers_order': ['base'],
         'providers': {
             'base': {
-                'directory': 'my-provider',
+                'provider_root': 'my-provider',
             },
         },
     }
@@ -210,14 +193,9 @@ def test_load_config_with_provider_directory(
 
     config = load_config(config_path)
 
-    # Should auto-build directories from provider
-    assert len(config.directories) == 1
-    assert config.directories[0] == templates_path.resolve()
-
-    # Provider should be resolved
+    # provider entry should exist and point at the provider root directory
     assert 'base' in config.providers
-    assert config.providers['base'].target_dir == provider_dir.resolve()
-    assert config.providers['base'].templates_dir == 'templates'
+    assert config.providers['base'].provider_root.resolve() == provider_dir.resolve()
 
 
 def test_load_config_template_overrides_roundtrip(
@@ -227,7 +205,7 @@ def test_load_config_template_overrides_roundtrip(
     config_data = {
         'providers_order': ['test'],
         'providers': {
-            'test': {'directory': './templates'},
+            'test': {'provider_root': './templates'},
         },
         'template_overrides': {'README.md': 'test'},
     }
@@ -236,13 +214,9 @@ def test_load_config_template_overrides_roundtrip(
     # create the resolved provider directory structure so validation passes
     cfg_dir = config_path.parent
     provider_dir = cfg_dir / 'templates'
-    # config resolution will append another `templates` segment, so create
-    # `templates/templates` and give it a minimal repolish layout
-    real_templates = provider_dir / 'templates'
-    rep = real_templates / 'repolish'
-    rep.mkdir(parents=True)
-    # also touch a dummy repolish.py so validation is happy
-    (real_templates / 'repolish.py').write_text('')
+    # The directory config points directly at the provider root
+    (provider_dir / 'repolish').mkdir(parents=True)
+    (provider_dir / 'repolish.py').write_text('')
 
     config = load_config(config_path)
     assert config.template_overrides == {'README.md': 'test'}
@@ -252,7 +226,6 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
     """Test loading with provider that has been linked (has info file)."""
     config_dir, target_dir = provider_setup(
         'mylib',
-        library_name='my-library',
         create_templates=True,
     )
 
@@ -270,22 +243,15 @@ def test_load_config_with_linked_provider(provider_setup: ProviderSetupFixture):
 
     config = load_config(config_path)
 
-    # Should auto-build directories from linked provider
-    assert len(config.directories) == 1
-    expected_templates = target_dir / 'templates'
-    assert config.directories[0] == expected_templates.resolve()
-
-    # Provider should be resolved with info from JSON
+    # provider should be registered with correct info from JSON
     assert 'mylib' in config.providers
-    assert config.providers['mylib'].target_dir == target_dir.resolve()
-    assert config.providers['mylib'].library_name == 'my-library'
-    assert config.providers['mylib'].templates_dir == 'templates'
+    assert config.providers['mylib'].provider_root.resolve() == target_dir.resolve()
 
 
 def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
     """Test loading with multiple providers in order."""
-    config_dir, target1 = provider_setup('base', create_templates=True)
-    _, target2 = provider_setup('python', create_templates=True)
+    config_dir, _target1 = provider_setup('base', create_templates=True)
+    _, _target2 = provider_setup('python', create_templates=True)
 
     config_data = {
         'providers_order': ['base', 'python'],
@@ -300,11 +266,10 @@ def test_load_config_multiple_providers(provider_setup: ProviderSetupFixture):
 
     config = load_config(config_path)
 
-    # Directories should be in providers_order
-    assert len(config.directories) == 2
-    assert config.directories[0] == (target1 / 'templates').resolve()
-    assert config.directories[1] == (target2 / 'templates').resolve()
+    # providers should respect providers_order
     assert config.providers_order == ['base', 'python']
+    # provider entries should exist in that order when iterating
+    assert list(config.providers.keys()) == ['base', 'python']
 
 
 def test_load_config_with_symlinks(provider_setup: ProviderSetupFixture):
@@ -344,44 +309,31 @@ def test_load_config_with_symlinks(provider_setup: ProviderSetupFixture):
     assert symlink.target == Path('.editorconfig')
 
 
-def test_load_config_with_provider_default_symlinks(
+def test_load_config_omitted_symlinks_resolves_to_empty(
     provider_setup: ProviderSetupFixture,
 ):
-    """Test that provider default symlinks are used when user doesn't specify any."""
+    """When no symlinks are specified in repolish.yaml, ResolvedProviderInfo.symlinks is empty.
+
+    Provider default symlinks are loaded at apply time via
+    Provider.create_default_symlinks(), not at config-load time.
+    """
     config_dir, target_dir = provider_setup('test', create_templates=True)
 
-    # Create the symlink source files
-    configs_dir = target_dir / 'configs'
-    configs_dir.mkdir()
-    (configs_dir / '.editorconfig').write_text('# editorconfig')
-    (configs_dir / '.gitignore').write_text('# gitignore')
-
-    # Write provider info with default symlinks
     info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
     info_file.write_text(
         json.dumps(
             {
-                'target_dir': str(target_dir),
-                'source_dir': '/fake/source',
-                'templates_dir': 'templates',
-                'library_name': 'test',
-                'symlinks': [
-                    {
-                        'source': 'configs/.editorconfig',
-                        'target': '.editorconfig',
-                    },
-                    {'source': 'configs/.gitignore', 'target': '.gitignore'},
-                ],
+                'resources_dir': str(target_dir),
+                'site_package_dir': '/fake/source',
             },
         ),
     )
-
     config_data = {
         'providers_order': ['test'],
         'providers': {
             'test': {
                 'cli': 'test-link',
-                # Note: no symlinks specified - should use provider defaults
+                # No symlinks key → should resolve to [] at config time
             },
         },
     }
@@ -391,17 +343,8 @@ def test_load_config_with_provider_default_symlinks(
 
     config = load_config(config_path)
 
-    # Should use provider's default symlinks
     assert 'test' in config.providers
-    assert len(config.providers['test'].symlinks) == 2
-    assert config.providers['test'].symlinks[0].source == Path(
-        'configs/.editorconfig',
-    )
-    assert config.providers['test'].symlinks[0].target == Path('.editorconfig')
-    assert config.providers['test'].symlinks[1].source == Path(
-        'configs/.gitignore',
-    )
-    assert config.providers['test'].symlinks[1].target == Path('.gitignore')
+    assert config.providers['test'].symlinks == []
 
 
 def test_load_config_override_provider_symlinks_with_empty_list(
@@ -415,21 +358,13 @@ def test_load_config_override_provider_symlinks_with_empty_list(
     configs_dir.mkdir()
     (configs_dir / '.editorconfig').write_text('# editorconfig')
 
-    # Write provider info with default symlinks
+    # Explicitly override with no symlinks
     info_file = config_dir / '.repolish' / '_' / 'provider-info.test.json'
     info_file.write_text(
         json.dumps(
             {
-                'target_dir': str(target_dir),
-                'source_dir': '/fake/source',
-                'templates_dir': 'templates',
-                'library_name': 'test',
-                'symlinks': [
-                    {
-                        'source': 'configs/.editorconfig',
-                        'target': '.editorconfig',
-                    },
-                ],
+                'resources_dir': str(target_dir),
+                'site_package_dir': '/fake/source',
             },
         ),
     )
@@ -472,9 +407,8 @@ def test_load_config_skip_validation_for_linking(
     # Should not raise even though provider is not linked
     config = load_config(config_path, validate=False)
 
-    # Provider is not linked and has no directory, so it won't be in providers dict
-    assert config.directories == []  # No directories since not linked
-    assert 'unlinked' not in config.providers  # Not resolved
+    # Provider is not linked and has no directory, so it isn't resolved
+    assert 'unlinked' not in config.providers
     assert config.providers_order == ['unlinked']  # But order preserved
 
 
@@ -482,26 +416,28 @@ def test_load_config_all_fields(
     yaml_config_file: YamlConfigFileFixture,
     template_dir: TemplateDirFixture,
 ):
-    """Test loading config with all optional fields populated."""
+    """Test loading config with all optional fields populated.
+
+    The old version used the deprecated `directories` key; now we supply a
+    single provider configured via `directory`.  All other global fields
+    should round-trip through validation and resolution unchanged.
+    """
     dir1 = template_dir('test1')
 
     config_data = {
-        'directories': [str(dir1)],
-        'context': {'project': 'test'},
-        'context_overrides': {'nested.key': 'value'},
-        'anchors': {'header': '# Header'},
+        'providers': {'base': {'provider_root': str(dir1)}},
         'post_process': ['black .', 'ruff check .'],
         'delete_files': ['old.txt', '!keep.txt'],
     }
     config_path = yaml_config_file(config_data)
 
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', DeprecationWarning)
-        config = load_config(config_path)
+    config = load_config(config_path)
 
-    assert config.context == {'project': 'test'}
-    assert config.context_overrides == {'nested.key': 'value'}
-    assert config.anchors == {'header': '# Header'}
+    # provider must be resolved
+    assert 'base' in config.providers
+    assert config.providers['base'].provider_root.resolve() == dir1.resolve()
+
+    # other globals still preserved
     assert config.post_process == ['black .', 'ruff check .']
     assert config.delete_files == ['old.txt', '!keep.txt']
     assert config.config_dir == config_path.parent.resolve()
@@ -518,9 +454,9 @@ def test_load_config_providers_order_optional(
     # Config WITHOUT providers_order - should use dict key order from YAML
     config_data = {
         'providers': {
-            'base': {'directory': str(target1)},
-            'python': {'directory': str(target2)},
-            'extras': {'directory': str(target3)},
+            'base': {'provider_root': str(target1)},
+            'python': {'provider_root': str(target2)},
+            'extras': {'provider_root': str(target3)},
         },
     }
     config_path = config_dir / 'repolish.yaml'
@@ -530,8 +466,4 @@ def test_load_config_providers_order_optional(
     config = load_config(config_path)
 
     # Should process providers in the order they appear in the YAML (dict key order)
-    assert len(config.directories) == 3
-    assert config.directories[0].name == 'templates'
-    assert config.directories[0].parent.name == 'base'
-    assert config.directories[1].parent.name == 'python'
-    assert config.directories[2].parent.name == 'extras'
+    assert list(config.providers.keys()) == ['base', 'python', 'extras']

@@ -1,12 +1,14 @@
 """Tests for hydration comparison functionality."""
 
+from io import StringIO
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.display import rich_print_diffs
-from repolish.loader import Providers, TemplateMapping
+from repolish.providers import SessionBundle, TemplateMapping
 
 
 def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
@@ -24,8 +26,7 @@ def test_mapping_with_none_source_skipped(tmp_path: Path) -> None:
     project_root = tmp_path / 'proj'
     project_root.mkdir()
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         file_mappings={
@@ -53,8 +54,7 @@ def test_check_generated_output_reports_missing_and_diff(
     (project_root).mkdir()
     (project_root / 'foo.txt').write_text('old content')
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -63,8 +63,35 @@ def test_check_generated_output_reports_missing_and_diff(
     diffs = check_generated_output(setup_output, providers, project_root)
     # we expect a diff because contents differ
     assert diffs
-    # Now exercise rich_print_diffs to ensure code path executes (no exception)
+
+    # Call without a console so the default Console(force_terminal=True) path is exercised
     rich_print_diffs(diffs)
+
+    # Capture output for each branch and assert expected content appears
+    buf = StringIO()
+    console = Console(file=buf, highlight=False)
+
+    rich_print_diffs(diffs, console=console)
+    output = buf.getvalue()
+    assert 'foo.txt' in output  # rule header
+    assert 'new content' in output  # diff body
+
+    buf = StringIO()
+    console = Console(file=buf, highlight=False)
+    rich_print_diffs([('gone.txt', 'MISSING')], console=console)
+    output = buf.getvalue()
+    assert 'gone.txt' in output
+    assert 'MISSING' in output
+
+    buf = StringIO()
+    console = Console(file=buf, highlight=False)
+    rich_print_diffs(
+        [('extra.txt', 'PRESENT_BUT_SHOULD_BE_DELETED')],
+        console=console,
+    )
+    output = buf.getvalue()
+    assert 'extra.txt' in output
+    assert 'PRESENT_BUT_SHOULD_BE_DELETED' in output
 
 
 def test_unified_diff_format_has_proper_newlines(tmp_path: Path) -> None:
@@ -85,8 +112,7 @@ def test_unified_diff_format_has_proper_newlines(tmp_path: Path) -> None:
     proj_file = project_root / 'example.txt'
     proj_file.write_text('line1\nmodified\nline3\n')
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -128,8 +154,7 @@ def test_check_generated_output_handles_prefixed_mapping(
     project_root.mkdir()
     (project_root / 'foo.txt').write_text('other')
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -154,8 +179,7 @@ def test_line_ending_ignored_by_default(tmp_path: Path) -> None:
     base_file = base_dir / 'a.txt'
     base_file.write_bytes(b'line1\r\nline2\r\n')
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -183,8 +207,7 @@ def test_preserve_line_endings_env(
     base_file = base_dir / 'a.txt'
     base_file.write_bytes(b'line1\r\nline2\r\n')
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -215,8 +238,7 @@ def test_preserve_line_endings_identical_files(
     base_file = base_dir / 'a.txt'
     base_file.write_bytes(b'line1\r\nline2\r\n')
 
-    providers = Providers(
-        context={},
+    providers = SessionBundle(
         anchors={},
         delete_files=[],
         delete_history={},
@@ -224,3 +246,217 @@ def test_preserve_line_endings_identical_files(
 
     diffs = check_generated_output(setup_output, providers, base_dir)
     assert not diffs, 'Expected no diffs for identical files even when preserving line endings'
+
+
+def test_binary_files_identical_produce_no_diff(tmp_path: Path) -> None:
+    """Identical binary files that cannot be decoded as UTF-8 should produce no diff."""
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+    binary = b'\x89PNG\r\n\x1a\n\x00\x00\x00\xff\xfe'
+    (setup_output / 'repolish' / 'logo.png').write_bytes(binary)
+
+    base_dir = tmp_path / 'base'
+    base_dir.mkdir()
+    (base_dir / 'logo.png').write_bytes(binary)
+
+    providers = SessionBundle(
+        anchors={},
+        delete_files=[],
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+    assert not diffs
+
+
+def test_binary_files_different_produce_diff_entry(tmp_path: Path) -> None:
+    """Differing binary files that cannot be decoded as UTF-8 should appear in diffs."""
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+    (setup_output / 'repolish' / 'logo.png').write_bytes(
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\xff\xfe',
+    )
+
+    base_dir = tmp_path / 'base'
+    base_dir.mkdir()
+    (base_dir / 'logo.png').write_bytes(
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\xaa\xbb',
+    )
+
+    providers = SessionBundle(
+        anchors={},
+        delete_files=[],
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+    assert len(diffs) == 1
+    assert diffs[0][0] == 'logo.png'
+
+
+def test_check_skips_paused_regular_file(tmp_path: Path) -> None:
+    """A file listed in paused_files produces no diff even when content differs."""
+    setup_output = tmp_path / 'out'
+    rendered = setup_output / 'repolish' / 'config.toml'
+    rendered.parent.mkdir(parents=True)
+    rendered.write_text('provider = true')
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    (base_dir / 'config.toml').write_text('developer = true')
+
+    providers = SessionBundle(
+        delete_files=[],
+        delete_history={},
+        paused_files=frozenset({'config.toml'}),
+    )
+
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+    )
+    assert diffs == []
+
+
+def test_check_skips_paused_deletion(tmp_path: Path) -> None:
+    """A file in both delete_files and paused_files is not reported as PRESENT_BUT_SHOULD_BE_DELETED."""
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    (base_dir / 'legacy.txt').write_text('old')
+
+    providers = SessionBundle(
+        delete_files=[Path('legacy.txt')],
+        delete_history={},
+        paused_files=frozenset({'legacy.txt'}),
+    )
+
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+    )
+    assert diffs == []
+
+
+def test_check_skips_paused_file_mapping(tmp_path: Path) -> None:
+    """A mapped file in paused_files produces no diff even when content differs."""
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish').mkdir(parents=True)
+    (setup_output / 'repolish' / '_repolish.mise.toml').write_text(
+        'provider version',
+    )
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    (base_dir / 'mise.toml').write_text(
+        'developer version\n# my custom comment',
+    )
+
+    providers = SessionBundle(
+        delete_files=[],
+        delete_history={},
+        file_mappings={'mise.toml': '_repolish.mise.toml'},
+        paused_files=frozenset({'mise.toml'}),
+    )
+
+    diffs = check_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+    )
+    assert diffs == []
+
+
+def test_check_skips_suppressed_sources(tmp_path: Path) -> None:
+    """Files in suppressed_sources produce no diff even when staged content differs.
+
+    A provider returning {dest: None} from create_file_mappings has opted out
+    of managing that path.  check_generated_output must not surface it as a
+    change that needs to be applied.
+    """
+    setup_output = tmp_path / 'out'
+    (setup_output / 'repolish' / '.github' / 'workflows').mkdir(parents=True)
+    suppressed = setup_output / 'repolish' / '.github' / 'workflows' / '_ci-checks.yaml'
+    suppressed.write_text('provider version')
+    (setup_output / 'repolish' / 'README.md').write_text('readme')
+
+    base_dir = tmp_path / 'proj'
+    base_dir.mkdir()
+    # project has a different version of the suppressed file — should not matter
+    (base_dir / '.github' / 'workflows').mkdir(parents=True)
+    (base_dir / '.github' / 'workflows' / '_ci-checks.yaml').write_text(
+        'local version',
+    )
+    (base_dir / 'README.md').write_text('readme')
+
+    providers = SessionBundle(
+        delete_files=[],
+        delete_history={},
+        suppressed_sources={'.github/workflows/_ci-checks.yaml'},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+
+    # suppressed path must produce no diff
+    assert not any('.github/workflows/_ci-checks.yaml' in d[0] for d in diffs)
+    assert diffs == []
+
+
+def test_check_reports_mapping_source_missing(tmp_path: Path) -> None:
+    """check_generated_output reports MAPPING_SOURCE_MISSING for a missing source.
+
+    The source file referenced by a mapping does not exist in the render output.
+    Exercises the distinct error path compared to a missing destination.
+    """
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = SessionBundle(
+        anchors={},
+        delete_files=[],
+        file_mappings={'config.yml': '_repolish.missing.yml'},
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+
+    assert len(diffs) == 1
+    rel, msg = diffs[0]
+    assert rel == 'config.yml'
+    assert 'MAPPING_SOURCE_MISSING' in msg
+    assert '_repolish.missing.yml' in msg
+
+
+def test_check_skips_regular_file_used_as_mapping_source(
+    tmp_path: Path,
+) -> None:
+    """check_generated_output does not flag a non-prefixed source file as missing.
+
+    When the file appears as a mapping value it is excluded from the normal
+    check iteration and the mapped destination is compared instead.
+    """
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    repolish_dir.mkdir(parents=True)
+    (repolish_dir / 'template-config.yml').write_text('template content')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'final-config.yml').write_text('template content')
+
+    providers = SessionBundle(
+        anchors={},
+        delete_files=[],
+        file_mappings={'final-config.yml': 'template-config.yml'},
+        delete_history={},
+    )
+
+    diffs = check_generated_output(setup_output, providers, base_dir)
+    assert len(diffs) == 0

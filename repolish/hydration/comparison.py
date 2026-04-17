@@ -6,8 +6,8 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.hydration.misc import get_source_str_from_mapping
-from repolish.loader import Providers
 from repolish.misc import is_conditional_file
+from repolish.providers import SessionBundle
 
 logger = get_logger(__name__)
 
@@ -74,64 +74,78 @@ def _compare_and_prepare_diff(
         return (a_raw == b_raw), [], []
 
 
-def _check_regular_files(
+def _check_one_regular_file(
+    out: Path,
+    setup_output: Path,
+    skip_files: set[str],
+    base_dir: Path,
+    *,
+    preserve: bool,
+) -> tuple[str, str] | None:
+    """Check one auto-staged file for diffs; return ``(rel_str, diff)`` or ``None``."""
+    rel = out.relative_to(setup_output / 'repolish')
+    rel_str = rel.as_posix()
+    if is_conditional_file(rel_str):
+        return None
+    if rel_str in skip_files:
+        return None
+    dest = base_dir / rel
+    if not dest.exists():
+        return (rel_str, 'MISSING')
+    same, a_lines, b_lines = _compare_and_prepare_diff(
+        out,
+        dest,
+        preserve=preserve,
+    )
+    if same:
+        return None
+    ud = ''.join(
+        difflib.unified_diff(
+            b_lines,
+            a_lines,
+            fromfile=str(dest),
+            tofile=str(out),
+            lineterm='\n',
+        ),
+    )
+    return (rel_str, ud)
+
+
+def _check_regular_files(  # noqa: PLR0913
     output_files: list[Path],
     setup_output: Path,
     skip_files: set[str],
     base_dir: Path,
     *,
     preserve: bool,
+    disable_auto_staging: bool = False,
 ) -> list[tuple[str, str]]:
     """Check regular files (non-conditional, non-mapped) for diffs.
 
     Args:
         output_files: List of files in the template output.
-        setup_output: Path to the cookiecutter output directory.
+        setup_output: Path to the rendered output directory.
         skip_files: Set of file paths to skip (mapped sources + delete files + create-only existing files).
         base_dir: Base directory where the project root is located.
         preserve: Whether to preserve line endings during comparison.
+        disable_auto_staging: When True, auto-staged files are not expected in
+            the project and so are excluded from diff checking entirely.
 
     Returns list of (relative_path, message_or_diff).
     """
+    if disable_auto_staging:
+        return []
     diffs: list[tuple[str, str]] = []
-
     for out in output_files:
-        rel = out.relative_to(setup_output / 'repolish')
-        rel_str = rel.as_posix()
-
-        # Skip conditional files (files with _repolish. prefix anywhere in path)
-        if is_conditional_file(rel_str):
-            continue
-
-        # Skip files that are mapped sources, marked for deletion, or create-only files that exist
-        if rel_str in skip_files:
-            continue
-
-        dest = base_dir / rel
-
-        if not dest.exists():
-            diffs.append((rel_str, 'MISSING'))
-            continue
-
-        same, a_lines, b_lines = _compare_and_prepare_diff(
+        result = _check_one_regular_file(
             out,
-            dest,
+            setup_output,
+            skip_files,
+            base_dir,
             preserve=preserve,
         )
-        if same:
-            continue
-
-        ud = ''.join(
-            difflib.unified_diff(
-                b_lines,
-                a_lines,
-                fromfile=str(dest),
-                tofile=str(out),
-                lineterm='\n',
-            ),
-        )
-        diffs.append((rel_str, ud))
-
+        if result:
+            diffs.append(result)
     return diffs
 
 
@@ -196,11 +210,12 @@ def _should_skip_mapping(
 
 
 def _check_file_mappings(
-    providers: Providers,
+    providers: SessionBundle,
     setup_output: Path,
     base_dir: Path,
     *,
     preserve: bool,
+    paused_files: frozenset[str],
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
@@ -212,6 +227,8 @@ def _check_file_mappings(
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     for dest_path, source_path in providers.file_mappings.items():
+        if dest_path in paused_files:
+            continue
         if _should_skip_mapping(
             dest_path,
             delete_files_set,
@@ -239,23 +256,26 @@ def _check_file_mappings(
 
 def check_generated_output(
     setup_output: Path,
-    providers: Providers,
+    providers: SessionBundle,
     base_dir: Path,
+    *,
+    disable_auto_staging: bool = False,
 ) -> list[tuple[str, str]]:
     """Compare generated output to project files and report diffs and deletions.
 
     Returns a list of (relative_path, message_or_unified_diff). Empty when no diffs found.
     """
+    paused_files = providers.paused_files
     output_files = collect_output_files(setup_output)
     diffs: list[tuple[str, str]] = []
 
     preserve = _preserve_line_endings()
-    mapped_sources = {v for v in providers.file_mappings.values() if isinstance(v, str)}
+    mapped_sources = {s for v in providers.file_mappings.values() if (s := get_source_str_from_mapping(v)) is not None}
     delete_files_set = {str(p) for p in providers.delete_files}
     create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     # Build skip set: include create-only files that already exist in the project
-    skip_files = mapped_sources | delete_files_set
+    skip_files = mapped_sources | delete_files_set | paused_files | providers.suppressed_sources
     for rel_str in create_only_files_set:
         if (base_dir / rel_str).exists():
             skip_files.add(rel_str)
@@ -268,6 +288,7 @@ def check_generated_output(
             skip_files,
             base_dir,
             preserve=preserve,
+            disable_auto_staging=disable_auto_staging,
         ),
     )
 
@@ -278,12 +299,15 @@ def check_generated_output(
             setup_output,
             base_dir,
             preserve=preserve,
+            paused_files=paused_files,
         ),
     )
 
     # provider-declared deletions: if a path is expected deleted but exists in
     # the project, surface that so devs know to run repolish
     for rel in providers.delete_files:
+        if rel.as_posix() in paused_files:
+            continue
         proj_target = base_dir / rel
         if proj_target.exists():
             diffs.append((rel.as_posix(), 'PRESENT_BUT_SHOULD_BE_DELETED'))

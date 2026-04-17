@@ -1,11 +1,15 @@
+import contextlib
 import os
 import shlex
 import subprocess
+import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import IO
 
 from hotlog import get_logger
+from hotlog.config import get_config
+from hotlog.live import live_logging
 
 logger = get_logger(__name__)
 
@@ -30,17 +34,34 @@ def _normalize_command(raw: object) -> Sequence[str]:
     raise TypeError(msg)
 
 
-def _run_argv(argv: Sequence[str], cwd: Path) -> None:
-    """Run an argv command in cwd, raise CalledProcessError on non-zero exit."""
-    logger.info('post_process_command', command=argv, cwd=str(cwd))
+def _run_argv(
+    argv: Sequence[str],
+    cwd: Path,
+) -> None:
+    """Run an argv command in cwd, raise CalledProcessError on non-zero exit.
+
+    Output (stdout + stderr) is captured and only printed when the current
+    verbosity level is >= 1 (-v) or the command exits non-zero.
+    """
+    logger.info('post_process_command', command=list(argv), cwd=str(cwd))
     # Run the tokenized argv without a shell. This avoids shell=True based
     # injection risk while keeping behavior simple and convenient for
     # developers. If you need complex shell pipelines, commit a script and
     # call it from `post_process`.
     # We intentionally run an argv list (not shell=True) and
     # accept that development tooling runs commands from repositories.
-    completed = subprocess.run(argv, check=False, cwd=str(cwd))  # noqa: S603 - see above
+    verbose = get_config().verbosity_level >= 1
+    completed = subprocess.run(  # noqa: S603 - see above
+        argv,
+        check=False,
+        cwd=str(cwd),
+        stdout=None if verbose else subprocess.PIPE,
+        stderr=None if verbose else subprocess.STDOUT,
+    )
     if completed.returncode != 0:
+        if not verbose and completed.stdout:
+            sys.stdout.buffer.write(completed.stdout)
+            sys.stdout.flush()
         logger.error(
             'post_process_failed',
             command=argv,
@@ -73,13 +94,48 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
         ValueError: when a string command contains shell metacharacters.
         subprocess.CalledProcessError: when a command exits non-zero.
     """
-    for raw in commands:
-        if raw is None:
-            continue
-        argv = _normalize_command(raw)
-        if not argv:
-            continue
-        _run_argv(argv, cwd)
+    normalised = [_normalize_command(raw) for raw in commands if raw is not None]
+    normalised = [argv for argv in normalised if argv]
+    if not normalised:
+        return
+    label = f'post-process ({len(normalised)} command{"s" if len(normalised) != 1 else ""})'
+    in_ci = os.environ.get('CI', '').strip().lower() in ('1', 'true', 'yes')
+    ctx = contextlib.nullcontext() if in_ci else live_logging(label)
+    if in_ci:
+        logger.info('post_process', label=label)
+    with ctx:
+        for argv in normalised:
+            _run_argv(argv, cwd)
+
+
+def ensure_dot_repolish(base_dir: Path) -> Path:
+    """Create the .repolish directory under base_dir and write a catch-all .gitignore if absent.
+
+    Returns the .repolish Path.
+    """
+    repolish_dir = base_dir / '.repolish'
+    repolish_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = repolish_dir / '.gitignore'
+    if not gitignore.exists():
+        gitignore.write_text('*\n!_/\n', encoding='utf-8')
+    return repolish_dir
+
+
+def ensure_meta_dir(base_dir: Path) -> Path:
+    """Create the .repolish/_/ meta directory and write a catch-all .gitignore if absent.
+
+    Tools that need access to specific paths inside _/ (e.g. dprint reaching
+    _/render/) should negate those paths in their own config.  The .gitignore
+    here ignores everything so nothing leaks into version control by default.
+
+    Returns the .repolish/_/ Path.
+    """
+    meta_dir = base_dir / '.repolish' / '_'
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = meta_dir / '.gitignore'
+    if not gitignore.exists():
+        gitignore.write_text('*\n', encoding='utf-8')
+    return meta_dir
 
 
 def read_text_utf8(path: Path) -> str:

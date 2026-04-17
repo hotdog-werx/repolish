@@ -1,24 +1,32 @@
 from pathlib import Path
+from typing import Annotated
 
-import typer
+from cyclopts import Parameter
 from hotlog import get_logger
+from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
-from repolish.commands.link import command
 
 logger = get_logger(__name__)
 
-# Module-level constants for Typer options to avoid B008
-CONFIG_OPTION = typer.Option(
-    Path('repolish.yaml'),
-    '--config',
-    help='Path to the repolish YAML configuration file',
-)
+
+@Parameter(name='*')
+class LinkParams(BaseModel):
+    """Parameters for the link command."""
+
+    config: Annotated[Path, Parameter(name=['--config', '-c'])] = Field(
+        default=Path('repolish.yaml'),
+        description='Path to the repolish YAML configuration file',
+    )
 
 
-def link(
-    config: Path = CONFIG_OPTION,
-) -> None:
+_DEFAULT_LINK_PARAMS = LinkParams()
+
+
+def link(params: LinkParams = _DEFAULT_LINK_PARAMS) -> None:
     """Link provider resources to the project."""
-    # Logging is already configured by setup_logging in CLI entry points
-    run_cli_command(lambda: command(config))
+    # Deferred so that importing this CLI module does not eagerly load the link
+    # command tree when a different subcommand is invoked.
+    from repolish.commands.link import command  # noqa: PLC0415
+
+    run_cli_command(lambda: command(params.config))

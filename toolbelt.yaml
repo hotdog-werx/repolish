@@ -2,7 +2,8 @@ include:
   - .pkglink/.codeguide/toolbelt/toolbelt.yaml
 
 variables:
-  TB_COVERAGE_CONFIG: .pkglink/.codeguide/configs/coveragerc.toml
+  TB_COVERAGE_CONFIG: ./coveragerc.toml
   TB_COVERAGE_VERBOSE: vv
   TB_PROJECT_SOURCE: repolish
-  TB_TY_VERSION: 0.0.19
+  TB_DPRINT_CONFIG: dprint.json
+  TB_RUFF_CONFIG: ./ruff.toml

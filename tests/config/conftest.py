@@ -48,8 +48,6 @@ class ProviderSetupFixture(Protocol):
         alias: str,
         *,
         target_dir: str | None = None,
-        templates_dir: str = 'templates',
-        library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]:
         """Create provider setup with info file.
@@ -57,8 +55,6 @@ class ProviderSetupFixture(Protocol):
         Args:
             alias: Provider alias name
             target_dir: Relative path to target directory (created if None)
-            templates_dir: Templates subdirectory name
-            library_name: Optional library name
             create_templates: Whether to create actual template structure
 
         Returns:
@@ -111,8 +107,6 @@ def provider_setup(tmp_path: Path):
         alias: str,
         *,
         target_dir: str | None = None,
-        templates_dir: str = 'templates',
-        library_name: str | None = None,
         create_templates: bool = True,
     ) -> tuple[Path, Path]:
         """Create provider setup with info file.
@@ -120,8 +114,6 @@ def provider_setup(tmp_path: Path):
         Args:
             alias: Provider alias name
             target_dir: Relative path to target directory (created if None)
-            templates_dir: Templates subdirectory name
-            library_name: Optional library name
             create_templates: Whether to create actual template structure
 
         Returns:
@@ -142,22 +134,18 @@ def provider_setup(tmp_path: Path):
         info_file.parent.mkdir(parents=True, exist_ok=True)
 
         info_data = {
-            'target_dir': target_dir,
-            'source_dir': f'/fake/source/{alias}',
-            'templates_dir': templates_dir,
-            'library_name': library_name,
+            'resources_dir': target_dir,
+            'site_package_dir': f'/fake/source/{alias}',
         }
 
         info_file.write_text(json.dumps(info_data))
 
-        # Optionally create template structure
+        # Optionally create template structure in the provider root
         if create_templates:
-            templates_path = target_path / templates_dir
-            templates_path.mkdir(parents=True, exist_ok=True)
-            (templates_path / 'repolish.py').write_text(
+            (target_path / 'repolish.py').write_text(
                 'def create_context():\n    return {}\n',
             )
-            (templates_path / 'repolish').mkdir(exist_ok=True)
+            (target_path / 'repolish').mkdir(exist_ok=True)
 
         return config_dir, target_path
 

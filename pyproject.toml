@@ -8,16 +8,15 @@ requires-python = ">=3.11"
 dynamic = ["version"]
 
 dependencies = [
+  "cyclopts>=4.8.0",
   "hotlog >= 0.2.0",
-  "cookiecutter >= 2.6.0",
+  "jinja2 == 3.1.6",
   "pydantic >= 2.0.0",
-  "typer >= 0.9.0",
+  "typing_extensions>=4.0; python_version < '3.12'",
 ]
 
 [project.scripts]
-repolish = "repolish.cli.main:app"
-repolish-debugger = "repolish.cli.standalone.preview_cli:app"
-repolish-link = "repolish.cli.standalone.link_cli:app"
+repolish = "repolish.cli.main:app.meta"
 
 [dependency-groups]
 dev = [
@@ -42,3 +41,8 @@ hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{ch
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ty.src]
+# provider-examples are standalone packages with their own cross-dependencies
+# (e.g. devkit.workspace) that are not installed in this venv.
+exclude = ["provider-examples"]

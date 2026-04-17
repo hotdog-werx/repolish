@@ -7,9 +7,9 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.config import ProviderInfo
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
-from repolish.utils import open_utf8
+from repolish.utils import ensure_dot_repolish, ensure_meta_dir, open_utf8
 
 logger = get_logger(__name__)
 
@@ -35,6 +35,7 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
     data['aliases'][alias] = folder_name
 
     # Save data
+    ensure_dot_repolish(config_dir)
     repolish_dir.mkdir(parents=True, exist_ok=True)
     with open_utf8(aliases_file, 'w') as f:
         json.dump(data, f, indent=2)
@@ -42,27 +43,24 @@ def save_provider_alias(alias: str, folder_name: str, config_dir: Path) -> None:
     logger.debug('provider_alias_saved', alias=alias, folder=folder_name)
 
 
-def save_provider_info(
+def write_provider_info_file(
     provider_name: str,
-    provider_info: ProviderInfo,
+    provider_info: ProviderFileInfo,
     config_dir: Path,
 ) -> None:
-    """Save provider info to .repolish/_/provider-info.[alias].json.
+    """Write the provider-info JSON file to ``.repolish/_/provider-info.<alias>.json``.
 
-    This allows repolish to auto-build directories from providers_order.
-    Also saves an alias mapping so the provider can be referenced by its config name.
+    This is the single place that controls how provider info is persisted.  It
+    does **not** write an alias mapping — call :func:`save_provider_info` when
+    the alias mapping is also needed (i.e. resources live under ``.repolish/``).
 
     Args:
-        provider_name: Alias name of the provider
-        provider_info: Provider information from the CLI --info output
-        config_dir: Directory containing the repolish.yaml file
+        provider_name: Alias name of the provider.
+        provider_info: Provider information to persist.
+        config_dir: Directory containing the ``repolish.yaml`` file.
     """
-    target_dir = Path(provider_info.target_dir)
-    repolish_dir = config_dir / '.repolish' / '_'
-    repolish_dir.mkdir(parents=True, exist_ok=True)
-
     info_file = get_provider_info_path(provider_name, config_dir)
-
+    ensure_meta_dir(config_dir)
     logger.debug(
         'saving_provider_info',
         provider=provider_name,
@@ -70,15 +68,37 @@ def save_provider_info(
         info=provider_info.model_dump(mode='json'),
     )
 
-    # Ensure target directory exists
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save the info (use mode='json' to trigger field serializers for Path -> str conversion)
     with open_utf8(info_file, 'w') as f:
         json.dump(provider_info.model_dump(mode='json'), f, indent=2)
 
-    # Save alias mapping - extract folder name from target_dir
-    folder_name = target_dir.relative_to(config_dir / '.repolish').parts[0]
+
+def save_provider_info(
+    provider_name: str,
+    provider_info: ProviderFileInfo,
+    config_dir: Path,
+) -> None:
+    """Save provider info and its alias mapping.
+
+    Writes the provider-info JSON file (via :func:`write_provider_info_file`)
+    and records the alias → folder mapping in ``.all-providers.json``.  The
+    ``resources_dir`` recorded in *provider_info* **must** live under
+    ``<config_dir>/.repolish/``; use :func:`write_provider_info_file` directly
+    when that assumption does not hold (e.g. local ``provider_root`` paths).
+
+    Args:
+        provider_name: Alias name of the provider.
+        provider_info: Provider information from the CLI ``--info`` output.
+        config_dir: Directory containing the ``repolish.yaml`` file.
+    """
+    resources_dir = Path(provider_info.resources_dir)
+
+    # Ensure resources directory exists
+    resources_dir.mkdir(parents=True, exist_ok=True)
+
+    write_provider_info_file(provider_name, provider_info, config_dir)
+
+    # Save alias mapping - extract folder name from resources_dir
+    folder_name = resources_dir.relative_to(config_dir / '.repolish').parts[0]
     save_provider_alias(provider_name, folder_name, config_dir)
 
     logger.debug(
@@ -88,7 +108,10 @@ def save_provider_info(
     )
 
 
-def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
+def run_provider_link(
+    provider_name: str,
+    link_command: str,
+) -> ProviderFileInfo:
     """Run a provider's link CLI and return its info.
 
     Args:
@@ -123,7 +146,7 @@ def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
         check=True,
     )
     cli_info_dict = json.loads(result.stdout)
-    provider_info = ProviderInfo.model_validate(cli_info_dict)
+    provider_info = ProviderFileInfo.model_validate(cli_info_dict)
 
     # Now run the actual link command
     logger.debug('running_link_command', command=link_command)
@@ -136,7 +159,7 @@ def run_provider_link(provider_name: str, link_command: str) -> ProviderInfo:
     logger.info(
         'provider_linked',
         provider=provider_name,
-        target=str(provider_info.target_dir),
+        target=str(provider_info.resources_dir),
         _display_level=1,
     )
 

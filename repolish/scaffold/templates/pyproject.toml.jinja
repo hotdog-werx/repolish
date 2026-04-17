@@ -1,0 +1,27 @@
+[project]
+name = "{{ repo_name }}"
+description = "Repolish provider"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+version = "0.1.0"
+
+dependencies = [
+  "repolish",
+]
+
+[dependency-groups]
+dev = [
+  "pytest",
+]
+
+[project.scripts]
+{{ repo_name }}-link = "{{ package_name }}.repolish.linker:main"
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "{{ package_name }}"
+module-root = "."

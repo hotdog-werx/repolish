@@ -1,0 +1,5 @@
+providers:
+  devkit-python:
+    cli: devkit-python-link
+  devkit-workspace:
+    cli: devkit-workspace-link

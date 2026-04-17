@@ -9,6 +9,7 @@ from repolish.config.models import (
     RepolishConfigFile,
     ResolvedProviderInfo,
 )
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import load_provider_info
 
 logger = get_logger(__name__)
@@ -32,72 +33,20 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
     config_file = cast('Path', config.config_file)
     config_dir = config_file.resolve().parent
 
-    # Resolve directories (either explicit or from providers)
-    directories = _resolve_directories(config, config_dir)
+    # directories are determined solely from providers; resolved later as needed
 
     # Resolve all providers
     resolved_providers = _resolve_providers(config, config_dir)
 
     return RepolishConfig(
-        no_cookiecutter=config.no_cookiecutter,
-        provider_scoped_template_context=config.provider_scoped_template_context,
         config_dir=config_dir,
-        directories=directories,
-        context=config.context,
-        context_overrides=config.context_overrides,
-        anchors=config.anchors,
         post_process=config.post_process,
         delete_files=config.delete_files,
         providers=resolved_providers,
         providers_order=config.providers_order,
         template_overrides=config.template_overrides,
+        paused_files=config.paused_files,
     )
-
-
-def _resolve_directories(
-    config: RepolishConfigFile,
-    config_dir: Path,
-) -> list[Path]:
-    """Resolve directory configuration to absolute Path objects.
-
-    If directories are explicitly configured, resolve them.
-    If providers are configured, build directories from providers
-    (using providers_order if specified, else providers dict key order).
-
-    Args:
-        config: Raw configuration
-        config_dir: Directory containing the config file
-
-    Returns:
-        List of resolved directory paths
-    """
-    # If directories is explicitly set, resolve them
-    # Note: directories field is deprecated, but if it's still used, we resolve it directly
-    if config.directories:
-        return _resolve_directory_list(config.directories, config_dir)
-
-    # Otherwise, build from providers (using providers_order if specified, else dict key order)
-    if config.providers:
-        return _build_directories_from_providers(config, config_dir)
-
-    # No directories configured
-    return []  # pragma: no cover - This should be caught by validation before resolution
-
-
-def _resolve_directory_list(
-    directories: list[str],
-    config_dir: Path,
-) -> list[Path]:
-    """Resolve a list of directory strings to absolute Path objects.
-
-    Args:
-        directories: List of directory paths from config
-        config_dir: Directory containing the config file
-
-    Returns:
-        List of resolved absolute Path objects
-    """
-    return [_resolve_path(entry, config_dir) for entry in directories]
 
 
 def _resolve_providers(
@@ -127,6 +76,84 @@ def _resolve_providers(
     return resolved_providers
 
 
+def _try_auto_link(
+    alias: str,
+    provider_config: ProviderConfig,
+    config_dir: Path,
+) -> ProviderFileInfo | None:
+    """Attempt to auto-link via the provider CLI and reload the info file."""
+    from repolish.linker import (  # noqa: PLC0415 - deferred to avoid circular import
+        process_provider,
+    )
+
+    logger.warning(
+        'provider_directory_missing',
+        alias=alias,
+        suggestion='provider directory not found; attempting to link via cli',
+        cli=provider_config.cli,
+    )
+    exit_code = process_provider(alias, provider_config, config_dir)
+    if exit_code == 0:
+        return load_provider_info(alias, config_dir)
+    logger.warning(
+        'provider_auto_link_failed',
+        alias=alias,
+        cli=provider_config.cli,
+        exit_code=exit_code,
+    )
+    return None
+
+
+def _resolved_from_info(
+    alias: str,
+    provider_config: ProviderConfig,
+    provider_info: ProviderFileInfo,
+    config_dir: Path,
+) -> ResolvedProviderInfo:
+    """Build a ResolvedProviderInfo from a loaded ProviderFileInfo JSON file."""
+    resources_dir = _resolve_path(provider_info.resources_dir, config_dir)
+    provider_root = (
+        _resolve_path(provider_info.provider_root, config_dir) if provider_info.provider_root else resources_dir
+    )
+    symlinks = provider_config.symlinks or []
+    return ResolvedProviderInfo(
+        alias=alias,
+        provider_root=provider_root,
+        resources_dir=resources_dir,
+        symlinks=symlinks,
+        context=provider_config.context,
+        context_overrides=provider_config.context_overrides or None,
+        anchors=provider_config.anchors,
+    )
+
+
+def _resolved_from_static(
+    alias: str,
+    provider_config: ProviderConfig,
+    config_dir: Path,
+) -> ResolvedProviderInfo:
+    """Build a ResolvedProviderInfo from explicit provider_root (and optional resources_dir) fields."""
+    if (
+        provider_config.provider_root is None
+    ):  # pragma: no cover — validation in _resolve_single_provider ensures this is set before the call
+        msg = 'provider_root must be set at this point'
+        raise ValueError(msg)
+    provider_root = _resolve_path(provider_config.provider_root, config_dir)
+    resources_dir = (
+        _resolve_path(provider_config.resources_dir, config_dir) if provider_config.resources_dir else provider_root
+    )
+    symlinks = provider_config.symlinks if provider_config.symlinks is not None else []
+    return ResolvedProviderInfo(
+        alias=alias,
+        provider_root=provider_root,
+        resources_dir=resources_dir,
+        symlinks=symlinks,
+        context=provider_config.context,
+        context_overrides=provider_config.context_overrides or None,
+        anchors=provider_config.anchors,
+    )
+
+
 def _resolve_single_provider(
     alias: str,
     provider_config: ProviderConfig,
@@ -142,38 +169,33 @@ def _resolve_single_provider(
     Returns:
         Resolved provider info, or None if cannot be resolved
     """
-    # Try to load provider info from JSON file (if linked)
     provider_info = load_provider_info(alias, config_dir)
 
+    if provider_info is None and provider_config.cli:
+        provider_info = _try_auto_link(alias, provider_config, config_dir)
+
     if provider_info:
-        # Use info from linked provider
-        target_dir = _resolve_path(provider_info.target_dir, config_dir)
-        # Use user-specified symlinks if provided, otherwise use provider defaults
-        symlinks = provider_config.symlinks if provider_config.symlinks is not None else provider_info.symlinks
-        return ResolvedProviderInfo(
-            alias=alias,
-            target_dir=target_dir,
-            templates_dir=provider_info.templates_dir or provider_config.templates_dir,
-            library_name=provider_info.library_name,
-            symlinks=symlinks,
-            context=provider_config.context,
-            context_overrides=provider_config.context_overrides or None,
+        if provider_config.provider_root and provider_config.cli:
+            # Only warn when both cli AND provider_root are set — that means
+            # the CLI-written provider-info is shadowing an explicit local
+            # fallback directory.  When only provider_root is set repolish
+            # itself wrote the provider-info during registration, so the
+            # warning would fire spuriously on every apply.
+            logger.warning(
+                'provider_root_ignored',
+                alias=alias,
+                reason='provider-info file found; provider_root is ignored',
+            )
+        return _resolved_from_info(
+            alias,
+            provider_config,
+            provider_info,
+            config_dir,
         )
-    if provider_config.directory:
-        # Use direct directory from config
-        target_dir = _resolve_path(provider_config.directory, config_dir)
-        # For directory providers, use user symlinks or empty list as default
-        symlinks = provider_config.symlinks if provider_config.symlinks is not None else []
-        return ResolvedProviderInfo(
-            alias=alias,
-            target_dir=target_dir,
-            templates_dir=provider_config.templates_dir,
-            library_name=None,
-            symlinks=symlinks,
-            context=provider_config.context,
-            context_overrides=provider_config.context_overrides or None,
-        )
-    # Neither info file nor directory config
+
+    if provider_config.provider_root:
+        return _resolved_from_static(alias, provider_config, config_dir)
+
     logger.warning(
         'provider_not_resolved',
         alias=alias,
@@ -194,86 +216,3 @@ def _resolve_path(path: str | Path, base_dir: Path) -> Path:
     """
     p = Path(path)
     return p.resolve() if p.is_absolute() else (base_dir / p).resolve()
-
-
-def _build_directories_from_providers(
-    config: RepolishConfigFile,
-    config_dir: Path,
-) -> list[Path]:
-    """Build directories list from providers.
-
-    Uses providers_order if specified, otherwise uses providers dict key order.
-
-    Args:
-        config: Raw configuration
-        config_dir: Directory containing the config file
-
-    Returns:
-        List of resolved directory paths from providers
-    """
-    resolved = []
-    # Use providers_order if specified, else use providers dict key order (preserves YAML order)
-    provider_names = config.providers_order if config.providers_order else list(config.providers.keys())
-
-    for provider_name in provider_names:
-        templates_path = _get_provider_templates_dir(
-            config,
-            provider_name,
-            config_dir,
-        )
-        if templates_path:
-            resolved.append(templates_path)
-
-    return resolved
-
-
-def _get_provider_templates_dir(
-    config: RepolishConfigFile,
-    provider_name: str,
-    config_dir: Path,
-) -> Path | None:
-    """Get the templates directory path from a provider.
-
-    Args:
-        config: Raw configuration
-        provider_name: Name of the provider
-        config_dir: Directory containing the config file
-
-    Returns:
-        Resolved template directory path, or None if provider cannot be resolved
-    """
-    provider_config = config.providers.get(provider_name)
-    if not provider_config:  # pragma: no cover - validation ensures providers_order only references defined providers
-        logger.warning('provider_not_found_in_config', provider=provider_name)
-        return None
-
-    # If provider has a direct directory, use it
-    if provider_config.directory:
-        directory = _resolve_path(provider_config.directory, config_dir)
-        templates_path = directory / provider_config.templates_dir
-        logger.debug(
-            'auto_added_directory_from_provider',
-            provider=provider_name,
-            directory=str(templates_path),
-            source='direct_directory',
-        )
-        return templates_path
-
-    # Otherwise, try to load from linked provider info
-    provider_info = load_provider_info(provider_name, config_dir)
-    if not provider_info:
-        logger.warning('could_not_load_provider_info', provider=provider_name)
-        return None
-
-    # Get target_dir and templates_dir from provider info
-    target_dir = _resolve_path(provider_info.target_dir, config_dir)
-    templates_subdir = provider_info.templates_dir or provider_config.templates_dir
-    templates_path = target_dir / templates_subdir
-
-    logger.debug(
-        'auto_added_directory_from_provider',
-        provider=provider_name,
-        directory=str(templates_path),
-        source='linked_provider',
-    )
-    return templates_path

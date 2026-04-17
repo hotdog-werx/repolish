@@ -5,7 +5,6 @@ import pytest
 import pytest_mock
 from pytest_mock import MockerFixture
 
-from repolish.config import ProviderInfo
 from repolish.linker.symlinks import (
     create_additional_link,
     link_resources,
@@ -149,7 +148,6 @@ def test_create_additional_link_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     provider_resources_setup: Path,
-    basic_provider_info: ProviderInfo,
 ):
     """Test create_additional_link creates a link for a file."""
     monkeypatch.chdir(tmp_path)
@@ -161,7 +159,7 @@ def test_create_additional_link_file(
     config_file.write_text('root = true')
 
     result = create_additional_link(
-        provider_info=basic_provider_info,
+        resources_dir=provider_resources_setup,
         provider_name='mylib',
         source='configs/.editorconfig',
         target='.editorconfig',
@@ -177,7 +175,6 @@ def test_create_additional_link_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     provider_resources_setup: Path,
-    basic_provider_info: ProviderInfo,
 ):
     """Test create_additional_link creates a link for a directory."""
     monkeypatch.chdir(tmp_path)
@@ -188,7 +185,7 @@ def test_create_additional_link_directory(
     (docs_dir / 'README.md').write_text('# Docs')
 
     result = create_additional_link(
-        provider_info=basic_provider_info,
+        resources_dir=provider_resources_setup,
         provider_name='mylib',
         source='docs',
         target='documentation',
@@ -217,15 +214,9 @@ def test_create_additional_link_target_exists_without_force(
 
     monkeypatch.chdir(tmp_path)
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     with pytest.raises(FileExistsError, match='Target already exists'):
         create_additional_link(
-            provider_info=provider_info,
+            resources_dir=provider_resources,
             provider_name='mylib',
             source='config.txt',
             target='config.txt',
@@ -250,14 +241,8 @@ def test_create_additional_link_replaces_target_with_force(
     target_path = tmp_path / 'config.txt'
     target_path.write_text('old content')
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     result = create_additional_link(
-        provider_info=provider_info,
+        resources_dir=provider_resources,
         provider_name='mylib',
         source='config.txt',
         target='config.txt',
@@ -282,14 +267,8 @@ def test_create_additional_link_creates_parent_directories(
     config_file = provider_resources / 'config.txt'
     config_file.write_text('content')
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     result = create_additional_link(
-        provider_info=provider_info,
+        resources_dir=provider_resources,
         provider_name='mylib',
         source='config.txt',
         target='nested/deep/config.txt',
@@ -316,14 +295,8 @@ def test_create_additional_link_copies_when_no_symlinks(
     config_file = provider_resources / 'config.txt'
     config_file.write_text('content')
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     result = create_additional_link(
-        provider_info=provider_info,
+        resources_dir=provider_resources,
         provider_name='mylib',
         source='config.txt',
         target='config.txt',
@@ -354,14 +327,8 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
     # Mock supports_symlinks to return False
     mock_no_symlinks(mocker)
 
-    provider_info = ProviderInfo(
-        library_name='mylib',
-        target_dir=str(provider_resources),
-        source_dir='/fake/source/mylib',
-    )
-
     is_symlink = create_additional_link(
-        provider_info=provider_info,
+        resources_dir=provider_resources,
         provider_name='mylib',
         source='configs',
         target='configs',

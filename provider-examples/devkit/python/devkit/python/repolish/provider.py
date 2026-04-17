@@ -1,0 +1,131 @@
+from devkit.python.repolish.models import (
+    PythonProviderContext,
+    PythonProviderInputs,
+)
+from devkit.workspace.repolish.models import (
+    WorkspaceProviderInputs,
+)
+from typing_extensions import override
+
+from repolish import (
+    BaseInputs,
+    FinalizeContextOptions,
+    ProvideInputsOptions,
+    Provider,
+    TemplateMapping,
+)
+
+
+class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
+    """PythonProvider repolish provider."""
+
+    @override
+    def create_context(self) -> PythonProviderContext:
+        """Return the initial context for this provider.
+
+        The base :class:`~repolish.providers.models.Provider` implementation
+        will attempt to construct the context automatically using the
+        no-argument constructor of the type parameter.  This stub is
+        provided mostly for documentation; you can safely remove it if the
+        model has sensible defaults.  Override the method when you need to
+        pass explicit arguments or perform other initialization.
+        """
+        return PythonProviderContext()
+
+    @override
+    def provide_inputs(
+        self,
+        opt: ProvideInputsOptions[PythonProviderContext],
+    ) -> list[BaseInputs]:
+        """Broadcast data to other providers that declare a matching input schema.
+
+        Return a list of Pydantic model instances destined for other providers.
+        The loader routes each item to every provider whose
+        ``get_inputs_schema()`` matches the item's type.  Return an empty list
+        if this provider has nothing to share.
+        """
+        member_name = opt.own_context.repolish.provider.session.member_name
+        return [
+            WorkspaceProviderInputs(
+                add_to_member=f'python: This is a workspace member! {member_name}',
+                add_to_root=f'python: This is the root of the monorepo! {member_name}',
+            ),
+        ]
+
+    @override
+    def finalize_context(
+        self,
+        opt: FinalizeContextOptions[
+            PythonProviderContext,
+            PythonProviderInputs,
+        ],
+    ) -> PythonProviderContext:
+        """Merge inputs received from other providers into this context.
+
+        ``opt.received_inputs`` contains every ``PythonProviderInputs`` payload
+        delivered to this provider by upstream ``provide_inputs`` calls.
+        Inspect the list, update ``opt.own_context`` as needed, and return it.
+        If this provider does not consume inputs from others, just return
+        ``opt.own_context`` unchanged.
+        """
+        return opt.own_context
+
+    @override
+    def get_inputs_schema(self) -> type[PythonProviderInputs]:
+        """Declare the Pydantic model class this provider accepts as input.
+
+        The loader uses this to route payloads emitted by other providers'
+        ``provide_inputs`` to this provider's ``finalize_context``.
+        """
+        return PythonProviderInputs
+
+    @override
+    def create_file_mappings(
+        self,
+        context: PythonProviderContext,
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Map destination paths to template sources.
+
+        Keys are POSIX paths relative to the consumer repo root.  Values can
+        be:
+        - a string  → path to the source template inside ``resources/templates``
+        - a ``TemplateMapping``  → for CREATE_ONLY, DELETE, or KEEP semantics
+        - ``None``   → omit the file (no-op)
+
+        Use ``self.templates_root`` to discover templates dynamically, e.g.:
+            workflows = (self.templates_root / 'repolish' / '.github' / 'workflows').glob('*.yaml')
+        """
+        return {}
+
+    @override
+    def create_anchors(
+        self,
+        context: PythonProviderContext,
+    ) -> dict[str, str]:
+        """Supply anchor replacement values for this provider's templates.
+
+        Anchors are named placeholders inside template files that are replaced
+        before Jinja rendering.  Return a mapping of anchor name to
+        replacement string.  Return an empty dict if no anchors are needed.
+        """
+        return {}
+
+    @override
+    def promote_file_mappings(
+        self,
+        context: PythonProviderContext,
+    ) -> dict[str, str | TemplateMapping | None]:
+        """Promote a per-member CI workflow file to the repo root.
+
+        Each member running the python provider contributes one callable
+        workflow named after the member's project, so the workspace CI can
+        trigger it without knowing the full member list up front.
+        """
+        member_name = context.repolish.provider.session.member_name or self.project_name
+        dest = f'.github/workflows/_ci-checks_{member_name}.yaml'
+        return {
+            dest: TemplateMapping(
+                source_template='_repolish._ci-checks.yaml',
+                promote_conflict='identical',
+            ),
+        }

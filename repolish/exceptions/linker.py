@@ -17,3 +17,9 @@ class ResourceLinkerError(LinkerError):
     """Error in resource_linker decorator usage."""
 
     log_category = 'resource_linker_error'
+
+
+class ProviderNotReadyError(LinkerError):
+    """Raised in strict mode when one or more providers could not be registered."""
+
+    log_category = 'provider_not_ready'

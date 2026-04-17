@@ -1,12 +1,36 @@
 import textwrap
 from pathlib import Path
-from types import SimpleNamespace
 
 from pytest_mock import MockerFixture
 
-from repolish.commands.apply import command as run_repolish
-from repolish.hydration.rendering import _compute_merged_context
-from repolish.loader import Providers
+from repolish.commands.apply.check import (
+    CheckContext,
+    finish_check,
+    render_templates,
+)
+from repolish.commands.apply.display import (
+    print_files_summary as _print_files_summary,
+)
+from repolish.commands.apply.options import ApplyOptions, ResolvedSession
+from repolish.commands.apply.session import (
+    apply_session,
+)
+from repolish.commands.apply.session import (
+    run_session as run_repolish,
+)
+from repolish.config.models import RepolishConfig, ResolvedProviderInfo
+from repolish.config.models.provider import ProviderSymlink
+from repolish.linker.health import ProviderReadinessResult
+from repolish.providers import SessionBundle
+from repolish.providers.models import (
+    Action,
+    BaseContext,
+    Decision,
+    FileMode,
+    GlobalContext,
+    TemplateMapping,
+)
+from repolish.providers.models.workspace import WorkspaceContext
 
 
 def write_file(p: Path, content: str) -> None:
@@ -59,95 +83,6 @@ def make_template_with_unreadable(base: Path, name: str) -> None:
     )
 
 
-# deprecated test moved to tests/deprecated/commands/test_apply_directories.py
-# (exercise deprecated `directories` config in CLI apply flow)
-
-# deprecated test moved to tests/deprecated/commands/test_apply_directories.py
-# (CLI check-mode test that uses the deprecated `directories` config key)
-
-
-def test_apply_logs_migrated_and_nonmigrated_context(
-    tmp_path: Path,
-    mocker: MockerFixture,
-) -> None:
-    """`final_providers_generated` event should break the context down.
-
-    The logged payload must include:
-      * `non_migrated` - the merged context used by unmigrated providers (keys
-        from migrated providers removed)
-      * `migrated` - a dict mapping provider names to their own contexts
-    """
-    cfg_path = tmp_path / 'repolish.yaml'
-    cfg_path.write_text('')
-
-    fake_config = SimpleNamespace(
-        providers_order=['a'],
-        providers={
-            'a': SimpleNamespace(target_dir=Path('a'), templates_dir=''),
-        },
-        directories=[],
-        template_overrides={},
-        no_cookiecutter=False,
-        provider_scoped_template_context=False,
-        context={},
-        context_overrides={},
-        anchors={},
-        post_process=[],
-        delete_files=[],
-    )
-
-    # build a Providers model where "a" is migrated and "b" is not
-    fake_providers = Providers(
-        context={'foo': 'bar', 'a': 'X'},
-        provider_contexts={'a': {'a': 1}, 'b': {'b': 2}},
-        provider_migrated={'a': True, 'b': False},
-    )
-
-    mocker.patch(
-        'repolish.commands.apply.load_config',
-    ).return_value = fake_config
-    mocker.patch(
-        'repolish.commands.apply.build_final_providers',
-    ).return_value = fake_providers
-
-    info_calls: list = []
-
-    def fake_info(event, **kwargs) -> None:  # noqa: ANN001, ANN003 -- its a test!!!
-        info_calls.append((event, kwargs))
-
-    mocker.patch('repolish.commands.apply.logger.info', fake_info)
-
-    # stub remaining pipeline steps out of the way
-    mocker.patch('repolish.commands.apply.prepare_staging').return_value = (
-        tmp_path,
-        tmp_path / 'in',
-        tmp_path / 'out',
-    )
-    mocker.patch('repolish.commands.apply.create_cookiecutter_template')
-    mocker.patch('repolish.commands.apply.preprocess_templates')
-    mocker.patch('repolish.commands.apply.render_template')
-    mocker.patch(
-        'repolish.commands.apply.check_generated_output',
-    ).return_value = []
-    mocker.patch('repolish.commands.apply.apply_generated_output')
-
-    rv = run_repolish(cfg_path, check_only=False)
-    assert rv == 0
-
-    assert info_calls, 'expected at least one logger.info call'
-    # find the `final_providers_generated` call which may not be the first log
-    found = [(e, p) for e, p in info_calls if e == 'final_providers_generated']
-    assert found, 'expected a final_providers_generated event'
-    _, payload = found[0]
-
-    ctx = payload['context']
-
-    assert ctx['non_migrated'] == _compute_merged_context(fake_providers)
-    assert ctx['migrated'] == [
-        {'alias': 'a', 'directory': 'a', 'context': {'a': 1}},
-    ]
-
-
 def test_apply_command_handles_missing_provider_and_extra_directory(
     tmp_path: Path,
     mocker: MockerFixture,
@@ -162,26 +97,18 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     cfg_path = tmp_path / 'repolish.yaml'
     cfg_path.write_text('')
 
-    # fake resolved configuration object
-    fake_config = SimpleNamespace(
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
         providers_order=['missing'],
         providers={},
-        directories=['/extra/dir'],
         template_overrides={'foo': 'bar'},
-        no_cookiecutter=False,
-        provider_scoped_template_context=False,
-        context={},
-        context_overrides={},
-        anchors={},
-        post_process=[],
-        delete_files=[],
     )
 
     mocker.patch(
-        'repolish.commands.apply.load_config',
+        'repolish.commands.apply.pipeline.load_config',
     ).return_value = fake_config
     mocker.patch(
-        'repolish.commands.apply.prepare_staging',
+        'repolish.commands.apply.session.prepare_staging',
     ).return_value = (tmp_path, tmp_path / 'in', tmp_path / 'out')
 
     recorded: dict[str, object] = {}
@@ -191,42 +118,571 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
         staging: Path,
         template_dirs: list[tuple[str | None, Path]],
         template_overrides: dict[str, str] | None = None,
+        mapped_sources: set[str] | None = None,
+        workspace_mode: str | None = None,
     ) -> None:
         recorded['template_dirs'] = template_dirs
         recorded['overrides'] = template_overrides
 
     mocker.patch(
-        'repolish.commands.apply.create_cookiecutter_template',
+        'repolish.commands.apply.staging.stage_templates',
         fake_create,
     )
 
     mocker.patch(
-        'repolish.commands.apply.build_final_providers',
-    ).return_value = Providers(
-        context={},
+        'repolish.commands.apply.pipeline.build_final_providers',
+    ).return_value = SessionBundle(
         delete_files=[],
         delete_history={},
         create_only_files=[],
         file_mappings={},
         provider_contexts={},
-        provider_migrated={},
     )
     mocker.patch(
-        'repolish.commands.apply.preprocess_templates',
+        'repolish.commands.apply.session.preprocess_templates',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.render_template',
+        'repolish.commands.apply.check.render_template',
     ).return_value = None
     mocker.patch(
-        'repolish.commands.apply.check_generated_output',
+        'repolish.commands.apply.check.check_generated_output',
     ).return_value = []
     mocker.patch(
-        'repolish.commands.apply.apply_generated_output',
-    ).return_value = None
+        'repolish.commands.apply.session.apply_generated_output',
+    ).return_value = {}
 
-    rv = run_repolish(cfg_path, check_only=False)
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
 
-    # verify branch behaviour: missing provider skipped, extra directory appended
-    assert recorded['template_dirs'] == [(None, Path('/extra/dir'))]
+    # verify branch behaviour: missing provider skipped (no directories available)
+    assert recorded['template_dirs'] == []
     assert recorded['overrides'] == {'foo': 'bar'}
+
+
+def test_apply_warns_when_providers_not_ready(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Ensure a warning is logged when ensure_providers_ready reports failures."""
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    # Override the autouse fixture to simulate a failed provider registration.
+    mocker.patch(
+        'repolish.commands.apply.pipeline.ensure_providers_ready',
+        return_value=ProviderReadinessResult(ready=[], failed=['broken_lib']),
+    )
+
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.pipeline.load_config',
+    ).return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+    ).return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch(
+        'repolish.commands.apply.staging.stage_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.pipeline.build_final_providers',
+    ).return_value = SessionBundle(
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check.render_template',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check.check_generated_output',
+    ).return_value = []
+    mocker.patch(
+        'repolish.commands.apply.session.apply_generated_output',
+    ).return_value = {}
+
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
+    assert rv == 0
+
+
+def test_apply_command_runs_with_valid_provider(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Exercise the apply command with a valid provider alias in providers_order."""
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'prov_a'
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers_order=['prov_a'],
+        providers={
+            'prov_a': ResolvedProviderInfo(
+                alias='prov_a',
+                provider_root=provider_dir,
+                resources_dir=provider_dir,
+            ),
+        },
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.pipeline.load_config',
+    ).return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+    ).return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch(
+        'repolish.commands.apply.staging.stage_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.pipeline.build_final_providers',
+    ).return_value = SessionBundle(
+        provider_contexts={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check.render_template',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.session.apply_generated_output',
+    ).return_value = {}
+
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
+    assert rv == 0
+
+
+def test_render_templates_returns_1_on_runtime_error(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """render_templates returns 1 when render_template raises RuntimeError."""
+    mocker.patch(
+        'repolish.commands.apply.check.render_template',
+    ).side_effect = RuntimeError(
+        "template rendering errors:\npyproject.toml: 'some_unknown' is undefined",
+    )
+
+    rc = render_templates(tmp_path / 'in', SessionBundle(), tmp_path / 'out')
+    assert rc == 1
+
+
+def test_apply_session_returns_1_when_render_fails(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_session returns 1 when rendering fails."""
+    config = RepolishConfig(config_dir=tmp_path)
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+        providers=SessionBundle(provider_contexts={}),
+        aliases=[],
+        alias_to_pid={},
+        pid_to_alias={},
+        resolved_symlinks={},
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+        return_value=(tmp_path, tmp_path / 'in', tmp_path / 'out'),
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={},
+    )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch(
+        'repolish.commands.apply.session.write_file_context_debug_files',
+    )
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
+    mocker.patch(
+        'repolish.commands.apply.session.render_templates',
+        return_value=1,
+    )
+
+    rc = apply_session(session)
+    assert rc == 1
+
+
+def test_finish_check_returns_2_when_diffs_found(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """finish_check returns rc=2 when check_generated_output reports diffs."""
+    mocker.patch(
+        'repolish.commands.apply.check.check_generated_output',
+    ).return_value = [('some_diff', 'diff content')]
+    mocker.patch(
+        'repolish.commands.apply.check.rich_print_diffs',
+    )
+    mocker.patch(
+        'repolish.commands.apply.check.check_symlinks',
+        return_value=[],
+    )
+
+    ctx = CheckContext(
+        setup_output=tmp_path,
+        providers=SessionBundle(),
+        base_dir=tmp_path,
+        resolved_symlinks={},
+        provider_infos={},
+    )
+    rc, result = finish_check(ctx)
+    assert rc == 2
+    assert 'some_diff' in result
+
+
+def _base_mocks(
+    mocker: MockerFixture,
+    tmp_path: Path,
+    fake_config: RepolishConfig,
+    providers: SessionBundle,
+) -> None:
+    """Wire up the standard set of mocks used by the two coverage tests below."""
+    mocker.patch(
+        'repolish.commands.apply.pipeline.load_config',
+    ).return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+    ).return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    mocker.patch(
+        'repolish.commands.apply.staging.stage_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.pipeline.build_final_providers',
+    ).return_value = providers
+    mocker.patch(
+        'repolish.commands.apply.session.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.check.render_template',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.session.apply_generated_output',
+    ).return_value = {}
+
+
+def test_apply_with_template_mapping_in_file_mappings(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Exercises the TemplateMapping branch inside _records_from_file_mappings.
+
+    A provider uses create_file_mappings() and returns a TemplateMapping with
+    source_provider set.  After build_final_providers the TemplateMapping object
+    lives in providers.file_mappings; build_file_records must resolve the owner
+    via pid_to_alias.
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'prov_a'
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers={
+            'prov_a': ResolvedProviderInfo(
+                alias='prov_a',
+                provider_root=provider_dir,
+                resources_dir=provider_dir,
+            ),
+        },
+    )
+
+    providers = SessionBundle(
+        file_mappings={
+            'report.md': TemplateMapping(
+                source_template='report.md.jinja',
+                file_mode=FileMode.REGULAR,
+                source_provider=provider_dir.as_posix(),
+            ),
+            'legacy.txt': 'legacy.txt.jinja',
+        },
+    )
+
+    _base_mocks(mocker, tmp_path, fake_config, providers)
+
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
+    assert rv == 0
+
+
+def test_apply_with_delete_files(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Exercises the loop body inside _records_from_delete_files.
+
+    A provider schedules files for deletion via create_delete_files().  After
+    build_final_providers, providers.delete_files is non-empty.  Two sub-cases
+    are present in a single run: one file has provenance in delete_history (owner
+    resolves to the provider alias), and one file has no history entry (owner
+    falls back to 'unknown').
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'prov_a'
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers={
+            'prov_a': ResolvedProviderInfo(
+                alias='prov_a',
+                provider_root=provider_dir,
+                resources_dir=provider_dir,
+            ),
+        },
+    )
+
+    providers = SessionBundle(
+        delete_files=[Path('tracked.txt'), Path('untracked.txt')],
+        delete_history={
+            'tracked.txt': [
+                Decision(source=provider_dir.as_posix(), action=Action.delete),
+            ],
+        },
+    )
+
+    _base_mocks(mocker, tmp_path, fake_config, providers)
+
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
+    assert rv == 0
+
+
+def test_template_sources_translated_from_alias_to_pid(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """stage_templates returns alias as the source value; apply must translate to pid.
+
+    When render_template is called the providers.template_sources values must be
+    full provider directory paths (pids), not the short alias strings.  A mismatch
+    causes _ctx_for_pid to return {} and every template variable becomes undefined.
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    provider_dir = tmp_path / 'template_a'
+    pid = provider_dir.as_posix()
+
+    fake_config = RepolishConfig(
+        config_dir=tmp_path,
+        providers_order=['template_a'],
+        providers={
+            'template_a': ResolvedProviderInfo(
+                alias='template_a',
+                provider_root=provider_dir,
+                resources_dir=provider_dir,
+            ),
+        },
+    )
+
+    providers = SessionBundle(provider_contexts={pid: BaseContext()})
+
+    mocker.patch(
+        'repolish.commands.apply.pipeline.load_config',
+    ).return_value = fake_config
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+    ).return_value = (
+        tmp_path,
+        tmp_path / 'in',
+        tmp_path / 'out',
+    )
+    # stage_templates returns alias ('template_a') as the source value — the
+    # raw output before the alias→pid translation in apply.command().
+    mocker.patch(
+        'repolish.commands.apply.staging.stage_templates',
+    ).return_value = (
+        tmp_path / 'staging',
+        {'pyproject.toml': 'template_a', 'Dockerfile': 'template_a'},
+    )
+    mocker.patch(
+        'repolish.commands.apply.pipeline.build_final_providers',
+    ).return_value = providers
+    mocker.patch(
+        'repolish.commands.apply.session.preprocess_templates',
+    ).return_value = None
+    mocker.patch(
+        'repolish.commands.apply.session.apply_generated_output',
+    ).return_value = {}
+
+    captured: dict[str, object] = {}
+
+    def fake_render_template(
+        setup_input: Path,
+        p: SessionBundle,
+        setup_output: Path,
+    ) -> None:
+        captured['template_sources'] = dict(p.template_sources)
+
+    mocker.patch(
+        'repolish.commands.apply.check.render_template',
+        side_effect=fake_render_template,
+    )
+
+    rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
+    assert rv == 0
+
+    # aliases must have been translated to pids before render_template is called
+    assert captured['template_sources'] == {
+        'pyproject.toml': pid,
+        'Dockerfile': pid,
+    }
+
+
+def test_paused_files_set_on_session(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_session populates providers.paused_files from config.paused_files."""
+    provider_dir = tmp_path / 'template_a'
+    config = RepolishConfig(
+        config_dir=tmp_path,
+        providers_order=['template_a'],
+        providers={
+            'template_a': ResolvedProviderInfo(
+                alias='template_a',
+                provider_root=provider_dir,
+                resources_dir=provider_dir,
+            ),
+        },
+        paused_files=['src/generated.py', 'README.md'],
+    )
+    providers = SessionBundle(provider_contexts={})
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+        providers=providers,
+        aliases=['template_a'],
+        alias_to_pid={'template_a': provider_dir.as_posix()},
+        pid_to_alias={provider_dir.as_posix(): 'template_a'},
+        resolved_symlinks={},
+    )
+
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+        return_value=(tmp_path, tmp_path / 'in', tmp_path / 'out'),
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={},
+    )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch(
+        'repolish.commands.apply.session.write_file_context_debug_files',
+    )
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
+    mocker.patch(
+        'repolish.commands.apply.session.render_templates',
+        return_value=0,
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.apply_generated_output',
+        return_value={},
+    )
+    mocker.patch('repolish.commands.apply.session.apply_symlinks')
+
+    rc = apply_session(session)
+    assert rc == 0
+    assert session.providers.paused_files == frozenset(
+        {
+            'src/generated.py',
+            'README.md',
+        },
+    )
+
+
+def test_print_files_summary_includes_symlink_only_provider(
+    tmp_path: Path,
+) -> None:
+    """A provider with only symlinks (no file records) still appears in the table."""
+    providers = SessionBundle(file_records=[])
+    symlinks = {
+        'symlink-only-provider': [
+            ProviderSymlink(
+                source=Path('src/file.txt'),
+                target=Path('file.txt'),
+            ),
+        ],
+    }
+    # Should not raise; the symlink-only provider must appear in output.
+    _print_files_summary(providers, symlinks)
+
+
+def test_apply_session_overlay_alias_split(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_session splits 'alias:mode' annotations into template_overlay_dirs."""
+    pid = str(tmp_path / 'my-provider')
+    config = RepolishConfig(config_dir=tmp_path, providers={}, paused_files=[])
+    global_context = GlobalContext(workspace=WorkspaceContext(mode='root'))
+    providers = SessionBundle()
+
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=global_context,
+        providers=providers,
+        aliases=['my-provider'],
+        alias_to_pid={'my-provider': pid},
+        pid_to_alias={pid: 'my-provider'},
+        resolved_symlinks={},
+    )
+
+    base = tmp_path / 'base'
+    inp = tmp_path / 'input'
+    out = tmp_path / 'output'
+    for d in (base, inp, out):
+        d.mkdir(parents=True, exist_ok=True)
+
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+        return_value=(base, inp, out),
+    )
+    # Return a source annotated with ':root' to trigger lines 76-77
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={'file.md': 'my-provider:root'},
+    )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch(
+        'repolish.commands.apply.session.write_file_context_debug_files',
+    )
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
+    mocker.patch(
+        'repolish.commands.apply.session.render_templates',
+        return_value=0,
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.finish_check',
+        return_value=(0, {}),
+    )
+
+    rc = apply_session(session, check_only=True)
+
+    assert rc == 0
+    assert session.providers.template_overlay_dirs == {'file.md': 'root'}

@@ -1,0 +1,14 @@
+# Messages from providers
+
+{%- for item in root_file_messages %}
+{{ item }}
+{%- endfor %}
+
+{%- if root_file_sources %}
+
+# Sources
+
+{%- for src in root_file_sources %}
+{{ src }}
+{%- endfor %}
+{%- endif %}

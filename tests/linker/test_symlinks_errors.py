@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from repolish.config import ProviderInfo
 from repolish.exceptions import SymlinkError
 from repolish.linker.symlinks import create_additional_link, link_resources
 
@@ -31,12 +30,11 @@ def test_link_resources_source_not_directory(tmp_path: Path):
 
 def test_create_additional_link_source_not_exists(
     provider_resources_setup: Path,
-    basic_provider_info: ProviderInfo,
 ):
     """Test create_additional_link raises when source doesn't exist."""
     with pytest.raises(FileNotFoundError, match='Source does not exist'):
         create_additional_link(
-            provider_info=basic_provider_info,
+            resources_dir=provider_resources_setup,
             provider_name='mylib',
             source='nonexistent/file.txt',
             target='target.txt',

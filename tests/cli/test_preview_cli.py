@@ -2,18 +2,18 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from pytest_mock import MockerFixture
 
 from repolish.cli.main import app
+from repolish.cli.testing import CliRunner
+
+runner = CliRunner()
 
 
 def test_integration_debug_cli(
     tmp_path: Path,
-    mocker: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Integration test for the debug CLI with a full debug configuration."""
-    # Create a debug.yaml file with template, target, and config
     debug_file = tmp_path / 'debug.yaml'
     debug_file.write_text(
         textwrap.dedent("""\
@@ -38,21 +38,10 @@ def test_integration_debug_cli(
         encoding='utf-8',
     )
 
-    mocker.patch(
-        'sys.argv',
-        [
-            'repolish',
-            'preview',
-            str(debug_file),
-            '--show-patterns',
-            '--show-steps',
-        ],
-    )
-
-    # Change to tmp_path so relative paths work
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SystemExit) as exc_info:
-        app()
-
-    assert exc_info.value.code == 0
+    result = runner.invoke(
+        app,
+        ['preview', str(debug_file), '--show-patterns', '--show-steps'],
+    )
+    assert result.exit_code == 0

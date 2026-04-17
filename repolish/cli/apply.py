@@ -1,27 +1,71 @@
 from pathlib import Path
+from typing import Annotated
 
-import typer
+from cyclopts import Parameter
+from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
-from repolish.commands.apply import command
-
-# Module-level constants for Typer options to avoid B008
-DEFAULT_CONFIG = Path('repolish.yaml')
-CONFIG_OPTION = typer.Option(
-    DEFAULT_CONFIG,
-    '--config',
-    help='Path to the repolish YAML configuration file',
-)
-CHECK_OPTION = typer.Option(
-    default=False,
-    help='Load config and create context (dry-run check)',
-)
 
 
-def apply(
-    config: Path = CONFIG_OPTION,
-    *,
-    check: bool = CHECK_OPTION,
-) -> None:
+@Parameter(name='*')
+class ApplyParams(BaseModel):
+    """Parameters for the apply command."""
+
+    config: Annotated[Path, Parameter(name=['--config', '-c'])] = Field(
+        default=Path('repolish.yaml'),
+        description='Path to the repolish YAML configuration file',
+    )
+    check: bool = Field(
+        default=False,
+        description='Load config and create context (dry-run check)',
+    )
+    strict: bool = Field(
+        default=False,
+        description='Exit with an error if any provider could not be registered (useful for CI)',
+    )
+    root_only: bool = Field(
+        default=False,
+        description='Run only the root pass; skip member passes (mutually exclusive with --member)',
+    )
+    member: str | None = Field(
+        default=None,
+        description=(
+            'Run only the specified member full pass (repo-relative path or package name). '
+            'The root pass is skipped. Mutually exclusive with --root-only.'
+        ),
+    )
+    standalone: bool = Field(
+        default=False,
+        description=(
+            'Bypass monorepo detection entirely and suppress the member note. '
+            'Run a normal single-pass repolish on the current directory.'
+        ),
+    )
+    skip_post_process: bool = Field(
+        default=False,
+        description='Skip all post_process commands defined in repolish.yaml',
+    )
+
+
+_DEFAULT_APPLY_PARAMS = ApplyParams()
+
+
+def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
     """Apply templates to project."""
-    run_cli_command(lambda: command(config, check_only=check))
+    # Deferred so that importing this CLI module (e.g. when running `repolish lint`)
+    # does not eagerly load the entire apply command tree.
+    from repolish.commands.apply import ApplyCommandOptions, apply_command  # noqa: PLC0415
+
+    run_cli_command(
+        lambda: apply_command(
+            ApplyCommandOptions(
+                config=params.config,
+                check=params.check,
+                strict=params.strict,
+                root_only=params.root_only,
+                member=params.member,
+                standalone=params.standalone,
+                skip_post_process=params.skip_post_process,
+            ),
+        ),
+    )
