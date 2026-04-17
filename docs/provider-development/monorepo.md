@@ -58,6 +58,18 @@ Member sessions emit inputs upward to the root via `provide_inputs`; the root
 collects them in `finalize_context`. See [Monorepo](../concepts/monorepo.md) for
 the cross-session channel detail.
 
+## Promoting files to the repo root
+
+Member providers can also push rendered files directly to the monorepo root
+using `promote_file_mappings()`. Unlike the `provide_inputs` →
+`finalize_context` channel (which passes _data_ for the root session to act on),
+promotions deliver a fully-rendered file — repolish handles the copy
+automatically without any root provider involvement.
+
+See
+[Provider Python API — Promoting files to the repo root](context.md#promoting-files-to-the-repo-root)
+for the full reference including conflict resolution strategies.
+
 ## CLI flags
 
 | Flag                      | Description                                                                                      |

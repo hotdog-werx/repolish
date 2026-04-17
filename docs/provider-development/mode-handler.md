@@ -128,10 +128,11 @@ always in place regardless of which command runs first.
 Every `Provider` hook is available on `ModeHandler`. Override only the ones that
 differ across modes:
 
-| Hook                      | Purpose                              |
-| ------------------------- | ------------------------------------ |
-| `provide_inputs`          | Emit data to other providers         |
-| `finalize_context`        | Merge received inputs into context   |
-| `create_file_mappings`    | Return template→destination mappings |
-| `create_anchors`          | Return anchor substitutions          |
-| `create_default_symlinks` | Return symlinks to create            |
+| Hook                      | Purpose                                               |
+| ------------------------- | ----------------------------------------------------- |
+| `provide_inputs`          | Emit data to other providers                          |
+| `finalize_context`        | Merge received inputs into context                    |
+| `create_file_mappings`    | Return template→destination mappings                  |
+| `promote_file_mappings`   | Promote files to the monorepo root (member mode only) |
+| `create_anchors`          | Return anchor substitutions                           |
+| `create_default_symlinks` | Return symlinks to create                             |

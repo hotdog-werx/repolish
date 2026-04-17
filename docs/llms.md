@@ -243,6 +243,10 @@ class MyProvider(Provider[Ctx, BaseInputs]):
     def create_file_mappings(self, context: Ctx) -> dict[str, TemplateMapping]:
         return {}
 
+    def promote_file_mappings(self, context: Ctx) -> dict[str, TemplateMapping]:
+        # member mode only: paths resolve relative to the monorepo root
+        return {}
+
     def create_default_symlinks(self) -> list:
         return []
 ```

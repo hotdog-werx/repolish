@@ -146,6 +146,103 @@ member providers are processed in separate per-package runs and will not appear
 here. If you need data that originates in a member, use the `provide_inputs()`
 push pattern from the member toward the root instead.
 
+## Promoting files to the repo root
+
+In a monorepo, a member provider can push files to the monorepo **root**
+directory using `promote_file_mappings()`. This is useful for files that belong
+to the whole workspace — shared CI workflows, a root-level `CODEOWNERS`, a
+common `Makefile` target — but whose content is derived from member-level
+context.
+
+```python
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider, TemplateMapping
+
+
+class Ctx(BaseContext):
+    python_version: str = '3.11'
+
+
+class MemberHandler(ModeHandler[Ctx, BaseInputs]):
+    def create_file_mappings(self, context: Ctx):
+        # files inside the member package
+        return {'pyproject.toml': 'pyproject.toml.jinja'}
+
+    def promote_file_mappings(self, context: Ctx):
+        # these paths land at the monorepo root, not the member directory
+        return {
+            '.github/workflows/ci.yaml': TemplateMapping(
+                source_template='ci.yaml.jinja',
+                promote_conflict='identical',
+            ),
+        }
+
+
+class MyProvider(Provider[Ctx, BaseInputs]):
+    member_mode = MemberHandler
+```
+
+Destination paths in `promote_file_mappings()` are resolved relative to the
+**monorepo root**, not the member directory. Repolish collects all promotions
+after every member session has run and writes them during the root pass.
+
+### Conflict resolution
+
+When two members promote the same destination path,
+`TemplateMapping.promote_conflict` controls what happens:
+
+| Strategy      | Behaviour                                                                      |
+| ------------- | ------------------------------------------------------------------------------ |
+| `"identical"` | Both outputs must be byte-for-byte equal; fail loudly if they differ (default) |
+| `"last_wins"` | The last member session processed silently wins                                |
+| `"error"`     | Fail immediately on any conflict, regardless of content                        |
+
+The `"identical"` default is deliberately strict: if two members both produce
+the same CI workflow from the same template the rendered bytes must match — a
+divergence is a bug worth surfacing.
+
+### Restrictions
+
+- `promote_file_mappings()` is only meaningful in **member** mode. Repolish
+  emits a warning and ignores the return value when called in `root` or
+  `standalone` mode — use `create_file_mappings()` for files that should land in
+  the root or standalone project directory.
+- If the rendered source file is missing from the member's render output,
+  repolish logs a warning and skips that entry.
+- Use a `ModeHandler` (see [Mode Handlers](mode-handler.md)) to keep the
+  member-only logic cleanly separated from root and standalone behaviour.
+
+## Anchors
+
+`create_anchors()` returns a mapping of named text blocks that other templates
+can reference with the `repolish-start` / `repolish-end` comment pair. This
+allows a provider to inject or update a specific region of a file without owning
+the whole file:
+
+```python
+class MyProvider(Provider[Ctx, BaseInputs]):
+    def create_anchors(self, context: Ctx) -> dict[str, str]:
+        return {
+            'build-matrix': f'python-version: ["{context.python_version}"]',
+        }
+```
+
+Any template — from any provider — can then declare the target region:
+
+```yaml
+# .github/workflows/ci.yaml
+jobs:
+  test:
+    strategy:
+      matrix:
+        ## repolish-start[build-matrix]
+        python-version: ['3.11']
+        ## repolish-end[build-matrix]
+```
+
+After `repolish apply` the bracketed region is replaced with the anchor value.
+Anchors from multiple providers are merged; if two providers declare the same
+anchor key the later provider in load order wins.
+
 ## Tips
 
 - Keep `create_context()` small and focused - move data-gathering logic into
