@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [0.8.1] <a name="0.8.1" href="#0.8.1">-</a> April 17, 2026
+
+### 🐛 Bug Fixes
+
+- Preserve executable bit on rendered/preprocessed template files (#36) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#36](https://github.com/hotdog-werx/repolish/pull/36)
+
+[0.8.1]: https://github.com/hotdog-werx/repolish/compare/0.8.0...0.8.1
+
 ## [0.8.0] <a name="0.8.0" href="#0.8.0">-</a> March 03, 2026
 
 ### 🚀 Features
