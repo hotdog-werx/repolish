@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from textwrap import dedent
 
@@ -574,6 +575,10 @@ def test_render_template_skips_suppressed_sources(tmp_path: Path) -> None:
     assert (setup_output / 'repolish' / 'good.txt').read_text() == 'ok'
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
 def test_render_template_preserves_executable_bit(tmp_path: Path) -> None:
     """The executable bit on a template file is preserved in the rendered output."""
     tpl = tmp_path / 'tpl'

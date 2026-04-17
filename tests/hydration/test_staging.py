@@ -1,7 +1,10 @@
 """Tests for hydration staging functionality."""
 
+import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 from repolish.builder import stage_templates
 from repolish.hydration.staging import preprocess_templates
@@ -106,6 +109,10 @@ def test_preprocess_templates_writes_file_when_anchor_content_changes(
     assert 'repolish-start' not in updated
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
 def test_preprocess_templates_preserves_executable_bit(tmp_path: Path) -> None:
     """The executable bit on a staged script is preserved after anchor preprocessing."""
     setup_input = tmp_path / '_' / 'stage'
