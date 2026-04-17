@@ -1,25 +1,52 @@
-# repolish
+<p align="center">
+  <img
+    alt="repolish"
+    src="https://raw.githubusercontent.com/hotdog-werx/repolish/master/docs/assets/logo.svg"
+    width="120"
+    height="120"
+  >
+</p>
 
-A hybrid templating and diff/patch system for maintaining repository consistency
-while preserving local customizations.
+<p align="center">
+  <strong>Package your standards. Own your edits.</strong>
+</p>
 
-Repolish applies provider-supplied templates to a project while using anchor
-markers and regex patterns to preserve the parts that should remain local. It is
-designed for teams that need to keep many repositories in sync without
-overwriting developer customizations.
+<p align="center">
+  <a href="https://github.com/hotdog-werx/repolish/actions"><img
+    src="https://github.com/hotdog-werx/repolish/actions/workflows/ci-checks.yaml/badge.svg"
+    alt="CI"
+  /></a>
+  <a href="https://pypi.org/project/repolish"><img
+    src="https://img.shields.io/pypi/v/repolish?logo=python&logoColor=white&label=PyPI"
+    alt="Python Package Index"
+  /></a>
+  <a href="https://pypistats.org/packages/repolish"><img
+    src="https://img.shields.io/pypi/dm/repolish.svg"
+    alt="Downloads"
+  /></a>
+</p>
 
-## Documentation
+<p align="center">
+  <a href="https://hotdog-werx.github.io/repolish/"><strong>Home</strong></a>
+  &middot;
+  <a href="https://hotdog-werx.github.io/repolish/getting-started/installation/"><strong>Get started</strong></a>
+  &middot;
+  <a href="https://hotdog-werx.github.io/repolish/tutorial/"><strong>Tutorial</strong></a>
+  &middot;
+  <a href="https://hotdog-werx.github.io/repolish/concepts/overview/"><strong>Concepts</strong></a>
+  &middot;
+  <a href="https://hotdog-werx.github.io/repolish/provider-development/overview/"><strong>Provider Development</strong></a>
+</p>
 
-Full documentation is available at
-[hotdog-werx.github.io/repolish](https://hotdog-werx.github.io/repolish).
+---
 
-- [Getting Started](https://hotdog-werx.github.io/repolish/getting-started/installation/)
-  — install and run your first check
-- [Configuration](https://hotdog-werx.github.io/repolish/configuration/overview/)
-  — `repolish.yaml` reference
-- [Preprocessors](https://hotdog-werx.github.io/repolish/guides/preprocessors/)
-  — anchors, regex, and multiregex directives
-- [Templates](https://hotdog-werx.github.io/repolish/guides/templates/) — file
-  mappings and create-only files
-- [Guides](https://hotdog-werx.github.io/repolish/guides/patterns/) — provider
-  patterns and best practices
+Repolish lets a team publish their repository conventions as **providers** and
+apply them consistently across every project that opts in — without overwriting
+the local changes that developers own.
+
+Run `repolish --check` in CI to catch drift. Run `repolish apply` to pull in
+updates.
+
+```bash
+uv add repolish
+```

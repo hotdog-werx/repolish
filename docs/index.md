@@ -1,5 +1,7 @@
 # Repolish
 
+_Package your standards. Own your edits._
+
 You have ten repositories. They all follow roughly the same structure — similar
 CI pipelines, similar tooling config, similar README conventions. One day the
 team decides to upgrade the linter version. You update it in one repo, maybe

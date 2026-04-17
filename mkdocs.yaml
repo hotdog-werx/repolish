@@ -1,5 +1,5 @@
-site_name: repolish
-site_description: A hybrid templating and diff/patch system for maintaining repository consistency while preserving local customizations.
+site_name: Repolish Documentation
+site_description: Package your standards. Own your edits.
 site_url: https://hotdog-werx.github.io/repolish
 repo_url: https://github.com/hotdog-werx/repolish
 repo_name: hotdog-werx/repolish
@@ -93,16 +93,11 @@ theme:
       toggle:
         icon: lucide/moon-star
         name: Switch to light mode
-  # favicon: assets/zensical.png
-  # logo: assets/zensical.svg
+  favicon: assets/logo.svg
+  logo: assets/logo.svg
   icon:
     tag:
       default: lucide/hash
-
-markdown_extensions:
-  - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
 
 # Plugins
 plugins:

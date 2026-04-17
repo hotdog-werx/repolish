@@ -289,7 +289,9 @@ def test_apply_session_returns_1_when_render_fails(
     session = ResolvedSession(
         config_path=tmp_path / 'repolish.yaml',
         config=config,
-        global_context=GlobalContext(workspace=WorkspaceContext(mode='standalone')),
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
         providers=SessionBundle(provider_contexts={}),
         aliases=[],
         alias_to_pid={},
@@ -301,9 +303,14 @@ def test_apply_session_returns_1_when_render_fails(
         'repolish.commands.apply.session.prepare_staging',
         return_value=(tmp_path, tmp_path / 'in', tmp_path / 'out'),
     )
-    mocker.patch('repolish.commands.apply.session.create_staged_template', return_value={})
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={},
+    )
     mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
-    mocker.patch('repolish.commands.apply.session.write_file_context_debug_files')
+    mocker.patch(
+        'repolish.commands.apply.session.write_file_context_debug_files',
+    )
     mocker.patch('repolish.commands.apply.session.preprocess_templates')
     mocker.patch(
         'repolish.commands.apply.session.render_templates',
