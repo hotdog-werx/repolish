@@ -89,6 +89,7 @@ class ProviderConfig(BaseModel):
     symlinks: list[Symlink] | None = None
     context: dict[str, Any] | None = None
     context_overrides: dict[str, Any] = {}
+    anchors: dict[str, str] | None = None
 ```
 
 Each provider entry must specify at least one of `cli` or `provider_root`; they
@@ -120,6 +121,13 @@ the full resolution rules and CLI protocol.
   `finalize_context()`. Allows surgical patching of nested context fields
   without repeating the entire object. See
   [Override Context](../project-controls/context-overrides.md).
+
+- **`anchors`** - optional mapping of anchor name to replacement string. Merged
+  on top of whatever `create_anchors()` returns for this provider; config-level
+  values take precedence. Overrides are scoped to the provider they appear under
+  — one provider's `anchors` cannot affect another provider's anchors. Providers
+  should document which anchor keys they support. See
+  [Block anchors](../project-controls/anchors.md).
 
 Shorthand notation is supported in the YAML. Instead of writing::
 

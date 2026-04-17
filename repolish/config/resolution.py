@@ -123,6 +123,7 @@ def _resolved_from_info(
         symlinks=symlinks,
         context=provider_config.context,
         context_overrides=provider_config.context_overrides or None,
+        anchors=provider_config.anchors,
     )
 
 
@@ -149,6 +150,7 @@ def _resolved_from_static(
         symlinks=symlinks,
         context=provider_config.context,
         context_overrides=provider_config.context_overrides or None,
+        anchors=provider_config.anchors,
     )
 
 

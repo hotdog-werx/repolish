@@ -111,7 +111,12 @@ def _run_provider_pipeline(
         )
     _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
 
-    collect_provider_contributions(module_cache, provider_contexts, accum)
+    collect_provider_contributions(
+        module_cache,
+        provider_contexts,
+        accum,
+        anchor_overrides=_opts.anchor_overrides,
+    )
 
     return SessionBundle(
         anchors=accum.merged_anchors,
@@ -131,6 +136,7 @@ def create_providers(
     context_overrides: dict[str, object] | None = ...,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = ...,
+    anchor_overrides: dict[str, dict[str, str]] | None = ...,
     global_context: GlobalContext | None = ...,
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
@@ -144,6 +150,7 @@ def create_providers(
     context_overrides: dict[str, object] | None = ...,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = ...,
+    anchor_overrides: dict[str, dict[str, str]] | None = ...,
     global_context: GlobalContext | None = ...,
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
@@ -156,6 +163,7 @@ def create_providers(  # noqa: PLR0913
     context_overrides: dict[str, object] | None = None,
     *,
     provider_overrides: dict[str, dict[str, object]] | None = None,
+    anchor_overrides: dict[str, dict[str, str]] | None = None,
     global_context: GlobalContext | None = None,
     extra_provider_entries: list[ProviderEntry] | None = None,
     extra_inputs: list[BaseInputs] | None = None,
@@ -208,6 +216,7 @@ def create_providers(  # noqa: PLR0913
             global_context=global_ctx_obj,
             context_overrides=context_overrides,
             provider_overrides=provider_overrides,
+            anchor_overrides=anchor_overrides,
             alias_map=alias_map,
             dry_run=dry_run,
             extra_provider_entries=extra_provider_entries,

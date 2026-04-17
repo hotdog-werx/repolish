@@ -505,6 +505,7 @@ def _collect_provider_contribution(
     module_dict: dict,
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
+    anchor_overrides: dict[str, dict[str, str]] | None = None,
 ) -> None:
     """Process a single provider's anchors, file mappings, and promotions."""
     inst = module_dict.get('_repolish_provider_instance')
@@ -522,6 +523,9 @@ def _collect_provider_contribution(
             msg = 'create_anchors() must return a dict'
             raise TypeError(msg)
         accum.merged_anchors.update(cast('dict[str, str]', val))
+    # apply config-level anchor overrides scoped to this provider only
+    if anchor_overrides and (overrides := anchor_overrides.get(provider_id)):
+        accum.merged_anchors.update(overrides)
 
     fm = cast(
         'dict[str, str | TemplateMapping | None]',
@@ -535,6 +539,7 @@ def collect_provider_contributions(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
+    anchor_overrides: dict[str, dict[str, str]] | None = None,
 ) -> None:
     """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
@@ -546,4 +551,5 @@ def collect_provider_contributions(
             module_dict,
             provider_contexts,
             accum,
+            anchor_overrides=anchor_overrides,
         )

@@ -47,6 +47,9 @@ class PipelineOptions:
     """Provider entries from member sessions injected into the root session pass."""
     extra_inputs: list[BaseInputs] | None = None
     """Emitted inputs from member sessions injected into the root session routing pool."""
+    anchor_overrides: dict[str, dict[str, str]] | None = None
+    """Per-provider anchor overrides keyed by provider_id (posix path). Applied on top of
+    each provider's create_anchors() output before merging into the session anchors."""
 
 
 @dataclass

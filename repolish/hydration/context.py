@@ -14,6 +14,27 @@ def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
     return alias_to_pid
 
 
+def _build_override_maps(
+    config: RepolishConfig,
+    alias_to_pid: dict[str, str],
+) -> tuple[dict[str, dict[str, object]], dict[str, dict[str, str]]]:
+    """Return (provider_overrides, anchor_overrides) keyed by provider_id."""
+    provider_overrides: dict[str, dict[str, object]] = {}
+    anchor_overrides: dict[str, dict[str, str]] = {}
+    for alias, info in config.providers.items():
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+        merged: dict[str, object] = {}
+        if info.context:
+            merged.update(ctx_to_dict(info.context))
+        if info.context_overrides:
+            merged.update(info.context_overrides)
+        if merged:
+            provider_overrides[pid] = merged
+        if info.anchors:
+            anchor_overrides[pid] = info.anchors
+    return provider_overrides, anchor_overrides
+
+
 def _apply_delete_overrides(
     providers: SessionBundle,
     config: RepolishConfig,
@@ -73,21 +94,10 @@ def build_final_providers(
     # `apply_context_overrides` (dot-notation aware) and then re-validates
     # the model, so each provider's typed context is the single source of truth.
     alias_to_pid = _build_alias_to_pid(config)
-
-    provider_overrides: dict[str, dict[str, object]] = {}
-    for alias, info in config.providers.items():
-        # prefer the canonical id from `alias_to_pid`; fall back to the raw
-        # `provider_root` if something went wrong (shouldn't happen for a
-        # resolved config, but defensive code is cheap).
-        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-
-        merged: dict[str, object] = {}
-        if info.context:
-            merged.update(ctx_to_dict(info.context))
-        if info.context_overrides:
-            merged.update(info.context_overrides)
-        if merged and pid:
-            provider_overrides[pid] = merged
+    provider_overrides, anchor_overrides = _build_override_maps(
+        config,
+        alias_to_pid,
+    )
 
     # determine directories from provider info (alias_to_pid holds the
     # normalized loader IDs constructed from target_dir)
@@ -100,6 +110,7 @@ def build_final_providers(
     result = create_providers(
         dirs,
         provider_overrides=provider_overrides,
+        anchor_overrides=anchor_overrides or None,
         global_context=global_context,
         extra_provider_entries=extra_provider_entries,
         extra_inputs=extra_inputs,

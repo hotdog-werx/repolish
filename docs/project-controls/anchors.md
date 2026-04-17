@@ -58,9 +58,35 @@ file is clean.
    markers.
 2. During preprocessing, repolish replaces the block with whatever
    `create_anchors()` returns for that key, or whatever `anchors:` in
-   `repolish.yaml` specifies (project-level overrides win).
+   `repolish.yaml` specifies (config-level overrides win).
 3. If no replacement is provided, the default content is kept.
 4. The marker lines are stripped from the final written file.
+
+To override an anchor from `repolish.yaml`, add an `anchors` mapping under the
+relevant provider:
+
+```yaml
+providers:
+  mylib:
+    cli: mylib-link
+    anchors:
+      install-extras: 'pip install -e ".[dev,docs]"'
+```
+
+The value must be the full replacement string (no markers). Config-level anchors
+are merged on top of anchor values returned by the provider, so you only need to
+specify the keys you want to override.
+
+Anchor overrides are scoped to the provider they are declared under. Setting
+`anchors:` on one provider entry cannot affect anchors contributed by a
+different provider. This mirrors how `context` overrides work: each provider's
+configuration section is isolated.
+
+Because anchor names are defined by the provider's `create_anchors()`
+implementation, providers should document which anchor keys they support and
+what content each key expects. Without that documentation, project maintainers
+have no way to discover which names are valid or what format the replacement
+string should follow.
 
 The tradeoff: to customise the injected content you override it in
 `repolish.yaml`, because editing the file directly won't stick - the next apply

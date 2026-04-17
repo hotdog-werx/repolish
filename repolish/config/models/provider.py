@@ -74,6 +74,13 @@ class ProviderConfig(BaseModel):
             ' providers must also be migrated to use).'
         ),
     )
+    anchors: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            'Optional anchor overrides for this provider. '
+            'Merged on top of anchors returned by the provider create_anchors hook.'
+        ),
+    )
 
     @model_validator(mode='after')
     def validate_cli_or_provider_root(self) -> 'ProviderConfig':
@@ -129,5 +136,12 @@ class ResolvedProviderInfo(BaseModel):
         default=None,
         description=(
             'Provider-scoped dotted-path overrides; applied after `context` and before global context overrides.'
+        ),
+    )
+    anchors: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            'Provider-scoped anchor overrides from the project configuration. '
+            'Merged on top of anchors returned by the provider create_anchors hook.'
         ),
     )
