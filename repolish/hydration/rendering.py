@@ -134,6 +134,7 @@ def render_with_jinja(ctx: RenderContext) -> None:
 
         rendered_txt = _jinja_render(env, txt, ctx_to_use, filename=src)
         dest.write_text(rendered_txt, encoding='utf-8')
+        dest.chmod(src.stat().st_mode)
 
 
 def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
