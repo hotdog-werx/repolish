@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.1.0] <a name="1.1.0" href="#1.1.0">-</a> April 22, 2026
+
+### 🚀 Features
+
+- Conditional _repolish. folder convention and map_folder helper (#39) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#39](https://github.com/hotdog-werx/repolish/pull/39)
+
+[1.1.0]: https://github.com/hotdog-werx/repolish/compare/1.0.0...1.1.0
+
 ## [1.0.0] <a name="1.0.0" href="#1.0.0">-</a> April 17, 2026
 
 ### 🚀 Features
