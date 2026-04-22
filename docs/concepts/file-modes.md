@@ -133,23 +133,47 @@ def create_file_mappings(self, context):
 ```
 
 **Folder prefix** — for multi-file variants where individual filenames should
-remain clean:
+remain clean. Files inside the folder mirror the destination structure relative
+to the target directory:
 
 ```
 templates/repolish/
 ├── _repolish.ci.github/
-│   ├── .github/workflows/ci.yml
-│   └── .github/dependabot.yml
+│   ├── workflows/     # mirrors .github/workflows/
+│   │   └── ci.yml
+│   └── dependabot.yml
 └── _repolish.ci.gitlab/
     └── .gitlab-ci.yml
 ```
+
+Use `map_folder` to build the mapping dict automatically:
+
+```python
+from repolish import map_folder
+
+def create_file_mappings(self, context):
+    tpl = self.templates_root / 'repolish'
+    if context.use_github:
+        github_files = map_folder('.github', '_repolish.ci.github', tpl)
+        return {
+            **github_files,
+            'README.md': '_repolish.readme.github.md',
+        }
+    gitlab_files = map_folder('', '_repolish.ci.gitlab', tpl)
+    return {
+        **gitlab_files,
+        'README.md': '_repolish.readme.gitlab.md',
+    }
+```
+
+Or write the entries by hand when you only need a subset of the files:
 
 ```python
 def create_file_mappings(self, context):
     if context.use_github:
         return {
-            '.github/workflows/ci.yml': '_repolish.ci.github/.github/workflows/ci.yml',
-            '.github/dependabot.yml':   '_repolish.ci.github/.github/dependabot.yml',
+            '.github/workflows/ci.yml': '_repolish.ci.github/workflows/ci.yml',
+            '.github/dependabot.yml':   '_repolish.ci.github/dependabot.yml',
         }
     return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
 ```

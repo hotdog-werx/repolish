@@ -64,22 +64,26 @@ Pass `None` as a value to suppress a file entirely:
 ## Grouping a variant into a folder
 
 When a conditional variant spans multiple files, placing them all under a
-`_repolish.`-prefixed directory keeps individual filenames clean:
+`_repolish.`-prefixed directory keeps individual filenames clean. Files inside
+the folder mirror the destination structure relative to the target directory:
 
 ```
 repolish/
 ├── pyproject.toml
 ├── _repolish.ci.github/          # entire subtree is staging-only
-│   ├── .github/workflows/ci.yml
-│   └── .github/dependabot.yml
+│   ├── workflows/                # mirrors .github/workflows/
+│   │   └── ci.yml
+│   └── dependabot.yml
 └── _repolish.ci.gitlab/
     └── .gitlab-ci.yml
 ```
 
-Any file whose path contains a `_repolish.`-prefixed component is treated as a
-conditional source and skipped by auto-staging:
+Use `map_folder` to build the mapping dict automatically. It returns a plain
+dict you can inspect and adjust before spreading it into the final mapping:
 
 ```python
+from repolish import BaseContext, BaseInputs, Provider, map_folder
+
 class Ctx(BaseContext):
     use_github: bool = True
 
@@ -87,12 +91,26 @@ class MyProvider(Provider[Ctx, BaseInputs]):
     def create_file_mappings(
         self, context: Ctx
     ) -> dict[str, str | TemplateMapping | None]:
+        tpl = self.templates_root / 'repolish'
         if context.use_github:
+            github_files = map_folder('.github', '_repolish.ci.github', tpl)
             return {
-                '.github/workflows/ci.yml': '_repolish.ci.github/.github/workflows/ci.yml',
-                '.github/dependabot.yml':   '_repolish.ci.github/.github/dependabot.yml',
+                **github_files,
+                'README.md': '_repolish.readme.github.md',
             }
-        return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
+        gitlab_files = map_folder('', '_repolish.ci.gitlab', tpl)
+        return {
+            **gitlab_files,
+            'README.md': '_repolish.readme.gitlab.md',
+        }
+```
+
+Assigning `map_folder(...)` to a variable lets you inspect the generated entries
+before returning — handy for debugging. Pass `file_mode` or `extra_context` to
+apply the same option to every entry:
+
+```python
+github_files = map_folder('.github', '_repolish.ci.github', tpl, file_mode=FileMode.CREATE_ONLY)
 ```
 
 `repolish lint` warns about any `_repolish.`-prefixed file — including those

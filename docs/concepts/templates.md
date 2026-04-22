@@ -139,28 +139,48 @@ repolish/
 ```
 
 **Folder prefix** — use a `_repolish.`-prefixed directory when a whole subtree
-of files belongs to one conditional variant. Files inside keep their natural
-names:
+of files belongs to one conditional variant. Files inside mirror the destination
+structure relative to the target directory:
 
 ```
 repolish/
 ├── README.md
 ├── _repolish.ci.github/          # only staged when any file inside is mapped
-│   ├── .github/workflows/ci.yml
-│   └── .github/dependabot.yml
+│   ├── workflows/                # mirrors .github/workflows/
+│   │   └── ci.yml
+│   └── dependabot.yml
 └── _repolish.ci.gitlab/
     └── .gitlab-ci.yml
 ```
 
+Each file's path inside the folder is relative to the destination directory. Use
+`map_folder` to build the dict automatically:
+
 ```python
-def create_file_mappings(self, context):
-    if context.use_github:
+from repolish import BaseContext, BaseInputs, Provider, map_folder
+
+class Ctx(BaseContext):
+    use_github: bool = True
+
+class MyProvider(Provider[Ctx, BaseInputs]):
+    def create_file_mappings(self, context: Ctx):
+        tpl = self.templates_root / 'repolish'
+        if context.use_github:
+            github_files = map_folder('.github', '_repolish.ci.github', tpl)
+            return {
+                **github_files,
+                'README.md': '_repolish.readme.github.md',
+            }
+        gitlab_files = map_folder('', '_repolish.ci.gitlab', tpl)
         return {
-            '.github/workflows/ci.yml': '_repolish.ci.github/.github/workflows/ci.yml',
-            '.github/dependabot.yml':   '_repolish.ci.github/.github/dependabot.yml',
+            **gitlab_files,
+            'README.md': '_repolish.readme.gitlab.md',
         }
-    return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
 ```
+
+Assigning to a variable first lets you inspect the contents before returning —
+useful for debugging. See the `map_folder` reference for the `file_mode` and
+`extra_context` options.
 
 The `_repolish.` prefix has no runtime special meaning — it is a convention that
 prevents accidental auto-staging and makes conditional material easy to spot.
