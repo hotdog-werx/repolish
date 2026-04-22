@@ -13,6 +13,7 @@ extension.
 | ----------------------------------------------- | --------------------------------------------------- |
 | Render the same file on every apply             | Auto-staging (default)                              |
 | Pick between alternative files based on context | `create_file_mappings()` with `_repolish.*` sources |
+| Group a multi-file variant under one name       | `_repolish.`-prefixed folder                        |
 | Write a file once, let the developer own it     | `FileMode.CREATE_ONLY`                              |
 | Remove a file from the project                  | `FileMode.DELETE`                                   |
 | Preserve a section the developer edits          | [Anchors](preprocessors.md)                         |
@@ -60,6 +61,43 @@ Pass `None` as a value to suppress a file entirely:
 "some-file.yml": None,  # don't copy this file at all
 ```
 
+## Grouping a variant into a folder
+
+When a conditional variant spans multiple files, placing them all under a
+`_repolish.`-prefixed directory keeps individual filenames clean:
+
+```
+repolish/
+├── pyproject.toml
+├── _repolish.ci.github/          # entire subtree is staging-only
+│   ├── .github/workflows/ci.yml
+│   └── .github/dependabot.yml
+└── _repolish.ci.gitlab/
+    └── .gitlab-ci.yml
+```
+
+Any file whose path contains a `_repolish.`-prefixed component is treated as a
+conditional source and skipped by auto-staging:
+
+```python
+class Ctx(BaseContext):
+    use_github: bool = True
+
+class MyProvider(Provider[Ctx, BaseInputs]):
+    def create_file_mappings(
+        self, context: Ctx
+    ) -> dict[str, str | TemplateMapping | None]:
+        if context.use_github:
+            return {
+                '.github/workflows/ci.yml': '_repolish.ci.github/.github/workflows/ci.yml',
+                '.github/dependabot.yml':   '_repolish.ci.github/.github/dependabot.yml',
+            }
+        return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
+```
+
+`repolish lint` warns about any `_repolish.`-prefixed file — including those
+inside a prefixed folder — that is never referenced by a mapping.
+
 ## Create-only scaffold stubs
 
 Use `FileMode.CREATE_ONLY` to seed files that a developer will own after the
@@ -103,5 +141,6 @@ reference, `FileMode.DELETE`, and extra-context options.
 - **Extra context per file**: pass `extra_context=MyModel(...)` to
   `TemplateMapping` when different destinations need different values from the
   same source template.
-- **`repolish lint`** warns about `_repolish.*` files never referenced by any
-  mapping — a useful safety net for typos.
+- **`repolish lint`** warns about `_repolish.*` files and files inside
+  `_repolish.`-prefixed folders that are never referenced by any mapping — a
+  useful safety net for typos.

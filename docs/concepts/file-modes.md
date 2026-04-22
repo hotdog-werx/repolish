@@ -110,9 +110,11 @@ suppress a file from config instead.
 
 ## Conditional files and the `_repolish.` prefix
 
-Files whose names start with `_repolish.` are staged only when a mapping selects
-them. They are the mechanism for providing multiple alternatives for one
-destination path:
+Any path component that starts with `_repolish.` marks that entry as
+staging-only — it is never auto-staged and is only reached when a mapping
+selects it. This applies to both the file-prefix and the folder-prefix forms.
+
+**File prefix** — for single-file alternatives:
 
 ```
 templates/repolish/
@@ -128,6 +130,28 @@ def create_file_mappings(self, context):
         else '_repolish.ci.gitlab.yml'
     )
     return {'.github/workflows/ci.yml': src}
+```
+
+**Folder prefix** — for multi-file variants where individual filenames should
+remain clean:
+
+```
+templates/repolish/
+├── _repolish.ci.github/
+│   ├── .github/workflows/ci.yml
+│   └── .github/dependabot.yml
+└── _repolish.ci.gitlab/
+    └── .gitlab-ci.yml
+```
+
+```python
+def create_file_mappings(self, context):
+    if context.use_github:
+        return {
+            '.github/workflows/ci.yml': '_repolish.ci.github/.github/workflows/ci.yml',
+            '.github/dependabot.yml':   '_repolish.ci.github/.github/dependabot.yml',
+        }
+    return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
 ```
 
 A conditional file can also carry a mode:

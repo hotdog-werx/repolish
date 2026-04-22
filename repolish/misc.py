@@ -55,19 +55,19 @@ def ctx_keys(ctx_obj: object | None) -> list[str]:
 
 
 def is_conditional_file(path_str: str) -> bool:
-    """Check if a file's name starts with the _repolish. prefix.
+    """Check if any component of a path starts with the _repolish. prefix.
 
     This prefix is used both for conditional template files and for
-    temporary mapping outputs written during hydration.  By treating any
-    filename beginning with `_repolish.` as special we automatically skip
-    such files during regular rendering and application steps, and they are
-    easy to spot when inspecting the staging directory.
+    temporary mapping outputs written during hydration.  A path is
+    considered conditional when its own filename *or* any parent directory
+    name begins with `_repolish.`, so an entire subtree of files can be
+    treated as staging-only by placing them inside a `_repolish.`-prefixed
+    folder — allowing the individual filenames to remain clean.
 
     Args:
         path_str: POSIX-style relative path
 
     Returns:
-        True if the filename starts with '_repolish.'
+        True if any path component starts with '_repolish.'
     """
-    filename = PurePosixPath(path_str).name
-    return filename.startswith('_repolish.')
+    return any(part.startswith('_repolish.') for part in PurePosixPath(path_str).parts)
