@@ -34,6 +34,7 @@ from repolish.providers.models.files import (
     SessionBundle,
     TemplateMapping,
     build_file_records,
+    map_folder,
 )
 from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
 from repolish.providers.models.provider import (
@@ -90,4 +91,5 @@ __all__ = [
     'get_provider_context',
     'get_provider_inputs',
     'get_provider_inputs_schema',
+    'map_folder',
 ]

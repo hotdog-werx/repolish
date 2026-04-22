@@ -206,3 +206,40 @@ def test_conditional_files_staged_when_mapped_sources_is_none(
     staged = {p.name for p in (staging / 'repolish').rglob('*') if p.is_file()}
     assert 'README.md' in staged
     assert '_repolish.variant-a.md' in staged
+
+
+def test_unmapped_conditional_folder_not_staged(tmp_path: Path) -> None:
+    """Files inside a _repolish. folder not in mapped_sources must not be staged."""
+    provider = _make_provider_dir(
+        tmp_path,
+        ['README.md', '_repolish.ci.github/workflows/ci.yml'],
+    )
+    staging = tmp_path / 'stage'
+    _, _sources = stage_templates(staging, [provider], mapped_sources=set())
+
+    staged = {p.relative_to(staging / 'repolish').as_posix() for p in (staging / 'repolish').rglob('*') if p.is_file()}
+    assert 'README.md' in staged
+    assert '_repolish.ci.github/workflows/ci.yml' not in staged
+
+
+def test_mapped_conditional_folder_file_is_staged(tmp_path: Path) -> None:
+    """Files inside a _repolish. folder that ARE in mapped_sources must be staged."""
+    provider = _make_provider_dir(
+        tmp_path,
+        [
+            'README.md',
+            '_repolish.ci.github/workflows/ci.yml',
+            '_repolish.ci.gitlab/ci.yml',
+        ],
+    )
+    staging = tmp_path / 'stage'
+    _, _sources = stage_templates(
+        staging,
+        [provider],
+        mapped_sources={'_repolish.ci.github/workflows/ci.yml'},
+    )
+
+    staged = {p.relative_to(staging / 'repolish').as_posix() for p in (staging / 'repolish').rglob('*') if p.is_file()}
+    assert 'README.md' in staged
+    assert '_repolish.ci.github/workflows/ci.yml' in staged
+    assert '_repolish.ci.gitlab/ci.yml' not in staged

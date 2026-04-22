@@ -73,6 +73,18 @@ class FindUnmappedCase:
             mapped_sources=set(),
             expected_paths=['_repolish.a.md'],
         ),
+        FindUnmappedCase(
+            name='folder_prefix_unmapped',
+            templates=['_repolish.ci.github/workflows/ci.yml'],
+            mapped_sources=set(),
+            expected_paths=['_repolish.ci.github/workflows/ci.yml'],
+        ),
+        FindUnmappedCase(
+            name='folder_prefix_mapped',
+            templates=['_repolish.ci.github/workflows/ci.yml'],
+            mapped_sources={'_repolish.ci.github/workflows/ci.yml'},
+            expected_paths=[],
+        ),
     ],
     ids=lambda c: c.name,
 )

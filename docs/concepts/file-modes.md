@@ -110,9 +110,11 @@ suppress a file from config instead.
 
 ## Conditional files and the `_repolish.` prefix
 
-Files whose names start with `_repolish.` are staged only when a mapping selects
-them. They are the mechanism for providing multiple alternatives for one
-destination path:
+Any path component that starts with `_repolish.` marks that entry as
+staging-only — it is never auto-staged and is only reached when a mapping
+selects it. This applies to both the file-prefix and the folder-prefix forms.
+
+**File prefix** — for single-file alternatives:
 
 ```
 templates/repolish/
@@ -128,6 +130,52 @@ def create_file_mappings(self, context):
         else '_repolish.ci.gitlab.yml'
     )
     return {'.github/workflows/ci.yml': src}
+```
+
+**Folder prefix** — for multi-file variants where individual filenames should
+remain clean. Files inside the folder mirror the destination structure relative
+to the target directory:
+
+```
+templates/repolish/
+├── _repolish.ci.github/
+│   ├── workflows/     # mirrors .github/workflows/
+│   │   └── ci.yml
+│   └── dependabot.yml
+└── _repolish.ci.gitlab/
+    └── .gitlab-ci.yml
+```
+
+Use `map_folder` to build the mapping dict automatically:
+
+```python
+from repolish import map_folder
+
+def create_file_mappings(self, context):
+    tpl = self.templates_root / 'repolish'
+    if context.use_github:
+        github_files = map_folder('.github', '_repolish.ci.github', tpl)
+        return {
+            **github_files,
+            'README.md': '_repolish.readme.github.md',
+        }
+    gitlab_files = map_folder('', '_repolish.ci.gitlab', tpl)
+    return {
+        **gitlab_files,
+        'README.md': '_repolish.readme.gitlab.md',
+    }
+```
+
+Or write the entries by hand when you only need a subset of the files:
+
+```python
+def create_file_mappings(self, context):
+    if context.use_github:
+        return {
+            '.github/workflows/ci.yml': '_repolish.ci.github/workflows/ci.yml',
+            '.github/dependabot.yml':   '_repolish.ci.github/dependabot.yml',
+        }
+    return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
 ```
 
 A conditional file can also carry a mode:

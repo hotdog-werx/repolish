@@ -125,9 +125,11 @@ mode, so handlers can discover mode-specific templates dynamically with
 
 ## Conditional files and the `_repolish.` prefix
 
-Files whose names start with `_repolish.` are **staging-only** — they are never
-auto-staged and only reach the project when explicitly mapped to a destination
-by `create_file_mappings()`:
+Any path component that starts with `_repolish.` makes the whole entry
+**staging-only** — it is never auto-staged and only reaches the project when
+explicitly mapped to a destination by `create_file_mappings()`.
+
+**File prefix** — the traditional form for single-file conditionals:
 
 ```
 repolish/
@@ -136,17 +138,62 @@ repolish/
 └── _repolish.ci.gitlab.yml    # only staged when mapped
 ```
 
-The `_repolish.` prefix has no runtime special meaning. Any file that appears as
-a mapping _source_ is excluded from auto-staging regardless of name. The prefix
-is a convention that prevents accidental auto-staging at an ugly path and makes
-staging-only files easy to spot.
+**Folder prefix** — use a `_repolish.`-prefixed directory when a whole subtree
+of files belongs to one conditional variant. Files inside mirror the destination
+structure relative to the target directory:
+
+```
+repolish/
+├── README.md
+├── _repolish.ci.github/          # only staged when any file inside is mapped
+│   ├── workflows/                # mirrors .github/workflows/
+│   │   └── ci.yml
+│   └── dependabot.yml
+└── _repolish.ci.gitlab/
+    └── .gitlab-ci.yml
+```
+
+Each file's path inside the folder is relative to the destination directory. Use
+`map_folder` to build the dict automatically:
+
+```python
+from repolish import BaseContext, BaseInputs, Provider, map_folder
+
+class Ctx(BaseContext):
+    use_github: bool = True
+
+class MyProvider(Provider[Ctx, BaseInputs]):
+    def create_file_mappings(self, context: Ctx):
+        tpl = self.templates_root / 'repolish'
+        if context.use_github:
+            github_files = map_folder('.github', '_repolish.ci.github', tpl)
+            return {
+                **github_files,
+                'README.md': '_repolish.readme.github.md',
+            }
+        gitlab_files = map_folder('', '_repolish.ci.gitlab', tpl)
+        return {
+            **gitlab_files,
+            'README.md': '_repolish.readme.gitlab.md',
+        }
+```
+
+Assigning to a variable first lets you inspect the contents before returning —
+useful for debugging. See the `map_folder` reference for the `file_mode` and
+`extra_context` options.
+
+The `_repolish.` prefix has no runtime special meaning — it is a convention that
+prevents accidental auto-staging and makes conditional material easy to spot.
+Any file whose path contains a `_repolish.`-prefixed component is treated as
+conditional; that check covers both the file prefix and the folder prefix.
 
 See [File Modes](file-modes.md) for `TemplateMapping`, `FileMode.CREATE_ONLY`,
 `FileMode.DELETE`, and extra-context options.
 
 ## What never reaches your project
 
-- `_repolish.*` files not selected by any mapping
+- `_repolish.*` files and files inside `_repolish.`-prefixed folders not
+  selected by any mapping
 - Marker lines from preprocessor directives (`## repolish-start[...]`, etc.)
 - The `.jinja` extension
 - Anything outside `repolish/`

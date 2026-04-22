@@ -74,6 +74,58 @@ Rename every `cookiecutter.` reference across your template files. To catch
 stragglers, run `repolish lint` after updating — it reports any undefined
 variable references in your templates.
 
+## 3. Symlinks: `@resource_linker` decorator → `create_default_symlinks()`
+
+In v0.8, default symlinks were declared on the `@resource_linker` decorator that
+powered the provider's link CLI:
+
+```python
+# v0.8 — repolish.linker decorator
+from repolish.linker import resource_linker, Symlink
+
+@resource_linker(
+    library_name='myprovider',
+    default_symlinks=[
+        Symlink(source='configs/ruff.toml', target='ruff.toml'),
+        Symlink(source='configs/.editorconfig', target='.editorconfig'),
+    ],
+)
+def main():
+    pass
+```
+
+In v1, symlinks are declared directly on the `Provider` class via
+`create_default_symlinks()`. The `Symlink` dataclass is now imported from
+`repolish` alongside the other provider types:
+
+```python
+# v1 — Provider method
+from repolish import BaseContext, BaseInputs, Provider, Symlink
+
+class MyProvider(Provider[BaseContext, BaseInputs]):
+    def create_default_symlinks(self) -> list[Symlink]:
+        return [
+            Symlink(source='configs/ruff.toml', target='ruff.toml'),
+            Symlink(source='configs/.editorconfig', target='.editorconfig'),
+        ]
+```
+
+The `source` path remains relative to the provider's `resources_dir` and
+`target` remains relative to the project root — the semantics are identical.
+
+Project-level overrides still work the same way in `repolish.yaml`:
+
+```yaml
+providers:
+  myprovider:
+    symlinks: [] # skip all symlinks for this project
+    # or supply a custom list to replace the provider defaults
+```
+
+The `@resource_linker` decorator and `repolish.linker` module are still present
+in v1 for building the provider's link CLI — only the place where _default_
+symlinks are declared has moved into the `Provider` class.
+
 ## Troubleshooting
 
 **Template references a key from another provider:** move the value into this

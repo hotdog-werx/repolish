@@ -12,6 +12,7 @@ from .providers.models import (
     TemplateMapping,
     call_provider_method,
     get_provider_context,
+    map_folder,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     'TemplateMapping',
     'call_provider_method',
     'get_provider_context',
+    'map_folder',
 ]

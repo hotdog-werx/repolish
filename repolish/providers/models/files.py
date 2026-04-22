@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path  # noqa: TC003 - Pydantic model fields require runtime resolution
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -86,6 +86,89 @@ class TemplateMapping:
     # merging so we can track provenance of conditional/create-only/delete
     # mappings across multiple providers.
     source_provider: str | None = None
+
+
+def map_folder(
+    dest_dir: str,
+    source_dir: str,
+    template_dir: Path,
+    *,
+    file_mode: FileMode = FileMode.REGULAR,
+    extra_context: object | None = None,
+) -> dict[str, str | TemplateMapping]:
+    """Build ``create_file_mappings`` entries for every file in a ``_repolish.`` folder.
+
+    Walks ``template_dir / source_dir`` and produces one mapping entry per file.
+    Each destination key is ``dest_dir/<relative-path>`` and each source value
+    is ``source_dir/<relative-path>``, where the relative path is taken from
+    inside ``source_dir``.  The ``.jinja`` suffix is stripped from destination
+    keys but preserved in source values (staging handles the stripping).
+
+    This is a convenience helper for ``create_file_mappings`` when a whole
+    subtree of templates belongs to one conditional variant.  The returned dict
+    can be inspected and adjusted before being spread into the final mapping::
+
+        def create_file_mappings(self, context):
+            tpl = self.templates_root / 'repolish'
+            if context.use_github:
+                return map_folder('.github', '_repolish.ci.github', tpl)
+            return map_folder('', '_repolish.ci.gitlab', tpl)
+
+    Args:
+        dest_dir: Destination directory prefix (e.g. ``'.github'``). Pass an
+            empty string to map files directly to the project root.
+        source_dir: Source directory under ``template_dir``, conventionally
+            prefixed with ``_repolish.`` (e.g. ``'_repolish.ci.github'``).
+        template_dir: Directory that contains ``source_dir``. For
+            ``Provider``, pass ``self.templates_root / 'repolish'``. For
+            ``ModeHandler``, pass ``self.templates_root``.
+        file_mode: Mode applied to every produced entry. Defaults to
+            ``FileMode.REGULAR``.
+        extra_context: Optional context merged into every produced entry.
+
+    Returns:
+        A dict mapping destination paths to source paths. Entries are plain
+        strings when both ``file_mode`` is ``REGULAR`` and ``extra_context``
+        is ``None``; otherwise they are ``TemplateMapping`` instances.
+    """
+    source_path = template_dir / source_dir
+    if not source_path.is_dir():
+        return {}
+    return {
+        _dest_key(dest_dir, item, source_path): _source_val(
+            source_dir,
+            item,
+            source_path,
+            file_mode,
+            extra_context,
+        )
+        for item in sorted(source_path.rglob('*'))
+        if item.is_file()
+    }
+
+
+def _dest_key(dest_dir: str, item: Path, source_path: Path) -> str:
+    rel = item.relative_to(source_path).as_posix()
+    dest_rel = PurePosixPath(rel).with_suffix('').as_posix() if rel.endswith('.jinja') else rel
+    return f'{dest_dir}/{dest_rel}' if dest_dir else dest_rel
+
+
+def _source_val(
+    source_dir: str,
+    item: Path,
+    source_path: Path,
+    file_mode: FileMode,
+    extra_context: object | None,
+) -> str | TemplateMapping:
+    rel = item.relative_to(source_path).as_posix()
+    source = f'{source_dir}/{rel}'
+    if file_mode is FileMode.REGULAR and extra_context is None:
+        return source
+    return TemplateMapping(
+        source,
+        extra_context=extra_context,
+        file_mode=file_mode,
+    )
 
 
 @dataclass(frozen=True)
