@@ -568,6 +568,38 @@ def test_render_template_preserves_executable_bit(tmp_path: Path) -> None:
     assert out.stat().st_mode & 0o111, 'executable bit must be preserved after rendering'
 
 
+def test_file_mapping_with_binary_source_copies_file_unchanged(
+    tmp_path: Path,
+) -> None:
+    """Binary files (e.g. images) used as TemplateMapping sources must be copied unchanged.
+
+    repolish must not attempt to decode binary files as UTF-8 text during
+    template rendering.  The file should appear in setup_output with the
+    _repolish. prefix just like text-based mapping sources, and with its
+    bytes intact.
+    """
+    tpl = tmp_path / 'tpl-bin-map'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+
+    png_bytes = b'\x89PNG\r\n\x1a\n\x00\x00\x00\xff\xfe'
+    (tpl / 'repolish' / 'logo.png').write_bytes(png_bytes)
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    providers = SessionBundle(
+        file_mappings={'assets/logo.png': TemplateMapping('logo.png', None)},
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+    render_template(setup_input, providers, setup_output)
+
+    out = setup_output / 'repolish' / 'assets' / '_repolish.logo.png'
+    assert out.exists(), 'binary mapping source must be copied to setup_output'
+    assert out.read_bytes() == png_bytes
+
+
 def test_render_template_skips_filemode_suppress(tmp_path: Path) -> None:
     """FileMode.SUPPRESS on a TemplateMapping prevents the source template from rendering."""
     tpl = tmp_path / 'tpl'

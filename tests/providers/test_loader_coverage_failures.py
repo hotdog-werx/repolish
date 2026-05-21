@@ -3,8 +3,12 @@ from typing import cast
 
 import pydantic_core
 import pytest
+from pytest_mock import MockerFixture
 
-from repolish.hydration.rendering import _load_and_validate_template
+from repolish.hydration.rendering import (
+    _BinaryFile,
+    _load_and_validate_template,
+)
 from repolish.providers.exchange import (
     _retrieve_instance_inputs,
     _schema_matches,
@@ -102,16 +106,38 @@ def test_finalize_provider_contexts_error_path() -> None:
         )
 
 
-def test_load_and_validate_template_handles_corrupt_file(
+def test_load_and_validate_template_handles_binary_file(
     tmp_path: Path,
 ):
-    """UnicodeDecodeError during template read should remove mapping."""
-    # write invalid UTF-8 bytes
+    """Binary files (UnicodeDecodeError) should return the _BINARY_FILE sentinel, not None.
+
+    The mapping must be preserved so the caller can copy the file unchanged.
+    """
+    template_file = tmp_path / 'logo.png'
+    template_file.write_bytes(b'\x89PNG\r\n\x1a\n\x00\x00\x00\xff\xfe')
+
+    providers = SessionBundle()
+    providers.file_mappings['dest'] = TemplateMapping(
+        source_template='logo.png',
+    )
+
+    result = _load_and_validate_template(template_file, providers, 'dest')
+    assert isinstance(result, _BinaryFile)
+    assert 'dest' in providers.file_mappings
+
+
+def test_load_and_validate_template_handles_oserror(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
+    """An OSError raised by read_text should remove the mapping and return None."""
     template_file = tmp_path / 'bad.txt'
-    template_file.write_bytes(b'\xff\xfe\xff')
+    template_file.write_text('ok', encoding='utf-8')
 
     providers = SessionBundle()
     providers.file_mappings['dest'] = TemplateMapping(source_template='bad.txt')
+
+    mocker.patch.object(Path, 'read_text', side_effect=OSError('disk error'))
 
     result = _load_and_validate_template(template_file, providers, 'dest')
     assert result is None

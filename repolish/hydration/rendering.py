@@ -17,6 +17,19 @@ from repolish.providers import FileMode, SessionBundle, TemplateMapping
 logger = get_logger(__name__)
 
 
+class _BinaryFile:
+    """Sentinel type returned when a template file cannot be decoded as UTF-8.
+
+    Using a dedicated class (rather than a plain ``object()`` instance) lets
+    type checkers narrow ``str | _BinaryFile | None`` correctly after the
+    ``if isinstance(txt, _BinaryFile)`` guard.
+    """
+
+
+# Module-level singleton; callers compare with ``isinstance`` for type safety.
+_BINARY_FILE = _BinaryFile()
+
+
 @dataclass
 class RenderContext:
     """Container for arguments needed by template rendering.
@@ -281,8 +294,16 @@ def _load_and_validate_template(
     template_file: Path,
     providers: SessionBundle,
     dest_path: str,
-) -> str | None:
-    """Return the template text or None and remove the mapping on failure."""
+) -> str | _BinaryFile | None:
+    """Return the template text, ``_BINARY_FILE``, or ``None``.
+
+    Returns ``_BINARY_FILE`` when the file exists but cannot be decoded as
+    UTF-8 (i.e. it is a binary asset such as an image).  The caller is
+    responsible for copying the file unchanged in that case.
+
+    Returns ``None`` and removes the mapping when the file is missing or
+    cannot be read due to an OS-level error.
+    """
     if not template_file.exists():
         logger.warning(
             'file_mapping_template_not_found',
@@ -293,7 +314,15 @@ def _load_and_validate_template(
         return None
     try:
         return template_file.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError) as exc:
+    except UnicodeDecodeError:
+        # Binary file (e.g. image): the caller will copy it unchanged.
+        logger.debug(
+            'file_mapping_template_is_binary',
+            template=str(template_file),
+            dest=dest_path,
+        )
+        return _BinaryFile()
+    except OSError as exc:
         logger.exception(
             'file_mapping_template_unreadable',
             template=str(template_file),
@@ -333,6 +362,24 @@ def _render_single_mapping(
     if txt is None:
         return
 
+    prefix = '_repolish.'
+    orig = Path(dest_path)
+    prefixed_name = prefix + orig.name
+    target = setup_output / 'repolish' / orig.parent / prefixed_name
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(txt, _BinaryFile):
+        # Binary files (e.g. images) cannot be rendered as Jinja templates;
+        # copy them unchanged just like _render_file does for regular binary
+        # template files.
+        copy2(template_file, target)
+        providers.file_mappings[dest_path] = TemplateMapping(
+            source_template=dest_path,
+            file_mode=mapping.file_mode,
+            source_provider=mapping.source_provider,
+        )
+        return
+
     env = Environment(
         autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
         undefined=StrictUndefined,
@@ -366,11 +413,6 @@ def _render_single_mapping(
     # staging area (for debugging) and keeps the regular rendering logic from
     # treating them as normal template files. the prefix is stripped when the
     # mapping is applied to the project tree.
-    prefix = '_repolish.'
-    orig = Path(dest_path)
-    prefixed_name = prefix + orig.name
-    target = setup_output / 'repolish' / orig.parent / prefixed_name
-    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(rendered, encoding='utf-8')
 
     # Normalize mapping so downstream code still thinks the source is the
