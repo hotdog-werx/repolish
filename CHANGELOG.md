@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.1.1] <a name="1.1.1" href="#1.1.1">-</a> May 21, 2026
+
+### 🐛 Bug Fixes
+
+- Copy binary files unchanged when used as TemplateMapping sources (#41) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#41](https://github.com/hotdog-werx/repolish/pull/41)
+
+[1.1.1]: https://github.com/hotdog-werx/repolish/compare/1.1.0...1.1.1
+
 ## [1.1.0] <a name="1.1.0" href="#1.1.0">-</a> April 22, 2026
 
 ### 🚀 Features
