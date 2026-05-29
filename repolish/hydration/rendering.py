@@ -241,11 +241,14 @@ def _collect_skip_templates(providers: SessionBundle) -> set[str]:
 
     `TemplateMapping` entries are processed after the generic render pass,
     so we skip them during the initial walk to avoid rendering the same file
-    twice.
+    twice.  Both ``file_mappings`` and ``promoted_file_mappings`` contribute
+    to the skip set; promoted mappings carry their own ``extra_context`` and
+    must not be rendered in the generic pass without it.
     """
     return {
         v.source_template
-        for v in providers.file_mappings.values()
+        for mappings in (providers.file_mappings, providers.promoted_file_mappings)
+        for v in mappings.values()
         if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
     }
 
@@ -292,7 +295,7 @@ def render_template(
 
 def _load_and_validate_template(
     template_file: Path,
-    providers: SessionBundle,
+    mappings: dict[str, str | TemplateMapping],
     dest_path: str,
 ) -> str | _BinaryFile | None:
     """Return the template text, ``_BINARY_FILE``, or ``None``.
@@ -302,7 +305,9 @@ def _load_and_validate_template(
     responsible for copying the file unchanged in that case.
 
     Returns ``None`` and removes the mapping when the file is missing or
-    cannot be read due to an OS-level error.
+    cannot be read due to an OS-level error.  ``mappings`` is the specific
+    dict (``file_mappings`` or ``promoted_file_mappings``) that owns this
+    entry so the pop targets the right collection.
     """
     if not template_file.exists():
         logger.warning(
@@ -310,7 +315,7 @@ def _load_and_validate_template(
             template=str(template_file),
             dest=dest_path,
         )
-        providers.file_mappings.pop(dest_path, None)
+        mappings.pop(dest_path, None)
         return None
     try:
         return template_file.read_text(encoding='utf-8')
@@ -328,7 +333,7 @@ def _load_and_validate_template(
             template=str(template_file),
             error=str(exc),
         )
-        providers.file_mappings.pop(dest_path, None)
+        mappings.pop(dest_path, None)
         return None
 
 
@@ -336,19 +341,24 @@ def _render_single_mapping(
     dest_path: str,
     mapping: TemplateMapping,
     ctx: RenderContext,
+    mappings: dict[str, str | TemplateMapping],
 ) -> None:
     """Render and materialize a single TemplateMapping entry.
 
     `ctx` is a :class:`RenderContext` instance.  Previously we passed a
     raw dict containing the same five values; using the dataclass improves
-    type checking and reduces boilerplate unpacking.
+    type checking and reduces boilerplate unpacking.  ``mappings`` is the
+    specific dict (``file_mappings`` or ``promoted_file_mappings``) that
+    owns this entry; all pop and write-back operations target it so that
+    promoted entries stay in ``promoted_file_mappings`` rather than leaking
+    into ``file_mappings``.
     """
     setup_input: Path = ctx.setup_input
     setup_output: Path = ctx.setup_output
     providers: SessionBundle = ctx.providers
 
     if mapping.file_mode == FileMode.DELETE:
-        providers.file_mappings.pop(dest_path, None)
+        mappings.pop(dest_path, None)
         return
 
     src_template = mapping.source_template
@@ -358,7 +368,7 @@ def _render_single_mapping(
 
     project_root = setup_input / 'repolish'
     template_file = project_root / src_template
-    txt = _load_and_validate_template(template_file, providers, dest_path)
+    txt = _load_and_validate_template(template_file, mappings, dest_path)
     if txt is None:
         return
 
@@ -373,7 +383,7 @@ def _render_single_mapping(
         # copy them unchanged just like _render_file does for regular binary
         # template files.
         copy2(template_file, target)
-        providers.file_mappings[dest_path] = TemplateMapping(
+        mappings[dest_path] = TemplateMapping(
             source_template=dest_path,
             file_mode=mapping.file_mode,
             source_provider=mapping.source_provider,
@@ -420,7 +430,7 @@ def _render_single_mapping(
     # look for the prefixed file when they need it.  Preserve source_provider
     # and file_mode so build_file_records can still attribute the file to the
     # correct provider instead of falling back to 'unknown'.
-    providers.file_mappings[dest_path] = TemplateMapping(
+    mappings[dest_path] = TemplateMapping(
         source_template=dest_path,
         file_mode=mapping.file_mode,
         source_provider=mapping.source_provider,
@@ -430,17 +440,24 @@ def _render_single_mapping(
 def _process_template_mappings(
     ctx: RenderContext,
 ) -> None:
-    """Render and materialize `TemplateMapping`-valued file_mappings into setup-output."""
+    """Render and materialize `TemplateMapping`-valued entries into setup-output.
+
+    Iterates over both ``file_mappings`` and ``promoted_file_mappings`` so
+    that promoted templates carrying their own ``extra_context`` are rendered
+    with the correct context instead of being skipped or rendered with an
+    empty context during the generic Jinja pass.
+    """
     errors: list[str] = []
 
-    for dest_path, source_val in list(ctx.providers.file_mappings.items()):
-        if not isinstance(source_val, TemplateMapping):
-            continue
-        try:
-            _render_single_mapping(dest_path, source_val, ctx)
-        except Exception as exc:  #  noqa: BLE001 -- catch any rendering-related failure
-            # store the destination and the exception message for later
-            errors.append(f'{dest_path}: {exc}')
+    for mappings in (ctx.providers.file_mappings, ctx.providers.promoted_file_mappings):
+        for dest_path, source_val in list(mappings.items()):
+            if not isinstance(source_val, TemplateMapping):
+                continue
+            try:
+                _render_single_mapping(dest_path, source_val, ctx, mappings)
+            except Exception as exc:  #  noqa: BLE001 -- catch any rendering-related failure
+                # store the destination and the exception message for later
+                errors.append(f'{dest_path}: {exc}')
 
     if errors:
         joined = '\n'.join(errors)

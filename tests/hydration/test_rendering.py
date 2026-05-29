@@ -600,6 +600,43 @@ def test_file_mapping_with_binary_source_copies_file_unchanged(
     assert out.read_bytes() == png_bytes
 
 
+def test_promoted_file_mappings_extra_context_is_applied(tmp_path: Path) -> None:
+    """TemplateMapping entries in promoted_file_mappings are rendered with their extra_context.
+
+    Before the fix, promoted mappings were neither skipped in the generic
+    Jinja pass (causing an UndefinedError for context-dependent templates)
+    nor processed in _process_template_mappings (so extra_context was never
+    applied).  The rendered output must use the extra_context supplied in the
+    promoted mapping, not an empty context.
+    """
+    tpl = tmp_path / 'tpl-promoted'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'item.jinja').write_text(
+        'FILE #{{ file_number }}\n',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    class ItemCtx(BaseModel):
+        file_number: int
+
+    providers = SessionBundle(
+        promoted_file_mappings={
+            'promoted-file.txt': TemplateMapping('item', ItemCtx(file_number=42)),
+        },
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+    render_template(setup_input, providers, setup_output)
+
+    out = setup_output / 'repolish' / '_repolish.promoted-file.txt'
+    assert out.exists(), 'rendered promoted mapping must appear in setup_output'
+    assert out.read_text(encoding='utf-8').strip() == 'FILE #42'
+
+
 def test_render_template_skips_filemode_suppress(tmp_path: Path) -> None:
     """FileMode.SUPPRESS on a TemplateMapping prevents the source template from rendering."""
     tpl = tmp_path / 'tpl'
