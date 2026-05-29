@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.1.2] <a name="1.1.2" href="#1.1.2">-</a> May 29, 2026
+
+### 🐛 Bug Fixes
+
+- Render promoted_file_mappings with extra_context (#43) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#43](https://github.com/hotdog-werx/repolish/pull/43)
+
+[1.1.2]: https://github.com/hotdog-werx/repolish/compare/1.1.1...1.1.2
+
 ## [1.1.1] <a name="1.1.1" href="#1.1.1">-</a> May 21, 2026
 
 ### 🐛 Bug Fixes
