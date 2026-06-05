@@ -14,6 +14,7 @@ a namespace package has ``origin = None`` because it has no ``__init__.py``.
 """
 
 import json
+import re
 from importlib.machinery import ModuleSpec
 from importlib.metadata import (
     Distribution,
@@ -65,21 +66,47 @@ def resolve_package_identity(package_attr: str | None) -> tuple[str, str]:
 def _resolve_namespace_project(module_name: str, top_level: str) -> str:
     """Resolve the distribution name for a namespace sub-package.
 
-    Tries RECORD scanning first, then direct_url fallback, then a last-resort
-    single-candidate check on the shared namespace top-level.
+    Tries four strategies in order:
+
+    1. RECORD file scanning — works for normal installs.
+    2. ``direct_url.json`` ``file://`` source path — works for editable installs.
+    3. Single-candidate fallback — when only one distribution claims this
+       namespace top-level there is no ambiguity.
+    4. Name-normalisation match — when multiple distributions share the
+       namespace (e.g. VCS installs with ``https://`` URLs that pass through
+       stages 1-3 without a match), compare the PEP 503-normalised module
+       name against each candidate distribution name.
     """
-    project = _project_from_distribution_files(module_name)
-    if not project:
-        project = _project_from_direct_url(module_name)
-    if not project:
-        # Last resort: if only one distribution claims this namespace
-        # top-level, it must be the right one (ambiguity only arises with
-        # multiple sub-packages sharing a namespace, e.g. devkit-python +
-        # devkit-workspace both under 'devkit').
-        candidates = _project_from_distributions_list(top_level)
-        if len(candidates) == 1:
-            project = candidates[0]
-    return project
+    return (
+        _project_from_distribution_files(module_name)
+        or _project_from_direct_url(module_name)
+        or _project_from_namespace_candidates(module_name, top_level)
+    )
+
+
+def _project_from_namespace_candidates(module_name: str, top_level: str) -> str:
+    """Resolve project name from ``packages_distributions`` candidates.
+
+    Stage 3: single unambiguous candidate.
+    Stage 4: PEP 503 name-normalisation match against multiple candidates.
+    """
+    candidates = _project_from_distributions_list(top_level)
+    if len(candidates) == 1:
+        return candidates[0]
+    # Multiple distributions share the namespace (e.g. devkit-workspace and
+    # devkit-python both under 'devkit').  Disambiguate by comparing the
+    # PEP 503-normalised module name against each candidate.
+    # 'devkit.workspace' normalises to 'devkit-workspace'.
+    normalized = _normalize_name(module_name)
+    return next(
+        (c for c in candidates if _normalize_name(c) == normalized),
+        '',
+    )
+
+
+def _normalize_name(name: str) -> str:
+    """Normalize a package name per PEP 503: collapse ``[-_.]`` to ``'-'`` and lowercase."""
+    return re.sub(r'[-_.]+', '-', name).lower()
 
 
 def _resolve_flat_project(top_level: str, module_name: str) -> str:

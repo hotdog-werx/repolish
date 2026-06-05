@@ -307,6 +307,78 @@ def test_returns_empty_tuple() -> None:
     assert resolve_package_identity(None) == ('', '')
 
 
+def test_namespace_vcs_siblings_disambiguated(tmp_path: Path) -> None:
+    """Two namespace siblings installed via VCS are disambiguated by name normalization.
+
+    When two distributions share a namespace top-level (e.g. ``devkit_vcs``) and
+    both carry a ``direct_url.json`` with an ``https://`` URL (VCS install, not
+    an editable/local install), all three original resolution stages fail:
+
+    1. No RECORD file → ``_project_from_distribution_files`` returns ``''``
+    2. ``https://`` URL → ``_source_path_from_dist`` returns ``None``
+    3. Two candidates → the ``len == 1`` guard in the last-resort fallback fails
+
+    The fix adds a 4th stage: normalize the module name with PEP 503 rules and
+    match it against each candidate distribution name.
+
+    Repro: install ``devkit-vcs-workspace`` and ``devkit-vcs-python`` from the
+    same git monorepo then call
+    ``resolve_package_identity('devkit_vcs.workspace')``.
+    Expected: ``('devkit_vcs.workspace', 'devkit-vcs-workspace')``.
+    """
+    # ── package tree ────────────────────────────────────────────────────────
+    # devkit_vcs/ has no __init__.py  →  namespace root
+    # devkit_vcs/workspace/__init__.py  →  devkit-vcs-workspace
+    # devkit_vcs/python/__init__.py     →  devkit-vcs-python
+    for pkg_path in (
+        tmp_path / 'devkit_vcs' / 'workspace' / '__init__.py',
+        tmp_path / 'devkit_vcs' / 'python' / '__init__.py',
+    ):
+        pkg_path.parent.mkdir(parents=True, exist_ok=True)
+        pkg_path.write_text('', encoding='utf-8')
+
+    vcs_url = json.dumps(
+        {
+            'url': 'https://github.com/example/monorepo.git',
+            'vcs_info': {'vcs': 'git', 'commit_id': 'abc123'},
+        },
+    )
+
+    for dist_name in ('devkit-vcs-workspace', 'devkit-vcs-python'):
+        safe = dist_name.replace('-', '_')
+        dist_dir = tmp_path / f'{safe}-0.1.0.dist-info'
+        dist_dir.mkdir()
+        (dist_dir / 'METADATA').write_text(
+            f'Metadata-Version: 2.1\nName: {dist_name}\nVersion: 0.1.0\n',
+            encoding='utf-8',
+        )
+        # top_level.txt causes packages_distributions() to list both names
+        # under 'devkit_vcs', producing len(candidates) == 2 at stage 3.
+        (dist_dir / 'top_level.txt').write_text(
+            'devkit_vcs\n',
+            encoding='utf-8',
+        )
+        # https:// URL (not file://) → _source_path_from_dist returns None
+        # and no RECORD file → _dist_owns_path returns False.
+        (dist_dir / 'direct_url.json').write_text(vcs_url, encoding='utf-8')
+
+    path_str = str(tmp_path)
+    sys.path.insert(0, path_str)
+    importlib.invalidate_caches()
+    try:
+        module_name, project_name = resolve_package_identity(
+            'devkit_vcs.workspace',
+        )
+    finally:
+        with suppress(ValueError):
+            sys.path.remove(path_str)
+        _evict_modules('devkit_vcs')
+        importlib.invalidate_caches()
+
+    assert module_name == 'devkit_vcs.workspace'
+    assert project_name == 'devkit-vcs-workspace'
+
+
 def test_submodule_attr_for_flat_package(tmp_path: Path) -> None:
     """A dotted __package__ inside a flat package resolves to the top-level name.
 
