@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.1.3] <a name="1.1.3" href="#1.1.3">-</a> June 05, 2026
+
+### 🐛 Bug Fixes
+
+- _(pkginfo)_ Disambiguate namespace siblings installed via VCS (#45) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#45](https://github.com/hotdog-werx/repolish/pull/45)
+
+[1.1.3]: https://github.com/hotdog-werx/repolish/compare/1.1.2...1.1.3
+
 ## [1.1.2] <a name="1.1.2" href="#1.1.2">-</a> May 29, 2026
 
 ### 🐛 Bug Fixes
