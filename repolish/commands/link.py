@@ -4,7 +4,7 @@ from hotlog import get_logger
 from rich.text import Text
 from rich.tree import Tree
 
-from repolish.commands.apply.symlinks import apply_symlinks
+from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.utils import chdir
 from repolish.config import (
     ProviderSymlink,
@@ -18,7 +18,10 @@ from repolish.config.topology import (
 )
 from repolish.console import console
 from repolish.linker.health import ensure_providers_ready
-from repolish.linker.orchestrator import collect_provider_symlinks
+from repolish.linker.orchestrator import (
+    collect_provider_copies,
+    collect_provider_symlinks,
+)
 from repolish.providers.models.context import WorkspaceContext
 
 logger = get_logger(__name__)
@@ -93,6 +96,12 @@ def _link_config(
         mode=mode,
     )
     apply_symlinks(resolved_symlinks, resolved.providers)
+    resolved_copies = collect_provider_copies(
+        resolved.providers,
+        config.providers,
+        mode=mode,
+    )
+    apply_copies(resolved_copies, resolved.providers)
     return 0, resolved_symlinks
 
 

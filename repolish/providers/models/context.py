@@ -3,6 +3,7 @@
 Defines the building blocks that flow into every provider's context object:
 
 - `Symlink` — return type of `Provider.create_default_symlinks`
+- `ResourceCopy` — return type of `Provider.create_default_copies`
 - `GithubRepo` / `GlobalContext` / `get_global_context` — repo-level globals
 - `ProviderInfo` — alias/version injected by the loader at runtime
 - `RepolishContext` — per-provider ``repolish`` namespace (GlobalContext + ProviderInfo)
@@ -44,6 +45,25 @@ class Symlink:
     Used as the return type of :meth:`Provider.create_default_symlinks`.
     Paths are plain strings; the linker resolves them relative to the
     provider's ``resources_dir`` (source) and the project root (target).
+    """
+
+    source: str
+    target: str
+
+
+@dataclass
+class ResourceCopy:
+    """A file to copy from provider resources into the project.
+
+    Used as the return type of :meth:`Provider.create_default_copies`.
+    Unlike :class:`Symlink`, the destination is a real copy — no symlink is
+    created.  This is useful for static files (JSON configs, WASM plugins,
+    etc.) that must not be interpreted as Jinja templates and therefore
+    cannot live in the ``templates/`` tree.
+
+    Paths are plain strings resolved the same way as :class:`Symlink`:
+    ``source`` is relative to the provider's ``resources_dir`` and
+    ``target`` is relative to the project root.
     """
 
     source: str

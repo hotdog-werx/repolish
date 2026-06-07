@@ -18,7 +18,7 @@ from repolish.commands.apply.staging import (
     collect_mapped_sources,
     create_staged_template,
 )
-from repolish.commands.apply.symlinks import apply_symlinks
+from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
@@ -143,6 +143,7 @@ def apply_session(
         disable_auto_staging=is_root_pass,
     )
     apply_symlinks(resolved_symlinks, config.providers)
+    apply_copies(session.resolved_copies, config.providers)
     return 0
 
 

@@ -600,7 +600,9 @@ def test_file_mapping_with_binary_source_copies_file_unchanged(
     assert out.read_bytes() == png_bytes
 
 
-def test_promoted_file_mappings_extra_context_is_applied(tmp_path: Path) -> None:
+def test_promoted_file_mappings_extra_context_is_applied(
+    tmp_path: Path,
+) -> None:
     """TemplateMapping entries in promoted_file_mappings are rendered with their extra_context.
 
     Before the fix, promoted mappings were neither skipped in the generic
@@ -625,7 +627,10 @@ def test_promoted_file_mappings_extra_context_is_applied(tmp_path: Path) -> None
 
     providers = SessionBundle(
         promoted_file_mappings={
-            'promoted-file.txt': TemplateMapping('item', ItemCtx(file_number=42)),
+            'promoted-file.txt': TemplateMapping(
+                'item',
+                ItemCtx(file_number=42),
+            ),
         },
     )
 

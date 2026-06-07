@@ -18,6 +18,7 @@ from repolish.config import (
     ProviderConfig,
     ProviderSymlink,
     RepolishConfigFile,
+    ResolvedProviderInfo,
 )
 from repolish.config.models import ProviderFileInfo
 from repolish.linker import (
@@ -733,3 +734,177 @@ def test_command_appends_root_syms_section(
 
     result = run_link(config_file)
     assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# ResourceCopy / create_provider_copies tests
+# ---------------------------------------------------------------------------
+from repolish.config.models.provider import ProviderCopy  # noqa: E402
+from repolish.linker.orchestrator import (  # noqa: E402
+    _load_provider_default_copies,
+    collect_provider_copies,
+    create_provider_copies,
+)
+
+
+def test_create_provider_copies_empty_list(tmp_path: Path) -> None:
+    """create_provider_copies is a no-op for an empty list."""
+    create_provider_copies('mylib', tmp_path, [])
+
+
+def test_create_provider_copies_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_provider_copies copies a plain file to the target path."""
+    monkeypatch.chdir(tmp_path)
+
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    configs = provider_dir / 'configs'
+    configs.mkdir(parents=True)
+    (configs / 'dprint.json').write_text('{"plugins":[]}')
+
+    copies = [ProviderCopy(source=Path('configs/dprint.json'), target=Path('dprint.json'))]
+    create_provider_copies('mylib', provider_dir, copies)
+
+    dest = tmp_path / 'dprint.json'
+    assert dest.exists()
+    assert dest.read_text() == '{"plugins":[]}'
+    assert not dest.is_symlink()
+
+
+def test_create_provider_copies_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_provider_copies copies a directory tree via copytree."""
+    monkeypatch.chdir(tmp_path)
+
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    src_dir = provider_dir / 'vendors'
+    src_dir.mkdir(parents=True)
+    (src_dir / 'plugin.wasm').write_bytes(b'\x00\x61\x73\x6d')
+
+    copies = [ProviderCopy(source=Path('vendors'), target=Path('vendors'))]
+    create_provider_copies('mylib', provider_dir, copies)
+
+    dest = tmp_path / 'vendors' / 'plugin.wasm'
+    assert dest.exists()
+    assert dest.read_bytes() == b'\x00\x61\x73\x6d'
+    assert not (tmp_path / 'vendors').is_symlink()
+
+
+def test_create_provider_copies_missing_source_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_provider_copies raises FileNotFoundError when source is absent."""
+    monkeypatch.chdir(tmp_path)
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+
+    copies = [ProviderCopy(source=Path('configs/missing.json'), target=Path('missing.json'))]
+    with pytest.raises(FileNotFoundError, match=r'missing.json'):
+        create_provider_copies('mylib', provider_dir, copies)
+
+
+def test_load_provider_default_copies_via_mode_handler(tmp_path: Path) -> None:
+    """Mode handler's create_default_copies() is called and combined with provider copies."""
+    repolish_src = """\
+from repolish import Provider, ModeHandler, BaseContext, BaseInputs, ResourceCopy
+
+
+class RootHandler(ModeHandler):
+    def create_default_copies(self):
+        return [ResourceCopy(source='configs/dprint.json', target='dprint.json')]
+
+
+class P(Provider[BaseContext, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return BaseContext()
+"""
+    (tmp_path / 'repolish.py').write_text(repolish_src)
+
+    copies = _load_provider_default_copies(tmp_path, 'root')
+
+    assert len(copies) == 1
+    assert copies[0].target.name == 'dprint.json'
+
+
+def test_load_provider_default_copies_no_repolish_py(tmp_path: Path) -> None:
+    """_load_provider_default_copies returns [] when repolish.py is absent."""
+    copies = _load_provider_default_copies(tmp_path, 'standalone')
+    assert copies == []
+
+
+def test_collect_provider_copies_uses_yaml_override(tmp_path: Path) -> None:
+    """collect_provider_copies uses the explicit copies list from ProviderConfig."""
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+
+    resolved_info = ResolvedProviderInfo(
+        alias='mylib',
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    explicit = [ProviderCopy(source=Path('configs/dprint.json'), target=Path('dprint.json'))]
+    raw_config = ProviderConfig(cli='mylib-link', copies=explicit)
+
+    result = collect_provider_copies(
+        {'mylib': resolved_info},
+        {'mylib': raw_config},
+    )
+
+    assert result == {'mylib': explicit}
+
+
+def test_collect_provider_copies_empty_override_suppresses(tmp_path: Path) -> None:
+    """An explicit copies: [] in ProviderConfig suppresses all copies."""
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+
+    resolved_info = ResolvedProviderInfo(
+        alias='mylib',
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    raw_config = ProviderConfig(cli='mylib-link', copies=[])
+
+    result = collect_provider_copies(
+        {'mylib': resolved_info},
+        {'mylib': raw_config},
+    )
+
+    assert result == {}
+
+
+def test_collect_provider_copies_falls_back_to_defaults(tmp_path: Path) -> None:
+    """collect_provider_copies calls _load_provider_default_copies when copies is None."""
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+    # Write a provider that declares one copy
+    (provider_dir / 'repolish.py').write_text("""\
+from repolish import Provider, BaseContext, BaseInputs, ResourceCopy
+
+class P(Provider[BaseContext, BaseInputs]):
+    def create_default_copies(self):
+        return [ResourceCopy(source='configs/dprint.json', target='dprint.json')]
+""")
+
+    resolved_info = ResolvedProviderInfo(
+        alias='mylib',
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    # copies=None (default) → fall back to provider defaults
+    raw_config = ProviderConfig(cli='mylib-link')
+
+    result = collect_provider_copies(
+        {'mylib': resolved_info},
+        {'mylib': raw_config},
+    )
+
+    assert 'mylib' in result
+    assert result['mylib'][0].target == Path('dprint.json')

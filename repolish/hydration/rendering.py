@@ -247,7 +247,10 @@ def _collect_skip_templates(providers: SessionBundle) -> set[str]:
     """
     return {
         v.source_template
-        for mappings in (providers.file_mappings, providers.promoted_file_mappings)
+        for mappings in (
+            providers.file_mappings,
+            providers.promoted_file_mappings,
+        )
         for v in mappings.values()
         if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
     }
@@ -449,7 +452,10 @@ def _process_template_mappings(
     """
     errors: list[str] = []
 
-    for mappings in (ctx.providers.file_mappings, ctx.providers.promoted_file_mappings):
+    for mappings in (
+        ctx.providers.file_mappings,
+        ctx.providers.promoted_file_mappings,
+    ):
         for dest_path, source_val in list(mappings.items()):
             if not isinstance(source_val, TemplateMapping):
                 continue

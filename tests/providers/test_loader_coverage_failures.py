@@ -121,7 +121,11 @@ def test_load_and_validate_template_handles_binary_file(
         source_template='logo.png',
     )
 
-    result = _load_and_validate_template(template_file, providers.file_mappings, 'dest')
+    result = _load_and_validate_template(
+        template_file,
+        providers.file_mappings,
+        'dest',
+    )
     assert isinstance(result, _BinaryFile)
     assert 'dest' in providers.file_mappings
 
@@ -139,6 +143,10 @@ def test_load_and_validate_template_handles_oserror(
 
     mocker.patch.object(Path, 'read_text', side_effect=OSError('disk error'))
 
-    result = _load_and_validate_template(template_file, providers.file_mappings, 'dest')
+    result = _load_and_validate_template(
+        template_file,
+        providers.file_mappings,
+        'dest',
+    )
     assert result is None
     assert 'dest' not in providers.file_mappings

@@ -11,11 +11,17 @@ selectively if desired.
 
 from .metadata import AliasRegistry, ProviderFileInfo
 from .project import RepolishConfig, RepolishConfigFile, WorkspaceConfig
-from .provider import ProviderConfig, ProviderSymlink, ResolvedProviderInfo
+from .provider import (
+    ProviderConfig,
+    ProviderCopy,
+    ProviderSymlink,
+    ResolvedProviderInfo,
+)
 
 __all__ = [
     'AliasRegistry',
     'ProviderConfig',
+    'ProviderCopy',
     'ProviderFileInfo',
     'ProviderSymlink',
     'RepolishConfig',
