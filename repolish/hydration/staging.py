@@ -76,6 +76,28 @@ def _process_single_template_file(
         tpl.chmod(src_mode)
 
 
+def _collect_source_to_dest(
+    providers: SessionBundle,
+) -> dict[str, str]:
+    """Build reverse source->dest mapping for all explicit template mappings.
+
+    Includes both regular ``file_mappings`` and ``promoted_file_mappings`` so
+    preprocessing consistently resolves local destination files regardless of
+    where mappings originate.
+    """
+    source_to_dest: dict[str, str] = {}
+
+    def _add_mappings(mappings: dict[str, str | TemplateMapping]) -> None:
+        for dest, src in mappings.items():
+            key = src.source_template if isinstance(src, TemplateMapping) and src.source_template else src
+            if isinstance(key, str):
+                source_to_dest[key] = dest
+
+    _add_mappings(providers.file_mappings)
+    _add_mappings(providers.promoted_file_mappings)
+    return source_to_dest
+
+
 def preprocess_templates(
     setup_input: Path,
     providers: SessionBundle,
@@ -89,13 +111,9 @@ def preprocess_templates(
     """
     anchors_mapping = providers.anchors
 
-    # Build reverse mapping for conditional files. Support `TemplateMapping`
-    # entries where `source_template` identifies the source template file.
-    source_to_dest: dict[str, str] = {}
-    for dest, src in providers.file_mappings.items():
-        key = src.source_template if isinstance(src, TemplateMapping) and src.source_template else src
-        if isinstance(key, str):
-            source_to_dest[key] = dest
+    # Build reverse mapping for explicitly mapped sources from both regular and
+    # promoted mappings so local-file lookups hit the true destination path.
+    source_to_dest = _collect_source_to_dest(providers)
 
     for tpl in (setup_input / 'repolish').rglob('*'):
         if not tpl.is_file():

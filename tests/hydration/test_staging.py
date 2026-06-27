@@ -141,6 +141,55 @@ def test_preprocess_templates_preserves_executable_bit(tmp_path: Path) -> None:
     assert script.stat().st_mode & 0o111, 'executable bit must be preserved after anchor preprocessing'
 
 
+def test_preprocess_templates_uses_promoted_file_mappings_for_regex_lookup(
+    tmp_path: Path,
+) -> None:
+    """Regression: promoted mappings should participate in local-content lookup.
+
+    A promoted template source must map to its destination path before
+    preprocessing so regex directives can capture values from the existing file
+    on disk. Without that mapping, preprocessing falls back to an unrelated
+    local path and leaves template defaults unchanged.
+    """
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+
+    # Staged template source (promoted mapping source) with regex preserve rule.
+    promoted_source = tpl_dir / '_repolish._ci-checks.yaml'
+    promoted_source.write_text(
+        textwrap.dedent(
+            """\
+            ## repolish-regex[member]: member:\\s*(.+)
+            member: default-member
+            """,
+        ),
+        encoding='utf-8',
+    )
+
+    # Existing destination file in project root where promoted mapping points.
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    promoted_dest = base_dir / '.github' / 'workflows' / '_ci-checks_pkg-alpha.yaml'
+    promoted_dest.parent.mkdir(parents=True, exist_ok=True)
+    promoted_dest.write_text('member: pkg-alpha\n', encoding='utf-8')
+
+    providers = SessionBundle(
+        anchors={},
+        delete_files=[],
+        delete_history={},
+        promoted_file_mappings={
+            '.github/workflows/_ci-checks_pkg-alpha.yaml': '_repolish._ci-checks.yaml',
+        },
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+
+    updated = promoted_source.read_text(encoding='utf-8')
+    assert 'member: pkg-alpha' in updated
+    assert 'repolish-regex' not in updated
+
+
 # ---------------------------------------------------------------------------
 # Tests: unmapped _repolish.* files are excluded from the staging tree
 # ---------------------------------------------------------------------------
