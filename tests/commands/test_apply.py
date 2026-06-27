@@ -18,8 +18,9 @@ from repolish.commands.apply.session import (
 from repolish.commands.apply.session import (
     run_session as run_repolish,
 )
+from repolish.commands.apply.symlinks import apply_copies
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
-from repolish.config.models.provider import ProviderSymlink
+from repolish.config.models.provider import ProviderCopy, ProviderSymlink
 from repolish.linker.health import ProviderReadinessResult
 from repolish.providers import SessionBundle
 from repolish.providers.models import (
@@ -686,3 +687,29 @@ def test_apply_session_overlay_alias_split(
 
     assert rc == 0
     assert session.providers.template_overlay_dirs == {'file.md': 'root'}
+
+
+def test_apply_copies_dispatches_to_create_provider_copies(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_copies calls create_provider_copies for each matching provider."""
+    resources_dir = tmp_path / '.repolish' / 'mylib'
+    resources_dir.mkdir(parents=True)
+    providers = {
+        'mylib': ResolvedProviderInfo(
+            alias='mylib',
+            provider_root=resources_dir,
+            resources_dir=resources_dir,
+        ),
+    }
+    copies = [ProviderCopy(source=Path('configs/dprint.json'), target=Path('dprint.json'))]
+    resolved_copies = {'mylib': copies}
+
+    mock_create = mocker.patch(
+        'repolish.commands.apply.symlinks.create_provider_copies',
+    )
+
+    apply_copies(resolved_copies, providers)
+
+    mock_create.assert_called_once_with('mylib', resources_dir, copies)

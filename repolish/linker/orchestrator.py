@@ -1,6 +1,7 @@
 """High-level provider processing orchestration."""
 
 import importlib.util
+import shutil
 import subprocess
 from inspect import isclass
 from pathlib import Path
@@ -10,14 +11,73 @@ from hotlog import get_logger
 
 from repolish.config import ProviderConfig
 from repolish.config.models.provider import (
+    ProviderCopy,
     ProviderSymlink,
     ResolvedProviderInfo,
 )
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
-from repolish.providers.models import ModeHandler, Provider, Symlink
+from repolish.providers.models import (
+    ModeHandler,
+    Provider,
+    ResourceCopy,
+    Symlink,
+)
 
 logger = get_logger(__name__)
+
+
+def create_provider_copies(
+    provider_name: str,
+    resources_dir: Path,
+    copies: list[ProviderCopy],
+) -> None:
+    """Copy files for a provider from its resources into the project root.
+
+    Args:
+        provider_name: Alias of the provider.
+        resources_dir: Absolute path to the provider's resource directory.
+        copies: List of copy configurations to materialise.
+    """
+    if not copies:
+        return
+
+    logger.info(
+        'creating_provider_copies',
+        provider=provider_name,
+        count=len(copies),
+        _display_level=1,
+    )
+
+    for copy in copies:
+        source_path = resources_dir / copy.source
+        target_path = Path(copy.target)
+        logger.debug(
+            'copying_resource',
+            source=str(copy.source),
+            target=str(copy.target),
+        )
+        if not source_path.exists():
+            msg = f'Copy source does not exist: {source_path}'
+            raise FileNotFoundError(msg)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if source_path.is_dir():
+            shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source_path, target_path)
+        logger.info(
+            'resource_copied',
+            provider=provider_name,
+            target=str(copy.target),
+            _display_level=1,
+        )
+
+    logger.info(
+        'copies_created',
+        provider=provider_name,
+        count=len(copies),
+        _display_level=1,
+    )
 
 
 def create_provider_symlinks(
@@ -104,6 +164,32 @@ def _symlinks_from_module(
     return []  # pragma: no cover - defensive fallback, we make sure that a provider is declared in repolish.py
 
 
+def _copies_from_module(
+    mod: object,
+    mode: str,
+    provider_root: Path,
+) -> list[ProviderCopy]:
+    """Return default copies for *mode* declared by the ``Provider`` (and its handler) in *mod*.
+
+    Provider-level copies are shared across all modes; handler-level copies
+    are mode-specific additions.  Both are combined and returned together.
+    """
+    for val in vars(mod).values():
+        if isclass(val) and issubclass(val, Provider) and val is not Provider:
+            inst = val()
+            inst.templates_root = provider_root
+            all_copies: list[ResourceCopy] = list(
+                cast('list[ResourceCopy]', inst.create_default_copies()),
+            )
+            handler_cls = _mode_handler_cls(inst, mode)
+            if handler_cls is not None:
+                handler = handler_cls()
+                handler.templates_root = provider_root / mode
+                all_copies += handler.create_default_copies()
+            return [ProviderCopy(source=Path(c.source), target=Path(c.target)) for c in all_copies]
+    return []  # pragma: no cover - defensive fallback
+
+
 def _load_provider_default_symlinks(
     provider_root: Path,
     mode: str,
@@ -162,6 +248,71 @@ def collect_provider_symlinks(
             effective: list[ProviderSymlink] = list(raw.symlinks)
         else:
             effective = _load_provider_default_symlinks(
+                info.provider_root,
+                mode,
+            )
+        if effective:
+            result[alias] = effective
+    return result
+
+
+def _load_provider_default_copies(
+    provider_root: Path,
+    mode: str,
+) -> list[ProviderCopy]:
+    """Import ``repolish.py`` from *provider_root* and return its default copies for *mode*.
+
+    Mirrors :func:`_load_provider_default_symlinks` for file copies.
+    Returns an empty list when the file is absent, has no Provider subclass,
+    or raises during loading.
+    """
+    repolish_py = provider_root / 'repolish.py'
+    if not repolish_py.exists():
+        return []
+    try:
+        spec = importlib.util.spec_from_file_location(
+            '_repolish_tmp_copies',
+            repolish_py,
+        )
+        if spec is None or spec.loader is None:  # pragma: no cover
+            return []
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return _copies_from_module(mod, mode, provider_root)
+    except Exception as exc:  # noqa: BLE001 # pragma: no cover
+        logger.warning(
+            'provider_default_copies_load_failed',
+            provider_root=str(provider_root),
+            error=str(exc),
+        )
+    return []  # pragma: no cover
+
+
+def collect_provider_copies(
+    providers: dict[str, ResolvedProviderInfo],
+    providers_config: dict[str, ProviderConfig],
+    mode: str = 'standalone',
+) -> dict[str, list[ProviderCopy]]:
+    """Resolve the effective copies list per provider without creating them.
+
+    Explicit entries in ``repolish.yaml`` take priority; absent entries fall
+    back to the defaults declared in ``repolish.py``.  Providers with no
+    effective copies are omitted.
+
+    Args:
+        providers: Resolved provider map from :func:`~repolish.config.load_config`.
+        providers_config: Raw provider config map from the YAML (carries the
+            ``copies`` override field).
+        mode: Workspace mode used to select the correct
+            :class:`~repolish.providers.models.ModeHandler`.
+    """
+    result: dict[str, list[ProviderCopy]] = {}
+    for alias, info in providers.items():
+        raw = providers_config.get(alias)
+        if raw is not None and raw.copies is not None:
+            effective: list[ProviderCopy] = list(raw.copies)
+        else:
+            effective = _load_provider_default_copies(
                 info.provider_root,
                 mode,
             )

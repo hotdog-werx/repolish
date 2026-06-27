@@ -26,6 +26,16 @@ class ProviderSymlink(BaseModel):
         return value.as_posix()
 
 
+class ProviderCopy(ProviderSymlink):
+    """Configuration for a provider resource copy.
+
+    Identical fields to :class:`ProviderSymlink`; the distinction is
+    semantic — the file is physically copied rather than symlinked.
+    For the decorator API, use the ResourceCopy dataclass from
+    repolish.providers.models.
+    """
+
+
 class ProviderConfig(BaseModel):
     """Configuration for a single provider.
 
@@ -62,6 +72,10 @@ class ProviderConfig(BaseModel):
     symlinks: list[ProviderSymlink] | None = Field(
         default=None,
         description='Symlinks from resources to repo. Use provider defaults with None. Skip symlinks with empty list.',
+    )
+    copies: list[ProviderCopy] | None = Field(
+        default=None,
+        description='Copies from resources to repo. Use provider defaults with None. Skip copies with empty list.',
     )
     context: dict[str, Any] | None = Field(
         default=None,
@@ -127,6 +141,10 @@ class ResolvedProviderInfo(BaseModel):
     symlinks: list[ProviderSymlink] = Field(
         default_factory=list,
         description='Additional symlinks to create from provider resources to repo',
+    )
+    copies: list[ProviderCopy] = Field(
+        default_factory=list,
+        description='Files to copy from provider resources to repo',
     )
     context: dict[str, Any] | None = Field(
         default=None,

@@ -4,7 +4,10 @@ from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
-from repolish.linker.orchestrator import collect_provider_symlinks
+from repolish.linker.orchestrator import (
+    collect_provider_copies,
+    collect_provider_symlinks,
+)
 from repolish.misc import ctx_to_dict
 from repolish.providers.models import (
     BaseInputs,
@@ -115,6 +118,11 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         raw_config.providers,
         mode=effective_global_context.workspace.mode,
     )
+    resolved_copies = collect_provider_copies(
+        config.providers,
+        raw_config.providers,
+        mode=effective_global_context.workspace.mode,
+    )
     ordered_aliases = _ordered_aliases(config)
 
     return ResolvedSession(
@@ -126,6 +134,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         alias_to_pid=alias_to_pid,
         pid_to_alias=pid_to_alias,
         resolved_symlinks=resolved_symlinks,
+        resolved_copies=resolved_copies,
         extra_provider_entries=options.extra_provider_entries or [],
         extra_inputs=options.extra_inputs or [],
         provider_entries=provider_entries,

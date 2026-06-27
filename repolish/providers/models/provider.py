@@ -24,7 +24,12 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, Field
 
 from repolish.providers._log import logger
-from repolish.providers.models.context import BaseContext, BaseInputs, Symlink
+from repolish.providers.models.context import (
+    BaseContext,
+    BaseInputs,
+    ResourceCopy,
+    Symlink,
+)
 from repolish.providers.models.files import FileMode, TemplateMapping
 
 # Type variable for provider context models.  We intentionally
@@ -144,6 +149,12 @@ class ModeHandler(Generic[ContextT, InputT]):
         self,
     ) -> list[Symlink]:
         """See :meth:`Provider.create_default_symlinks`."""
+        return []
+
+    def create_default_copies(
+        self,
+    ) -> list[ResourceCopy]:
+        """See :meth:`Provider.create_default_copies`."""
         return []
 
 
@@ -438,6 +449,28 @@ class Provider(ABC, Generic[ContextT, InputT]):
         - Explicit list → use the YAML list; this method is not called.
 
         Default implementation returns an empty list (no symlinks).
+        """
+        return []
+
+    def create_default_copies(
+        self,
+    ) -> list[ResourceCopy]:
+        """Optional: return the default resource files to copy for this provider.
+
+        Each :class:`ResourceCopy` has a ``source`` path (relative to the
+        provider's ``resources_dir``) and a ``target`` path (relative to the
+        project root).  The file is physically copied — no symlink is
+        created.  This is the right choice for static files such as JSON
+        configs or WASM plugins that must not be Jinja-interpreted.
+
+        These defaults can be overridden per-project in ``repolish.yaml``
+        via the ``copies`` key on the provider entry:
+
+        - Omit ``copies`` → call this method and use what it returns.
+        - ``copies: []`` → skip all copies for this provider.
+        - Explicit list → use the YAML list; this method is not called.
+
+        Default implementation returns an empty list (no copies).
         """
         return []
 

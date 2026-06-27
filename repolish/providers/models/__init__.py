@@ -5,7 +5,7 @@ than from the individual submodules. The split into submodules is an
 implementation detail:
 
 - `workspace` — `MemberInfo`, `WorkspaceContext`, `ProviderSession`
-- `context` — `Symlink`, `GithubRepo`, `GlobalContext`, `get_global_context`,
+- `context` — `Symlink`, `ResourceCopy`, `GithubRepo`, `GlobalContext`, `get_global_context`,
   `ProviderInfo`, `RepolishContext`, `BaseContext`, `BaseInputs`
 - `pipeline` — `PipelineOptions`, `DryRunResult`
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
@@ -22,6 +22,7 @@ from repolish.providers.models.context import (
     GlobalContext,
     ProviderInfo,
     RepolishContext,
+    ResourceCopy,
     Symlink,
     get_global_context,
 )
@@ -80,6 +81,7 @@ __all__ = [
     'ProviderInfo',
     'ProviderSession',
     'RepolishContext',
+    'ResourceCopy',
     'SessionBundle',
     'Symlink',
     'T',

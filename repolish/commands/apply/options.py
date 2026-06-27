@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from repolish.config import ProviderSymlink, RepolishConfig
+from repolish.config.models.provider import ProviderCopy
 from repolish.providers.models import (
     BaseInputs,
     GlobalContext,
@@ -83,6 +84,10 @@ class ResolvedSession:
     alias_to_pid: dict[str, str] = field(default_factory=dict, repr=False)
     pid_to_alias: dict[str, str] = field(default_factory=dict, repr=False)
     resolved_symlinks: dict[str, list[ProviderSymlink]] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    resolved_copies: dict[str, list[ProviderCopy]] = field(
         default_factory=dict,
         repr=False,
     )

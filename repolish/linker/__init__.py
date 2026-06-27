@@ -7,7 +7,9 @@ from repolish.linker.health import (
     ensure_providers_ready,
 )
 from repolish.linker.orchestrator import (
+    collect_provider_copies,
     collect_provider_symlinks,
+    create_provider_copies,
     create_provider_symlinks,
     process_provider,
 )
@@ -18,13 +20,16 @@ from repolish.linker.providers import (
     write_provider_info_file,
 )
 from repolish.linker.symlinks import create_additional_link, link_resources
-from repolish.providers.models import Symlink
+from repolish.providers.models import ResourceCopy, Symlink
 
 __all__ = [
     'ProviderReadinessResult',
+    'ResourceCopy',
     'Symlink',
+    'collect_provider_copies',
     'collect_provider_symlinks',
     'create_additional_link',
+    'create_provider_copies',
     'create_provider_symlinks',
     'ensure_providers_ready',
     'link_resources',

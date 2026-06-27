@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from repolish.config import ProviderSymlink, ResolvedProviderInfo
-from repolish.linker.orchestrator import create_provider_symlinks
+from repolish.config.models.provider import ProviderCopy
+from repolish.linker.orchestrator import (
+    create_provider_copies,
+    create_provider_symlinks,
+)
 from repolish.linker.windows_utils import normalize_windows_path
 
 
@@ -60,3 +64,19 @@ def apply_symlinks(
         info = providers.get(alias)
         if info:
             create_provider_symlinks(alias, info.resources_dir, symlinks)
+
+
+def apply_copies(
+    resolved_copies: dict[str, list[ProviderCopy]],
+    providers: dict[str, ResolvedProviderInfo],
+) -> None:
+    """Materialise all resolved resource copies for every provider.
+
+    Delegates to `create_provider_copies` for each alias that appears in
+    both `resolved_copies` and `providers`. Providers absent from the
+    current config are silently skipped.
+    """
+    for alias, copies in resolved_copies.items():
+        info = providers.get(alias)
+        if info:
+            create_provider_copies(alias, info.resources_dir, copies)
