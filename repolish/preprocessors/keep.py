@@ -38,6 +38,7 @@ class _KeepApplyContext:
     keep_blocks: dict[str, KeepBlockSpec]
     keep_rest: dict[str, KeepMarkerSpec]
     keep_header: dict[str, KeepMarkerSpec]
+    keep_block_occurrence: dict[tuple[str, str], int]
 
 
 _KEEP_BLOCK_RE = re.compile(
@@ -78,6 +79,7 @@ def apply_keep_replacements(
         keep_blocks=keep_blocks,
         keep_rest=keep_rest,
         keep_header=keep_header,
+        keep_block_occurrence={},
     )
     result: list[str] = []
 
@@ -118,31 +120,59 @@ def _apply_keep_block(
         logger.debug('keep_block_no_match_in_target', name=name)
         return result, directive_index + 1
 
-    template_region = _find_bounded_region(
+    segment_end = _find_next_keep_directive_index(
         ctx.template_lines,
         directive_index + 1,
+    )
+    if segment_end is None:
+        segment_end = len(ctx.template_lines)
+
+    template_regions = _find_bounded_regions_in_range(
+        ctx.template_lines,
+        directive_index + 1,
+        segment_end,
         spec.start,
         spec.end,
     )
-    if template_region is None:
+    if not template_regions:
         logger.warning('keep_block_template_region_not_found', name=name)
         return result, directive_index + 1
 
-    local_region = _find_bounded_region(
+    marker_key = (spec.start, spec.end)
+    occurrence_start = ctx.keep_block_occurrence.get(marker_key, 0)
+    local_regions = _find_all_bounded_regions(
         ctx.local_lines,
-        0,
         spec.start,
         spec.end,
     )
-    if local_region is None:
-        logger.debug('keep_block_no_match_in_target', name=name)
-        region = ctx.template_lines[template_region[0] : template_region[1] + 1]
-    else:
-        region = ctx.local_lines[local_region[0] : local_region[1] + 1]
-        logger.debug('keep_block_matched_in_target', name=name)
 
-    result.extend(region)
-    return result, template_region[1] + 1
+    cursor = directive_index + 1
+    matched_any = False
+    for offset, template_region in enumerate(template_regions):
+        result.extend(ctx.template_lines[cursor : template_region[0]])
+        local_index = occurrence_start + offset
+        if local_index < len(local_regions):
+            local_region = local_regions[local_index]
+            result.extend(
+                ctx.local_lines[local_region[0] : local_region[1] + 1],
+            )
+            matched_any = True
+        else:
+            result.extend(
+                ctx.template_lines[template_region[0] : template_region[1] + 1],
+            )
+        cursor = template_region[1] + 1
+
+    result.extend(ctx.template_lines[cursor:segment_end])
+    ctx.keep_block_occurrence[marker_key] = occurrence_start + len(
+        template_regions,
+    )
+
+    if matched_any:
+        logger.debug('keep_block_matched_in_target', name=name)
+    else:
+        logger.debug('keep_block_no_match_in_target', name=name)
+    return result, segment_end
 
 
 def _apply_keep_rest(
@@ -254,3 +284,61 @@ def _find_bounded_region(
     if end_index is None:
         return None
     return bounded_start_index, end_index
+
+
+def _find_all_bounded_regions(
+    lines: list[str],
+    start_marker: str,
+    end_marker: str,
+) -> list[tuple[int, int]]:
+    """Return all bounded regions for a repeated marker pair."""
+    regions: list[tuple[int, int]] = []
+    search_start = 0
+    while search_start < len(lines):
+        region = _find_bounded_region(
+            lines,
+            search_start,
+            start_marker,
+            end_marker,
+        )
+        if region is None:
+            break
+        regions.append(region)
+        search_start = region[1] + 1
+    return regions
+
+
+def _find_bounded_regions_in_range(
+    lines: list[str],
+    start_index: int,
+    end_index: int,
+    start_marker: str,
+    end_marker: str,
+) -> list[tuple[int, int]]:
+    """Return bounded regions fully contained between start_index and end_index."""
+    regions: list[tuple[int, int]] = []
+    search_start = start_index
+    while search_start < end_index:
+        region = _find_bounded_region(
+            lines,
+            search_start,
+            start_marker,
+            end_marker,
+        )
+        if region is None or region[0] >= end_index or region[1] >= end_index:
+            break
+        regions.append(region)
+        search_start = region[1] + 1
+    return regions
+
+
+def _find_next_keep_directive_index(
+    lines: list[str],
+    start: int,
+) -> int | None:
+    """Return the next keep directive line index at or after *start*."""
+    for index in range(start, len(lines)):
+        stripped = lines[index].rstrip('\n')
+        if _KEEP_BLOCK_RE.match(stripped) or _KEEP_REST_RE.match(stripped) or _KEEP_HEADER_RE.match(stripped):
+            return index
+    return None

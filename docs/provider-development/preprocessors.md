@@ -130,6 +130,57 @@ Default content for new projects
 If the project file already contains the marker pair, repolish keeps the block
 between them. Otherwise the default block stays in place.
 
+If multiple sibling `keep-block` directives in one file reuse the same marker
+pair, repolish matches local blocks by encounter order and puts them back in
+that same order. One directive is all you need:
+
+```markdown
+# repolish/README.md.jinja
+
+## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
+
+## Installation
+
+<!-- notes-start -->
+
+_No notes yet._
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+_No notes yet._
+
+<!-- notes-end -->
+```
+
+If the project file already has both marker pairs, each block is preserved in
+its own position:
+
+```markdown
+## Installation
+
+<!-- notes-start -->
+
+Run `pip install mylib` with Python 3.11+.
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+Import and call `mylib.run()` after configuring credentials.
+
+<!-- notes-end -->
+```
+
+Blocks without a matching pair in the project file fall back to the template
+default (`_No notes yet._`). There is no need to add a `notes-2` or
+`notes-installation` directive variant.
+
 ### Keep the rest of the file from a marker onward
 
 Use `keep-rest` for files like `.gitignore`, where the developer owns a tail
@@ -165,6 +216,84 @@ Aliases supported in v1:
 
 - `keep-rest` / `keep-the-rest` / `keep-footer`
 - `keep-header` / `keep-the-header`
+
+---
+
+## Keeping developer-maintained lists in a structured Python file (keep-block)
+
+Some Python files have a fixed structure that the provider owns, but contain
+lists that only a developer can meaningfully fill in — plugin registrations,
+feature flag entries, allowed values, and so on. `keep-block` lets the provider
+manage the file while leaving those lists entirely up to the developer.
+
+Consider a `registry.py` that the provider ships as part of every project. The
+provider controls the imports, the class skeleton, and the module docstring, but
+each project registers its own plugins and its own allowed environments:
+
+```python
+# repolish/src/{{ project_name }}/registry.py.jinja
+"""Plugin registry — managed by repolish, lists owned by the project."""
+
+from __future__ import annotations
+
+from myframework import Plugin, Environment
+
+# repolish-keep-block[plugins]: start="# -- plugins-start" end="# -- plugins-end"
+# repolish-keep-block[environments]: start="# -- environments-start" end="# -- environments-end"
+
+# -- plugins-start
+PLUGINS: list[type[Plugin]] = []
+# -- plugins-end
+
+
+# -- environments-start
+ALLOWED_ENVIRONMENTS: list[str] = ["development", "staging", "production"]
+# -- environments-end
+
+
+def load_plugins() -> None:
+    for cls in PLUGINS:
+        cls.register()
+```
+
+On a fresh project, the template defaults are used as-is. Once developers have
+added entries, those two blocks survive every apply unchanged:
+
+```python
+# src/myapp/registry.py  (developer's current file)
+"""Plugin registry — managed by repolish, lists owned by the project."""
+
+from __future__ import annotations
+
+from myframework import Plugin, Environment
+
+# -- plugins-start
+PLUGINS: list[type[Plugin]] = [
+    AuthPlugin,
+    AuditPlugin,
+    MetricsPlugin,
+]
+# -- plugins-end
+
+
+# -- environments-start
+ALLOWED_ENVIRONMENTS: list[str] = [
+    "development",
+    "staging",
+    "production",
+    "demo",
+]
+# -- environments-end
+
+
+def load_plugins() -> None:
+    for cls in PLUGINS:
+        cls.register()
+```
+
+The provider can freely change imports, add new methods, rename the module
+docstring, or add a third `keep-block` section — none of those changes will
+touch `PLUGINS` or `ALLOWED_ENVIRONMENTS`.
 
 ---
 

@@ -337,3 +337,98 @@ def test_apply_keep_replacements_block_local_has_start_but_no_end_marker() -> No
     )
 
     assert result == 'Top\n<<\nDefault\n>>\nBottom\n'
+
+
+def test_apply_keep_replacements_single_definition_multiple_sibling_blocks() -> None:
+    template = dedent("""\
+        ## repolish-keep-block[single-block-definition]: start="<!-- start -->" end="<!-- end -->"
+        <!-- start -->
+        default 1
+        <!-- end -->
+        Part of template 1
+        <!-- start -->
+        default 2
+        <!-- end -->
+        Part of template 2
+        <!-- start -->
+        default 3
+        <!-- end -->
+        done
+    """)
+
+    local_content = dedent("""\
+        <!-- start -->
+        custom 1
+        <!-- end -->
+        Part of template 1
+        <!-- start -->
+        custom 2
+        <!-- end -->
+        Part of template 2
+        <!-- start -->
+        custom 3
+        <!-- end -->
+        done
+    """)
+
+    result = replace_text(template, local_content)
+
+    assert result == local_content
+
+
+def test_apply_keep_replacements_multiple_sibling_blocks_same_markers() -> None:
+    template = dedent("""\
+        ## repolish-keep-block[custom-1]: start="<!-- start -->" end="<!-- end -->"
+        <!-- start -->
+        default 1
+        <!-- end -->
+        Part of template 1
+        ## repolish-keep-block[custom-2]: start="<!-- start -->" end="<!-- end -->"
+        <!-- start -->
+        default 2
+        <!-- end -->
+        Part of template 2
+        ## repolish-keep-block[custom-3]: start="<!-- start -->" end="<!-- end -->"
+        <!-- start -->
+        default 3
+        <!-- end -->
+        done
+    """)
+
+    local_content = dedent("""\
+        <!-- start -->
+        custom 1
+        <!-- end -->
+        Part of template 1
+        <!-- start -->
+        custom 2
+        <!-- end -->
+        Part of template 2
+        <!-- start -->
+        custom 3
+        <!-- end -->
+        done
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={
+            'custom-1': KeepBlockSpec(
+                start='<!-- start -->',
+                end='<!-- end -->',
+            ),
+            'custom-2': KeepBlockSpec(
+                start='<!-- start -->',
+                end='<!-- end -->',
+            ),
+            'custom-3': KeepBlockSpec(
+                start='<!-- start -->',
+                end='<!-- end -->',
+            ),
+        },
+        keep_rest={},
+        keep_header={},
+        local_file_content=local_content,
+    )
+
+    assert result == local_content

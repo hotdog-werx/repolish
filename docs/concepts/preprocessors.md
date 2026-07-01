@@ -132,6 +132,73 @@ Default block content
 If the current project file already has a matching marker pair, repolish keeps
 that content. Otherwise the template default remains.
 
+When several sibling `keep-block` directives use the same `start`/`end` markers
+in one file, repolish matches them in encounter order and restores local blocks
+in that same order.
+
+One directive is enough — no need to give each block a different name:
+
+```markdown
+## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
+
+## Installation
+
+<!-- notes-start -->
+
+_No notes yet._
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+_No notes yet._
+
+<!-- notes-end -->
+```
+
+If the project file already has both marker pairs with developer content:
+
+```markdown
+## Installation
+
+<!-- notes-start -->
+
+Run `pip install mylib` with Python 3.11+.
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+Import and call `mylib.run()` after configuring credentials.
+
+<!-- notes-end -->
+```
+
+The output preserves both blocks in place — first block matched to first, second
+to second, and so on:
+
+```markdown
+## Installation
+
+<!-- notes-start -->
+
+Run `pip install mylib` with Python 3.11+.
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+Import and call `mylib.run()` after configuring credentials.
+
+<!-- notes-end -->
+```
+
 ### Keep everything from a marker to EOF
 
 Use `repolish-keep-rest` when a marker introduces a developer-owned tail.
