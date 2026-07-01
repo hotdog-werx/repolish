@@ -521,7 +521,9 @@ def test_coordinate_sessions_monorepo_returns_rc_and_prints_summary(
     assert mock_print.called
 
 
-def test_apply_winners_skips_paused_promoted_destination(tmp_path: Path) -> None:
+def test_apply_winners_skips_paused_promoted_destination(
+    tmp_path: Path,
+) -> None:
     """Promoted destinations listed in paused_files must not be written."""
     src = tmp_path / 'src.md'
     src.write_text('new-content')
@@ -577,7 +579,9 @@ def test_apply_winners_skips_suppressed_promoted_source(tmp_path: Path) -> None:
     assert dest.read_text() == 'keep-existing'
 
 
-def test_apply_winners_preserves_regex_region_for_promoted_text(tmp_path: Path) -> None:
+def test_apply_winners_preserves_regex_region_for_promoted_text(
+    tmp_path: Path,
+) -> None:
     """Promoted text files should preserve regex-managed content from destination."""
     src = tmp_path / 'source.txt'
     src.write_text(
@@ -630,7 +634,9 @@ def test_apply_winners_binary_source_falls_back_to_copy(tmp_path: Path) -> None:
     assert (tmp_path / 'dest.bin').read_bytes() == b'\xff\xfe\x00binary'
 
 
-def test_apply_winners_check_only_handles_unreadable_text_dest(tmp_path: Path) -> None:
+def test_apply_winners_check_only_handles_unreadable_text_dest(
+    tmp_path: Path,
+) -> None:
     """Check mode should report differs when destination text cannot be decoded."""
     src = tmp_path / 'source.txt'
     src.write_text('plain text\n', encoding='utf-8')
@@ -658,7 +664,9 @@ def test_apply_winners_check_only_handles_unreadable_text_dest(tmp_path: Path) -
     sys.platform == 'win32',
     reason='Windows does not support Unix executable bits',
 )
-def test_apply_winners_promoted_text_write_preserves_mode(tmp_path: Path) -> None:
+def test_apply_winners_promoted_text_write_preserves_mode(
+    tmp_path: Path,
+) -> None:
     """Text hydration writes should preserve executable mode from promoted source."""
     src = tmp_path / 'member-script.sh'
     src.write_text('#!/bin/bash\necho new\n', encoding='utf-8')

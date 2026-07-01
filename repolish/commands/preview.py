@@ -60,7 +60,12 @@ def command(
         logger.info(
             'extracted_patterns',
             tag_blocks=patterns.tag_blocks,
+            keep_blocks=patterns.keep_blocks,
+            keep_rest=patterns.keep_rest,
+            keep_header=patterns.keep_header,
             regexes=patterns.regexes,
+            multiregex_blocks=patterns.multiregex_blocks,
+            multiregexes=patterns.multiregexes,
         )
         console.print()
 

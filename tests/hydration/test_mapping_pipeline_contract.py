@@ -6,7 +6,10 @@ import pytest
 
 from repolish.hydration.application import apply_generated_output
 from repolish.hydration.comparison import check_generated_output
-from repolish.hydration.mapping_resolution import MappingResolution, resolve_mappings
+from repolish.hydration.mapping_resolution import (
+    MappingResolution,
+    resolve_mappings,
+)
 from repolish.hydration.rendering import render_template
 from repolish.hydration.staging import preprocess_templates
 from repolish.providers import SessionBundle, TemplateMapping
@@ -44,7 +47,10 @@ class TCase:
     ],
     ids=lambda c: c.name,
 )
-def test_contract_preprocess_uses_source_to_dest_resolution(case: TCase, tmp_path: Path) -> None:
+def test_contract_preprocess_uses_source_to_dest_resolution(
+    case: TCase,
+    tmp_path: Path,
+) -> None:
     setup_input = tmp_path / '_' / 'stage'
     staged = setup_input / 'repolish' / case.source_name
     staged.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +61,10 @@ def test_contract_preprocess_uses_source_to_dest_resolution(case: TCase, tmp_pat
 
     base_dir = tmp_path / 'project'
     (base_dir / case.dest_name).parent.mkdir(parents=True, exist_ok=True)
-    (base_dir / case.dest_name).write_text('value: from-local\n', encoding='utf-8')
+    (base_dir / case.dest_name).write_text(
+        'value: from-local\n',
+        encoding='utf-8',
+    )
 
     providers = SessionBundle(
         file_mappings=case.mappings,
@@ -78,18 +87,32 @@ def test_contract_apply_and_check_share_skip_sets(tmp_path: Path) -> None:
     out_root.mkdir(parents=True)
 
     (out_root / 'auto.txt').write_text('auto-new\n', encoding='utf-8')
-    (out_root / 'suppressed.txt').write_text('suppressed-new\n', encoding='utf-8')
-    (out_root / 'create-only.txt').write_text('create-only-new\n', encoding='utf-8')
-    (out_root / 'mapped-source.txt').write_text('mapped-new\n', encoding='utf-8')
+    (out_root / 'suppressed.txt').write_text(
+        'suppressed-new\n',
+        encoding='utf-8',
+    )
+    (out_root / 'create-only.txt').write_text(
+        'create-only-new\n',
+        encoding='utf-8',
+    )
+    (out_root / 'mapped-source.txt').write_text(
+        'mapped-new\n',
+        encoding='utf-8',
+    )
 
     base_dir = tmp_path / 'project'
     base_dir.mkdir()
-    (base_dir / 'create-only.txt').write_text('keep-existing\n', encoding='utf-8')
+    (base_dir / 'create-only.txt').write_text(
+        'keep-existing\n',
+        encoding='utf-8',
+    )
     (base_dir / 'delete-me.txt').write_text('remove\n', encoding='utf-8')
 
     providers = SessionBundle(
         file_mappings={
-            'mapped-dest.txt': TemplateMapping(source_template='mapped-source.txt'),
+            'mapped-dest.txt': TemplateMapping(
+                source_template='mapped-source.txt',
+            ),
         },
         paused_files=frozenset({'mapped-dest.txt'}),
         suppressed_sources={'suppressed.txt'},
@@ -125,7 +148,10 @@ def test_contract_apply_and_check_share_skip_sets(tmp_path: Path) -> None:
     assert not (base_dir / 'mapped-dest.txt').exists()
 
 
-def test_contract_stages_are_wired_to_resolver(mocker: 'MockerFixture', tmp_path: Path) -> None:
+def test_contract_stages_are_wired_to_resolver(
+    mocker: 'MockerFixture',
+    tmp_path: Path,
+) -> None:
     setup_input = tmp_path / '_' / 'stage'
     staged = setup_input / 'repolish' / 'source.txt'
     staged.parent.mkdir(parents=True, exist_ok=True)
@@ -141,7 +167,10 @@ def test_contract_stages_are_wired_to_resolver(mocker: 'MockerFixture', tmp_path
 
     base_dir = tmp_path / 'project'
     (base_dir / 'patched-dest.txt').parent.mkdir(parents=True, exist_ok=True)
-    (base_dir / 'patched-dest.txt').write_text('value: patched\n', encoding='utf-8')
+    (base_dir / 'patched-dest.txt').write_text(
+        'value: patched\n',
+        encoding='utf-8',
+    )
 
     providers = SessionBundle()
 
@@ -215,4 +244,6 @@ def test_contract_rendering_uses_mapping_resolution(
     render_template(setup_input, providers, setup_output)
 
     assert resolver_mock.call_count >= 1
-    assert (setup_output / 'repolish' / 'plain.txt').read_text(encoding='utf-8') == 'plain text\n'
+    assert (setup_output / 'repolish' / 'plain.txt').read_text(
+        encoding='utf-8',
+    ) == 'plain text\n'

@@ -1,14 +1,15 @@
 # Preprocessors
 
 Before Jinja2 runs, repolish applies a preprocessing pass to every staged
-template. This pass handles three kinds of directives - all of which are
-stripped from the final output so your project files stay clean.
+template. This pass handles four kinds of directives - all of which are stripped
+from the final output so your project files stay clean.
 
 The most common directives are **regex** and **multiregex**: they live inside
 the template file itself and read values directly from your current project
 file. This makes templates self-contained - no separate config or provider code
-is needed to preserve local state. Block anchors are a simpler alternative for
-cases where the provider (not the project file) decides what a section contains.
+is needed to preserve local state. Block anchors and keep directives are simpler
+alternatives for cases where the provider (not the project file) decides what a
+section contains or which zone should be preserved.
 
 ## Regex directives
 
@@ -106,11 +107,137 @@ is accepted, so you can use the comment syntax that fits the file type:
 If no replacement is provided for a key, the default content between the markers
 is kept (the markers themselves are still stripped).
 
+## Keep directives
+
+Keep directives preserve developer-owned content inside provider-managed files
+without forcing you to handwrite multiline regex patterns. Use them when you
+want to keep a visible region in place if the project file already has one,
+while still shipping a sensible template default for fresh projects.
+
+### Keep a bounded region
+
+Use `repolish-keep-block` when the developer-owned content sits between two
+explicit markers.
+
+```markdown
+## repolish-keep-block[readme-custom-block]: start="<!-- start -->" end="<!-- end -->"
+
+<!-- start -->
+
+Default block content
+
+<!-- end -->
+```
+
+If the current project file already has a matching marker pair, repolish keeps
+that content. Otherwise the template default remains.
+
+When several sibling `keep-block` directives use the same `start`/`end` markers
+in one file, repolish matches them in encounter order and restores local blocks
+in that same order.
+
+One directive is enough — no need to give each block a different name:
+
+```markdown
+## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
+
+## Installation
+
+<!-- notes-start -->
+
+_No notes yet._
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+_No notes yet._
+
+<!-- notes-end -->
+```
+
+If the project file already has both marker pairs with developer content:
+
+```markdown
+## Installation
+
+<!-- notes-start -->
+
+Run `pip install mylib` with Python 3.11+.
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+Import and call `mylib.run()` after configuring credentials.
+
+<!-- notes-end -->
+```
+
+The output preserves both blocks in place — first block matched to first, second
+to second, and so on:
+
+```markdown
+## Installation
+
+<!-- notes-start -->
+
+Run `pip install mylib` with Python 3.11+.
+
+<!-- notes-end -->
+
+## Usage
+
+<!-- notes-start -->
+
+Import and call `mylib.run()` after configuring credentials.
+
+<!-- notes-end -->
+```
+
+### Keep everything from a marker to EOF
+
+Use `repolish-keep-rest` when a marker introduces a developer-owned tail.
+
+```gitignore
+## repolish-keep-rest[repo-overrides]: marker="## repo-overrides"
+## repo-overrides
+# Placeholder
+```
+
+Everything from the marker line to EOF is preserved from the project file when
+present.
+
+### Keep the header up to a marker
+
+Use `repolish-keep-header` when the developer owns the top of the file and the
+provider owns the section below the marker.
+
+`repolish-keep-header` must appear at the start of the template file. If placed
+later in the file, repolish ignores the directive to avoid duplicating content
+that may already have been emitted before the directive line.
+
+```toml
+## repolish-keep-header[repo-header]: marker="## managed-start"
+Intro text the developer can edit
+## managed-start
+Provider-managed content below
+```
+
+The header is preserved from the project file, while the provider-managed tail
+continues to come from the template.
+
 ## Processing order
 
 1. Block anchors are applied first (replacement from provider code / config).
-2. Regex directives are applied next (capture from the current project file).
-3. Multiregex directives are applied last.
+2. Keep directives are applied next (copy developer-owned regions from the
+   current project file when present).
+3. Regex directives are applied next (capture from the current project file).
+4. Multiregex directives are applied last.
 
 All directive lines are stripped before Jinja2 sees the file.
 

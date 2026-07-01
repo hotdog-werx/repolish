@@ -4,6 +4,7 @@ This module provides the main functions for extracting patterns from templates,
 replacing tags, and orchestrating the complete text replacement pipeline.
 """
 
+import ast
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,11 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.preprocessors.anchors import replace_tags_in_content
+from repolish.preprocessors.keep import (
+    KeepBlockSpec,
+    KeepMarkerSpec,
+    apply_keep_replacements,
+)
 from repolish.preprocessors.multiregex import apply_multiregex_replacements
 from repolish.preprocessors.regex import apply_regex_replacements
 from repolish.utils import read_text_utf8
@@ -23,6 +29,9 @@ class Patterns:
     """Container for extracted patterns from content."""
 
     tag_blocks: dict[str, str]
+    keep_blocks: dict[str, tuple[str, str]]
+    keep_rest: dict[str, str]
+    keep_header: dict[str, str]
     regexes: dict[str, str]
     multiregex_blocks: dict[str, str]
     multiregexes: dict[str, str]
@@ -53,6 +62,19 @@ def extract_patterns(content: str) -> Patterns:
         re.DOTALL | re.MULTILINE,
     )
 
+    keep_block_pattern = re.compile(
+        r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+end=("(?:\\.|[^"])*")[^\n]*\n',
+        re.DOTALL | re.MULTILINE,
+    )
+    keep_rest_pattern = re.compile(
+        r'^[^\n]*repolish-keep-(?:rest|the-rest|footer)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")[^\n]*\n',
+        re.DOTALL | re.MULTILINE,
+    )
+    keep_header_pattern = re.compile(
+        r'^[^\n]*repolish-keep-(?:header|the-header)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")[^\n]*\n',
+        re.DOTALL | re.MULTILINE,
+    )
+
     # Match multiregex block declarations
     multiregex_block_pattern = re.compile(
         r'^[^\n]*repolish-multiregex-block\[(.+?)\]: (.*?)\n',
@@ -73,6 +95,21 @@ def extract_patterns(content: str) -> Patterns:
     for k, v in raw_tag_blocks.items():
         tag_blocks[k] = v.strip('\n')
 
+    keep_blocks: dict[str, tuple[str, str]] = {}
+    for name, start_raw, end_raw in keep_block_pattern.findall(content):
+        keep_blocks[name] = (
+            _parse_keep_literal(start_raw),
+            _parse_keep_literal(end_raw),
+        )
+
+    keep_rest: dict[str, str] = {}
+    for name, marker_raw in keep_rest_pattern.findall(content):
+        keep_rest[name] = _parse_keep_literal(marker_raw)
+
+    keep_header: dict[str, str] = {}
+    for name, marker_raw in keep_header_pattern.findall(content):
+        keep_header[name] = _parse_keep_literal(marker_raw)
+
     regexes = dict(regex_pattern.findall(content))
     multiregex_blocks = dict(multiregex_block_pattern.findall(content))
     multiregexes = dict(multiregex_pattern.findall(content))
@@ -80,12 +117,18 @@ def extract_patterns(content: str) -> Patterns:
     logger.debug(
         'extracted_patterns',
         tag_blocks=[str(k) for k in tag_blocks],
+        keep_blocks=dict(keep_blocks),
+        keep_rest=dict(keep_rest),
+        keep_header=dict(keep_header),
         regexes=[str(k) for k in regexes],
         multiregexes=[str(k) for k in multiregexes],
     )
 
     return Patterns(
         tag_blocks=tag_blocks,
+        keep_blocks=keep_blocks,
+        keep_rest=keep_rest,
+        keep_header=keep_header,
         regexes=regexes,
         multiregex_blocks=multiregex_blocks,
         multiregexes=multiregexes,
@@ -142,6 +185,13 @@ def replace_text(
             tags_to_replace[tag] = default_value
 
     content = replace_tags_in_content(template_content, tags_to_replace)
+    content = apply_keep_replacements(
+        content,
+        {name: KeepBlockSpec(start=start, end=end) for name, (start, end) in patterns.keep_blocks.items()},
+        {name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_rest.items()},
+        {name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_header.items()},
+        local_content,
+    )
     content = apply_regex_replacements(content, patterns.regexes, local_content)
     content = apply_multiregex_replacements(
         content,
@@ -157,3 +207,12 @@ def replace_text(
         multiregexes_applied=len(patterns.multiregexes),
     )
     return result
+
+
+def _parse_keep_literal(raw: str) -> str:
+    """Parse a quoted keep directive literal."""
+    value = ast.literal_eval(raw)
+    if not isinstance(value, str):
+        msg = 'keep directive values must be quoted strings'
+        raise TypeError(msg)
+    return value
