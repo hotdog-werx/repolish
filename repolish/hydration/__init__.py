@@ -9,6 +9,7 @@ from repolish.hydration.context import (
     build_final_providers,
 )
 from repolish.hydration.display import rich_print_diffs
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.rendering import render_template
 from repolish.hydration.staging import prepare_staging, preprocess_templates
 
@@ -20,5 +21,6 @@ __all__ = [
     'prepare_staging',
     'preprocess_templates',
     'render_template',
+    'resolve_mappings',
     'rich_print_diffs',
 ]

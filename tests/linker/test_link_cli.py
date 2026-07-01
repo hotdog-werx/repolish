@@ -764,7 +764,12 @@ def test_create_provider_copies_file(
     configs.mkdir(parents=True)
     (configs / 'dprint.json').write_text('{"plugins":[]}')
 
-    copies = [ProviderCopy(source=Path('configs/dprint.json'), target=Path('dprint.json'))]
+    copies = [
+        ProviderCopy(
+            source=Path('configs/dprint.json'),
+            target=Path('dprint.json'),
+        ),
+    ]
     create_provider_copies('mylib', provider_dir, copies)
 
     dest = tmp_path / 'dprint.json'
@@ -803,7 +808,12 @@ def test_create_provider_copies_missing_source_raises(
     provider_dir = tmp_path / '.repolish' / 'mylib'
     provider_dir.mkdir(parents=True)
 
-    copies = [ProviderCopy(source=Path('configs/missing.json'), target=Path('missing.json'))]
+    copies = [
+        ProviderCopy(
+            source=Path('configs/missing.json'),
+            target=Path('missing.json'),
+        ),
+    ]
     with pytest.raises(FileNotFoundError, match=r'missing.json'):
         create_provider_copies('mylib', provider_dir, copies)
 
@@ -849,7 +859,12 @@ def test_collect_provider_copies_uses_yaml_override(tmp_path: Path) -> None:
         provider_root=provider_dir,
         resources_dir=provider_dir,
     )
-    explicit = [ProviderCopy(source=Path('configs/dprint.json'), target=Path('dprint.json'))]
+    explicit = [
+        ProviderCopy(
+            source=Path('configs/dprint.json'),
+            target=Path('dprint.json'),
+        ),
+    ]
     raw_config = ProviderConfig(cli='mylib-link', copies=explicit)
 
     result = collect_provider_copies(
@@ -860,7 +875,9 @@ def test_collect_provider_copies_uses_yaml_override(tmp_path: Path) -> None:
     assert result == {'mylib': explicit}
 
 
-def test_collect_provider_copies_empty_override_suppresses(tmp_path: Path) -> None:
+def test_collect_provider_copies_empty_override_suppresses(
+    tmp_path: Path,
+) -> None:
     """An explicit copies: [] in ProviderConfig suppresses all copies."""
     provider_dir = tmp_path / '.repolish' / 'mylib'
     provider_dir.mkdir(parents=True)
