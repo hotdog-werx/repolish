@@ -568,3 +568,109 @@ def test_apply_winners_skips_suppressed_promoted_source(tmp_path: Path) -> None:
     assert result == {'dest.txt': 'suppressed'}
     assert records[0].path == 'dest.txt'
     assert dest.read_text() == 'keep-existing'
+
+
+def test_apply_winners_preserves_regex_region_for_promoted_text(tmp_path: Path) -> None:
+    """Promoted text files should preserve regex-managed content from destination."""
+    src = tmp_path / 'source.txt'
+    src.write_text(
+        '## repolish-regex[member]: member:\\s*(.+)\nmember: default-member\n',
+    )
+    dest = tmp_path / 'dest.txt'
+    dest.write_text('member: pkg-alpha\n')
+
+    winner = PromotionWinner(
+        dest='dest.txt',
+        source_file=src,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='source.txt'),
+    )
+
+    root_session = _make_session(tmp_path)
+
+    records, result = _apply_winners(
+        {'dest.txt': winner},
+        root_session,
+        check_only=False,
+    )
+
+    assert records[0].path == 'dest.txt'
+    assert result == {'dest.txt': 'unchanged'}
+    assert dest.read_text() == 'member: pkg-alpha\n'
+
+
+def test_apply_winners_binary_source_falls_back_to_copy(tmp_path: Path) -> None:
+    """Binary promoted source should bypass text hydration and copy bytes unchanged."""
+    src = tmp_path / 'source.bin'
+    src.write_bytes(b'\xff\xfe\x00binary')
+
+    winner = PromotionWinner(
+        dest='dest.bin',
+        source_file=src,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='source.bin'),
+    )
+    root_session = _make_session(tmp_path)
+
+    records, result = _apply_winners(
+        {'dest.bin': winner},
+        root_session,
+        check_only=False,
+    )
+
+    assert records[0].path == 'dest.bin'
+    assert result == {'dest.bin': 'written'}
+    assert (tmp_path / 'dest.bin').read_bytes() == b'\xff\xfe\x00binary'
+
+
+def test_apply_winners_check_only_handles_unreadable_text_dest(tmp_path: Path) -> None:
+    """Check mode should report differs when destination text cannot be decoded."""
+    src = tmp_path / 'source.txt'
+    src.write_text('plain text\n', encoding='utf-8')
+    (tmp_path / 'dest.txt').write_bytes(b'\xff\xfe\x00binary')
+
+    winner = PromotionWinner(
+        dest='dest.txt',
+        source_file=src,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='source.txt'),
+    )
+    root_session = _make_session(tmp_path)
+
+    records, result = _apply_winners(
+        {'dest.txt': winner},
+        root_session,
+        check_only=True,
+    )
+
+    assert records[0].path == 'dest.txt'
+    assert result == {'dest.txt': 'differs'}
+
+
+def test_apply_winners_promoted_text_write_preserves_mode(tmp_path: Path) -> None:
+    """Text hydration writes should preserve executable mode from promoted source."""
+    src = tmp_path / 'member-script.sh'
+    src.write_text('#!/bin/bash\necho new\n', encoding='utf-8')
+    src.chmod(0o755)
+    dest = tmp_path / 'script.sh'
+    dest.write_text('#!/bin/bash\necho old\n', encoding='utf-8')
+    dest.chmod(0o644)
+
+    winner = PromotionWinner(
+        dest='script.sh',
+        source_file=src,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='script.sh'),
+    )
+    root_session = _make_session(tmp_path)
+
+    records, result = _apply_winners(
+        {'script.sh': winner},
+        root_session,
+        check_only=False,
+    )
+
+    assert records[0].path == 'script.sh'
+    assert result == {'script.sh': 'written'}
+    assert dest.read_text(encoding='utf-8') == '#!/bin/bash\necho new\n'
+    assert dest.stat().st_mode & 0o111

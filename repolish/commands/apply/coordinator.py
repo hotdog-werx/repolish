@@ -26,6 +26,7 @@ from repolish.config.topology import (
     detect_workspace_from_config,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
+from repolish.preprocessors import replace_text, safe_file_read
 from repolish.providers.models import (
     TemplateMapping,
 )
@@ -53,6 +54,16 @@ class PromotionWinner:
     source_file: Path
     member_name: str
     mapping: TemplateMapping
+
+
+@dataclass
+class PromotedWriteContext:
+    """Inputs required to check or write one promoted destination file."""
+
+    winner: PromotionWinner
+    dest_file: Path
+    rendered_text: str | None
+    source_mode: int | None
 
 
 def _resolve_source_file(
@@ -197,39 +208,8 @@ def _apply_promoted_file(
     check_only: bool,
 ) -> tuple[FileRecord, str]:
     """Check or write a single promoted file. Returns ``(record, status)``."""
-    if check_only:
-        if not dest_file.exists() or not filecmp.cmp(
-            str(winner.source_file),
-            str(dest_file),
-            shallow=False,
-        ):
-            logger.info(
-                'promoted_file_differs',
-                dest=winner.dest,
-                member=winner.member_name,
-                _display_level=1,
-            )
-            result = 'differs'
-        else:
-            result = 'unchanged'
-    else:
-        dest_file.parent.mkdir(parents=True, exist_ok=True)
-        if dest_file.exists() and filecmp.cmp(
-            str(winner.source_file),
-            str(dest_file),
-            shallow=False,
-        ):
-            result = 'unchanged'
-        else:
-            shutil.copy2(winner.source_file, dest_file)
-            logger.info(
-                'promoted_file_written',
-                dest=winner.dest,
-                member=winner.member_name,
-                source=str(winner.source_file),
-                _display_level=1,
-            )
-            result = 'written'
+    ctx = _build_promoted_write_context(winner, dest_file)
+    result = _check_promoted_file(ctx) if check_only else _write_promoted_file(ctx)
 
     record = FileRecord(
         path=winner.dest,
@@ -239,6 +219,87 @@ def _apply_promoted_file(
         promoted_from=winner.member_name,
     )
     return record, result
+
+
+def _build_promoted_write_context(
+    winner: PromotionWinner,
+    dest_file: Path,
+) -> PromotedWriteContext:
+    """Prepare hydrated text candidate for promoted files when possible."""
+    rendered_text: str | None = None
+    source_mode: int | None = None
+    try:
+        source_text = winner.source_file.read_text(encoding='utf-8')
+        rendered_text = replace_text(
+            source_text,
+            safe_file_read(dest_file),
+            anchors_dictionary={},
+        )
+        source_mode = winner.source_file.stat().st_mode
+    except (OSError, UnicodeDecodeError):
+        # Keep byte-for-byte copy behavior for unreadable/binary sources.
+        rendered_text = None
+    return PromotedWriteContext(
+        winner=winner,
+        dest_file=dest_file,
+        rendered_text=rendered_text,
+        source_mode=source_mode,
+    )
+
+
+def _promoted_differs(ctx: PromotedWriteContext) -> bool:
+    """Return whether the promoted output differs from destination."""
+    if not ctx.dest_file.exists():
+        return True
+
+    if ctx.rendered_text is None:
+        return not filecmp.cmp(
+            str(ctx.winner.source_file),
+            str(ctx.dest_file),
+            shallow=False,
+        )
+
+    try:
+        return ctx.dest_file.read_text(encoding='utf-8') != ctx.rendered_text
+    except (OSError, UnicodeDecodeError):
+        return True
+
+
+def _check_promoted_file(ctx: PromotedWriteContext) -> str:
+    """Return check status for one promoted file."""
+    if _promoted_differs(ctx):
+        logger.info(
+            'promoted_file_differs',
+            dest=ctx.winner.dest,
+            member=ctx.winner.member_name,
+            _display_level=1,
+        )
+        return 'differs'
+    return 'unchanged'
+
+
+def _write_promoted_file(ctx: PromotedWriteContext) -> str:
+    """Write one promoted file and return apply status."""
+    ctx.dest_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if not _promoted_differs(ctx):
+        return 'unchanged'
+
+    if ctx.rendered_text is None:
+        shutil.copy2(ctx.winner.source_file, ctx.dest_file)
+    else:
+        ctx.dest_file.write_text(ctx.rendered_text, encoding='utf-8')
+        if ctx.source_mode is not None:
+            ctx.dest_file.chmod(ctx.source_mode)
+
+    logger.info(
+        'promoted_file_written',
+        dest=ctx.winner.dest,
+        member=ctx.winner.member_name,
+        source=str(ctx.winner.source_file),
+        _display_level=1,
+    )
+    return 'written'
 
 
 def _apply_winners(
