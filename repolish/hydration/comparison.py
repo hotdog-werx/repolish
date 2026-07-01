@@ -1,15 +1,33 @@
 import difflib
 import filecmp
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.misc import is_conditional_file
 from repolish.providers import SessionBundle
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class MappingCheckContext:
+    """Shared state for mapping-diff checks.
+
+    Grouping these values keeps helper signatures small and makes the mapping
+    check pipeline easier to extend without rethreading many positional args.
+    """
+
+    setup_output: Path
+    base_dir: Path
+    preserve: bool
+    delete_files_set: set[str]
+    create_only_files_set: set[str]
+    paused_files: frozenset[str]
 
 
 def collect_output_files(setup_output: Path) -> list[Path]:
@@ -211,11 +229,7 @@ def _should_skip_mapping(
 
 def _check_file_mappings(
     providers: SessionBundle,
-    setup_output: Path,
-    base_dir: Path,
-    *,
-    preserve: bool,
-    paused_files: frozenset[str],
+    ctx: MappingCheckContext,
 ) -> list[tuple[str, str]]:
     """Check file_mappings for diffs between sources and destinations.
 
@@ -223,17 +237,15 @@ def _check_file_mappings(
     so the main loop remains small and easy to follow.
     """
     diffs: list[tuple[str, str]] = []
-    delete_files_set = {p.as_posix() for p in providers.delete_files}
-    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
 
     for dest_path, source_path in providers.file_mappings.items():
-        if dest_path in paused_files:
+        if dest_path in ctx.paused_files:
             continue
         if _should_skip_mapping(
             dest_path,
-            delete_files_set,
-            create_only_files_set,
-            base_dir,
+            ctx.delete_files_set,
+            ctx.create_only_files_set,
+            ctx.base_dir,
         ):
             continue
 
@@ -244,9 +256,9 @@ def _check_file_mappings(
         result = _check_single_file_mapping(
             dest_path,
             src,
-            setup_output,
-            base_dir,
-            preserve=preserve,
+            ctx.setup_output,
+            ctx.base_dir,
+            preserve=ctx.preserve,
         )
         if result:
             diffs.append(result)
@@ -265,17 +277,18 @@ def check_generated_output(
 
     Returns a list of (relative_path, message_or_unified_diff). Empty when no diffs found.
     """
-    paused_files = providers.paused_files
+    resolution = resolve_mappings(providers)
+    paused_files = resolution.paused_dests
     output_files = collect_output_files(setup_output)
     diffs: list[tuple[str, str]] = []
 
     preserve = _preserve_line_endings()
-    mapped_sources = {s for v in providers.file_mappings.values() if (s := get_source_str_from_mapping(v)) is not None}
-    delete_files_set = {str(p) for p in providers.delete_files}
-    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
+    mapped_sources = resolution.mapped_sources
+    delete_files_set = resolution.delete_dests
+    create_only_files_set = resolution.create_only_dests
 
     # Build skip set: include create-only files that already exist in the project
-    skip_files = mapped_sources | delete_files_set | paused_files | providers.suppressed_sources
+    skip_files = mapped_sources | delete_files_set | paused_files | resolution.suppressed_sources
     for rel_str in create_only_files_set:
         if (base_dir / rel_str).exists():
             skip_files.add(rel_str)
@@ -293,13 +306,18 @@ def check_generated_output(
     )
 
     # Check file_mappings: compare mapped source files to their destinations
+    mapping_check_ctx = MappingCheckContext(
+        setup_output=setup_output,
+        base_dir=base_dir,
+        preserve=preserve,
+        delete_files_set=delete_files_set,
+        create_only_files_set=create_only_files_set,
+        paused_files=paused_files,
+    )
     diffs.extend(
         _check_file_mappings(
             providers,
-            setup_output,
-            base_dir,
-            preserve=preserve,
-            paused_files=paused_files,
+            mapping_check_ctx,
         ),
     )
 

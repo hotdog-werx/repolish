@@ -15,7 +15,6 @@ from repolish.commands.apply.display import (
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
-    collect_mapped_sources,
     create_staged_template,
 )
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
@@ -24,6 +23,7 @@ from repolish.hydration import (
     prepare_staging,
     preprocess_templates,
 )
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.providers.models import build_file_records
 from repolish.utils import run_post_process
 from repolish.version import __version__
@@ -52,17 +52,14 @@ def apply_session(
     alias_to_pid = session.alias_to_pid
     pid_to_alias = session.pid_to_alias
     config_pid = config.config_dir.as_posix()
+    mapped_sources = resolve_mappings(providers).mapped_sources
 
     # staging must happen before we can report per-provider template ownership
     base_dir, setup_input, setup_output = prepare_staging(config)
     sources = create_staged_template(
         setup_input,
         config,
-        mapped_sources=(
-            collect_mapped_sources(providers.file_mappings)
-            | collect_mapped_sources(providers.promoted_file_mappings)
-            | providers.suppressed_sources
-        ),
+        mapped_sources=(mapped_sources | providers.suppressed_sources),
         workspace_mode=session.global_context.workspace.mode,
     )
     # stage_templates records alias as the provider id; provider_contexts is

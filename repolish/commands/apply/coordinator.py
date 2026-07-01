@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import filecmp
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
@@ -25,11 +26,14 @@ from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
 )
+from repolish.hydration.mapping_resolution import resolve_mappings
+from repolish.preprocessors import replace_text, safe_file_read
 from repolish.providers.models import (
     TemplateMapping,
 )
 from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.providers.models.files import FileMode, FileRecord
+from repolish.utils import run_post_process
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -52,6 +56,16 @@ class PromotionWinner:
     source_file: Path
     member_name: str
     mapping: TemplateMapping
+
+
+@dataclass
+class PromotedWriteContext:
+    """Inputs required to check or write one promoted destination file."""
+
+    winner: PromotionWinner
+    dest_file: Path
+    rendered_text: str | None
+    source_mode: int | None
 
 
 def _resolve_source_file(
@@ -196,39 +210,8 @@ def _apply_promoted_file(
     check_only: bool,
 ) -> tuple[FileRecord, str]:
     """Check or write a single promoted file. Returns ``(record, status)``."""
-    if check_only:
-        if not dest_file.exists() or not filecmp.cmp(
-            str(winner.source_file),
-            str(dest_file),
-            shallow=False,
-        ):
-            logger.info(
-                'promoted_file_differs',
-                dest=winner.dest,
-                member=winner.member_name,
-                _display_level=1,
-            )
-            result = 'differs'
-        else:
-            result = 'unchanged'
-    else:
-        dest_file.parent.mkdir(parents=True, exist_ok=True)
-        if dest_file.exists() and filecmp.cmp(
-            str(winner.source_file),
-            str(dest_file),
-            shallow=False,
-        ):
-            result = 'unchanged'
-        else:
-            shutil.copy2(winner.source_file, dest_file)
-            logger.info(
-                'promoted_file_written',
-                dest=winner.dest,
-                member=winner.member_name,
-                source=str(winner.source_file),
-                _display_level=1,
-            )
-            result = 'written'
+    ctx = _build_promoted_write_context(winner, dest_file)
+    result = _check_promoted_file(ctx) if check_only else _write_promoted_file(ctx)
 
     record = FileRecord(
         path=winner.dest,
@@ -238,6 +221,87 @@ def _apply_promoted_file(
         promoted_from=winner.member_name,
     )
     return record, result
+
+
+def _build_promoted_write_context(
+    winner: PromotionWinner,
+    dest_file: Path,
+) -> PromotedWriteContext:
+    """Prepare hydrated text candidate for promoted files when possible."""
+    rendered_text: str | None = None
+    source_mode: int | None = None
+    try:
+        source_text = winner.source_file.read_text(encoding='utf-8')
+        rendered_text = replace_text(
+            source_text,
+            safe_file_read(dest_file),
+            anchors_dictionary={},
+        )
+        source_mode = winner.source_file.stat().st_mode
+    except (OSError, UnicodeDecodeError):
+        # Keep byte-for-byte copy behavior for unreadable/binary sources.
+        rendered_text = None
+    return PromotedWriteContext(
+        winner=winner,
+        dest_file=dest_file,
+        rendered_text=rendered_text,
+        source_mode=source_mode,
+    )
+
+
+def _promoted_differs(ctx: PromotedWriteContext) -> bool:
+    """Return whether the promoted output differs from destination."""
+    if not ctx.dest_file.exists():
+        return True
+
+    if ctx.rendered_text is None:
+        return not filecmp.cmp(
+            str(ctx.winner.source_file),
+            str(ctx.dest_file),
+            shallow=False,
+        )
+
+    try:
+        return ctx.dest_file.read_text(encoding='utf-8') != ctx.rendered_text
+    except (OSError, UnicodeDecodeError):
+        return True
+
+
+def _check_promoted_file(ctx: PromotedWriteContext) -> str:
+    """Return check status for one promoted file."""
+    if _promoted_differs(ctx):
+        logger.info(
+            'promoted_file_differs',
+            dest=ctx.winner.dest,
+            member=ctx.winner.member_name,
+            _display_level=1,
+        )
+        return 'differs'
+    return 'unchanged'
+
+
+def _write_promoted_file(ctx: PromotedWriteContext) -> str:
+    """Write one promoted file and return apply status."""
+    ctx.dest_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if not _promoted_differs(ctx):
+        return 'unchanged'
+
+    if ctx.rendered_text is None:
+        shutil.copy2(ctx.winner.source_file, ctx.dest_file)
+    else:
+        ctx.dest_file.write_text(ctx.rendered_text, encoding='utf-8')
+        if ctx.source_mode is not None:
+            ctx.dest_file.chmod(ctx.source_mode)
+
+    logger.info(
+        'promoted_file_written',
+        dest=ctx.winner.dest,
+        member=ctx.winner.member_name,
+        source=str(ctx.winner.source_file),
+        _display_level=1,
+    )
+    return 'written'
 
 
 def _apply_winners(
@@ -252,6 +316,9 @@ def _apply_winners(
     Returns ``(promoted_records, promoted_result)``.
     """
     root_base_dir = root_session.config.config_dir
+    resolution = resolve_mappings(root_session.providers)
+    paused_dests = resolution.paused_dests
+    suppressed_sources = resolution.suppressed_sources
     root_owned_paths = set(root_session.providers.file_mappings.keys())
     promoted_records: list[FileRecord] = []
     promoted_result: dict[str, str] = {}
@@ -260,6 +327,32 @@ def _apply_winners(
         if dest in root_owned_paths:
             promoted_records.append(_record_root_override(winner, root_session))
             promoted_result[dest] = 'overridden_by_root'
+            continue
+
+        source_template = winner.mapping.source_template
+        if dest in paused_dests:
+            promoted_records.append(
+                FileRecord(
+                    path=winner.dest,
+                    mode=FileMode.REGULAR,
+                    owner=winner.member_name,
+                    source=source_template,
+                    promoted_from=winner.member_name,
+                ),
+            )
+            promoted_result[dest] = 'paused'
+            continue
+        if source_template and source_template in suppressed_sources:
+            promoted_records.append(
+                FileRecord(
+                    path=winner.dest,
+                    mode=FileMode.REGULAR,
+                    owner=winner.member_name,
+                    source=source_template,
+                    promoted_from=winner.member_name,
+                ),
+            )
+            promoted_result[dest] = 'suppressed'
             continue
 
         record, result = _apply_promoted_file(
@@ -307,6 +400,88 @@ def _apply_promotion_pass(
             )
             return 2
     return 0
+
+
+def _post_process_promoted_files(
+    root_session: ResolvedSession,
+    root_base_dir: Path,
+) -> None:
+    """Run root post-process commands against promoted outputs only.
+
+    Promoted outputs are copied into a temporary working tree so post-process
+    commands operate on a constrained file set, mirroring the staging behavior
+    used by the normal render/apply pipeline.
+    """
+    promoted_result = root_session.promoted_apply_result
+    post_process = root_session.config.post_process
+    candidate_paths = _promoted_post_process_candidates(
+        promoted_result,
+        root_base_dir,
+    )
+    if not candidate_paths:
+        return
+    if not post_process:
+        return
+
+    with tempfile.TemporaryDirectory(prefix='repolish-promoted-post-') as tmp:
+        tmp_root = Path(tmp)
+        _copy_promoted_candidates_to_tmp(
+            candidate_paths,
+            root_base_dir,
+            tmp_root,
+        )
+
+        run_post_process(post_process, tmp_root)
+        _sync_post_processed_promoted_files(
+            candidate_paths,
+            root_base_dir,
+            tmp_root,
+            promoted_result,
+        )
+
+
+def _promoted_post_process_candidates(
+    promoted_result: dict[str, str],
+    root_base_dir: Path,
+) -> list[str]:
+    """Return promoted destinations eligible for post-processing."""
+    return [
+        path
+        for path, status in promoted_result.items()
+        if status in ('written', 'unchanged') and (root_base_dir / path).exists()
+    ]
+
+
+def _copy_promoted_candidates_to_tmp(
+    candidate_paths: list[str],
+    root_base_dir: Path,
+    tmp_root: Path,
+) -> None:
+    """Copy eligible promoted files into temporary post-process workspace."""
+    for rel in candidate_paths:
+        source = root_base_dir / rel
+        target = tmp_root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
+def _sync_post_processed_promoted_files(
+    candidate_paths: list[str],
+    root_base_dir: Path,
+    tmp_root: Path,
+    promoted_result: dict[str, str],
+) -> None:
+    """Copy changed post-processed files back to project root."""
+    for rel in candidate_paths:
+        source = root_base_dir / rel
+        target = tmp_root / rel
+        if not target.exists():
+            continue
+        if filecmp.cmp(str(source), str(target), shallow=False):
+            continue
+        source.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, source)
+        promoted_result[rel] = 'written'
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +616,9 @@ def _run_root_pass(
         )
     if rc != 0:
         return rc
+
+    if not opts.check_only and not opts.skip_post_process:
+        _post_process_promoted_files(root_session, config_dir)
 
     completed_sessions.append(root_session)
     return 2 if promotion_stale else 0

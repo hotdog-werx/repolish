@@ -703,7 +703,12 @@ def test_apply_copies_dispatches_to_create_provider_copies(
             resources_dir=resources_dir,
         ),
     }
-    copies = [ProviderCopy(source=Path('configs/dprint.json'), target=Path('dprint.json'))]
+    copies = [
+        ProviderCopy(
+            source=Path('configs/dprint.json'),
+            target=Path('dprint.json'),
+        ),
+    ]
     resolved_copies = {'mylib': copies}
 
     mock_create = mocker.patch(

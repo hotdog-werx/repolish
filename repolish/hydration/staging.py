@@ -4,8 +4,9 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.preprocessors import replace_text, safe_file_read
-from repolish.providers import SessionBundle, TemplateMapping
+from repolish.providers import SessionBundle
 from repolish.utils import ensure_dot_repolish
 
 logger = get_logger(__name__)
@@ -76,28 +77,6 @@ def _process_single_template_file(
         tpl.chmod(src_mode)
 
 
-def _collect_source_to_dest(
-    providers: SessionBundle,
-) -> dict[str, str]:
-    """Build reverse source->dest mapping for all explicit template mappings.
-
-    Includes both regular ``file_mappings`` and ``promoted_file_mappings`` so
-    preprocessing consistently resolves local destination files regardless of
-    where mappings originate.
-    """
-    source_to_dest: dict[str, str] = {}
-
-    def _add_mappings(mappings: dict[str, str | TemplateMapping]) -> None:
-        for dest, src in mappings.items():
-            key = src.source_template if isinstance(src, TemplateMapping) and src.source_template else src
-            if isinstance(key, str):
-                source_to_dest[key] = dest
-
-    _add_mappings(providers.file_mappings)
-    _add_mappings(providers.promoted_file_mappings)
-    return source_to_dest
-
-
 def preprocess_templates(
     setup_input: Path,
     providers: SessionBundle,
@@ -113,7 +92,7 @@ def preprocess_templates(
 
     # Build reverse mapping for explicitly mapped sources from both regular and
     # promoted mappings so local-file lookups hit the true destination path.
-    source_to_dest = _collect_source_to_dest(providers)
+    source_to_dest = resolve_mappings(providers).source_to_dest
 
     for tpl in (setup_input / 'repolish').rglob('*'):
         if not tpl.is_file():

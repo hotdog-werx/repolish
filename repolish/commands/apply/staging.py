@@ -4,26 +4,6 @@ from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
 from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.misc import is_conditional_file
-from repolish.providers.models import TemplateMapping
-
-
-def collect_mapped_sources(
-    file_mappings: dict[str, str | TemplateMapping],
-) -> set[str]:
-    """Return the set of source template paths explicitly claimed by `file_mappings`.
-
-    When a provider maps a source template via `create_file_mappings`, that
-    template must not also be auto-staged at its natural position in the
-    provider tree — the developer has already decided where it goes (and
-    possibly under a different destination name).
-    """
-    result: set[str] = set()
-    for src in file_mappings.values():
-        if isinstance(src, str):
-            result.add(src)
-        elif src.source_template is not None:
-            result.add(src.source_template)
-    return result
 
 
 def _gather_template_directories(

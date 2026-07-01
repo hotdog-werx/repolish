@@ -45,6 +45,18 @@ _PROMO_STATUS_FMT: dict[str | None, tuple[str, str, str, str]] = {
         '  ⚠ overridden by {owner}',
         'dim yellow',
     ),
+    'paused': (
+        '✗ ',
+        'yellow',
+        '  promoted from {from_} (paused)',
+        'dim yellow',
+    ),
+    'suppressed': (
+        '✗ ',
+        'yellow',
+        '  promoted from {from_} (suppressed)',
+        'dim yellow',
+    ),
     'unchanged': ('~ ', 'dim cyan', '  ↑ promoted from {from_}', 'dim'),
     'differs': (
         '↑ ',
