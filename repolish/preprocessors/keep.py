@@ -86,18 +86,19 @@ def apply_keep_replacements(
     index = 0
     while index < len(template_lines):
         line = template_lines[index]
+        stripped = line.rstrip('\r\n')
 
-        block_match = _KEEP_BLOCK_RE.match(line.rstrip('\n'))
+        block_match = _KEEP_BLOCK_RE.match(stripped)
         if block_match:
             result, index = _apply_keep_block(result, index, block_match, ctx)
             continue
 
-        rest_match = _KEEP_REST_RE.match(line.rstrip('\n'))
+        rest_match = _KEEP_REST_RE.match(stripped)
         if rest_match:
             result, index = _apply_keep_rest(result, index, rest_match, ctx)
             continue
 
-        header_match = _KEEP_HEADER_RE.match(line.rstrip('\n'))
+        header_match = _KEEP_HEADER_RE.match(stripped)
         if header_match:
             result, index = _apply_keep_header(result, index, header_match, ctx)
             continue
@@ -338,7 +339,7 @@ def _find_next_keep_directive_index(
 ) -> int | None:
     """Return the next keep directive line index at or after *start*."""
     for index in range(start, len(lines)):
-        stripped = lines[index].rstrip('\n')
+        stripped = lines[index].rstrip('\r\n')
         if _KEEP_BLOCK_RE.match(stripped) or _KEEP_REST_RE.match(stripped) or _KEEP_HEADER_RE.match(stripped):
             return index
     return None
