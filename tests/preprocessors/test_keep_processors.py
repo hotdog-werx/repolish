@@ -257,6 +257,53 @@ def test_apply_keep_replacements_rest_uses_template_tail_when_local_missing_mark
     assert result == 'Top\n## marker\nDefault\nTail\n'
 
 
+def test_apply_keep_replacements_rest_preserves_template_lines_before_marker() -> None:
+    template = dedent("""\
+        Header
+        ## repolish-keep-rest[repo-overrides]: marker="## marker"
+        Provider managed line 1
+        Provider managed line 2
+        ## marker
+        Default tail
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={},
+        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+        keep_header={},
+        local_file_content=dedent("""\
+            Header
+            ## marker
+            custom tail
+        """),
+    )
+
+    assert result == dedent("""\
+        Header
+        Provider managed line 1
+        Provider managed line 2
+        ## marker
+        custom tail
+    """)
+
+
+def test_apply_keep_replacements_rest_matches_marker_with_crlf_lines() -> None:
+    template = 'Header\r\n## repolish-keep-rest[repo-overrides]: marker="## marker"\r\n## marker\r\nDefault tail\r\n'
+
+    local_content = 'Header\r\n## marker\r\ncustom tail\r\n'
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={},
+        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+        keep_header={},
+        local_file_content=local_content,
+    )
+
+    assert result == local_content
+
+
 def test_apply_keep_replacements_header_name_not_in_specs() -> None:
     template = dedent("""\
         ## repolish-keep-header[missing-spec]: marker="## managed"
@@ -311,6 +358,30 @@ def test_apply_keep_replacements_header_uses_template_prefix_when_local_missing_
     )
 
     assert result == 'Intro default\n## managed\nManaged tail\n'
+
+
+def test_apply_keep_replacements_header_must_be_at_file_start() -> None:
+    template = dedent("""\
+        Prefix line
+        ## repolish-keep-header[repo-header]: marker="## managed"
+        Intro default
+        ## managed
+        Managed tail
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={},
+        keep_rest={},
+        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        local_file_content=dedent("""\
+            Local intro
+            ## managed
+            Local tail
+        """),
+    )
+
+    assert result == 'Prefix line\nIntro default\n## managed\nManaged tail\n'
 
 
 def test_apply_keep_replacements_block_local_has_start_but_no_end_marker() -> None:

@@ -197,6 +197,11 @@ def _apply_keep_rest(
         logger.warning('keep_rest_marker_not_found_in_template', name=name)
         return result, directive_index + 1
 
+    # Keep provider-managed lines between directive and marker in output.
+    result.extend(
+        ctx.template_lines[directive_index + 1 : template_marker_index],
+    )
+
     local_marker_index = _find_first_line_index(
         ctx.local_lines,
         spec.marker,
@@ -218,6 +223,15 @@ def _apply_keep_header(
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
     name = match.group(1)
+
+    if directive_index != 0:
+        logger.warning(
+            'keep_header_must_be_at_file_start',
+            name=name,
+            directive_index=directive_index,
+        )
+        return result, directive_index + 1
+
     spec = ctx.keep_header.get(name)
     if spec is None:
         logger.debug('keep_header_no_match_in_target', name=name)
@@ -258,7 +272,7 @@ def _find_first_line_index(
 ) -> int | None:
     """Return the first line index whose content matches *marker* exactly."""
     for index in range(start, len(lines)):
-        if lines[index].rstrip('\n') == marker:
+        if lines[index].rstrip('\r\n') == marker:
             return index
     return None
 

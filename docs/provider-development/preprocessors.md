@@ -201,6 +201,10 @@ __pycache__/
 Use `keep-header` when the developer should own the intro/top-of-file preface
 and the provider owns the section below the marker.
 
+Place the `keep-header` directive at the very start of the template file. If it
+appears later, repolish treats it as invalid and leaves the template content in
+place to avoid duplicated prefixes.
+
 ```toml
 # repolish/pyproject.toml.jinja
 ## repolish-keep-header[repo-header]: marker="## repolish-managed-start"

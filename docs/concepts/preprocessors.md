@@ -217,6 +217,10 @@ present.
 Use `repolish-keep-header` when the developer owns the top of the file and the
 provider owns the section below the marker.
 
+`repolish-keep-header` must appear at the start of the template file. If placed
+later in the file, repolish ignores the directive to avoid duplicating content
+that may already have been emitted before the directive line.
+
 ```toml
 ## repolish-keep-header[repo-header]: marker="## managed-start"
 Intro text the developer can edit
