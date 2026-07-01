@@ -5,6 +5,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.hydration.comparison import collect_output_files
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.misc import is_conditional_file
 from repolish.providers import SessionBundle, TemplateMapping
@@ -214,10 +215,11 @@ def apply_generated_output(
             present in the provider's ``repolish/`` tree but not explicitly
             mapped) are silently skipped.  Set this for monorepo root passes.
     """
-    paused_files = providers.paused_files
+    resolution = resolve_mappings(providers)
+    paused_files = resolution.paused_dests
     output_files = collect_output_files(setup_output)
-    mapped_sources = {s for v in providers.file_mappings.values() if (s := get_source_str_from_mapping(v)) is not None}
-    create_only_files_set = {p.as_posix() for p in providers.create_only_files}
+    mapped_sources = resolution.mapped_sources
+    create_only_files_set = resolution.create_only_dests
 
     logger.info(
         'apply_generated_output_starting',
@@ -228,7 +230,7 @@ def apply_generated_output(
 
     # Build skip set: include create-only files that already exist in the project
     # Also skip sources that providers explicitly suppressed via a None mapping.
-    skip_sources = mapped_sources | paused_files | providers.suppressed_sources
+    skip_sources = mapped_sources | paused_files | resolution.suppressed_sources
     for rel_str in create_only_files_set:
         target_exists = (base_dir / rel_str).exists()
         if target_exists:
