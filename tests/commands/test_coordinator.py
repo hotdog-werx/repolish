@@ -9,11 +9,15 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 from repolish.commands.apply.coordinator import (
+    PromotedWriteContext,
     PromotionWinner,
     _apply_promotion_pass,
     _apply_winners,
+    _post_process_promoted_files,
+    _promoted_differs,
     _run_apply_phase,
     _run_root_pass,
+    _sync_post_processed_promoted_files,
     coordinate_sessions,
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
@@ -674,3 +678,135 @@ def test_apply_winners_promoted_text_write_preserves_mode(tmp_path: Path) -> Non
     assert result == {'script.sh': 'written'}
     assert dest.read_text(encoding='utf-8') == '#!/bin/bash\necho new\n'
     assert dest.stat().st_mode & 0o111
+
+
+def test_post_process_promoted_files_updates_changed_outputs(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Promoted post-process should copy normalized content back to project files."""
+    root_session = _make_session(tmp_path)
+    root_session.config.post_process = ['fake-format']
+    root_session.promoted_apply_result = {'out.md': 'unchanged'}
+
+    out = tmp_path / 'out.md'
+    out.write_text('before\n', encoding='utf-8')
+
+    def _fake_run_post_process(_commands: object, cwd: Path) -> None:
+        (cwd / 'out.md').write_text('after\n', encoding='utf-8')
+
+    mocker.patch(
+        'repolish.commands.apply.coordinator.run_post_process',
+        side_effect=_fake_run_post_process,
+    )
+
+    _post_process_promoted_files(root_session, tmp_path)
+
+    assert out.read_text(encoding='utf-8') == 'after\n'
+    assert root_session.promoted_apply_result == {'out.md': 'written'}
+
+
+def test_run_root_pass_triggers_promoted_post_process_in_apply_mode(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Root pass should run promoted post-process after successful apply."""
+    mocker.patch(
+        'repolish.commands.apply.coordinator._apply_promotion_pass',
+        return_value=0,
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator.apply_session',
+        return_value=0,
+    )
+    post_mock = mocker.patch(
+        'repolish.commands.apply.coordinator._post_process_promoted_files',
+    )
+
+    root_session = _make_session(tmp_path)
+    opts = CoordinateOptions(check_only=False, skip_post_process=False)
+    rc = _run_root_pass([], root_session, tmp_path, [], opts)
+
+    assert rc == 0
+    post_mock.assert_called_once_with(root_session, tmp_path)
+
+
+def test_run_root_pass_skips_promoted_post_process_in_check_mode(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Check mode must not execute promoted post-process commands."""
+    mocker.patch(
+        'repolish.commands.apply.coordinator._apply_promotion_pass',
+        return_value=2,
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator.apply_session',
+        return_value=0,
+    )
+    post_mock = mocker.patch(
+        'repolish.commands.apply.coordinator._post_process_promoted_files',
+    )
+
+    root_session = _make_session(tmp_path)
+    opts = CoordinateOptions(check_only=True, skip_post_process=False)
+    rc = _run_root_pass([], root_session, tmp_path, [], opts)
+
+    assert rc == 2
+    post_mock.assert_not_called()
+
+
+def test_promoted_differs_returns_true_when_dest_text_unreadable(
+    tmp_path: Path,
+) -> None:
+    """Unreadable destination text should be treated as differing."""
+    source = tmp_path / 'source.txt'
+    source.write_text('hello\n', encoding='utf-8')
+    dest = tmp_path / 'dest.txt'
+    dest.mkdir()
+
+    winner = PromotionWinner(
+        dest='dest.txt',
+        source_file=source,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='source.txt'),
+    )
+    ctx = PromotedWriteContext(
+        winner=winner,
+        dest_file=dest,
+        rendered_text='hello\n',
+        source_mode=None,
+    )
+
+    assert _promoted_differs(ctx) is True
+
+
+def test_sync_post_processed_promoted_files_skips_missing_and_unchanged(
+    tmp_path: Path,
+) -> None:
+    """Sync helper should no-op when temp output is missing or unchanged."""
+    root_dir = tmp_path / 'root'
+    tmp_dir = tmp_path / 'tmp'
+    root_dir.mkdir()
+    tmp_dir.mkdir()
+
+    (root_dir / 'missing.txt').write_text('same\n', encoding='utf-8')
+    (root_dir / 'same.txt').write_text('same\n', encoding='utf-8')
+    (tmp_dir / 'same.txt').write_text('same\n', encoding='utf-8')
+
+    promoted_result = {
+        'missing.txt': 'written',
+        'same.txt': 'unchanged',
+    }
+
+    _sync_post_processed_promoted_files(
+        ['missing.txt', 'same.txt'],
+        root_dir,
+        tmp_dir,
+        promoted_result,
+    )
+
+    assert promoted_result == {
+        'missing.txt': 'written',
+        'same.txt': 'unchanged',
+    }

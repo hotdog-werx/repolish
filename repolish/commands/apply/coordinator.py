@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import filecmp
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
@@ -32,6 +33,7 @@ from repolish.providers.models import (
 )
 from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.providers.models.files import FileMode, FileRecord
+from repolish.utils import run_post_process
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -400,6 +402,88 @@ def _apply_promotion_pass(
     return 0
 
 
+def _post_process_promoted_files(
+    root_session: ResolvedSession,
+    root_base_dir: Path,
+) -> None:
+    """Run root post-process commands against promoted outputs only.
+
+    Promoted outputs are copied into a temporary working tree so post-process
+    commands operate on a constrained file set, mirroring the staging behavior
+    used by the normal render/apply pipeline.
+    """
+    promoted_result = root_session.promoted_apply_result
+    post_process = root_session.config.post_process
+    candidate_paths = _promoted_post_process_candidates(
+        promoted_result,
+        root_base_dir,
+    )
+    if not candidate_paths:
+        return
+    if not post_process:
+        return
+
+    with tempfile.TemporaryDirectory(prefix='repolish-promoted-post-') as tmp:
+        tmp_root = Path(tmp)
+        _copy_promoted_candidates_to_tmp(
+            candidate_paths,
+            root_base_dir,
+            tmp_root,
+        )
+
+        run_post_process(post_process, tmp_root)
+        _sync_post_processed_promoted_files(
+            candidate_paths,
+            root_base_dir,
+            tmp_root,
+            promoted_result,
+        )
+
+
+def _promoted_post_process_candidates(
+    promoted_result: dict[str, str],
+    root_base_dir: Path,
+) -> list[str]:
+    """Return promoted destinations eligible for post-processing."""
+    return [
+        path
+        for path, status in promoted_result.items()
+        if status in ('written', 'unchanged') and (root_base_dir / path).exists()
+    ]
+
+
+def _copy_promoted_candidates_to_tmp(
+    candidate_paths: list[str],
+    root_base_dir: Path,
+    tmp_root: Path,
+) -> None:
+    """Copy eligible promoted files into temporary post-process workspace."""
+    for rel in candidate_paths:
+        source = root_base_dir / rel
+        target = tmp_root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
+def _sync_post_processed_promoted_files(
+    candidate_paths: list[str],
+    root_base_dir: Path,
+    tmp_root: Path,
+    promoted_result: dict[str, str],
+) -> None:
+    """Copy changed post-processed files back to project root."""
+    for rel in candidate_paths:
+        source = root_base_dir / rel
+        target = tmp_root / rel
+        if not target.exists():
+            continue
+        if filecmp.cmp(str(source), str(target), shallow=False):
+            continue
+        source.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, source)
+        promoted_result[rel] = 'written'
+
+
 # ---------------------------------------------------------------------------
 # Coordinate helpers — workspace detection, resolve and apply phases
 # ---------------------------------------------------------------------------
@@ -532,6 +616,9 @@ def _run_root_pass(
         )
     if rc != 0:
         return rc
+
+    if not opts.check_only and not opts.skip_post_process:
+        _post_process_promoted_files(root_session, config_dir)
 
     completed_sessions.append(root_session)
     return 2 if promotion_stale else 0
