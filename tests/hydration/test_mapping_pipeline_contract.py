@@ -7,6 +7,7 @@ import pytest
 from repolish.hydration.application import apply_generated_output
 from repolish.hydration.comparison import check_generated_output
 from repolish.hydration.mapping_resolution import MappingResolution, resolve_mappings
+from repolish.hydration.rendering import render_template
 from repolish.hydration.staging import preprocess_templates
 from repolish.providers import SessionBundle, TemplateMapping
 
@@ -180,3 +181,38 @@ def test_contract_stages_are_wired_to_resolver(mocker: 'MockerFixture', tmp_path
 
     status = apply_generated_output(setup_output, providers, base_dir)
     assert status == {}
+
+
+def test_contract_rendering_uses_mapping_resolution(
+    mocker: 'MockerFixture',
+    tmp_path: Path,
+) -> None:
+    setup_input = tmp_path / '_' / 'stage'
+    setup_output = tmp_path / '_' / 'render'
+    src = setup_input / 'repolish' / 'plain.txt'
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text('plain text\n', encoding='utf-8')
+
+    providers = SessionBundle()
+    mock_resolution = MappingResolution(
+        source_to_dest={},
+        dest_to_source={},
+        regular_mappings=providers.file_mappings,
+        promoted_mappings=providers.promoted_file_mappings,
+        mapped_sources=set(),
+        regular_dests=set(),
+        promoted_dests=set(),
+        paused_dests=frozenset(),
+        suppressed_sources=set(),
+        create_only_dests=set(),
+        delete_dests=set(),
+    )
+    resolver_mock = mocker.patch(
+        'repolish.hydration.rendering.resolve_mappings',
+        return_value=mock_resolution,
+    )
+
+    render_template(setup_input, providers, setup_output)
+
+    assert resolver_mock.call_count >= 1
+    assert (setup_output / 'repolish' / 'plain.txt').read_text(encoding='utf-8') == 'plain text\n'
