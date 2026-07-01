@@ -31,11 +31,11 @@ from pydantic import BaseModel
 from rich.console import Console
 
 from repolish.commands.apply.staging import (
-    collect_mapped_sources,
     find_unmapped_conditional_sources,
 )
 from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.console import console
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.preprocessors.core import replace_text
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
@@ -371,7 +371,7 @@ def command(provider_dir: Path) -> int:
     # Check for _repolish.* files that are present in the template tree but
     # never referenced by create_file_mappings.  These are likely typos or
     # leftover files and would be silently skipped during apply.
-    mapped = collect_mapped_sources(providers.file_mappings) | providers.suppressed_sources
+    mapped = resolve_mappings(providers).mapped_sources | providers.suppressed_sources
     dummy_info = ResolvedProviderInfo(
         alias=provider_dir.name,
         provider_root=provider_dir,
