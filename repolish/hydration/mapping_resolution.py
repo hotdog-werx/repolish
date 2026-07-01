@@ -15,6 +15,8 @@ class MappingResolution:
 
     source_to_dest: dict[str, str]
     dest_to_source: dict[str, str]
+    regular_mappings: dict[str, str | TemplateMapping]
+    promoted_mappings: dict[str, str | TemplateMapping]
     mapped_sources: set[str]
     regular_dests: set[str]
     promoted_dests: set[str]
@@ -60,6 +62,8 @@ def resolve_mappings(providers: SessionBundle) -> MappingResolution:
     return MappingResolution(
         source_to_dest=source_to_dest,
         dest_to_source=dest_to_source,
+        regular_mappings=providers.file_mappings,
+        promoted_mappings=providers.promoted_file_mappings,
         mapped_sources=mapped_sources,
         regular_dests=set(providers.file_mappings.keys()),
         promoted_dests=set(providers.promoted_file_mappings.keys()),

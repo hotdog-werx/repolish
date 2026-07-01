@@ -147,6 +147,8 @@ def test_contract_stages_are_wired_to_resolver(mocker: 'MockerFixture', tmp_path
     mock_resolution = MappingResolution(
         source_to_dest={'source.txt': 'patched-dest.txt'},
         dest_to_source={},
+        regular_mappings={},
+        promoted_mappings={},
         mapped_sources={'skip-me.txt'},
         regular_dests=set(),
         promoted_dests=set(),

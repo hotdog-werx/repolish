@@ -78,6 +78,8 @@ def test_resolve_mappings_collects_expected_source_and_dest_indexes(
 
     assert resolved.source_to_dest == case.expected_source_to_dest
     assert resolved.dest_to_source == case.expected_dest_to_source
+    assert resolved.regular_mappings is providers.file_mappings
+    assert resolved.promoted_mappings is providers.promoted_file_mappings
     assert resolved.mapped_sources == set(case.expected_source_to_dest)
     assert resolved.regular_dests == set(case.file_mappings)
     assert resolved.promoted_dests == set(case.promoted_file_mappings)

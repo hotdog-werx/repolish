@@ -11,6 +11,7 @@ from jinja2 import (
     select_autoescape,
 )
 
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.misc import ctx_to_dict
 from repolish.providers import FileMode, SessionBundle, TemplateMapping
 
@@ -245,11 +246,12 @@ def _collect_skip_templates(providers: SessionBundle) -> set[str]:
     to the skip set; promoted mappings carry their own ``extra_context`` and
     must not be rendered in the generic pass without it.
     """
+    resolution = resolve_mappings(providers)
     return {
         v.source_template
         for mappings in (
-            providers.file_mappings,
-            providers.promoted_file_mappings,
+            resolution.regular_mappings,
+            resolution.promoted_mappings,
         )
         for v in mappings.values()
         if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
@@ -451,10 +453,11 @@ def _process_template_mappings(
     empty context during the generic Jinja pass.
     """
     errors: list[str] = []
+    resolution = resolve_mappings(ctx.providers)
 
     for mappings in (
-        ctx.providers.file_mappings,
-        ctx.providers.promoted_file_mappings,
+        resolution.regular_mappings,
+        resolution.promoted_mappings,
     ):
         for dest_path, source_val in list(mappings.items()):
             if not isinstance(source_val, TemplateMapping):
