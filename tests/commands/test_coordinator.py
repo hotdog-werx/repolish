@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -651,6 +654,10 @@ def test_apply_winners_check_only_handles_unreadable_text_dest(tmp_path: Path) -
     assert result == {'dest.txt': 'differs'}
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
 def test_apply_winners_promoted_text_write_preserves_mode(tmp_path: Path) -> None:
     """Text hydration writes should preserve executable mode from promoted source."""
     src = tmp_path / 'member-script.sh'
