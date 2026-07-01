@@ -512,3 +512,59 @@ def test_coordinate_sessions_monorepo_returns_rc_and_prints_summary(
 
     assert rc == 0
     assert mock_print.called
+
+
+def test_apply_winners_skips_paused_promoted_destination(tmp_path: Path) -> None:
+    """Promoted destinations listed in paused_files must not be written."""
+    src = tmp_path / 'src.md'
+    src.write_text('new-content')
+    dest = tmp_path / 'out.md'
+    dest.write_text('keep-existing')
+
+    winner = PromotionWinner(
+        dest='out.md',
+        source_file=src,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='src.md'),
+    )
+
+    root_session = _make_session(tmp_path)
+    root_session.providers.paused_files = frozenset({'out.md'})
+
+    records, result = _apply_winners(
+        {'out.md': winner},
+        root_session,
+        check_only=False,
+    )
+
+    assert result == {'out.md': 'paused'}
+    assert records[0].path == 'out.md'
+    assert dest.read_text() == 'keep-existing'
+
+
+def test_apply_winners_skips_suppressed_promoted_source(tmp_path: Path) -> None:
+    """Promoted sources suppressed by template overrides must not be written."""
+    src = tmp_path / 'source.txt'
+    src.write_text('new-content')
+    dest = tmp_path / 'dest.txt'
+    dest.write_text('keep-existing')
+
+    winner = PromotionWinner(
+        dest='dest.txt',
+        source_file=src,
+        member_name='member-a',
+        mapping=TemplateMapping(source_template='source.txt'),
+    )
+
+    root_session = _make_session(tmp_path)
+    root_session.providers.suppressed_sources = {'source.txt'}
+
+    records, result = _apply_winners(
+        {'dest.txt': winner},
+        root_session,
+        check_only=False,
+    )
+
+    assert result == {'dest.txt': 'suppressed'}
+    assert records[0].path == 'dest.txt'
+    assert dest.read_text() == 'keep-existing'

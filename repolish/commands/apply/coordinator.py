@@ -25,6 +25,7 @@ from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
 )
+from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.providers.models import (
     TemplateMapping,
 )
@@ -252,6 +253,9 @@ def _apply_winners(
     Returns ``(promoted_records, promoted_result)``.
     """
     root_base_dir = root_session.config.config_dir
+    resolution = resolve_mappings(root_session.providers)
+    paused_dests = resolution.paused_dests
+    suppressed_sources = resolution.suppressed_sources
     root_owned_paths = set(root_session.providers.file_mappings.keys())
     promoted_records: list[FileRecord] = []
     promoted_result: dict[str, str] = {}
@@ -260,6 +264,32 @@ def _apply_winners(
         if dest in root_owned_paths:
             promoted_records.append(_record_root_override(winner, root_session))
             promoted_result[dest] = 'overridden_by_root'
+            continue
+
+        source_template = winner.mapping.source_template
+        if dest in paused_dests:
+            promoted_records.append(
+                FileRecord(
+                    path=winner.dest,
+                    mode=FileMode.REGULAR,
+                    owner=winner.member_name,
+                    source=source_template,
+                    promoted_from=winner.member_name,
+                ),
+            )
+            promoted_result[dest] = 'paused'
+            continue
+        if source_template and source_template in suppressed_sources:
+            promoted_records.append(
+                FileRecord(
+                    path=winner.dest,
+                    mode=FileMode.REGULAR,
+                    owner=winner.member_name,
+                    source=source_template,
+                    promoted_from=winner.member_name,
+                ),
+            )
+            promoted_result[dest] = 'suppressed'
             continue
 
         record, result = _apply_promoted_file(
