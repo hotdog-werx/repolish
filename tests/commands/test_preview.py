@@ -71,9 +71,15 @@ def test_run_debug_show_patterns(tmp_path: Path):
           default content
           ## repolish-end[example] ##
 
+          ## repolish-keep-rest[repo-overrides]: marker="## repo-overrides"
+          ## repo-overrides
+          # Placeholder
+
           ## repolish-regex[version]: version = "(.+)"
 
         target: |
+          ## repo-overrides
+          custom=true
           version = "1.2.3"
         """),
         encoding='utf-8',
@@ -89,6 +95,8 @@ def test_run_debug_show_patterns(tmp_path: Path):
     # Check for content in either Python dict repr format or YAML format
     assert 'example' in output
     assert 'default content' in output
+    assert 'keep_rest' in output
+    assert 'repo-overrides' in output
     assert 'version' in output
     assert 'version = "(.+)"' in output
 

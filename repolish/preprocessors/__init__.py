@@ -12,11 +12,13 @@ from repolish.preprocessors.core import (
     replace_text,
     safe_file_read,
 )
+from repolish.preprocessors.keep import apply_keep_replacements
 from repolish.preprocessors.multiregex import apply_multiregex_replacements
 from repolish.preprocessors.regex import apply_regex_replacements
 
 __all__ = [
     'Patterns',
+    'apply_keep_replacements',
     'apply_multiregex_replacements',
     'apply_regex_replacements',
     'extract_patterns',

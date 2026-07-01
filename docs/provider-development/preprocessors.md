@@ -11,10 +11,13 @@ scenarios. For a full explanation of how each directive works, see
 | Preserve a single line value (version, author, URL)              | `regex`      |
 | Preserve an entire structured block (tool versions, deps list)   | `multiregex` |
 | Let the provider inject dynamic content a developer can override | block anchor |
+| Preserve a developer-owned zone in a provider-managed file       | keep blocks  |
 
 Default to `regex` and `multiregex` - they live entirely in the template, need
 no provider code, and the project file is always the source of truth. Use block
-anchors only when the provider (not the project file) should own a section.
+anchors only when the provider (not the project file) should own a section. Use
+keep blocks when the provider should define the file shape but a project owner
+should be able to keep a visible region intact across applies.
 
 ---
 
@@ -99,6 +102,69 @@ anchors:
 ```
 
 Project-level `anchors:` always win over provider code.
+
+---
+
+## Keeping a visible zone intact (keep directives)
+
+Use keep directives when you want a template to define the overall file shape
+but still preserve a developer-edited region if the file already exists.
+
+### Keep a bounded block
+
+This is the best fit for README-style custom sections surrounded by obvious
+markers.
+
+```markdown
+# repolish/README.md.jinja
+
+## repolish-keep-block[readme-custom-block]: start="<!-- start -->" end="<!-- end -->"
+
+<!-- start -->
+
+Default content for new projects
+
+<!-- end -->
+```
+
+If the project file already contains the marker pair, repolish keeps the block
+between them. Otherwise the default block stays in place.
+
+### Keep the rest of the file from a marker onward
+
+Use `keep-rest` for files like `.gitignore`, where the developer owns a tail
+section after a sentinel comment.
+
+```gitignore
+# repolish/.gitignore.jinja
+.venv/
+__pycache__/
+
+## repolish-keep-rest[repo-overrides]: marker="## repo-overrides"
+## repo-overrides
+# Add local overrides below
+```
+
+### Keep the header up to a marker
+
+Use `keep-header` when the developer should own the intro/top-of-file preface
+and the provider owns the section below the marker.
+
+```toml
+# repolish/pyproject.toml.jinja
+## repolish-keep-header[repo-header]: marker="## repolish-managed-start"
+Project header text
+## repolish-managed-start
+Provider-managed settings below
+```
+
+The marker text is explicit in the directive so the visible comment style can
+match the file type (`#`, `##`, `<!-- -->`, and so on).
+
+Aliases supported in v1:
+
+- `keep-rest` / `keep-the-rest` / `keep-footer`
+- `keep-header` / `keep-the-header`
 
 ---
 
