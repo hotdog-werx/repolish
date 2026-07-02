@@ -8,6 +8,32 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.2.0] <a name="1.2.0" href="#1.2.0">-</a> July 02, 2026
+
+### 🚀 Features
+
+- Add ResourceCopy for file copies from provider resources (#47) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#47](https://github.com/hotdog-werx/repolish/pull/47)
+- Keep-block preprocessor directives (#51) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#51](https://github.com/hotdog-werx/repolish/pull/51)
+
+### 🐛 Bug Fixes
+
+- _(hydration)_ Apply preprocessors to promoted mappings (#48) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#48](https://github.com/hotdog-werx/repolish/pull/48)
+- Promoted mappings now follow unified pipeline semantics (#50) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#50](https://github.com/hotdog-werx/repolish/pull/50)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update releez by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.2.0]: https://github.com/hotdog-werx/repolish/compare/1.1.3...1.2.0
+
 ## [1.1.3] <a name="1.1.3" href="#1.1.3">-</a> June 05, 2026
 
 ### 🐛 Bug Fixes
