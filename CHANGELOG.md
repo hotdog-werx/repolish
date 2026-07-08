@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.3.0] <a name="1.3.0" href="#1.3.0">-</a> July 08, 2026
+
+### 🚀 Features
+
+- _(testing)_ Add preprocess and local_files_dir to ProviderTestBed (#53) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#53](https://github.com/hotdog-werx/repolish/pull/53)
+
+[1.3.0]: https://github.com/hotdog-werx/repolish/compare/1.2.0...1.3.0
+
 ## [1.2.0] <a name="1.2.0" href="#1.2.0">-</a> July 02, 2026
 
 ### 🚀 Features
