@@ -40,14 +40,16 @@ assert bed.resolved_context.flag is True
 
 ### Constructor parameters
 
-| Parameter        | Type                                     | Default           | Description                                                         |
-| ---------------- | ---------------------------------------- | ----------------- | ------------------------------------------------------------------- |
-| `provider_class` | `type[Provider]`                         | required          | The concrete `Provider` subclass to test.                           |
-| `context`        | context model or `None`                  | `None`            | If `None`, calls `create_context()` on the provider.                |
-| `mode`           | `'standalone'` \| `'root'` \| `'member'` | `'standalone'`    | Controls mode-handler dispatch and `repolish.workspace.mode`.       |
-| `templates_root` | `Path` or `None`                         | `None`            | Explicit path to `resources/templates`. Auto-detected when omitted. |
-| `alias`          | `str`                                    | `'test-provider'` | Provider alias injected into instance metadata.                     |
-| `version`        | `str`                                    | `'0.1.0'`         | Provider version injected into instance metadata.                   |
+| Parameter         | Type                                     | Default           | Description                                                                                                                                                                                  |
+| ----------------- | ---------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider_class`  | `type[Provider]`                         | required          | The concrete `Provider` subclass to test.                                                                                                                                                    |
+| `context`         | context model or `None`                  | `None`            | If `None`, calls `create_context()` on the provider.                                                                                                                                         |
+| `mode`            | `'standalone'` \| `'root'` \| `'member'` | `'standalone'`    | Controls mode-handler dispatch and `repolish.workspace.mode`.                                                                                                                                |
+| `templates_root`  | `Path` or `None`                         | `None`            | Explicit path to `resources/templates`. Auto-detected when omitted.                                                                                                                          |
+| `alias`           | `str`                                    | `'test-provider'` | Provider alias injected into instance metadata.                                                                                                                                              |
+| `version`         | `str`                                    | `'0.1.0'`         | Provider version injected into instance metadata.                                                                                                                                            |
+| `preprocess`      | `bool`                                   | `False`           | Run the full preprocessing pipeline after Jinja2 rendering. Strips preprocessor directive lines and applies anchor replacements, matching `repolish apply` production output.                |
+| `local_files_dir` | `Path` or `None`                         | `None`            | Directory of existing local files passed as `local_content` to the preprocessor. Only used when `preprocess=True`. See [Snapshot workflow](#snapshot-tests-with-full-pipeline-output) below. |
 
 ### Lifecycle hook methods
 
@@ -94,6 +96,61 @@ assert 'my-project' in rendered['README.md']
 Auto-discovery mirrors production behavior: files in `templates/repolish/`
 without the `_repolish.` prefix are included automatically, while `_repolish.`
 prefixed files appear only when explicitly mapped.
+
+#### Snapshot tests with full pipeline output
+
+By default the testbed only performs Jinja2 rendering, keeping tests fast.
+Enable `preprocess=True` to also run the preprocessing pipeline
+(`repolish-regex`, `repolish-keep-*`, anchor replacements, etc.), producing
+output that matches `repolish apply` exactly.
+
+##### First run — establish baselines
+
+On the first run there are no local files for the preprocessor to read from, so
+directive lines are stripped and template defaults are used:
+
+```python
+SNAPSHOT_DIR = Path(__file__).parent / 'snapshots' / 'my_provider'
+
+def test_render_all_pipeline_output(self) -> None:
+    bed = ProviderTestBed(MyProvider, preprocess=True)
+    rendered = bed.render_all()
+    assert_snapshots(rendered, SNAPSHOT_DIR)
+```
+
+The first run fails because snapshots don't exist yet — the assertion prints the
+rendered content so you can copy it into `SNAPSHOT_DIR`.
+
+##### Subsequent runs — feed local content back in
+
+Once you have snapshot files on disk, point `local_files_dir` at them so that
+regex/keep directives can extract values from the existing content, exactly as
+`repolish apply` reads from the real repo:
+
+```python
+def test_render_all_pipeline_output(self) -> None:
+    bed = ProviderTestBed(
+        MyProvider,
+        preprocess=True,
+        local_files_dir=SNAPSHOT_DIR,
+    )
+    rendered = bed.render_all()
+    assert_snapshots(rendered, SNAPSHOT_DIR)
+```
+
+With `local_files_dir` set:
+
+- For each destination file (e.g. `README.md`), the testbed reads
+  `local_files_dir/README.md` and passes it as `local_content` to the
+  preprocessor.
+- Regex/keep directives extract values from that file and substitute them into
+  the template output.
+- If the local file doesn't exist yet, the directive finds no match and the
+  template's default value is preserved — so the first and subsequent runs use
+  the same test code.
+
+You can freely edit the snapshot files between runs to simulate real-world repo
+state; the next test run will pick up those values through the directives.
 
 ---
 
@@ -227,7 +284,11 @@ class TestMyProvider:
         assert 'project-name' in anchors
 
     def test_render_all_matches_snapshots(self) -> None:
-        bed = ProviderTestBed(MyProvider)
+        bed = ProviderTestBed(
+            MyProvider,
+            preprocess=True,
+            local_files_dir=SNAPSHOT_DIR,
+        )
         rendered = bed.render_all()
         assert_snapshots(rendered, SNAPSHOT_DIR)
 
