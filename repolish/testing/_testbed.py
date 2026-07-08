@@ -11,6 +11,7 @@ from jinja2 import Environment, StrictUndefined, select_autoescape
 from pydantic import BaseModel
 
 from repolish.misc import ctx_to_dict
+from repolish.preprocessors.core import replace_text
 from repolish.providers.models.context import BaseContext, BaseInputs
 from repolish.providers.models.provider import (
     FinalizeContextOptions,
@@ -74,6 +75,23 @@ class ProviderTestBed(Generic[CtxT, InpT]):
             from the provider class when omitted.
         alias: Provider alias injected into the instance metadata.
         version: Provider version injected into the instance metadata.
+        preprocess: When ``True``, run the full preprocessing pipeline
+            (:func:`replace_text`) on each rendered file after Jinja2
+            expansion.  This strips preprocessor directive lines
+            (``repolish-regex``, ``repolish-keep-*``, etc.) and applies
+            anchor replacements — matching what ``repolish apply`` produces
+            in production.  Defaults to ``False`` to keep the testbed
+            lightweight for unit tests that only need Jinja output.
+        local_files_dir: Directory containing existing local files that
+            preprocessor directives should read from.  When ``preprocess``
+            is ``True`` and this is set, each rendered file looks up
+            ``local_files_dir / dest_path`` and passes its content as the
+            ``local_content`` argument to :func:`replace_text`.  This
+            mirrors how ``repolish apply`` reads the repo's current files
+            so that regex/keep directives can extract values from them.
+            On the first run (no local files yet) leave this ``None``;
+            snapshots produced on that run can then be copied into
+            ``local_files_dir`` to feed subsequent runs.
     """
 
     provider_class: type[Provider[CtxT, InpT]]
@@ -82,6 +100,8 @@ class ProviderTestBed(Generic[CtxT, InpT]):
     templates_root: Path | None = None
     alias: str = 'test-provider'
     version: str = '0.1.0'
+    preprocess: bool = False
+    local_files_dir: Path | None = None
 
     # Private, set in __post_init__
     _instance: Provider[CtxT, InpT] = field(init=False, repr=False)
@@ -246,7 +266,15 @@ class ProviderTestBed(Generic[CtxT, InpT]):
             ctx.update(extra_context)
 
         txt = template_path.read_text(encoding='utf-8')
-        return env.from_string(txt).render(**ctx)
+        rendered = env.from_string(txt).render(**ctx)
+        if self.preprocess:
+            dest_guess = template_name
+            dest_guess = dest_guess.removesuffix('.jinja')
+            rendered = replace_text(
+                rendered,
+                self._resolve_local_content(dest_guess),
+            )
+        return rendered
 
     def render_all(
         self,
@@ -296,7 +324,12 @@ class ProviderTestBed(Generic[CtxT, InpT]):
                 continue
             src_path = template_dir / source_name
             if src_path.exists():
-                result[dest] = self._render_one(env, src_path, ctx)
+                result[dest] = self._render_one(
+                    env,
+                    src_path,
+                    ctx,
+                    local_content=self._resolve_local_content(dest),
+                )
         return result
 
     def _render_auto_discovered(
@@ -319,7 +352,12 @@ class ProviderTestBed(Generic[CtxT, InpT]):
                 continue
             if rel in result or rel in mapped_sources:
                 continue
-            result[rel] = self._render_one(env, src, ctx)
+            result[rel] = self._render_one(
+                env,
+                src,
+                ctx,
+                local_content=self._resolve_local_content(rel),
+            )
 
     # -- Private helpers --
 
@@ -333,7 +371,14 @@ class ProviderTestBed(Generic[CtxT, InpT]):
             keep_trailing_newline=True,
         )
 
-    def _render_one(self, env: Environment, src: Path, ctx: dict) -> str:
+    def _render_one(
+        self,
+        env: Environment,
+        src: Path,
+        ctx: dict,
+        *,
+        local_content: str = '',
+    ) -> str:
         """Render or read a single template file."""
         try:
             txt = src.read_text(encoding='utf-8')
@@ -341,8 +386,22 @@ class ProviderTestBed(Generic[CtxT, InpT]):
             return src.read_bytes().decode('latin-1')
 
         if src.suffix == '.jinja':
-            return env.from_string(txt).render(**ctx)
+            txt = env.from_string(txt).render(**ctx)
+        if self.preprocess:
+            txt = replace_text(txt, local_content)
         return txt
+
+    def _resolve_local_content(self, dest: str) -> str:
+        """Return the content of ``local_files_dir / dest``, or empty string."""
+        if self.local_files_dir is None:
+            return ''
+        local_path = self.local_files_dir / dest
+        if not local_path.is_file():
+            return ''
+        try:
+            return local_path.read_text(encoding='utf-8')
+        except UnicodeDecodeError:
+            return ''
 
     def _make_self_entry(self) -> ProviderEntry:
         return ProviderEntry(

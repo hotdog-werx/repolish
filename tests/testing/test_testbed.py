@@ -630,3 +630,273 @@ class TestEdgeCases:
         )
         rendered = bed.render_all()
         assert rendered['dest.txt'] == 'from mapping\n'
+
+
+# ===================================================================
+# ProviderTestBed - preprocess flag
+# ===================================================================
+
+
+class TestProviderTestBedPreprocess:
+    """Verify that preprocess=True runs the full preprocessing pipeline."""
+
+    @pytest.fixture
+    def preprocess_templates_root(self, tmp_path: Path) -> Path:
+        """Template tree with preprocessor directives."""
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        # Template with a regex directive and a static default value
+        (tpl / 'config.txt').write_text(
+            '## repolish-regex[version]: (\\d+\\.\\d+\\.\\d+)\nversion = 0.1.0\n',
+        )
+        # Jinja template with a regex directive
+        (tpl / 'info.txt.jinja').write_text(
+            '## repolish-regex[name]: (\\w+)\nname = {{ project }}\n',
+        )
+        return tmp_path / 'resources' / 'templates'
+
+    def test_preprocess_false_preserves_directive_lines(
+        self,
+        preprocess_templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=preprocess_templates_root,
+        )
+        rendered = bed.render_all()
+        assert '## repolish-regex[version]' in rendered['config.txt']
+
+    def test_preprocess_strips_regex_directive_lines(
+        self,
+        preprocess_templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=preprocess_templates_root,
+            preprocess=True,
+        )
+        rendered = bed.render_all()
+        assert '## repolish-regex' not in rendered['config.txt']
+        assert 'version = 0.1.0' in rendered['config.txt']
+
+    def test_preprocess_strips_directives_after_jinja_render(
+        self,
+        preprocess_templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=preprocess_templates_root,
+            preprocess=True,
+        )
+        rendered = bed.render_all()
+        # Jinja expansion happened before preprocessing
+        assert 'name = demo' in rendered['info.txt.jinja']
+        assert '## repolish-regex' not in rendered['info.txt.jinja']
+
+    def test_render_preprocess_strips_directive(
+        self,
+        preprocess_templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=preprocess_templates_root,
+            preprocess=True,
+        )
+        out = bed.render('config.txt')
+        assert '## repolish-regex' not in out
+        assert 'version = 0.1.0' in out
+
+    def test_preprocess_does_not_affect_binary_files(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        (tpl / 'binary.dat').write_bytes(b'\x80\x81\x82\xff')
+        templates_root = tmp_path / 'resources' / 'templates'
+
+        class _BinProvider(Provider[_Ctx, _Inputs]):
+            def create_file_mappings(
+                self,
+                context: _Ctx,
+            ) -> dict[str, str | TemplateMapping | None]:
+                return {}
+
+        bed = ProviderTestBed(
+            provider_class=_BinProvider,
+            templates_root=templates_root,
+            preprocess=True,
+        )
+        rendered = bed.render_all()
+        assert 'binary.dat' in rendered
+
+
+# ===================================================================
+# ProviderTestBed - local_files_dir
+# ===================================================================
+
+
+class TestProviderTestBedLocalFilesDir:
+    """Verify that local_files_dir feeds local content to replace_text."""
+
+    @pytest.fixture
+    def regex_templates_root(self, tmp_path: Path) -> Path:
+        """Template tree with a regex directive."""
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        # Template that extracts the version line from the local file
+        (tpl / 'config.txt').write_text(
+            '## repolish-regex[version]: version = (\\S+)\nversion = 0.0.0\n',
+        )
+        return tmp_path / 'resources' / 'templates'
+
+    def test_no_local_files_dir_uses_template_default(
+        self,
+        regex_templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+        )
+        rendered = bed.render_all()
+        assert 'version = 0.0.0' in rendered['config.txt']
+
+    def test_local_files_dir_no_existing_file_uses_default(
+        self,
+        regex_templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        local_dir = tmp_path / 'local'
+        local_dir.mkdir()
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+            local_files_dir=local_dir,
+        )
+        rendered = bed.render_all()
+        # No local file → regex finds nothing → default preserved
+        assert 'version = 0.0.0' in rendered['config.txt']
+
+    def test_local_files_dir_extracts_value_from_existing_file(
+        self,
+        regex_templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        local_dir = tmp_path / 'local'
+        local_dir.mkdir()
+        (local_dir / 'config.txt').write_text('version = 1.2.3\n')
+
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+            local_files_dir=local_dir,
+        )
+        rendered = bed.render_all()
+        assert 'version = 1.2.3' in rendered['config.txt']
+
+    def test_local_files_dir_snapshot_round_trip(
+        self,
+        regex_templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        snap_dir = tmp_path / 'snapshots'
+
+        # First pass: no local files → defaults
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+        )
+        first_pass = bed.render_all()
+        assert 'version = 0.0.0' in first_pass['config.txt']
+
+        # Write snapshots to disk (simulating what you'd do after first run)
+        for dest, content in first_pass.items():
+            snap_file = snap_dir / dest
+            snap_file.parent.mkdir(parents=True, exist_ok=True)
+            snap_file.write_text(content)
+
+        # Edit snapshot to reflect real-world state
+        (snap_dir / 'config.txt').write_text('version = 2.0.0\n')
+
+        # Second pass: snapshots feed as local content
+        bed2 = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+            local_files_dir=snap_dir,
+        )
+        second_pass = bed2.render_all()
+        assert 'version = 2.0.0' in second_pass['config.txt']
+
+    def test_render_single_uses_local_files_dir(
+        self,
+        regex_templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        local_dir = tmp_path / 'local'
+        local_dir.mkdir()
+        (local_dir / 'config.txt').write_text('version = 3.1.4\n')
+
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+            local_files_dir=local_dir,
+        )
+        out = bed.render('config.txt')
+        assert 'version = 3.1.4' in out
+
+    def test_render_single_jinja_strips_jinja_suffix_for_lookup(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        (tpl / 'notes.md.jinja').write_text(
+            '## repolish-regex[tag]: tag = (\\S+)\ntag = default\n',
+        )
+        templates_root = tmp_path / 'resources' / 'templates'
+        local_dir = tmp_path / 'local'
+        local_dir.mkdir()
+        # Local file is notes.md (not notes.md.jinja)
+        (local_dir / 'notes.md').write_text('tag = v9\n')
+
+        class _JinjaProvider(Provider[_Ctx, _Inputs]):
+            def create_file_mappings(
+                self,
+                context: _Ctx,
+            ) -> dict[str, str | TemplateMapping | None]:
+                return {}
+
+        bed = ProviderTestBed(
+            provider_class=_JinjaProvider,
+            templates_root=templates_root,
+            preprocess=True,
+            local_files_dir=local_dir,
+        )
+        out = bed.render('notes.md.jinja')
+        assert 'tag = v9' in out
+
+    def test_local_files_dir_binary_local_file_falls_back_to_empty(
+        self,
+        regex_templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        local_dir = tmp_path / 'local'
+        local_dir.mkdir()
+        # Non-UTF-8 bytes → UnicodeDecodeError → treated as empty local content
+        (local_dir / 'config.txt').write_bytes(b'\x80\x81\x82\xff')
+
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=regex_templates_root,
+            preprocess=True,
+            local_files_dir=local_dir,
+        )
+        rendered = bed.render_all()
+        # No match extracted → template default preserved
+        assert 'version = 0.0.0' in rendered['config.txt']

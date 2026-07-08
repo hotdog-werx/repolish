@@ -131,9 +131,9 @@ def _unwrap_optional(annotation: object) -> object:
     # Python 3.10+ native union syntax (X | None) - Pydantic v2 normalises field
     # annotations to typing.Union before storing, so this branch is a defensive
     # fallback for non-Pydantic annotation objects passed directly.
-    if isinstance(annotation, types.UnionType):
-        args = [a for a in get_args(annotation) if a is not type(None)]
-        return args[0] if len(args) == 1 else annotation
+    if isinstance(annotation, types.UnionType):  # pragma: no cover
+        args = [a for a in get_args(annotation) if a is not type(None)]  # pragma: no cover
+        return args[0] if len(args) == 1 else annotation  # pragma: no cover
     return annotation
 
 
