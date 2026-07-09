@@ -9,10 +9,15 @@ This changelog is automatically generated using
 View [unreleased changes][unreleased] since the last release.
 
 ## [1.3.1] <a name="1.3.1" href="#1.3.1">-</a> July 09, 2026
+
 ### 🐛 Bug Fixes
-- *(testing)* Apply TemplateMapping.extra_context in render_all() (#55) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#55](https://github.com/hotdog-werx/repolish/pull/55)
+
+- _(testing)_ Apply TemplateMapping.extra_context in render_all() (#55) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#55](https://github.com/hotdog-werx/repolish/pull/55)
 
 [1.3.1]: https://github.com/hotdog-werx/repolish/compare/1.3.0...1.3.1
+
 ## [1.3.0] <a name="1.3.0" href="#1.3.0">-</a> July 08, 2026
 
 ### 🚀 Features
