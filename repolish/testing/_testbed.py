@@ -25,6 +25,8 @@ from repolish.testing._context import make_context
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from repolish.providers.models.files import TemplateMapping
+
 CtxT = TypeVar('CtxT', bound=BaseContext)
 InpT = TypeVar('InpT', bound=BaseModel)
 
@@ -310,16 +312,17 @@ class ProviderTestBed(Generic[CtxT, InpT]):
     def _render_mapped(
         self,
         env: Environment,
-        ctx: dict,
-        mappings: dict,
+        ctx: dict[str, object],
+        mappings: dict[str, str | TemplateMapping | None],
         template_dir: Path,
     ) -> dict[str, str]:
         """Render explicitly mapped files."""
         result: dict[str, str] = {}
         for dest, source in mappings.items():
-            if source is None:
-                continue
-            source_name = source if isinstance(source, str) else source.source_template
+            source_name, file_ctx = self._resolve_mapped_render_data(
+                ctx,
+                source,
+            )
             if source_name is None:
                 continue
             src_path = template_dir / source_name
@@ -327,16 +330,34 @@ class ProviderTestBed(Generic[CtxT, InpT]):
                 result[dest] = self._render_one(
                     env,
                     src_path,
-                    ctx,
+                    file_ctx,
                     local_content=self._resolve_local_content(dest),
                 )
         return result
 
+    def _resolve_mapped_render_data(
+        self,
+        ctx: dict[str, object],
+        source: str | TemplateMapping | None,
+    ) -> tuple[str | None, dict[str, object]]:
+        """Resolve a mapped source template and its per-file render context."""
+        if source is None:
+            return None, ctx
+        if isinstance(source, str):
+            return source, ctx
+
+        source_name = source.source_template
+        if source_name is None:
+            return None, ctx
+
+        extra = ctx_to_dict(source.extra_context) if source.extra_context is not None else {}
+        return source_name, {**ctx, **extra}
+
     def _render_auto_discovered(
         self,
         env: Environment,
-        ctx: dict,
-        mappings: dict,
+        ctx: dict[str, object],
+        mappings: dict[str, str | TemplateMapping | None],
         template_dir: Path,
         result: dict[str, str],
     ) -> None:
@@ -375,7 +396,7 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         self,
         env: Environment,
         src: Path,
-        ctx: dict,
+        ctx: dict[str, object],
         *,
         local_content: str = '',
     ) -> str:

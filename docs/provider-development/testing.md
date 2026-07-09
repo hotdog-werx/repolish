@@ -97,6 +97,31 @@ Auto-discovery mirrors production behavior: files in `templates/repolish/`
 without the `_repolish.` prefix are included automatically, while `_repolish.`
 prefixed files appear only when explicitly mapped.
 
+`render_all()` also respects `TemplateMapping.extra_context`. When a mapping
+entry carries per-file extra context, it is merged on top of the provider
+context for that destination only — exactly as `repolish apply` does. This means
+a single template can fan out to multiple files with different content:
+
+```python
+class SessionCtx(BaseModel):
+    session_name: str
+
+class MyProvider(Provider[Ctx, BaseInputs]):
+    def create_file_mappings(self, context: Ctx):
+        return {
+            f'poe-tasks/{s.session_name}.toml': TemplateMapping(
+                '_repolish.task.toml.jinja',
+                extra_context=SessionCtx(session_name=s.session_name),
+            )
+            for s in context.session_tasks
+        }
+
+bed = ProviderTestBed(MyProvider)
+rendered = bed.render_all()
+# Each destination gets its own session_name baked in
+assert 'session_name = lint' in rendered['poe-tasks/lint.toml']
+```
+
 #### Snapshot tests with full pipeline output
 
 By default the testbed only performs Jinja2 rendering, keeping tests fast.

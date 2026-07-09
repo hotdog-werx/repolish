@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
+from pydantic import BaseModel
 
 from repolish import BaseContext, BaseInputs, Provider, TemplateMapping
 from repolish.testing import ProviderTestBed, assert_snapshots, make_context
@@ -342,6 +343,99 @@ class TestProviderTestBedRender:
             snap_file.write_text(content)
 
         assert_snapshots(rendered, snap_dir)
+
+    def test_render_all_applies_template_mapping_extra_context(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """render_all() merges TemplateMapping.extra_context for each destination."""
+
+        class ItemCtx(BaseModel):
+            item_name: str
+
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        # One shared template rendered to multiple destinations with different ctx
+        (tpl / '_repolish.item.txt.jinja').write_text('item: {{ item_name }}\n')
+        templates_root = tmp_path / 'resources' / 'templates'
+
+        class _ItemProvider(Provider[_Ctx, _Inputs]):
+            def create_file_mappings(
+                self,
+                context: _Ctx,
+            ) -> dict[str, str | TemplateMapping | None]:
+                return {
+                    'items/alpha.txt': TemplateMapping(
+                        '_repolish.item.txt.jinja',
+                        ItemCtx(item_name='alpha'),
+                    ),
+                    'items/beta.txt': TemplateMapping(
+                        '_repolish.item.txt.jinja',
+                        ItemCtx(item_name='beta'),
+                    ),
+                }
+
+        bed = ProviderTestBed(
+            provider_class=_ItemProvider,
+            templates_root=templates_root,
+        )
+        rendered = bed.render_all()
+        assert rendered['items/alpha.txt'] == 'item: alpha\n'
+        assert rendered['items/beta.txt'] == 'item: beta\n'
+
+    def test_render_all_extra_context_shadows_provider_context(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Per-file extra_context keys shadow same-named keys in the provider context."""
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        (tpl / '_repolish.greet.txt.jinja').write_text('hello {{ greeting }}\n')
+        templates_root = tmp_path / 'resources' / 'templates'
+
+        class _ShadowProvider(Provider[_Ctx, _Inputs]):
+            def create_file_mappings(
+                self,
+                context: _Ctx,
+            ) -> dict[str, str | TemplateMapping | None]:
+                return {
+                    'greet.txt': TemplateMapping(
+                        '_repolish.greet.txt.jinja',
+                        extra_context={'greeting': 'override'},
+                    ),
+                }
+
+        bed = ProviderTestBed(
+            provider_class=_ShadowProvider,
+            templates_root=templates_root,
+        )
+        rendered = bed.render_all()
+        # provider context has greeting='hello'; extra_context overrides it
+        assert rendered['greet.txt'] == 'hello override\n'
+
+    def test_render_all_template_mapping_no_extra_context_unchanged(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """TemplateMapping with no extra_context renders with the plain provider context."""
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        (tpl / '_repolish.plain.txt').write_text('plain content\n')
+        templates_root = tmp_path / 'resources' / 'templates'
+
+        class _PlainProvider(Provider[_Ctx, _Inputs]):
+            def create_file_mappings(
+                self,
+                context: _Ctx,
+            ) -> dict[str, str | TemplateMapping | None]:
+                return {'out.txt': TemplateMapping('_repolish.plain.txt')}
+
+        bed = ProviderTestBed(
+            provider_class=_PlainProvider,
+            templates_root=templates_root,
+        )
+        rendered = bed.render_all()
+        assert rendered['out.txt'] == 'plain content\n'
 
 
 # ===================================================================
