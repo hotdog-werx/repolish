@@ -17,10 +17,21 @@ Typical usage::
 
 from repolish.testing._context import make_context
 from repolish.testing._snapshot import assert_snapshots
+from repolish.testing._snapshot_filters import exclude_paths, include_paths
+from repolish.testing._snapshot_runner import (
+    SnapshotRunOptions,
+    mock_provider_entry,
+    run_snapshot_case,
+)
 from repolish.testing._testbed import ProviderTestBed
 
 __all__ = [
     'ProviderTestBed',
+    'SnapshotRunOptions',
     'assert_snapshots',
+    'exclude_paths',
+    'include_paths',
     'make_context',
+    'mock_provider_entry',
+    'run_snapshot_case',
 ]
