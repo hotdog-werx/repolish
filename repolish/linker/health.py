@@ -101,6 +101,8 @@ def _register_provider(
     alias: str,
     provider_config: ProviderConfig,
     config_dir: Path,
+    *,
+    location_context: str | None = None,
 ) -> bool:
     """Attempt to (re-)register a single provider.
 
@@ -108,7 +110,12 @@ def _register_provider(
     Returns True on success.
     """
     if provider_config.cli:
-        exit_code = process_provider(alias, provider_config, config_dir)
+        exit_code = process_provider(
+            alias,
+            provider_config,
+            config_dir,
+            location_context=location_context,
+        )
         if exit_code == 0:
             return True
         # CLI failed; fall back to static paths if available
@@ -131,6 +138,7 @@ def _check_or_register(
     config_dir: Path,
     *,
     force: bool,
+    location_context: str | None = None,
 ) -> bool:
     """Return True if the provider is ready (valid info on disk or freshly registered)."""
     if not force:
@@ -146,16 +154,22 @@ def _check_or_register(
                 provider_root=info.provider_root or '(same as resources_dir)',
                 reason='recorded paths no longer exist; re-registering',
             )
-    return _register_provider(alias, provider_config, config_dir)
+    return _register_provider(
+        alias,
+        provider_config,
+        config_dir,
+        location_context=location_context,
+    )
 
 
-def ensure_providers_ready(
+def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
     aliases: list[str],
     providers: dict[str, ProviderConfig],
     config_dir: Path,
     *,
     force: bool = False,
     strict: bool = False,
+    location_context: str | None = None,
 ) -> ProviderReadinessResult:
     """Ensure every provider is registered and its cached paths are valid.
 
@@ -178,6 +192,9 @@ def ensure_providers_ready(
             Used by ``repolish link`` to always refresh registrations.
         strict: Raise :exc:`~repolish.exceptions.ProviderNotReadyError`
             when any provider could not be registered.  Use for CI.
+        location_context: Optional context string for monorepo awareness
+            (e.g., 'root', 'packages/package_a'). Passed to provider CLIs
+            via REPOLISH_LINK_CONTEXT environment variable.
 
     Returns:
         :class:`ProviderReadinessResult` with ``ready`` and ``failed`` lists.
@@ -192,7 +209,13 @@ def ensure_providers_ready(
             logger.warning('provider_not_in_config', alias=alias)
             continue
 
-        if _check_or_register(alias, providers[alias], config_dir, force=force):
+        if _check_or_register(
+            alias,
+            providers[alias],
+            config_dir,
+            force=force,
+            location_context=location_context,
+        ):
             result.ready.append(alias)
         else:
             logger.warning(

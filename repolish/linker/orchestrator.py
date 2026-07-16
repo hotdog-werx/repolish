@@ -325,6 +325,8 @@ def process_provider(
     provider_name: str,
     provider_config: ProviderConfig,
     config_dir: Path,
+    *,
+    location_context: str | None = None,
 ) -> int:
     """Run the provider's link CLI to materialise resources under ``.repolish/``.
 
@@ -336,6 +338,9 @@ def process_provider(
         provider_name: Alias of the provider.
         provider_config: Provider configuration from ``repolish.yaml``.
         config_dir: Directory containing ``repolish.yaml``.
+        location_context: Optional context string for monorepo awareness
+            (e.g., 'root', 'packages/package_a'). Passed to provider CLIs
+            via REPOLISH_LINK_CONTEXT environment variable.
 
     Returns:
         0 on success, 1 on failure.
@@ -349,7 +354,11 @@ def process_provider(
         return 0
 
     try:
-        provider_info = run_provider_link(provider_name, provider_config.cli)
+        provider_info = run_provider_link(
+            provider_name,
+            provider_config.cli,
+            location_context=location_context,
+        )
     except subprocess.CalledProcessError as e:
         logger.exception(
             'provider_link_failed',

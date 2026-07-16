@@ -88,6 +88,55 @@ def test_run_provider_link_error_handling(
             assert isinstance(result, ProviderFileInfo)
 
 
+def test_run_provider_link_passes_location_context(
+    mocker: pytest_mock.MockerFixture,
+):
+    """run_provider_link passes REPOLISH_LINK_CONTEXT env var when location_context is set."""
+    provider_info_data = {
+        'resources_dir': '.repolish/mylib',
+        'site_package_dir': '/fake/source/mylib',
+    }
+
+    mock_run = mocker.patch('subprocess.run')
+    mock_info = MagicMock()
+    mock_info.stdout = json.dumps(provider_info_data)
+    mock_link = MagicMock()
+    mock_run.side_effect = [mock_info, mock_link]
+
+    result = run_provider_link('mylib', 'mylib-link', location_context='packages/pkg_a')
+
+    assert isinstance(result, ProviderFileInfo)
+    assert mock_run.call_count == 2
+
+    # Verify both calls include the env var
+    for call in mock_run.call_args_list:
+        assert 'env' in call[1]
+        assert call[1]['env']['REPOLISH_LINK_CONTEXT'] == 'packages/pkg_a'
+
+
+def test_run_provider_link_without_location_context(
+    mocker: pytest_mock.MockerFixture,
+):
+    """run_provider_link does not pass env var when location_context is None."""
+    provider_info_data = {
+        'resources_dir': '.repolish/mylib',
+        'site_package_dir': '/fake/source/mylib',
+    }
+
+    mock_run = mocker.patch('subprocess.run')
+    mock_info = MagicMock()
+    mock_info.stdout = json.dumps(provider_info_data)
+    mock_link = MagicMock()
+    mock_run.side_effect = [mock_info, mock_link]
+
+    result = run_provider_link('mylib', 'mylib-link', location_context=None)
+
+    assert isinstance(result, ProviderFileInfo)
+    # Verify env is not passed when location_context is None
+    for call in mock_run.call_args_list:
+        assert 'env' not in call[1] or call[1].get('env') is None
+
+
 def test_create_provider_symlinks_no_symlinks(tmp_path: Path):
     """Test create_provider_symlinks handles empty symlinks list."""
     # Should not raise, should just return
