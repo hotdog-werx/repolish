@@ -160,6 +160,8 @@ def command(config_path: Path) -> int:
     mono_ctx = _detect_workspace(config, config_dir)
 
     if mono_ctx is not None:
+        # Print monorepo header once at the start
+        console.print('[bold]Monorepo detected[/bold]')
         # Root pass first, then every member.
         rc, root_syms = _link_config(
             config_path,

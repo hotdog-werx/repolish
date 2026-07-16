@@ -335,7 +335,7 @@ def resource_linker_cli(
         """Auto-generated success message."""
         if _link_context:
             # Monorepo mode: show location context in the message
-            console.print('[bold]Monorepo detected[/bold]')
+            # (The "Monorepo detected" header is printed once by the link command)
             console.print(
                 f'- [bold cyan]{resources_dir}[/bold cyan] from '
                 f'[bold green]{detected_library_name}[/bold green] are now available '

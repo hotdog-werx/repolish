@@ -103,7 +103,11 @@ def test_run_provider_link_passes_location_context(
     mock_link = MagicMock()
     mock_run.side_effect = [mock_info, mock_link]
 
-    result = run_provider_link('mylib', 'mylib-link', location_context='packages/pkg_a')
+    result = run_provider_link(
+        'mylib',
+        'mylib-link',
+        location_context='packages/pkg_a',
+    )
 
     assert isinstance(result, ProviderFileInfo)
     assert mock_run.call_count == 2
