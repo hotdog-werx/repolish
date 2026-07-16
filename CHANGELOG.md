@@ -9,10 +9,14 @@ This changelog is automatically generated using
 View [unreleased changes][unreleased] since the last release.
 
 ## [1.5.1] <a name="1.5.1" href="#1.5.1">-</a> July 16, 2026
+
 ### 🐛 Bug Fixes
-- Print monorepo header only once at start by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Print monorepo header only once at start by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.5.1]: https://github.com/hotdog-werx/repolish/compare/1.5.0...1.5.1
+
 ## [1.5.0] <a name="1.5.0" href="#1.5.0">-</a> July 16, 2026
 
 ### 🚀 Features
