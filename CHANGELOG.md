@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.5.0] <a name="1.5.0" href="#1.5.0">-</a> July 16, 2026
+
+### 🚀 Features
+
+- Add monorepo-aware link messages (#59) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#59](https://github.com/hotdog-werx/repolish/pull/59)
+
+[1.5.0]: https://github.com/hotdog-werx/repolish/compare/1.4.0...1.5.0
+
 ## [1.4.0] <a name="1.4.0" href="#1.4.0">-</a> July 10, 2026
 
 ### 🚀 Features
