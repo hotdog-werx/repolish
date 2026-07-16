@@ -66,6 +66,7 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
 def _link_config(
     config_path: Path,
     mode: str = 'standalone',
+    location_context: str | None = None,
 ) -> tuple[int, dict[str, list[ProviderSymlink]]]:
     """Run ensure_providers_ready for the config at *config_path*.
 
@@ -81,6 +82,7 @@ def _link_config(
         config.providers,
         config_path.resolve().parent,
         force=True,
+        location_context=location_context,
     )
     if result.failed:
         logger.warning(
@@ -131,8 +133,13 @@ def _link_members(
         if not member_config.exists():  # pragma: no cover
             continue  # pragma: no cover
         logger.info('linking_member', member=m.name, _display_level=1)
+        location_context = str(m.path)
         with chdir(member_dir):
-            rc, syms = _link_config(member_config, mode='member')
+            rc, syms = _link_config(
+                member_config,
+                mode='member',
+                location_context=location_context,
+            )
         if rc != 0:
             return rc, sections
         if syms:
@@ -154,7 +161,11 @@ def command(config_path: Path) -> int:
 
     if mono_ctx is not None:
         # Root pass first, then every member.
-        rc, root_syms = _link_config(config_path, mode='root')
+        rc, root_syms = _link_config(
+            config_path,
+            mode='root',
+            location_context='root',
+        )
         if rc != 0:
             return rc
         sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []

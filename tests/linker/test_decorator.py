@@ -251,6 +251,7 @@ class ResourceLinkerCliCase:
     source_dir: str
     expected_lib_name: str
     expected_msg: str
+    link_context: str | None = None  # Optional REPOLISH_LINK_CONTEXT value
 
 
 @pytest.mark.parametrize(
@@ -270,6 +271,22 @@ class ResourceLinkerCliCase:
             expected_lib_name='mylib',
             expected_msg='templates from mylib are now available',
         ),
+        ResourceLinkerCliCase(
+            name='monorepo_root',
+            package_name='mylib',
+            source_dir='resources',
+            expected_lib_name='mylib',
+            expected_msg='resources from mylib are now available in "root"',
+            link_context='root',
+        ),
+        ResourceLinkerCliCase(
+            name='monorepo_member',
+            package_name='mylib',
+            source_dir='resources',
+            expected_lib_name='mylib',
+            expected_msg='resources from mylib are now available in "packages/pkg_a"',
+            link_context='packages/pkg_a',
+        ),
     ],
     ids=lambda case: case.name,
 )
@@ -281,6 +298,10 @@ def test_resource_linker_cli(
 ):
     """Test resource_linker_cli with various configurations."""
     monkeypatch.chdir(tmp_path)
+
+    # Set REPOLISH_LINK_CONTEXT environment variable if specified
+    if case.link_context:
+        monkeypatch.setenv('REPOLISH_LINK_CONTEXT', case.link_context)
 
     pkg_root = tmp_path / case.package_name
     pkg_root.mkdir()

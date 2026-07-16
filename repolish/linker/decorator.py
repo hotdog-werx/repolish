@@ -2,6 +2,7 @@
 
 import inspect
 import json
+import os
 from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
@@ -325,13 +326,27 @@ def resource_linker_cli(
     _, _pkg, _proj = _auto_detect_library_name(caller_frame)
     detected_library_name = _proj or _pkg.replace('_', '-')
 
+    # Read optional location context from environment (set by repolish link
+    # in monorepo mode to indicate where the linker is running).
+    _link_context = os.environ.get('REPOLISH_LINK_CONTEXT')
+
     # Create a function with auto-generated success message
     def _success_message() -> None:
         """Auto-generated success message."""
-        console.print(
-            f'- [bold cyan]{resources_dir}[/bold cyan] from '
-            f'[bold green]{detected_library_name}[/bold green] are now available',
-        )
+        if _link_context:
+            # Monorepo mode: show location context in the message
+            console.print('[bold]Monorepo detected[/bold]')
+            console.print(
+                f'- [bold cyan]{resources_dir}[/bold cyan] from '
+                f'[bold green]{detected_library_name}[/bold green] are now available '
+                f'in "{_link_context}"',
+            )
+        else:
+            # Standalone mode: original message
+            console.print(
+                f'- [bold cyan]{resources_dir}[/bold cyan] from '
+                f'[bold green]{detected_library_name}[/bold green] are now available',
+            )
 
     # Apply the decorator to create the CLI
     # Pass the caller frame so resource_linker uses the correct package context

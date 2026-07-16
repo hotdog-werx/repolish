@@ -87,6 +87,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         raw_config.providers,
         config_dir,
         strict=options.strict,
+        location_context=None,
     )
     if readiness.failed:
         logger.warning(

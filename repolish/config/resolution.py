@@ -92,7 +92,12 @@ def _try_auto_link(
         suggestion='provider directory not found; attempting to link via cli',
         cli=provider_config.cli,
     )
-    exit_code = process_provider(alias, provider_config, config_dir)
+    exit_code = process_provider(
+        alias,
+        provider_config,
+        config_dir,
+        location_context=None,
+    )
     if exit_code == 0:
         return load_provider_info(alias, config_dir)
     logger.warning(

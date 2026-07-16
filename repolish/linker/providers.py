@@ -1,6 +1,7 @@
 """Provider management and CLI execution."""
 
 import json
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -111,12 +112,17 @@ def save_provider_info(
 def run_provider_link(
     provider_name: str,
     link_command: str,
+    *,
+    location_context: str | None = None,
 ) -> ProviderFileInfo:
     """Run a provider's link CLI and return its info.
 
     Args:
         provider_name: Name of the provider
         link_command: CLI command to run (e.g., 'codeguide-link' or 'codeguide-link -v')
+        location_context: Optional context string for monorepo awareness
+            (e.g., 'root', 'packages/package_a'). When set, passed to the
+            provider CLI via REPOLISH_LINK_CONTEXT environment variable.
 
     Returns:
         Provider information from --info flag
@@ -134,6 +140,11 @@ def run_provider_link(
     # Split command to handle arguments (e.g., "codeguide-link -v")
     cmd_parts = shlex.split(link_command)
 
+    # Build environment with optional location context
+    env = None
+    if location_context:
+        env = {**os.environ, 'REPOLISH_LINK_CONTEXT': location_context}
+
     # First get info from the CLI
     logger.debug('getting_provider_info', command=f'{link_command} --info')
     # S603: subprocess call is intentional - we need to call provider link CLIs
@@ -144,6 +155,7 @@ def run_provider_link(
         capture_output=True,
         text=True,
         check=True,
+        env=env,
     )
     cli_info_dict = json.loads(result.stdout)
     provider_info = ProviderFileInfo.model_validate(cli_info_dict)
@@ -154,6 +166,7 @@ def run_provider_link(
     subprocess.run(  # noqa: S603
         cmd_parts,
         check=True,
+        env=env,
     )
 
     logger.info(
