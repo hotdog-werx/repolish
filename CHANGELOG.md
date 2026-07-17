@@ -8,6 +8,11 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.5.2] <a name="1.5.2" href="#1.5.2">-</a> July 17, 2026
+### 🐛 Bug Fixes
+- *(testing)* Resolve package identity in ProviderTestBed by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.5.2]: https://github.com/hotdog-werx/repolish/compare/1.5.1...1.5.2
 ## [1.5.1] <a name="1.5.1" href="#1.5.1">-</a> July 16, 2026
 
 ### 🐛 Bug Fixes
