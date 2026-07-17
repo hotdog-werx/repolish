@@ -9,10 +9,14 @@ This changelog is automatically generated using
 View [unreleased changes][unreleased] since the last release.
 
 ## [1.6.0] <a name="1.6.0" href="#1.6.0">-</a> July 17, 2026
+
 ### 🚀 Features
-- Add get_package_version() helper to centralize version handling by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Add get_package_version() helper to centralize version handling by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.6.0]: https://github.com/hotdog-werx/repolish/compare/1.5.2...1.6.0
+
 ## [1.5.2] <a name="1.5.2" href="#1.5.2">-</a> July 17, 2026
 
 ### 🐛 Bug Fixes
