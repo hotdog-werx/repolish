@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from repolish.pkginfo import resolve_package_identity
+from repolish.pkginfo import get_package_version, resolve_package_identity
 
 
 @dataclass
@@ -299,6 +299,21 @@ def test_importable_package_with_no_matching_distribution(
 
     assert module_name == 'rptest_norep'
     assert project_name == ''
+
+
+def test_get_package_version_returns_default_for_missing_package() -> None:
+    """get_package_version returns '0.0.0.dev0' for packages that aren't installed."""
+    version = get_package_version('nonexistent-package-xyz')
+    assert version == '0.0.0.dev0'
+
+
+def test_get_package_version_returns_installed_version() -> None:
+    """get_package_version returns the actual version for installed packages."""
+    # pytest should be installed in the test environment
+    version = get_package_version('pytest')
+    assert version != '0.0.0.dev0'
+    assert isinstance(version, str)
+    assert len(version) > 0
 
 
 def test_returns_empty_tuple() -> None:

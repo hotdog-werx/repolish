@@ -1,9 +1,5 @@
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _v
+from repolish import get_package_version
 
-try:
-    __version__ = _v('devkit-workspace')
-except PackageNotFoundError:
-    __version__ = '0.0.0.dev0'
+__version__ = get_package_version('devkit-workspace')
 
 __all__ = ['__version__']

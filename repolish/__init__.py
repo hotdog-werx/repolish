@@ -1,3 +1,4 @@
+from .pkginfo import get_package_version
 from .providers.models import (
     BaseContext,
     BaseInputs,
@@ -30,6 +31,7 @@ __all__ = [
     'Symlink',
     'TemplateMapping',
     'call_provider_method',
+    'get_package_version',
     'get_provider_context',
     'map_folder',
 ]

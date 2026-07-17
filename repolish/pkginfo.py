@@ -18,9 +18,11 @@ import re
 from importlib.machinery import ModuleSpec
 from importlib.metadata import (
     Distribution,
+    PackageNotFoundError,
     distributions,
     packages_distributions,
 )
+from importlib.metadata import version as _v
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -278,3 +280,25 @@ def _source_path_from_dist(dist: Distribution) -> Path | None:
         return None
     url = json.loads(raw).get('url', '')
     return Path(url[7:]).resolve() if url.startswith('file://') else None
+
+
+def get_package_version(package_name: str) -> str:
+    """Return the version of *package_name*, or a development default if not installed.
+
+    This is a convenience wrapper around :func:`importlib.metadata.version` that
+    handles the common case of a package not being installed (e.g., during
+    development or in test environments) by returning ``'0.0.0.dev0'`` instead
+    of raising :exc:`importlib.metadata.PackageNotFoundError`.
+
+    Usage in ``__init__.py``::
+
+        from repolish import get_package_version
+
+        __version__ = get_package_version('my-package')
+
+        __all__ = ['__version__']
+    """
+    try:
+        return _v(package_name)
+    except PackageNotFoundError:
+        return '0.0.0.dev0'
