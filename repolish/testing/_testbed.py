@@ -11,6 +11,7 @@ from jinja2 import Environment, StrictUndefined, select_autoescape
 from pydantic import BaseModel
 
 from repolish.misc import ctx_to_dict
+from repolish.pkginfo import resolve_package_identity
 from repolish.preprocessors.core import replace_text
 from repolish.providers.models.context import BaseContext, BaseInputs
 from repolish.providers.models.provider import (
@@ -120,6 +121,14 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         self._instance.alias = self.alias
         self._instance.version = self.version
 
+        # Resolve package identity (package_name and project_name) from the
+        # provider's __package__ attribute, mirroring what the pipeline does.
+        # This ensures templates that reference {{ repolish.provider.project_name }}
+        # work correctly in tests.
+        _pkg, _proj = resolve_package_identity(self.provider_class.__module__)
+        self._instance.package_name = _pkg
+        self._instance.project_name = _proj
+
         ctx = self.context if self.context is not None else self._instance.create_context()
 
         # Ensure the repolish namespace reflects the requested mode.
@@ -128,6 +137,8 @@ class ProviderTestBed(Generic[CtxT, InpT]):
                 mode=self.mode,
                 alias=self.alias,
                 version=self.version,
+                package_name=_pkg,
+                project_name=_proj,
             )
         self._resolved_context = ctx
 
