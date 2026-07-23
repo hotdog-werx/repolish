@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.6.1] <a name="1.6.1" href="#1.6.1">-</a> July 23, 2026
+
+### 🐛 Bug Fixes
+
+- Resolve .jinja extension handling and keep block indentation bugs (#64) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#64](https://github.com/hotdog-werx/repolish/pull/64)
+
+[1.6.1]: https://github.com/hotdog-werx/repolish/compare/1.6.0...1.6.1
+
 ## [1.6.0] <a name="1.6.0" href="#1.6.0">-</a> July 17, 2026
 
 ### 🚀 Features
