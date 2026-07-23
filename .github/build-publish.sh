@@ -19,7 +19,8 @@ if [ -d dist ]; then
   rm -rf dist
 fi
 
-uvx hatch version "${VERSION}"
+# no longer needed since we are using uvx hatch version in the post-changelog hook
+# uvx hatch version "${VERSION}"
 uv build --no-sources
 
 export UV_PUBLISH_USERNAME=__token__
