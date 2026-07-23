@@ -36,7 +36,12 @@ pyright.extends = ".pkglink/.codeguide/configs/pyrightconfig.json"
 [tool.releez]
 create-pr = true
 run-changelog-format = true
-hooks = { changelog-format = ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"] }
+
+[tool.releez.hooks]
+post-changelog = [
+  ["uvx", "hatch", "version", "{version}"], # {version} = bare semver
+  ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"],
+]
 
 [build-system]
 requires = ["hatchling"]

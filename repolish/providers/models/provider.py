@@ -401,7 +401,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
         if inp_cls is None:
             return None
         if isinstance(inp_cls, type) and issubclass(inp_cls, BaseInputs) and inp_cls is not BaseInputs:
-            return inp_cls
+            return cast('type[InputT]', inp_cls)
         return None
 
     # File operations helpers - optional
