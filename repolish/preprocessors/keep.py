@@ -270,9 +270,15 @@ def _find_first_line_index(
     *,
     start: int,
 ) -> int | None:
-    """Return the first line index whose content matches *marker* exactly."""
+    """Return the first line index whose content matches *marker* exactly.
+
+    Leading and trailing whitespace is stripped from the line before comparison
+    to support keep blocks at any indentation level. This allows markers to be
+    indented along with their surrounding content (e.g., inside YAML nested
+    structures) and tolerates accidental trailing whitespace.
+    """
     for index in range(start, len(lines)):
-        if lines[index].rstrip('\r\n') == marker:
+        if lines[index].strip() == marker:
             return index
     return None
 

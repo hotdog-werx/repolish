@@ -438,13 +438,14 @@ def _process_provider_fm(
             # destination file to the correct provider instead of falling
             # back to 'unknown'.  get_source_str_from_mapping and all other
             # consumers already handle both str and TemplateMapping values.
+            # Strip trailing .jinja since staging removes it from filenames.
             accum.merged_file_mappings[dest] = TemplateMapping(
-                source_template=src,
+                source_template=src.removesuffix('.jinja'),
                 source_provider=provider_id,
             )
             continue
         annotated = TemplateMapping(
-            source_template=src.source_template,
+            source_template=src.source_template.removesuffix('.jinja') if src.source_template else None,
             extra_context=src.extra_context,
             file_mode=src.file_mode,
             source_provider=provider_id,
@@ -462,13 +463,14 @@ def _collect_promoted_fm(
         if src is None:
             continue
         if isinstance(src, str):
+            # Strip trailing .jinja since staging removes it from filenames.
             accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=src,
+                source_template=src.removesuffix('.jinja'),
                 source_provider=provider_id,
             )
         else:
             accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=src.source_template,
+                source_template=src.source_template.removesuffix('.jinja') if src.source_template else None,
                 extra_context=src.extra_context,
                 file_mode=src.file_mode,
                 promote_conflict=src.promote_conflict,

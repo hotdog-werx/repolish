@@ -503,3 +503,126 @@ def test_apply_keep_replacements_multiple_sibling_blocks_same_markers() -> None:
     )
 
     assert result == local_content
+
+
+def test_apply_keep_block_with_indented_markers_in_local_file() -> None:
+    """Test that keep-block markers work when indented in local file.
+
+    This is a regression test for a bug where markers at 3+ levels of
+    indentation were not matched because the code required exact line matches.
+    The start/end markers in the local file should match even when indented.
+    """
+    template = dedent("""\
+        <div>
+          ## repolish-keep-block[custom]: start="<!-- start -->" end="<!-- end -->"
+          <!-- start -->
+          Default content
+          <!-- end -->
+        </div>
+    """)
+
+    # Local file has markers at 4 spaces indentation (2 levels)
+    local_content = dedent("""\
+        <div>
+          <!-- start -->
+          Custom content
+          <!-- end -->
+        </div>
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={
+            'custom': KeepBlockSpec(
+                start='<!-- start -->',
+                end='<!-- end -->',
+            ),
+        },
+        keep_rest={},
+        keep_header={},
+        local_file_content=local_content,
+    )
+
+    # Should preserve local content with its indentation
+    assert result == local_content
+
+
+def test_apply_keep_block_with_deeply_indented_markers() -> None:
+    """Test keep-block with markers at 3+ levels of indentation.
+
+    This tests the specific bug where deeply indented markers (e.g., inside
+    YAML nested structures) fail to match because the marker comparison
+    requires exact line content match.
+    """
+    template = dedent("""\
+        jobs:
+          build:
+            steps:
+              ## repolish-keep-block[steps]: start="- name: custom" end="# end-custom"
+              - name: custom
+                run: default
+              # end-custom
+            done
+    """)
+
+    # Local file has deeply indented markers (8 spaces = 4 levels)
+    local_content = dedent("""\
+        jobs:
+          build:
+            steps:
+              - name: custom
+                run: echo "custom"
+              # end-custom
+            done
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={
+            'steps': KeepBlockSpec(
+                start='- name: custom',
+                end='# end-custom',
+            ),
+        },
+        keep_rest={},
+        keep_header={},
+        local_file_content=local_content,
+    )
+
+    # Should preserve local content with its indentation
+    assert result == local_content
+
+
+def test_apply_keep_block_tolerates_trailing_whitespace() -> None:
+    """Test that keep-block markers tolerate trailing whitespace.
+
+    This is a regression test for editors that may add trailing spaces.
+    The marker comparison strips both leading and trailing whitespace.
+    """
+    template = dedent("""\
+        <div>
+          ## repolish-keep-block[custom]: start="<!-- start -->" end="<!-- end -->"
+          <!-- start -->
+          Default content
+          <!-- end -->
+        </div>
+    """)
+
+    # Local file has trailing spaces after markers (simulating editor behavior)
+    local_content = '<div>\n  <!-- start -->   \n  Custom content\n  <!-- end -->  \n</div>\n'
+
+    result = apply_keep_replacements(
+        template,
+        keep_blocks={
+            'custom': KeepBlockSpec(
+                start='<!-- start -->',
+                end='<!-- end -->',
+            ),
+        },
+        keep_rest={},
+        keep_header={},
+        local_file_content=local_content,
+    )
+
+    # Should preserve local content including its trailing whitespace
+    assert result == local_content
