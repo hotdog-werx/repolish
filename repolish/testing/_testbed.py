@@ -21,6 +21,7 @@ from repolish.providers.models.provider import (
     ProviderEntry,
     call_provider_method,
 )
+from repolish.providers.models.template_path import RepolishTemplatePath
 from repolish.testing._context import make_context
 
 if TYPE_CHECKING:
@@ -336,8 +337,10 @@ class ProviderTestBed(Generic[CtxT, InpT]):
             )
             if source_name is None:
                 continue
-            src_path = template_dir / source_name
-            if src_path.exists():
+            # Use RepolishTemplatePath to handle .jinja extension transparently
+            tpl_path = RepolishTemplatePath.from_string(source_name)
+            src_path = tpl_path.resolve_source_path(template_dir)
+            if src_path is not None:
                 result[dest] = self._render_one(
                     env,
                     src_path,
@@ -375,14 +378,18 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         """Add auto-discovered non-prefixed templates to *result*."""
         if not template_dir.is_dir():
             return
-        mapped_sources = {(v if isinstance(v, str) else v.source_template) for v in mappings.values() if v is not None}
+        # Build set of logical names from mapped sources for overlap detection
+        mapped_logical_names = self._collect_mapped_logical_names(mappings)
+        # Iterate and render auto-discovered templates
         for src in template_dir.rglob('*'):
             if src.is_dir():
                 continue
             rel = src.relative_to(template_dir).as_posix()
             if any(p.startswith('_repolish.') for p in Path(rel).parts):
                 continue
-            if rel in result or rel in mapped_sources:
+            # Check if this file's logical name is already mapped
+            rel_tpl = RepolishTemplatePath.from_string(rel)
+            if rel in result or rel_tpl.logical_name in mapped_logical_names:
                 continue
             result[rel] = self._render_one(
                 env,
@@ -390,6 +397,22 @@ class ProviderTestBed(Generic[CtxT, InpT]):
                 ctx,
                 local_content=self._resolve_local_content(rel),
             )
+
+    def _collect_mapped_logical_names(
+        self,
+        mappings: dict[str, str | TemplateMapping | None],
+    ) -> set[str]:
+        """Extract logical names from file mappings for overlap detection."""
+        mapped_logical_names: set[str] = set()
+        for v in mappings.values():
+            if v is None:
+                continue
+            source_name = v if isinstance(v, str) else v.source_template
+            if source_name is None:
+                continue
+            tpl = RepolishTemplatePath.from_string(source_name)
+            mapped_logical_names.add(tpl.logical_name)
+        return mapped_logical_names
 
     # -- Private helpers --
 

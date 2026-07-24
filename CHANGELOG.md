@@ -9,180 +9,356 @@ This changelog is automatically generated using
 View [unreleased changes][unreleased] since the last release.
 
 ## [1.6.2] <a name="1.6.2" href="#1.6.2">-</a> July 23, 2026
+
 ### 🐛 Bug Fixes
-- Build-publish.sh can be used manually by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Build-publish.sh can be used manually by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.6.2]: https://github.com/hotdog-werx/repolish/compare/1.6.1...1.6.2
+
 ## [1.6.1] <a name="1.6.1" href="#1.6.1">-</a> July 23, 2026
+
 ### 🐛 Bug Fixes
-- Resolve .jinja extension handling and keep block indentation bugs (#64) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#64](https://github.com/hotdog-werx/repolish/pull/64)
+
+- Resolve .jinja extension handling and keep block indentation bugs (#64) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#64](https://github.com/hotdog-werx/repolish/pull/64)
 
 [1.6.1]: https://github.com/hotdog-werx/repolish/compare/1.6.0...1.6.1
+
 ## [1.6.0] <a name="1.6.0" href="#1.6.0">-</a> July 17, 2026
+
 ### 🚀 Features
-- Add get_package_version() helper to centralize version handling by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Add get_package_version() helper to centralize version handling by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.6.0]: https://github.com/hotdog-werx/repolish/compare/1.5.2...1.6.0
+
 ## [1.5.2] <a name="1.5.2" href="#1.5.2">-</a> July 17, 2026
+
 ### 🐛 Bug Fixes
-- *(testing)* Resolve package identity in ProviderTestBed by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- _(testing)_ Resolve package identity in ProviderTestBed by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.5.2]: https://github.com/hotdog-werx/repolish/compare/1.5.1...1.5.2
+
 ## [1.5.1] <a name="1.5.1" href="#1.5.1">-</a> July 16, 2026
+
 ### 🐛 Bug Fixes
-- Print monorepo header only once at start by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Print monorepo header only once at start by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.5.1]: https://github.com/hotdog-werx/repolish/compare/1.5.0...1.5.1
+
 ## [1.5.0] <a name="1.5.0" href="#1.5.0">-</a> July 16, 2026
+
 ### 🚀 Features
-- Add monorepo-aware link messages (#59) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#59](https://github.com/hotdog-werx/repolish/pull/59)
+
+- Add monorepo-aware link messages (#59) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#59](https://github.com/hotdog-werx/repolish/pull/59)
 
 [1.5.0]: https://github.com/hotdog-werx/repolish/compare/1.4.0...1.5.0
+
 ## [1.4.0] <a name="1.4.0" href="#1.4.0">-</a> July 10, 2026
+
 ### 🚀 Features
-- *(testing)* Add higher-level snapshot test utilities (#57) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#57](https://github.com/hotdog-werx/repolish/pull/57)
+
+- _(testing)_ Add higher-level snapshot test utilities (#57) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#57](https://github.com/hotdog-werx/repolish/pull/57)
 
 [1.4.0]: https://github.com/hotdog-werx/repolish/compare/1.3.1...1.4.0
+
 ## [1.3.1] <a name="1.3.1" href="#1.3.1">-</a> July 09, 2026
+
 ### 🐛 Bug Fixes
-- *(testing)* Apply TemplateMapping.extra_context in render_all() (#55) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#55](https://github.com/hotdog-werx/repolish/pull/55)
+
+- _(testing)_ Apply TemplateMapping.extra_context in render_all() (#55) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#55](https://github.com/hotdog-werx/repolish/pull/55)
 
 [1.3.1]: https://github.com/hotdog-werx/repolish/compare/1.3.0...1.3.1
+
 ## [1.3.0] <a name="1.3.0" href="#1.3.0">-</a> July 08, 2026
+
 ### 🚀 Features
-- *(testing)* Add preprocess and local_files_dir to ProviderTestBed (#53) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#53](https://github.com/hotdog-werx/repolish/pull/53)
+
+- _(testing)_ Add preprocess and local_files_dir to ProviderTestBed (#53) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#53](https://github.com/hotdog-werx/repolish/pull/53)
 
 [1.3.0]: https://github.com/hotdog-werx/repolish/compare/1.2.0...1.3.0
+
 ## [1.2.0] <a name="1.2.0" href="#1.2.0">-</a> July 02, 2026
+
 ### 🚀 Features
-- Add ResourceCopy for file copies from provider resources (#47) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#47](https://github.com/hotdog-werx/repolish/pull/47)
-- Keep-block preprocessor directives (#51) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#51](https://github.com/hotdog-werx/repolish/pull/51)
+
+- Add ResourceCopy for file copies from provider resources (#47) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#47](https://github.com/hotdog-werx/repolish/pull/47)
+- Keep-block preprocessor directives (#51) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#51](https://github.com/hotdog-werx/repolish/pull/51)
+
 ### 🐛 Bug Fixes
-- *(hydration)* Apply preprocessors to promoted mappings (#48) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#48](https://github.com/hotdog-werx/repolish/pull/48)
-- Promoted mappings now follow unified pipeline semantics (#50) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#50](https://github.com/hotdog-werx/repolish/pull/50)
+
+- _(hydration)_ Apply preprocessors to promoted mappings (#48) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#48](https://github.com/hotdog-werx/repolish/pull/48)
+- Promoted mappings now follow unified pipeline semantics (#50) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#50](https://github.com/hotdog-werx/repolish/pull/50)
+
 ### ⚙️ Miscellaneous Tasks
+
 - Update releez by [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [1.2.0]: https://github.com/hotdog-werx/repolish/compare/1.1.3...1.2.0
+
 ## [1.1.3] <a name="1.1.3" href="#1.1.3">-</a> June 05, 2026
+
 ### 🐛 Bug Fixes
-- *(pkginfo)* Disambiguate namespace siblings installed via VCS (#45) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#45](https://github.com/hotdog-werx/repolish/pull/45)
+
+- _(pkginfo)_ Disambiguate namespace siblings installed via VCS (#45) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#45](https://github.com/hotdog-werx/repolish/pull/45)
 
 [1.1.3]: https://github.com/hotdog-werx/repolish/compare/1.1.2...1.1.3
+
 ## [1.1.2] <a name="1.1.2" href="#1.1.2">-</a> May 29, 2026
+
 ### 🐛 Bug Fixes
-- Render promoted_file_mappings with extra_context (#43) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#43](https://github.com/hotdog-werx/repolish/pull/43)
+
+- Render promoted_file_mappings with extra_context (#43) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#43](https://github.com/hotdog-werx/repolish/pull/43)
 
 [1.1.2]: https://github.com/hotdog-werx/repolish/compare/1.1.1...1.1.2
+
 ## [1.1.1] <a name="1.1.1" href="#1.1.1">-</a> May 21, 2026
+
 ### 🐛 Bug Fixes
-- Copy binary files unchanged when used as TemplateMapping sources (#41) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#41](https://github.com/hotdog-werx/repolish/pull/41)
+
+- Copy binary files unchanged when used as TemplateMapping sources (#41) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#41](https://github.com/hotdog-werx/repolish/pull/41)
 
 [1.1.1]: https://github.com/hotdog-werx/repolish/compare/1.1.0...1.1.1
+
 ## [1.1.0] <a name="1.1.0" href="#1.1.0">-</a> April 22, 2026
+
 ### 🚀 Features
-- Conditional _repolish. folder convention and map_folder helper (#39) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#39](https://github.com/hotdog-werx/repolish/pull/39)
+
+- Conditional _repolish. folder convention and map_folder helper (#39) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#39](https://github.com/hotdog-werx/repolish/pull/39)
 
 [1.1.0]: https://github.com/hotdog-werx/repolish/compare/1.0.0...1.1.0
+
 ## [1.0.0] <a name="1.0.0" href="#1.0.0">-</a> April 17, 2026
+
 ### 🚀 Features
-- [**breaking**] V1 - providers-first config, monorepo orchestration, and full documentation (#35) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#35](https://github.com/hotdog-werx/repolish/pull/35)
+
+- [**breaking**] V1 - providers-first config, monorepo orchestration, and full
+  documentation (#35) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#35](https://github.com/hotdog-werx/repolish/pull/35)
 
 [1.0.0]: https://github.com/hotdog-werx/repolish/compare/0.8.1...1.0.0
+
 ## [0.8.1] <a name="0.8.1" href="#0.8.1">-</a> April 17, 2026
+
 ### 🐛 Bug Fixes
-- Preserve executable bit on rendered/preprocessed template files (#36) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#36](https://github.com/hotdog-werx/repolish/pull/36)
+
+- Preserve executable bit on rendered/preprocessed template files (#36) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#36](https://github.com/hotdog-werx/repolish/pull/36)
 
 [0.8.1]: https://github.com/hotdog-werx/repolish/compare/0.8.0...0.8.1
+
 ## [0.8.0] <a name="0.8.0" href="#0.8.0">-</a> March 03, 2026
+
 ### 🚀 Features
-- Typed provider class API, opt-in Jinja renderer, and docs overhaul (#33) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#33](https://github.com/hotdog-werx/repolish/pull/33)
+
+- Typed provider class API, opt-in Jinja renderer, and docs overhaul (#33) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#33](https://github.com/hotdog-werx/repolish/pull/33)
 
 [0.8.0]: https://github.com/hotdog-werx/repolish/compare/0.7.1...0.8.0
+
 ## [0.7.1] <a name="0.7.1" href="#0.7.1">-</a> February 17, 2026
+
 ### 🐛 Bug Fixes
-- Show full stack traces for CLI errors instead of silent failures  (#30) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#30](https://github.com/hotdog-werx/repolish/pull/30)
+
+- Show full stack traces for CLI errors instead of silent failures (#30) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#30](https://github.com/hotdog-werx/repolish/pull/30)
 
 [0.7.1]: https://github.com/hotdog-werx/repolish/compare/0.7.0...0.7.1
+
 ## [0.7.0] <a name="0.7.0" href="#0.7.0">-</a> February 16, 2026
+
 ### 🚀 Features
-- Unify repolish under single CLI with backwards compatibility (#28) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#28](https://github.com/hotdog-werx/repolish/pull/28)
+
+- Unify repolish under single CLI with backwards compatibility (#28) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#28](https://github.com/hotdog-werx/repolish/pull/28)
+
 ### 🚜 Refactor
-- Split cookiecutter module into hydration package and reorganize tests (#27) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#27](https://github.com/hotdog-werx/repolish/pull/27)
+
+- Split cookiecutter module into hydration package and reorganize tests (#27) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#27](https://github.com/hotdog-werx/repolish/pull/27)
 
 [0.7.0]: https://github.com/hotdog-werx/repolish/compare/0.6.0...0.7.0
+
 ## [0.6.0] <a name="0.6.0" href="#0.6.0">-</a> February 12, 2026
+
 ### 🚀 Features
-- Implement multiregex preprocessor (#21) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#21](https://github.com/hotdog-werx/repolish/pull/21)
-- Add providers orchestration and auto-directory resolution (#23) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#23](https://github.com/hotdog-werx/repolish/pull/23)
-- Strip .jinja extension from template filenames (#24) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#24](https://github.com/hotdog-werx/repolish/pull/24)
+
+- Implement multiregex preprocessor (#21) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#21](https://github.com/hotdog-werx/repolish/pull/21)
+- Add providers orchestration and auto-directory resolution (#23) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#23](https://github.com/hotdog-werx/repolish/pull/23)
+- Strip .jinja extension from template filenames (#24) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#24](https://github.com/hotdog-werx/repolish/pull/24)
+
 ### 🐛 Bug Fixes
-- Fix broken symlink handling and improve test organization (#25) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#25](https://github.com/hotdog-werx/repolish/pull/25)
+
+- Fix broken symlink handling and improve test organization (#25) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#25](https://github.com/hotdog-werx/repolish/pull/25)
 
 [0.6.0]: https://github.com/hotdog-werx/repolish/compare/0.5.0...0.6.0
+
 ## [0.5.0] <a name="0.5.0" href="#0.5.0">-</a> January 30, 2026
+
 ### 🚀 Features
-- Add repolish-debugger CLI tool for preprocessor debugging (#19) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#19](https://github.com/hotdog-werx/repolish/pull/19)
+
+- Add repolish-debugger CLI tool for preprocessor debugging (#19) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#19](https://github.com/hotdog-werx/repolish/pull/19)
 
 [0.5.0]: https://github.com/hotdog-werx/repolish/compare/0.4.0...0.5.0
+
 ## [0.4.0] <a name="0.4.0" href="#0.4.0">-</a> January 29, 2026
+
 ### 🚀 Features
-- Enhanced context system with passing and overrides (#16) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#16](https://github.com/hotdog-werx/repolish/pull/16)
+
+- Enhanced context system with passing and overrides (#16) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#16](https://github.com/hotdog-werx/repolish/pull/16)
+
 ### 🐛 Bug Fixes
-- Handle binary files in templates without crashes (#17) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#17](https://github.com/hotdog-werx/repolish/pull/17)
+
+- Handle binary files in templates without crashes (#17) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#17](https://github.com/hotdog-werx/repolish/pull/17)
 
 [0.4.0]: https://github.com/hotdog-werx/repolish/compare/0.3.4...0.4.0
+
 ## [0.3.4] <a name="0.3.4" href="#0.3.4">-</a> January 28, 2026
+
 ### 🐛 Bug Fixes
-- Ensure regex processors use mapped destination for `_repolish.*` templates (#13) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#13](https://github.com/hotdog-werx/repolish/pull/13)
+
+- Ensure regex processors use mapped destination for `_repolish.*` templates
+  (#13) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#13](https://github.com/hotdog-werx/repolish/pull/13)
 
 [0.3.4]: https://github.com/hotdog-werx/repolish/compare/0.3.3...0.3.4
+
 ## [0.3.3] <a name="0.3.3" href="#0.3.3">-</a> January 25, 2026
+
 ### 🐛 Bug Fixes
-- Support conditional files (_repolish.*) in nested subdirectories (#10) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#10](https://github.com/hotdog-werx/repolish/pull/10)
-- Set colors in CI and do not crop content (#11) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#11](https://github.com/hotdog-werx/repolish/pull/11)
+
+- Support conditional files (_repolish.*) in nested subdirectories (#10) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#10](https://github.com/hotdog-werx/repolish/pull/10)
+- Set colors in CI and do not crop content (#11) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#11](https://github.com/hotdog-werx/repolish/pull/11)
 
 [0.3.3]: https://github.com/hotdog-werx/repolish/compare/0.3.2...0.3.3
+
 ## [0.3.2] <a name="0.3.2" href="#0.3.2">-</a> January 18, 2026
+
 ### ⚙️ Miscellaneous Tasks
-- Use latest changes from codeguide (#8) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#8](https://github.com/hotdog-werx/repolish/pull/8)
+
+- Use latest changes from codeguide (#8) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#8](https://github.com/hotdog-werx/repolish/pull/8)
 
 [0.3.2]: https://github.com/hotdog-werx/repolish/compare/0.3.1...0.3.2
+
 ## [0.3.0] <a name="0.3.0" href="#0.3.0">-</a> November 11, 2025
+
 ### 🚀 Features
+
 - Conditional files by [@jmlopez-rod](https://github.com/jmlopez-rod)
-- Add create_only_files for initial scaffolding preservation by [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add create_only_files for initial scaffolding preservation by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
 ### 🐛 Bug Fixes
+
 - Allow file deletions by [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [0.3.0]: https://github.com/hotdog-werx/repolish/compare/0.2.2...0.3.0
+
 ## [0.2.1] <a name="0.2.1" href="#0.2.1">-</a> October 28, 2025
+
 ### 🐛 Bug Fixes
-- New template contents ignored/removed (#3) by [@jmlopez-rod](https://github.com/jmlopez-rod) in [#3](https://github.com/hotdog-werx/repolish/pull/3)
+
+- New template contents ignored/removed (#3) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#3](https://github.com/hotdog-werx/repolish/pull/3)
 
 [0.2.1]: https://github.com/hotdog-werx/repolish/compare/0.2.0...0.2.1
+
 ## [0.1.1] <a name="0.1.1" href="#0.1.1">-</a> October 17, 2025
+
 ### 🐛 Bug Fixes
+
 - Missing pydantic dependency by [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [0.1.1]: https://github.com/hotdog-werx/repolish/compare/0.1.0...0.1.1
+
 ## [0.1.0] <a name="0.1.0" href="#0.1.0">-</a> October 17, 2025
+
 ### 🚀 Features
-- Setup project and create configuration and loader by [@jmlopez-rod](https://github.com/jmlopez-rod)
-- Add tag and regex text processors by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Setup project and create configuration and loader by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add tag and regex text processors by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 - Add anchor dictionary by [@jmlopez-rod](https://github.com/jmlopez-rod)
-- Allow other optional prefixes by [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Allow other optional prefixes by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 - Create provider by [@jmlopez-rod](https://github.com/jmlopez-rod)
-- Create final provider and include history on file deletion decisions by [@jmlopez-rod](https://github.com/jmlopez-rod)
-- Add example and update README by [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Create final provider and include history on file deletion decisions by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Add example and update README by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
 - Complete repolish by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
 ### 💼 Other
+
 - Fix rendering issues by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
 ### 🚜 Refactor
-- Consolidate cookiecutter staging and tighten tests/typing by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+- Consolidate cookiecutter staging and tighten tests/typing by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
 ### ⚙️ Miscellaneous Tasks
+
 - Rearrange example by [@jmlopez-rod](https://github.com/jmlopez-rod)
 
 [0.1.0]: https://github.com/hotdog-werx/repolish/tree/0.1.0
 [unreleased]: https://github.com/hotdog-werx/repolish/compare/1.6.2...HEAD
-

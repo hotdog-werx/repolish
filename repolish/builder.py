@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 from repolish.misc import is_conditional_file
+from repolish.providers.models.template_path import RepolishTemplatePath
 
 
 def stage_templates(
@@ -150,9 +151,10 @@ def _copy_item_to_dest(
     are claimed by ``create_file_mappings``).
     """
     rel = item.relative_to(repolish_dir)
-    if rel.suffix == '.jinja':
-        rel = rel.with_suffix('')
-    dest = dest_root / rel
+    # Use RepolishTemplatePath to handle .jinja extension transparently
+    tpl_path = RepolishTemplatePath.from_path(rel)
+    dest_rel = Path(tpl_path.logical_name)
+    dest = dest_root / dest_rel
 
     # record provider provenance using the post-stripped path
     pid = alias if alias is not None else str(repolish_dir.parent)
@@ -169,7 +171,7 @@ def _copy_item_to_dest(
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, dest)
         if sources is not None:
-            sources[rel.as_posix()] = pid
+            sources[dest_rel.as_posix()] = pid
 
 
 def _should_skip_item(
@@ -239,7 +241,8 @@ def _copy_mode_overlay_dir(  # noqa: PLR0913
         # use original alias for override matching (overrides reference provider names)
         if _should_skip_item(item, rel_str, alias=alias, overrides=overrides):
             continue
-        stripped = rel_str.removesuffix('.jinja')
+        # Use RepolishTemplatePath to handle .jinja extension transparently
+        stripped = RepolishTemplatePath.from_string(rel_str).logical_name
         if (
             mapped_sources is not None
             and item.is_file()
@@ -289,7 +292,8 @@ def _copy_template_dir(  # noqa: PLR0913
         # _repolish. prefix are staging intermediates only and will never be
         # auto-applied to the project.  Only stage them when they appear in
         # mapped_sources, meaning a file_mappings entry references them.
-        stripped = rel_str.removesuffix('.jinja')
+        # Use RepolishTemplatePath to handle .jinja extension transparently
+        stripped = RepolishTemplatePath.from_string(rel_str).logical_name
         if (
             mapped_sources is not None
             and item.is_file()

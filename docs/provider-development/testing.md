@@ -541,6 +541,8 @@ assert_snapshots(rendered, 'tests/snapshots/my_provider')
 
 ```
 AssertionError: 1 snapshot(s) failed:
+  Failed files:
+    - README.md
 
 --- snapshot/README.md
 +++ rendered/README.md
@@ -548,6 +550,27 @@ AssertionError: 1 snapshot(s) failed:
 -# old-project
 +# new-project
 ```
+
+### Snapshot update mode
+
+To update snapshots automatically instead of failing, use the `update` parameter
+or set the `REPOLISH_UPDATE_SNAPSHOTS=1` environment variable:
+
+```python
+# Option 1: Pass update=True to assert_snapshots
+assert_snapshots(rendered, 'tests/snapshots/my_provider', update=True)
+
+# Option 2: Use environment variable
+# Run: REPOLISH_UPDATE_SNAPSHOTS=1 pytest tests/
+```
+
+When update mode is enabled:
+
+- A warning is printed to stderr reminding you to review git changes
+- All rendered files are written to the snapshot directory
+- No assertion errors are raised
+
+**Important:** Always review the git diff before committing updated snapshots!
 
 ---
 

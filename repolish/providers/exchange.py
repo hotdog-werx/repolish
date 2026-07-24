@@ -24,8 +24,11 @@ from repolish.providers.models import (
     call_provider_method,
     get_global_context,
 )
-from repolish.providers.models import Provider as _ProviderBase
+from repolish.providers.models import (
+    Provider as _ProviderBase,
+)
 from repolish.providers.models.context import RepolishContext
+from repolish.providers.models.template_path import RepolishTemplatePath
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -438,14 +441,17 @@ def _process_provider_fm(
             # destination file to the correct provider instead of falling
             # back to 'unknown'.  get_source_str_from_mapping and all other
             # consumers already handle both str and TemplateMapping values.
-            # Strip trailing .jinja since staging removes it from filenames.
+            # Use RepolishTemplatePath to handle .jinja extension transparently
+            tpl = RepolishTemplatePath.from_string(src)
             accum.merged_file_mappings[dest] = TemplateMapping(
-                source_template=src.removesuffix('.jinja'),
+                source_template=tpl.specified_path,
                 source_provider=provider_id,
             )
             continue
+        # Use the TemplateMapping as-is; it already has the source_template
+        # and the logical_name property will handle .jinja transparently
         annotated = TemplateMapping(
-            source_template=src.source_template.removesuffix('.jinja') if src.source_template else None,
+            source_template=src.source_template,
             extra_context=src.extra_context,
             file_mode=src.file_mode,
             source_provider=provider_id,
@@ -463,14 +469,15 @@ def _collect_promoted_fm(
         if src is None:
             continue
         if isinstance(src, str):
-            # Strip trailing .jinja since staging removes it from filenames.
+            # Use RepolishTemplatePath to handle .jinja extension transparently
+            tpl = RepolishTemplatePath.from_string(src)
             accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=src.removesuffix('.jinja'),
+                source_template=tpl.specified_path,
                 source_provider=provider_id,
             )
         else:
             accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=src.source_template.removesuffix('.jinja') if src.source_template else None,
+                source_template=src.source_template,
                 extra_context=src.extra_context,
                 file_mode=src.file_mode,
                 promote_conflict=src.promote_conflict,

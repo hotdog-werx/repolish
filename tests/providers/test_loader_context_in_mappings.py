@@ -85,11 +85,12 @@ def test_create_file_mappings_accepts_pydantic_extra_context(tmp_path: Path):
     providers = create_providers([str(provider)])
 
     # The mapping should be preserved as a TemplateMapping instance until hydration.
-    # Note: .jinja suffix is stripped during processing so staging/rendering can find the file.
+    # The source_template keeps the original path, but logical_name strips .jinja.
     val = providers.file_mappings.get('typed.txt')
 
     assert isinstance(val, TemplateMapping)
-    assert val.source_template == 'template'  # .jinja is stripped
+    assert val.source_template == 'template.jinja'  # Original path preserved
+    assert val.logical_name == 'template'  # .jinja stripped via logical_name
     # extra_context should be a pydantic BaseModel instance
     assert isinstance(val.extra_context, BaseModel)
 
