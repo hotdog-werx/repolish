@@ -8,15 +8,17 @@ repolish link [OPTIONS]
 
 ## Options
 
-| Option                     | Default         | Description                                   |
-| -------------------------- | --------------- | --------------------------------------------- |
-| `--config PATH`, `-c PATH` | `repolish.yaml` | Path to the repolish YAML configuration file. |
+| Option                     | Default         | Description                                                        |
+| -------------------------- | --------------- | ------------------------------------------------------------------ |
+| `--config PATH`, `-c PATH` | `repolish.yaml` | Path to the repolish YAML configuration file.                      |
+| `--force`                  | `False`         | Force re-linking all providers even if already linked (slow path). |
 
 ## What it does
 
 `repolish link` runs the registration pass for every provider in
-`repolish.yaml`, always using `force=True` so each provider is re-registered
-unconditionally regardless of what the cache contains.
+`repolish.yaml`. By default, it checks the provider-info cache first and only
+links providers that are missing or have stale paths. Use `--force` to
+re-register all providers unconditionally.
 
 For providers that declare a `cli` entry, the CLI is called in two steps:
 

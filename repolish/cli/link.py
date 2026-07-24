@@ -18,6 +18,10 @@ class LinkParams(BaseModel):
         default=Path('repolish.yaml'),
         description='Path to the repolish YAML configuration file',
     )
+    force: bool = Field(
+        default=False,
+        description='Force re-linking all providers even if already linked',
+    )
 
 
 _DEFAULT_LINK_PARAMS = LinkParams()
@@ -29,4 +33,4 @@ def link(params: LinkParams = _DEFAULT_LINK_PARAMS) -> None:
     # command tree when a different subcommand is invoked.
     from repolish.commands.link import command  # noqa: PLC0415
 
-    run_cli_command(lambda: command(params.config))
+    run_cli_command(lambda: command(params.config, force=params.force))

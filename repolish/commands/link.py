@@ -67,6 +67,8 @@ def _link_config(
     config_path: Path,
     mode: str = 'standalone',
     location_context: str | None = None,
+    *,
+    force: bool = False,
 ) -> tuple[int, dict[str, list[ProviderSymlink]]]:
     """Run ensure_providers_ready for the config at *config_path*.
 
@@ -81,7 +83,7 @@ def _link_config(
         provider_names,
         config.providers,
         config_path.resolve().parent,
-        force=True,
+        force=force,
         location_context=location_context,
     )
     if result.failed:
@@ -119,6 +121,8 @@ def _detect_workspace(
 def _link_members(
     mono_ctx: WorkspaceContext,
     config_dir: Path,
+    *,
+    force: bool = False,
 ) -> tuple[int, list[tuple[str, dict[str, list[ProviderSymlink]]]]]:
     """Link providers in every member directory.
 
@@ -139,6 +143,7 @@ def _link_members(
                 member_config,
                 mode='member',
                 location_context=location_context,
+                force=force,
             )
         if rc != 0:
             return rc, sections
@@ -147,8 +152,14 @@ def _link_members(
     return 0, sections
 
 
-def command(config_path: Path) -> int:
-    """Run repolish link with the given config."""
+def command(config_path: Path, *, force: bool = False) -> int:
+    """Run repolish link with the given config.
+
+    Args:
+        config_path: Path to repolish.yaml
+        force: If True, re-link all providers even if already linked.
+            Default is False, which checks cache and only links if needed.
+    """
     logger.info(
         'loading_config',
         config_file=str(config_path),
@@ -167,13 +178,14 @@ def command(config_path: Path) -> int:
             config_path,
             mode='root',
             location_context='root',
+            force=force,
         )
         if rc != 0:
             return rc
         sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
         if root_syms:
             sections.append(('Root', root_syms))
-        rc, member_sections = _link_members(mono_ctx, config_dir)
+        rc, member_sections = _link_members(mono_ctx, config_dir, force=force)
         if rc != 0:
             return rc
         sections.extend(member_sections)
@@ -184,7 +196,7 @@ def command(config_path: Path) -> int:
         logger.warning('no_providers_configured', _display_level=1)
         return 0
 
-    rc, syms = _link_config(config_path, mode='standalone')
+    rc, syms = _link_config(config_path, mode='standalone', force=force)
     if rc != 0:
         return rc
     _print_link_tree([('Standalone', syms)])
