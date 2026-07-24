@@ -1,6 +1,7 @@
 from pathlib import PurePosixPath
 
 from repolish.providers import TemplateMapping
+from repolish.providers.models.template_path import RepolishTemplatePath
 
 
 def get_source_str_from_mapping(
@@ -24,16 +25,16 @@ def get_source_str_from_mapping(
     either forward or backslash separators in source paths.
     """
     if isinstance(source_path, TemplateMapping):
-        src = source_path.source_template
-        if src is None:
+        # Use TemplateMapping's built-in logical_name property
+        if source_path.logical_name is None:
             return None
-        src = src.removesuffix('.jinja')
         # Normalize path separators to POSIX style (forward slashes)
-        return PurePosixPath(src).as_posix()
+        return PurePosixPath(source_path.logical_name).as_posix()
     # pragma: no cover — callers are validated by the SessionBundle model and
     # do not pass None; kept as a belt-and-suspenders guard only.
     if source_path is None:  # pragma: no cover
         return None
-    source_path = source_path.removesuffix('.jinja')
-    # Normalize path separators to POSIX style (forward slashes)
-    return PurePosixPath(source_path).as_posix()
+    # Use RepolishTemplatePath to handle .jinja extension transparently
+    return PurePosixPath(
+        RepolishTemplatePath.from_string(source_path).logical_name,
+    ).as_posix()

@@ -129,13 +129,14 @@ class SnapshotRunOptions(Generic[InpT]):
     mutate_context: Callable[[BaseContext], None] | None = None
 
 
-def run_snapshot_case(
+def run_snapshot_case(  # noqa: PLR0913
     provider_class: type[Provider[CtxT, InpT]],
     *,
     options: SnapshotRunOptions[InpT],
     snapshot_dir: Path | None = None,
     filter_rendered: Callable[[dict[str, str]], dict[str, str]] | None = None,
     bed_kwargs: dict[str, object] | None = None,
+    update_snapshots: bool = False,
 ) -> tuple[CtxT, dict[str, str]]:
     """Execute the common snapshot test flow and optionally assert snapshots.
 
@@ -181,6 +182,8 @@ def run_snapshot_case(
             or excluding generated paths.
         bed_kwargs: Additional keyword arguments passed to
             ``ProviderTestBed`` constructor for advanced customization.
+        update_snapshots: If True, update snapshots instead of failing.
+            Can also be set via the ``REPOLISH_UPDATE_SNAPSHOTS=1`` environment variable.
 
     Returns:
         A tuple of ``(context, rendered)`` where:
@@ -221,6 +224,6 @@ def run_snapshot_case(
 
     # Assert against snapshots if directory provided
     if snapshot_dir is not None:
-        assert_snapshots(rendered, snapshot_dir)
+        assert_snapshots(rendered, snapshot_dir, update=update_snapshots)
 
     return ctx, rendered  # type: ignore[return-value]

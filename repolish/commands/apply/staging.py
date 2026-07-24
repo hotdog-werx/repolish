@@ -4,6 +4,7 @@ from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
 from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.misc import is_conditional_file
+from repolish.providers.models.template_path import RepolishTemplatePath
 
 
 def _gather_template_directories(
@@ -71,7 +72,8 @@ def _unmapped_in_dir(
         if not item.is_file():
             continue
         rel = item.relative_to(repolish_dir).as_posix()
-        stripped = rel.removesuffix('.jinja')
+        # Use RepolishTemplatePath to handle .jinja extension transparently
+        stripped = RepolishTemplatePath.from_string(rel).logical_name
         if is_conditional_file(rel) and stripped not in mapped_sources:
             issues.append((alias, stripped))
     return issues

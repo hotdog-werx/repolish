@@ -15,6 +15,7 @@ Typical usage::
     assert 'expected' in bed.render('template.jinja')
 """
 
+from repolish.providers.models.template_path import RepolishTemplatePath
 from repolish.testing._context import make_context
 from repolish.testing._snapshot import assert_snapshots
 from repolish.testing._snapshot_filters import exclude_paths, include_paths
@@ -27,6 +28,7 @@ from repolish.testing._testbed import ProviderTestBed
 
 __all__ = [
     'ProviderTestBed',
+    'RepolishTemplatePath',
     'SnapshotRunOptions',
     'assert_snapshots',
     'exclude_paths',

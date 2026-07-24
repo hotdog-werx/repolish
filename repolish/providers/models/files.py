@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path, PurePosixPath
+from pathlib import Path  # noqa: TC003 - used in runtime type annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from repolish.providers.models.context import (
     BaseContext,  # noqa: TC001 - Pydantic model field requires runtime resolution
 )
+from repolish.providers.models.template_path import RepolishTemplatePath
 
 
 class Action(str, Enum):
@@ -75,6 +76,13 @@ class TemplateMapping:
           fail loudly if they differ (default, safe for shared CI templates).
         - ``"last_wins"`` — last member session processed wins silently.
         - ``"error"`` — fail immediately on any conflict.
+      - source_provider: provider alias that originally supplied the template.
+        This is not something the provider needs to set; the loader populates
+        it during merging so we can track provenance.
+
+    The `source_template` path is wrapped in :class:`RepolishTemplatePath` internally,
+    so the `.jinja` extension is handled transparently. Use the `template_path`
+    property to access the wrapped path object.
     """
 
     source_template: str | None
@@ -86,6 +94,28 @@ class TemplateMapping:
     # merging so we can track provenance of conditional/create-only/delete
     # mappings across multiple providers.
     source_provider: str | None = None
+    # Internal cached template path wrapper (set in __post_init__)
+    _template_path: RepolishTemplatePath | None = field(
+        init=False,
+        repr=False,
+        default=None,
+    )
+
+    def __post_init__(self) -> None:
+        """Initialize the wrapped template path."""
+        if self.source_template is not None:
+            object.__setattr__(
+                self,
+                '_template_path',
+                RepolishTemplatePath.from_string(self.source_template),
+            )
+
+    @property
+    def logical_name(self) -> str | None:
+        """The logical destination name (without .jinja suffix)."""
+        if self._template_path is None:
+            return None
+        return self._template_path.logical_name
 
 
 def map_folder(
@@ -149,7 +179,8 @@ def map_folder(
 
 def _dest_key(dest_dir: str, item: Path, source_path: Path) -> str:
     rel = item.relative_to(source_path).as_posix()
-    dest_rel = PurePosixPath(rel).with_suffix('').as_posix() if rel.endswith('.jinja') else rel
+    # Use RepolishTemplatePath to handle .jinja extension transparently
+    dest_rel = RepolishTemplatePath.from_string(rel).logical_name
     return f'{dest_dir}/{dest_rel}' if dest_dir else dest_rel
 
 
