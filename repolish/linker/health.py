@@ -31,6 +31,7 @@ class ProviderReadinessResult:
 
     ready: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    cached: list[str] = field(default_factory=list)
 
     @property
     def all_ready(self) -> bool:
@@ -139,14 +140,14 @@ def _check_or_register(
     *,
     force: bool,
     location_context: str | None = None,
-) -> bool:
-    """Return True if the provider is ready (valid info on disk or freshly registered)."""
+) -> tuple[bool, bool]:
+    """Return (is_ready, was_cached) for the provider."""
     if not force:
         info = load_provider_info(alias, config_dir)
         if info is not None:
             if _paths_valid(info):
                 logger.debug('provider_already_ready', alias=alias)
-                return True
+                return True, True
             logger.warning(
                 'provider_info_stale',
                 alias=alias,
@@ -154,12 +155,13 @@ def _check_or_register(
                 provider_root=info.provider_root or '(same as resources_dir)',
                 reason='recorded paths no longer exist; re-registering',
             )
-    return _register_provider(
+    registered = _register_provider(
         alias,
         provider_config,
         config_dir,
         location_context=location_context,
     )
+    return registered, False
 
 
 def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
@@ -209,14 +211,17 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
             logger.warning('provider_not_in_config', alias=alias)
             continue
 
-        if _check_or_register(
+        ready, cached = _check_or_register(
             alias,
             providers[alias],
             config_dir,
             force=force,
             location_context=location_context,
-        ):
+        )
+        if ready:
             result.ready.append(alias)
+            if cached:
+                result.cached.append(alias)
         else:
             logger.warning(
                 'provider_not_ready',

@@ -1,7 +1,46 @@
+import json
+import subprocess
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
+
+
+def _git(*args: str, cwd: Path) -> None:
+    """Run git command silently in given directory."""
+    subprocess.run(  # noqa: S603
+        ['git', *args],  # noqa: S607
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+def init_git_repo(
+    path: Path,
+    *,
+    owner: str = 'test-owner',
+    repo: str = 'test-repo',
+) -> None:
+    """Initialise a bare-minimum git repo so git-dependent provider code doesn't fail.
+
+    Sets up ``origin`` with a GitHub HTTPS URL so ``get_owner_repo()`` can
+    parse the owner and repo name.  Uses ``--initial-branch=main`` to avoid
+    warnings about default branch names.
+    """
+    _git('init', '--initial-branch=main', cwd=path)
+    _git('config', 'remote.origin.url', f'https://github.com/{owner}/{repo}', cwd=path)
+    _git('config', 'user.email', 'test@example.com', cwd=path)
+    _git('config', 'user.name', 'Test User', cwd=path)
+    (path / '.gitignore').write_text('.repolish/\n', encoding='utf-8')
+
+
+def write_repolish_config(path: Path, config: dict) -> None:
+    """Write repolish.yaml configuration file."""
+    (path / 'repolish.yaml').write_text(
+        json.dumps(config, indent=2),
+        encoding='utf-8',
+    )
 
 
 @pytest.fixture
