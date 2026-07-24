@@ -81,10 +81,22 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     config_dir = config_path.resolve().parent
 
     raw_config = load_config_file(config_path)
-    aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
+    # Apply provider filter to raw config for readiness check
+    if options.provider_filter is not None:
+        aliases = [
+            alias
+            for alias in (raw_config.providers_order or list(raw_config.providers.keys()))
+            if alias in options.provider_filter
+        ]
+        filtered_raw_providers = {
+            alias: raw_config.providers[alias] for alias in aliases if alias in raw_config.providers
+        }
+    else:
+        aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
+        filtered_raw_providers = raw_config.providers
     readiness = ensure_providers_ready(
         aliases,
-        raw_config.providers,
+        filtered_raw_providers,
         config_dir,
         strict=options.strict,
         location_context=None,
@@ -96,7 +108,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
             note='these providers will be absent from the run',
         )
 
-    config = load_config(config_path)
+    config = load_config(config_path, provider_filter=options.provider_filter)
     effective_global_context = options.global_context or get_global_context()
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
 

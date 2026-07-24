@@ -19,6 +19,7 @@ class ApplyOptions:
     check_only: bool = False
     strict: bool = False
     skip_post_process: bool = False
+    provider_filter: list[str] | None = None
     global_context: GlobalContext | None = field(default=None, repr=False)
     extra_provider_entries: list[ProviderEntry] | None = field(
         default=None,
@@ -38,6 +39,7 @@ class ApplyCommandOptions:
     member: str | None = None
     standalone: bool = False
     skip_post_process: bool = False
+    provider_filter: list[str] | None = None
 
 
 @dataclass

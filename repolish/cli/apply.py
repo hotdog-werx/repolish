@@ -45,6 +45,10 @@ class ApplyParams(BaseModel):
         default=False,
         description='Skip all post_process commands defined in repolish.yaml',
     )
+    providers: Annotated[str | None, Parameter(name=['--providers', '-p'])] = Field(
+        default=None,
+        description='Comma-separated list of provider aliases to run (e.g., -p databricks,python)',
+    )
 
 
 _DEFAULT_APPLY_PARAMS = ApplyParams()
@@ -56,6 +60,11 @@ def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
     # does not eagerly load the entire apply command tree.
     from repolish.commands.apply import ApplyCommandOptions, apply_command  # noqa: PLC0415
 
+    # Parse comma-separated providers list
+    provider_filter = None
+    if params.providers:
+        provider_filter = [p.strip() for p in params.providers.split(',') if p.strip()]
+
     run_cli_command(
         lambda: apply_command(
             ApplyCommandOptions(
@@ -66,6 +75,7 @@ def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
                 member=params.member,
                 standalone=params.standalone,
                 skip_post_process=params.skip_post_process,
+                provider_filter=provider_filter,
             ),
         ),
     )

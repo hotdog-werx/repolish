@@ -530,6 +530,7 @@ def _resolve_member_sessions(
             check_only=opts.check_only,
             strict=opts.strict,
             skip_post_process=opts.skip_post_process,
+            provider_filter=opts.provider_filter,
             global_context=build_global_context(workspace),
         )
         with chdir(member_dir):
@@ -558,6 +559,7 @@ def _resolve_root_session(
         check_only=opts.check_only,
         strict=opts.strict,
         skip_post_process=opts.skip_post_process,
+        provider_filter=opts.provider_filter,
         global_context=build_global_context(workspace),
         extra_provider_entries=all_member_entries or None,
         extra_inputs=all_member_inputs or None,
@@ -688,6 +690,7 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
                 check_only=opts.check_only,
                 strict=opts.strict,
                 skip_post_process=opts.skip_post_process,
+                provider_filter=opts.provider_filter,
             ),
         )
 

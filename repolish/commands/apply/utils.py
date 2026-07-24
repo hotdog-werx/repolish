@@ -19,6 +19,7 @@ class CoordinateOptions:
     member: str | None = None
     root_only: bool = False
     skip_post_process: bool = field(default=False)
+    provider_filter: list[str] | None = field(default=None)
 
 
 @contextlib.contextmanager
