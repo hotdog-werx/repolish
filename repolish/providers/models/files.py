@@ -117,6 +117,34 @@ class TemplateMapping:
             return None
         return self._template_path.logical_name
 
+    def resolve_template_path(self, template_dir: Path) -> Path:
+        """Resolve the actual template file path on disk.
+
+        Handles the case where the source_template has .jinja but the file
+        on disk may be stored without it (e.g., after staging).
+
+        Args:
+            template_dir: Base directory to search for the template.
+
+        Returns:
+            The resolved Path to the template file.
+
+        Raises:
+            FileNotFoundError: If the template cannot be found in any form.
+        """
+        # source_template should never be None when this is called, but guard
+        # against malformed mappings. The caller should filter None mappings
+        # before calling, so this branch is intentionally not covered.
+        if self._template_path is None:  # pragma: no cover
+            msg = 'source_template is None'
+            raise FileNotFoundError(msg)
+
+        resolved = self._template_path.resolve_source_path(template_dir)
+        if resolved is None:
+            msg = f'template not found: {self.source_template} in {template_dir}'
+            raise FileNotFoundError(msg)
+        return resolved
+
 
 def map_folder(
     dest_dir: str,
