@@ -29,7 +29,12 @@ def init_git_repo(
     warnings about default branch names.
     """
     _git('init', '--initial-branch=main', cwd=path)
-    _git('config', 'remote.origin.url', f'https://github.com/{owner}/{repo}', cwd=path)
+    _git(
+        'config',
+        'remote.origin.url',
+        f'https://github.com/{owner}/{repo}',
+        cwd=path,
+    )
     _git('config', 'user.email', 'test@example.com', cwd=path)
     _git('config', 'user.name', 'Test User', cwd=path)
     (path / '.gitignore').write_text('.repolish/\n', encoding='utf-8')

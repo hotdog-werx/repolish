@@ -17,7 +17,10 @@ from repolish.config.topology import (
     detect_workspace_from_config,
 )
 from repolish.console import console
-from repolish.linker.health import ProviderReadinessResult, ensure_providers_ready
+from repolish.linker.health import (
+    ProviderReadinessResult,
+    ensure_providers_ready,
+)
 from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,

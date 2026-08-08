@@ -65,7 +65,8 @@ class TemplateMapping:
 
     Fields:
       - source_template: relative path to the template under the merged template
-        tree. May be 'None' for `FileMode.DELETE` mappings.
+        tree. May be 'None' for `FileMode.DELETE` mappings. This is the original
+        template path used for display/provenance (e.g., in FileRecord.source).
       - extra_context: optional typed context (Pydantic models allowed).
       - file_mode: optional behavior hint for the destination path.
       - promote_conflict: conflict resolution strategy when two member sessions
@@ -79,10 +80,15 @@ class TemplateMapping:
       - source_provider: provider alias that originally supplied the template.
         This is not something the provider needs to set; the loader populates
         it during merging so we can track provenance.
+      - preprocessed_source: optional internal path to a preprocessed copy of
+        the template. When set, this file is used for rendering instead of
+        `source_template`. Used when one template maps to multiple destinations
+        with different anchor content.
 
     The `source_template` path is wrapped in :class:`RepolishTemplatePath` internally,
     so the `.jinja` extension is handled transparently. Use the `template_path`
-    property to access the wrapped path object.
+    property to access the wrapped path object. When `preprocessed_source` is set,
+    use `resolve_effective_template_path` to get the actual file to render.
     """
 
     source_template: str | None
@@ -94,6 +100,9 @@ class TemplateMapping:
     # merging so we can track provenance of conditional/create-only/delete
     # mappings across multiple providers.
     source_provider: str | None = None
+    # Internal path to a preprocessed copy (set when one template maps to
+    # multiple destinations with different anchor content).
+    preprocessed_source: str | None = None
     # Internal cached template path wrapper (set in __post_init__)
     _template_path: RepolishTemplatePath | None = field(
         init=False,
@@ -103,11 +112,13 @@ class TemplateMapping:
 
     def __post_init__(self) -> None:
         """Initialize the wrapped template path."""
-        if self.source_template is not None:
+        # Use preprocessed_source if available, otherwise fall back to source_template
+        effective_source = self.preprocessed_source or self.source_template
+        if effective_source is not None:
             object.__setattr__(
                 self,
                 '_template_path',
-                RepolishTemplatePath.from_string(self.source_template),
+                RepolishTemplatePath.from_string(effective_source),
             )
 
     @property

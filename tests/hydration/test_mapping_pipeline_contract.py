@@ -152,6 +152,7 @@ def test_contract_stages_are_wired_to_resolver(
     mocker: 'MockerFixture',
     tmp_path: Path,
 ) -> None:
+    """Test that comparison and application stages use resolve_mappings."""
     setup_input = tmp_path / '_' / 'stage'
     staged = setup_input / 'repolish' / 'source.txt'
     staged.parent.mkdir(parents=True, exist_ok=True)
@@ -172,15 +173,18 @@ def test_contract_stages_are_wired_to_resolver(
         encoding='utf-8',
     )
 
-    providers = SessionBundle()
+    providers = SessionBundle(
+        # Use explicit mapping so preprocess_templates finds the destination
+        file_mappings={'patched-dest.txt': 'source.txt'},
+    )
 
     mock_resolution = MappingResolution(
         source_to_dest={'source.txt': 'patched-dest.txt'},
-        dest_to_source={},
-        regular_mappings={},
+        dest_to_source={'patched-dest.txt': 'source.txt'},
+        regular_mappings=providers.file_mappings,
         promoted_mappings={},
-        mapped_sources={'skip-me.txt'},
-        regular_dests=set(),
+        mapped_sources={'source.txt', 'skip-me.txt'},
+        regular_dests={'patched-dest.txt'},
         promoted_dests=set(),
         paused_dests=frozenset(),
         suppressed_sources=set(),
@@ -188,10 +192,7 @@ def test_contract_stages_are_wired_to_resolver(
         delete_dests=set(),
     )
 
-    mocker.patch(
-        'repolish.hydration.staging.resolve_mappings',
-        return_value=mock_resolution,
-    )
+    # resolve_mappings is used by comparison and application stages
     mocker.patch(
         'repolish.hydration.comparison.resolve_mappings',
         return_value=mock_resolution,
@@ -205,11 +206,15 @@ def test_contract_stages_are_wired_to_resolver(
     updated = staged.read_text(encoding='utf-8')
     assert 'value: patched' in updated
 
+    # Render the preprocessed templates so comparison can find them
+    render_template(setup_input, providers, setup_output)
+
     diffs = check_generated_output(setup_output, providers, base_dir)
     assert diffs == []
 
     status = apply_generated_output(setup_output, providers, base_dir)
-    assert status == {}
+    # patched-dest.txt should be written (or unchanged if it matches existing)
+    assert status.get('patched-dest.txt') in ('written', 'unchanged')
 
 
 def test_contract_rendering_uses_mapping_resolution(
