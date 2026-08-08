@@ -19,7 +19,7 @@ class LinkParams(BaseModel):
         description='Path to the repolish YAML configuration file',
     )
     force: bool = Field(
-        default=False,
+        default=True,
         description='Force re-linking all providers even if already linked',
     )
 
