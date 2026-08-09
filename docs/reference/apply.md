@@ -17,6 +17,7 @@ repolish apply [OPTIONS]
 | `--root-only`              | off             | Run only the root pass; skip member passes. Mutually exclusive with `--member`.                                                                                      |
 | `--member NAME`            | -               | Run only the named member's full pass (repo-relative path or package name). The root pass is skipped. Mutually exclusive with `--root-only`.                         |
 | `--skip-post-process`      | off             | Skip all `post_process` commands defined in `repolish.yaml`.                                                                                                         |
+| `--providers LIST`, `-p`   | -               | Comma-separated list of provider aliases to load. Only the listed providers are executed. Useful for faster iteration in monorepos. Note that providers dependent on inputs from filtered-out providers may produce incomplete output. |
 
 ## What it does
 
@@ -50,6 +51,22 @@ rather than a warning:
 # .github/workflows/ci.yaml
 - run: repolish apply --strict
 ```
+
+## Provider filtering
+
+Use `--providers` (or `-p`) to load only a subset of providers. This is useful
+for faster iteration when you know which providers need regeneration:
+
+```bash
+# Only run poe and ci-checks providers
+repolish apply --providers poe,ci-checks
+
+# Shorthand with -p
+repolish apply -p poe,ci-checks
+```
+
+**Note:** Providers that depend on inputs from filtered-out providers may produce
+incomplete output. This is an opt-in optimization for local development.
 
 ## Monorepo flags
 
