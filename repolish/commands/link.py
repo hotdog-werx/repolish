@@ -17,7 +17,10 @@ from repolish.config.topology import (
     detect_workspace_from_config,
 )
 from repolish.console import console
-from repolish.linker.health import ensure_providers_ready
+from repolish.linker.health import (
+    ProviderReadinessResult,
+    ensure_providers_ready,
+)
 from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,
@@ -63,6 +66,28 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
     return list(config.providers.keys())
 
 
+def _print_link_success(
+    result: ProviderReadinessResult,
+    config: RepolishConfigFile,
+) -> None:
+    """Print success feedback for linked providers.
+
+    Cached providers are shown with (cached) suffix, fresh links show
+    the standard 'resources from X are now available' message.
+    """
+    for alias in result.cached:
+        console.print(f'[dim]✓[/dim] {alias} (cached)')
+    for alias in result.ready:
+        if alias not in result.cached:
+            provider_config = config.providers.get(alias)
+            if provider_config and provider_config.cli:
+                console.print(
+                    f'[green]✓[/green] resources from [bold]{alias}[/bold] are now available',
+                )
+            else:
+                console.print(f'[green]✓[/green] [bold]{alias}[/bold] (static)')
+
+
 def _link_config(
     config_path: Path,
     mode: str = 'standalone',
@@ -93,6 +118,7 @@ def _link_config(
             _display_level=1,
         )
         return 1, {}
+    _print_link_success(result, config)
     resolved = resolve_config(config)
     resolved_symlinks = collect_provider_symlinks(
         resolved.providers,

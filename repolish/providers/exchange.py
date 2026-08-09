@@ -437,21 +437,19 @@ def _process_provider_fm(
             continue
         if isinstance(src, str):
             # Wrap plain-string sources in a TemplateMapping so they carry
-            # source_provider.  This lets build_file_records attribute the
-            # destination file to the correct provider instead of falling
-            # back to 'unknown'.  get_source_str_from_mapping and all other
-            # consumers already handle both str and TemplateMapping values.
-            # Use RepolishTemplatePath to handle .jinja extension transparently
+            # source_provider. Store with .jinja stripped to match what's
+            # on disk after staging.
             tpl = RepolishTemplatePath.from_string(src)
             accum.merged_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.specified_path,
+                source_template=tpl.logical_name,
                 source_provider=provider_id,
             )
             continue
-        # Use the TemplateMapping as-is; it already has the source_template
-        # and the logical_name property will handle .jinja transparently
+        # For existing TemplateMapping, strip .jinja from source_template
+        # to match what will be on disk after staging
+        tpl = RepolishTemplatePath.from_string(src.source_template) if src.source_template else None
         annotated = TemplateMapping(
-            source_template=src.source_template,
+            source_template=tpl.logical_name if tpl else None,
             extra_context=src.extra_context,
             file_mode=src.file_mode,
             source_provider=provider_id,
@@ -469,15 +467,17 @@ def _collect_promoted_fm(
         if src is None:
             continue
         if isinstance(src, str):
-            # Use RepolishTemplatePath to handle .jinja extension transparently
+            # Strip .jinja to match what will be on disk after staging
             tpl = RepolishTemplatePath.from_string(src)
             accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.specified_path,
+                source_template=tpl.logical_name,
                 source_provider=provider_id,
             )
         else:
+            # Strip .jinja from source_template to match staged file
+            tpl = RepolishTemplatePath.from_string(src.source_template) if src.source_template else None
             accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=src.source_template,
+                source_template=tpl.logical_name if tpl else None,
                 extra_context=src.extra_context,
                 file_mode=src.file_mode,
                 promote_conflict=src.promote_conflict,

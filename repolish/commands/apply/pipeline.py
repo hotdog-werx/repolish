@@ -71,10 +71,10 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     """Run the provider pipeline and return a fully-resolved session snapshot.
 
     Loads configuration, ensures providers are ready, builds the provider
-    pipeline (context creation → input exchange → finalization), and captures
+    pipeline (context creation -> input exchange -> finalization), and captures
     the result as a :class:`~repolish.commands.apply.options.ResolvedSession`.
 
-    No files are written.  The caller can use the returned object to drive the
+    No files are written. The caller can use the returned object to drive the
     apply/check steps, or to pass cross-session data to a root session.
     """
     config_path = options.config_path

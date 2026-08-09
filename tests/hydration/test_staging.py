@@ -5,10 +5,12 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from repolish.builder import stage_templates
 from repolish.hydration.staging import preprocess_templates
-from repolish.providers import SessionBundle
+from repolish.providers import SessionBundle, TemplateMapping
+from repolish.providers.models.files import FileMode
 
 
 def write_file(p: Path, content: str) -> None:
@@ -292,3 +294,183 @@ def test_mapped_conditional_folder_file_is_staged(tmp_path: Path) -> None:
     assert 'README.md' in staged
     assert '_repolish.ci.github/workflows/ci.yml' in staged
     assert '_repolish.ci.gitlab/ci.yml' not in staged
+
+
+def test_preprocess_one_template_to_multiple_destinations_with_keep_blocks(
+    tmp_path: Path,
+) -> None:
+    """Test keep-blocks are preserved per-destination for multi-destination mappings.
+
+    This is the core issue that prompted the fix: a template with keep-blocks
+    (e.g., repolish-keep-block) should extract different content from dev.toml
+    vs prod.toml when they have different developer modifications.
+
+    Before the fix, only one destination's keep-blocks would be preserved,
+    killing developer content in the other files.
+    """
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+
+    # Single template with a keep-block region that developers can modify
+    tpl = tpl_dir / 'config.toml.jinja'
+    tpl.write_text(
+        textwrap.dedent("""\
+        # Config file
+        ## repolish-keep-block[custom]: start="## CUSTOM_START" end="## CUSTOM_END"
+        default_section:
+          key: default_value
+        ## CUSTOM_START
+        # developer custom content here
+        ## CUSTOM_END
+        another_section: true
+        """),
+        encoding='utf-8',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # dev.toml has developer's custom content for dev environment
+    (base_dir / 'dev.toml').write_text(
+        textwrap.dedent("""\
+        # Dev config
+        ## CUSTOM_START
+        dev_specific:
+          debug: true
+          log_level: verbose
+        ## CUSTOM_END
+        """),
+        encoding='utf-8',
+    )
+
+    # prod.toml has developer's custom content for prod environment
+    (base_dir / 'prod.toml').write_text(
+        textwrap.dedent("""\
+        # Prod config
+        ## CUSTOM_START
+        prod_specific:
+          debug: false
+          log_level: error
+        ## CUSTOM_END
+        """),
+        encoding='utf-8',
+    )
+
+    class Ctx(BaseModel):
+        env_name: str
+
+    providers = SessionBundle(
+        anchors={},
+        file_mappings={
+            'dev.toml': TemplateMapping(
+                'config.toml.jinja',
+                extra_context=Ctx(env_name='development'),
+            ),
+            'prod.toml': TemplateMapping(
+                'config.toml.jinja',
+                extra_context=Ctx(env_name='production'),
+            ),
+        },
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+
+    # The original template should still exist (for provenance)
+    assert tpl.exists(), 'Original template should remain'
+
+    # Preprocessed copies should exist with destination-encoded names
+    preproc_dev = tpl_dir / '_preproc_dev.toml_config.toml.jinja'
+    preproc_prod = tpl_dir / '_preproc_prod.toml_config.toml.jinja'
+
+    assert preproc_dev.exists(), f'Preprocessed dev copy should exist. Files: {list(tpl_dir.iterdir())}'
+    assert preproc_prod.exists(), f'Preprocessed prod copy should exist. Files: {list(tpl_dir.iterdir())}'
+
+    # Each preprocessed copy should have the correct keep-block content extracted
+    dev_content = preproc_dev.read_text()
+    prod_content = preproc_prod.read_text()
+
+    # Dev should have dev-specific keep-block content
+    assert 'dev_specific:' in dev_content, f'Dev should have dev-specific content: {dev_content}'
+    assert 'debug: true' in dev_content, f'Dev should have debug: true: {dev_content}'
+    assert 'log_level: verbose' in dev_content, f'Dev should have log_level: verbose: {dev_content}'
+
+    # Prod should have prod-specific keep-block content
+    assert 'prod_specific:' in prod_content, f'Prod should have prod-specific content: {prod_content}'
+    assert 'debug: false' in prod_content, f'Prod should have debug: false: {prod_content}'
+    assert 'log_level: error' in prod_content, f'Prod should have log_level: error: {prod_content}'
+
+    # Neither should have the keep-block directive itself (it gets applied and stripped)
+    assert 'repolish-keep-block' not in dev_content
+    assert 'repolish-keep-block' not in prod_content
+
+    # Both should still have the non-keep-block parts of the template
+    assert 'default_section:' in dev_content
+    assert 'default_section:' in prod_content
+    assert 'another_section: true' in dev_content
+    assert 'another_section: true' in prod_content
+
+    # Mappings should point to preprocessed copies but preserve original source_template
+    dev_mapping = providers.file_mappings['dev.toml']
+    prod_mapping = providers.file_mappings['prod.toml']
+
+    # Type narrowing: we know these are TemplateMapping entries
+    assert isinstance(dev_mapping, TemplateMapping)
+    assert isinstance(prod_mapping, TemplateMapping)
+
+    assert dev_mapping.source_template == 'config.toml.jinja', 'source_template should be preserved'
+    assert prod_mapping.source_template == 'config.toml.jinja', 'source_template should be preserved'
+    assert dev_mapping.preprocessed_source == '_preproc_dev.toml_config.toml.jinja'
+    assert prod_mapping.preprocessed_source == '_preproc_prod.toml_config.toml.jinja'
+
+
+def test_preprocess_templates_skips_suppress_mode_mappings(
+    tmp_path: Path,
+) -> None:
+    """Test that TemplateMapping with file_mode=SUPPRESS is skipped during preprocessing.
+
+    This covers the branch at staging.py:94 where suppress mode mappings
+    return None from _get_source_template and are not preprocessed.
+    """
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+
+    # Template file that would normally be preprocessed
+    tpl = tpl_dir / 'suppressed.toml.jinja'
+    original_content = (
+        '## repolish-keep-block[test]: start="## START" end="## END"\nkey: value\n## START\ntemplate default\n## END\n'
+    )
+    tpl.write_text(original_content, encoding='utf-8')
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    # Local file has different keep-block content
+    (base_dir / 'suppressed.toml').write_text(
+        '## START\nlocal override\n## END\n',
+        encoding='utf-8',
+    )
+
+    # Mapping with SUPPRESS mode should skip preprocessing entirely
+    providers = SessionBundle(
+        anchors={},
+        file_mappings={
+            'suppressed.toml': TemplateMapping(
+                source_template='suppressed.toml.jinja',
+                file_mode=FileMode.SUPPRESS,
+            ),
+        },
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+
+    # Template should remain unchanged (no preprocessing applied)
+    updated = tpl.read_text(encoding='utf-8')
+    assert updated == original_content, 'SUPPRESS mode should skip preprocessing'
+
+    # Mapping should still point to original template (no preprocessed copy created)
+    mapping = providers.file_mappings['suppressed.toml']
+    assert isinstance(mapping, TemplateMapping)
+    assert mapping.source_template == 'suppressed.toml.jinja'
+    assert mapping.preprocessed_source is None

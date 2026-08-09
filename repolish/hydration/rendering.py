@@ -309,19 +309,15 @@ def _load_and_validate_template(
     UTF-8 (i.e. it is a binary asset such as an image).  The caller is
     responsible for copying the file unchanged in that case.
 
-    Returns ``None`` and removes the mapping when the file is missing or
-    cannot be read due to an OS-level error.  ``mappings`` is the specific
-    dict (``file_mappings`` or ``promoted_file_mappings``) that owns this
-    entry so the pop targets the right collection.
+    Returns ``None`` and removes the mapping when the file cannot be read
+    due to an OS-level error. ``mappings`` is the specific dict
+    (``file_mappings`` or ``promoted_file_mappings``) that owns this entry
+    so the pop targets the right collection.
+
+    Note: File existence is checked by the caller via
+    ``TemplateMapping.resolve_template_path()``, which raises
+    ``FileNotFoundError`` if the template is not found.
     """
-    if not template_file.exists():
-        logger.warning(
-            'file_mapping_template_not_found',
-            template=str(template_file),
-            dest=dest_path,
-        )
-        mappings.pop(dest_path, None)
-        return None
     try:
         return template_file.read_text(encoding='utf-8')
     except UnicodeDecodeError:
@@ -372,10 +368,22 @@ def _render_single_mapping(
         return
 
     project_root = setup_input / 'repolish'
-    template_file = project_root / src_template
+    # Use TemplateMapping.resolve_template_path to handle .jinja extension
+    # transparently - after staging, files are stored without .jinja
+    try:
+        template_file = mapping.resolve_template_path(project_root)
+    except FileNotFoundError:
+        logger.exception(
+            'template_file_not_found',
+            source_template=src_template,
+            project_root=str(project_root),
+        )
+        providers.file_mappings.pop(dest_path, None)
+        return
+
     txt = _load_and_validate_template(template_file, mappings, dest_path)
     if txt is None:
-        return
+        return  # pragma: no cover -- file unreadable, mapping removed
 
     prefix = '_repolish.'
     orig = Path(dest_path)

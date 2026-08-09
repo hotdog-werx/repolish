@@ -390,6 +390,100 @@ def test_render_template_prunes_missing_and_unreadable_mapping(tmp_path: Path):
     assert not (setup_output / 'repolish' / 'cfg.yml').exists()
 
 
+def test_resolve_template_path_finds_file_without_jinja_suffix(tmp_path: Path):
+    """TemplateMapping.resolve_template_path finds files staged without .jinja."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    # Create template WITH .jinja extension
+    (tpl / 'repolish' / 'config.toml.jinja').write_text(
+        'value = {{ value }}',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    _base_dir, setup_input, _setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    providers = SessionBundle()
+    preprocess_templates(setup_input, providers, _base_dir)
+
+    # After staging, file is stored as 'config.toml' (without .jinja)
+    # But mapping references it WITH .jinja
+    mapping = TemplateMapping('config.toml.jinja', None)
+    project_root = setup_input / 'repolish'
+
+    # Should find the file even though it's stored without .jinja
+    resolved = mapping.resolve_template_path(project_root)
+    assert resolved.exists()
+    assert resolved.name == 'config.toml'
+
+
+def test_resolve_template_path_finds_file_with_jinja_suffix(tmp_path: Path):
+    """TemplateMapping.resolve_template_path finds files that kept .jinja."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    # Create template WITHOUT .jinja extension (static file)
+    (tpl / 'repolish' / 'static.txt').write_text(
+        'static content',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    _base_dir, _setup_input, _setup_output = prepare_staging(config)
+    stage_templates(_setup_input, [tpl])
+
+    providers = SessionBundle()
+    preprocess_templates(_setup_input, providers, _base_dir)
+
+    # Mapping references it without .jinja
+    mapping = TemplateMapping('static.txt', None)
+    project_root = _setup_input / 'repolish'
+
+    resolved = mapping.resolve_template_path(project_root)
+    assert resolved.exists()
+    assert resolved.name == 'static.txt'
+
+
+def test_resolve_template_path_raises_when_not_found(tmp_path: Path):
+    """TemplateMapping.resolve_template_path raises FileNotFoundError."""
+    mapping = TemplateMapping('nonexistent.jinja', None)
+    project_root = tmp_path / 'nonexistent'
+    project_root.mkdir()
+
+    with pytest.raises(FileNotFoundError, match='not found'):
+        mapping.resolve_template_path(project_root)
+
+
+def test_render_template_with_jinja_mapping_finds_staged_file(tmp_path: Path):
+    """Rendering finds staged templates even when mapping has .jinja but file doesn't."""
+    tpl = tmp_path / 'tpl'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    # Create template WITH .jinja extension - simple static content
+    (tpl / 'repolish' / 'config.txt.jinja').write_text(
+        'config value',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    _base_dir, _setup_input, setup_output = prepare_staging(config)
+    stage_templates(_setup_input, [tpl])
+
+    # Mapping references with .jinja (as providers typically do)
+    # Destination and source have same name
+    providers = SessionBundle(
+        file_mappings={'config.txt': TemplateMapping('config.txt.jinja', None)},
+    )
+
+    preprocess_templates(_setup_input, providers, _base_dir)
+
+    # Should render successfully even though staging stripped .jinja
+    render_template(_setup_input, providers, setup_output)
+
+    output_file = setup_output / 'repolish' / 'config.txt'
+    assert output_file.exists()
+    assert output_file.read_text(encoding='utf-8') == 'config value'
+
+
 def test_render_template_removes_delete_and_none_mappings(tmp_path: Path):
     """Public API: TemplateMapping entries with DELETE or None source are pruned and do not produce files."""
     tpl = tmp_path / 'tpl'
