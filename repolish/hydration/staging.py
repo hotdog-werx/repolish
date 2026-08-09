@@ -281,9 +281,17 @@ def preprocess_templates(
     suppressed_sources.update(suppressed)
 
     # Phase 2: Process promoted_file_mappings
-    mapped, suppressed = _process_mappings_phase(providers.promoted_file_mappings, ctx)
+    mapped, suppressed = _process_mappings_phase(
+        providers.promoted_file_mappings,
+        ctx,
+    )
     mapped_sources.update(mapped)
     suppressed_sources.update(suppressed)
 
     # Phase 3: Process auto-staged templates (not referenced by any mapping)
-    _process_auto_staged_templates(setup_input, mapped_sources, suppressed_sources, ctx)
+    _process_auto_staged_templates(
+        setup_input,
+        mapped_sources,
+        suppressed_sources,
+        ctx,
+    )

@@ -8,15 +8,15 @@ repolish apply [OPTIONS]
 
 ## Options
 
-| Option                     | Default         | Description                                                                                                                                                          |
-| -------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--config PATH`, `-c PATH` | `repolish.yaml` | Path to the repolish YAML configuration file.                                                                                                                        |
-| `--check`                  | off             | Dry-run mode - load config and create context but do not write any files.                                                                                            |
-| `--strict`                 | off             | Exit 1 if any provider could not be registered. Recommended for CI.                                                                                                  |
-| `--standalone`             | off             | Bypass monorepo detection entirely and run a normal single-pass apply. Useful when running from inside a member package directory that is also a standalone project. |
-| `--root-only`              | off             | Run only the root pass; skip member passes. Mutually exclusive with `--member`.                                                                                      |
-| `--member NAME`            | -               | Run only the named member's full pass (repo-relative path or package name). The root pass is skipped. Mutually exclusive with `--root-only`.                         |
-| `--skip-post-process`      | off             | Skip all `post_process` commands defined in `repolish.yaml`.                                                                                                         |
+| Option                     | Default         | Description                                                                                                                                                                                                                            |
+| -------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--config PATH`, `-c PATH` | `repolish.yaml` | Path to the repolish YAML configuration file.                                                                                                                                                                                          |
+| `--check`                  | off             | Dry-run mode - load config and create context but do not write any files.                                                                                                                                                              |
+| `--strict`                 | off             | Exit 1 if any provider could not be registered. Recommended for CI.                                                                                                                                                                    |
+| `--standalone`             | off             | Bypass monorepo detection entirely and run a normal single-pass apply. Useful when running from inside a member package directory that is also a standalone project.                                                                   |
+| `--root-only`              | off             | Run only the root pass; skip member passes. Mutually exclusive with `--member`.                                                                                                                                                        |
+| `--member NAME`            | -               | Run only the named member's full pass (repo-relative path or package name). The root pass is skipped. Mutually exclusive with `--root-only`.                                                                                           |
+| `--skip-post-process`      | off             | Skip all `post_process` commands defined in `repolish.yaml`.                                                                                                                                                                           |
 | `--providers LIST`, `-p`   | -               | Comma-separated list of provider aliases to load. Only the listed providers are executed. Useful for faster iteration in monorepos. Note that providers dependent on inputs from filtered-out providers may produce incomplete output. |
 
 ## What it does
@@ -65,8 +65,8 @@ repolish apply --providers poe,ci-checks
 repolish apply -p poe,ci-checks
 ```
 
-**Note:** Providers that depend on inputs from filtered-out providers may produce
-incomplete output. This is an opt-in optimization for local development.
+**Note:** Providers that depend on inputs from filtered-out providers may
+produce incomplete output. This is an opt-in optimization for local development.
 
 ## Monorepo flags
 
