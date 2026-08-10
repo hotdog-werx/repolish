@@ -127,6 +127,7 @@ def _run_provider_pipeline(
         provider_contexts=provider_contexts,
         suppressed_sources=accum.suppressed_sources,
         promoted_file_mappings=accum.promoted_file_mappings,
+        file_validators=accum.merged_file_validators,
     )
 
 

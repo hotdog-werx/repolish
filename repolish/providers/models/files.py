@@ -59,6 +59,23 @@ class FileMode(str, Enum):
     SUPPRESS = 'suppress'
 
 
+@dataclass
+class ValidationResult:
+    """Result of a file validation.
+
+    Attributes:
+        passed: True if the validation succeeded, False otherwise.
+        message: Human-readable explanation of the result.
+        path: File that was validated (POSIX path string).
+        validator_name: Name of the validator that ran (for debugging).
+    """
+
+    passed: bool
+    message: str
+    path: str
+    validator_name: str
+
+
 @dataclass(frozen=True)
 class TemplateMapping:
     """Typed representation for a per-file `file_mappings` entry.
@@ -327,6 +344,13 @@ class SessionBundle(BaseModel):
     Populated from ``config.paused_files`` at session setup time; analogous to
     ``suppressed_sources`` but driven by project config rather than provider
     declarations."""
+    # NB: file_validators uses string annotation to avoid circular import issues
+    # with Callable in runtime type checking. The type is:
+    # dict[str, dict[str, Callable[[BaseContext, Path], ValidationResult]]]
+    file_validators: dict = Field(default_factory=dict)  # type: ignore[assignment]
+    """Destination path -> dict of named validators. Each validator is a callable
+    that receives (context, file_path) and returns ValidationResult. Collected from
+    ``create_file_validators()`` on providers; empty by default."""
 
 
 def _records_from_template_sources(
@@ -491,3 +515,6 @@ class Accumulators:
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(
         default_factory=dict,
     )
+    # file_validators: collected from create_file_validators() on providers;
+    # keyed by destination path, then by validator name.
+    merged_file_validators: dict = field(default_factory=dict)  # type: ignore[assignment]

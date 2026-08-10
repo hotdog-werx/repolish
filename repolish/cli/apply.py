@@ -49,6 +49,10 @@ class ApplyParams(BaseModel):
         default=None,
         description='Comma-separated list of provider aliases to run (e.g., -p databricks,python)',
     )
+    validate_only: bool = Field(
+        default=False,
+        description='Run file validators only, skip template rendering and file writes',
+    )
 
 
 _DEFAULT_APPLY_PARAMS = ApplyParams()
@@ -76,6 +80,7 @@ def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
                 standalone=params.standalone,
                 skip_post_process=params.skip_post_process,
                 provider_filter=provider_filter,
+                validate_only=params.validate_only,
             ),
         ),
     )

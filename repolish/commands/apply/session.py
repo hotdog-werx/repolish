@@ -18,13 +18,14 @@ from repolish.commands.apply.staging import (
     create_staged_template,
 )
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
+from repolish.commands.apply.validators import run_validators
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
     preprocess_templates,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.providers.models import build_file_records
+from repolish.providers.models import SessionBundle, build_file_records
 from repolish.utils import run_post_process
 from repolish.version import __version__
 
@@ -36,6 +37,8 @@ def apply_session(
     *,
     check_only: bool = False,
     skip_post_process: bool = False,
+    validate_only: bool = False,
+    strict: bool = False,
 ) -> int:
     """Run the apply/check pipeline for an already-resolved session.
 
@@ -109,6 +112,46 @@ def apply_session(
     # Preprocess templates (anchor-driven replacements)
     preprocess_templates(setup_input, providers, base_dir)
 
+    # Run file validators before rendering
+    # Validators check files that repolish doesn't own
+    if providers.file_validators:
+        # Check paused_files - skip validators for paused destinations
+        paused = providers.paused_files
+        active_validators: dict[str, dict] = {}
+        for dest_path, validators in providers.file_validators.items():
+            if dest_path not in paused:
+                active_validators[dest_path] = validators
+            else:
+                logger.debug('validator_skipped_paused', file=dest_path)
+
+        if active_validators:
+            # Create a temporary SessionBundle with only active validators
+            temp_bundle = SessionBundle(
+                anchors=providers.anchors,
+                delete_files=providers.delete_files,
+                file_mappings=providers.file_mappings,
+                create_only_files=providers.create_only_files,
+                delete_history=providers.delete_history,
+                provider_contexts=providers.provider_contexts,
+                suppressed_sources=providers.suppressed_sources,
+                promoted_file_mappings=providers.promoted_file_mappings,
+                file_validators=active_validators,
+            )
+            all_passed, messages = run_validators(temp_bundle, base_dir, strict=strict)
+            if not all_passed:
+                for msg in messages:
+                    if strict:
+                        logger.error('validator_failed', message=msg)
+                    else:
+                        logger.warning('validator_failed', message=msg)
+                if strict:
+                    return 1
+
+        # If validate_only, skip rendering and apply
+        if validate_only:
+            logger.info('validate_only_complete', suggestion='all validators passed')
+            return 0
+
     # Render templates using Jinja2
     if render_templates(setup_input, providers, setup_output) != 0:
         return 1
@@ -159,6 +202,8 @@ def run_session(options: ApplyOptions) -> int:
         session,
         check_only=options.check_only,
         skip_post_process=options.skip_post_process,
+        validate_only=options.validate_only,
+        strict=options.strict,
     )
     print_summary_tree([session])
     return rc

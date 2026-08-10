@@ -31,7 +31,7 @@ from repolish.providers.models.context import RepolishContext
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 def build_provider_metadata(
@@ -542,6 +542,17 @@ def _collect_provider_contribution(
     )
     _process_provider_fm(provider_id, fm, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
+
+    # Collect file validators
+    fv = cast(
+        'dict[str, dict[str, Callable]] | None',
+        call_provider_method(inst, 'create_file_validators', own_ctx),
+    )
+    if fv:
+        for dest_path, validators in fv.items():
+            if dest_path not in accum.merged_file_validators:
+                accum.merged_file_validators[dest_path] = {}
+            accum.merged_file_validators[dest_path].update(validators)
 
 
 def collect_provider_contributions(

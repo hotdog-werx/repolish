@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+
+    from repolish.providers.models.files import ValidationResult
 
 from pydantic import BaseModel, Field
 
@@ -499,6 +501,33 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Default implementation returns an empty mapping (no promotions).
         """
         return {}
+
+    def create_file_validators(
+        self,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
+    ) -> dict[str, dict[str, Callable[[ContextT, Path], 'ValidationResult']]]:
+        """Optional: return validators for files repolish doesn't own.
+
+        Keys are destination paths (e.g., 'mise.toml').
+        Values are dicts of named validators. Each validator name can be
+        individually enabled/disabled via repolish.yaml override_context.
+
+        Example::
+
+            return {
+                'mise.toml': {
+                    'tools_validator': validate_tools_installed,
+                    'version_validator': validate_versions,
+                },
+            }
+
+        Validators receive ``(context, file_path)`` and return a
+        ``ValidationResult`` with ``passed``, ``message``, ``path``, and
+        ``validator_name`` fields.
+
+        Default: empty dict (no validators).
+        """
+        return {}  # type: ignore[return-value]
 
 
 def _resolve_mode_handler_cls(

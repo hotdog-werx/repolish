@@ -62,6 +62,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
                 strict=params.strict,
                 skip_post_process=params.skip_post_process,
                 provider_filter=params.provider_filter,
+                validate_only=params.validate_only,
             ),
         )
 
@@ -74,5 +75,6 @@ def apply_command(params: ApplyCommandOptions) -> int:
             root_only=params.root_only,
             skip_post_process=params.skip_post_process,
             provider_filter=params.provider_filter,
+            validate_only=params.validate_only,
         ),
     )

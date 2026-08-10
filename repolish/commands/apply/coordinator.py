@@ -582,6 +582,8 @@ def _apply_member_sessions(
                 session,
                 check_only=opts.check_only,
                 skip_post_process=opts.skip_post_process,
+                validate_only=opts.validate_only,
+                strict=opts.strict,
             )
         if rc != 0:
             return rc, completed
@@ -615,6 +617,8 @@ def _run_root_pass(
             root_session,
             check_only=opts.check_only,
             skip_post_process=opts.skip_post_process,
+            validate_only=opts.validate_only,
+            strict=opts.strict,
         )
     if rc != 0:
         return rc
