@@ -7,6 +7,7 @@ from rich.tree import Tree
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.utils import chdir
 from repolish.config import (
+    ProviderCopy,
     ProviderSymlink,
     RepolishConfigFile,
     load_config_file,
@@ -47,6 +48,27 @@ def _print_link_tree(
                 node.append('↗ ', style='blue')
                 node.append(str(sl.target))
                 node.append(f'  → {sl.source}', style='dim')
+                provider_node.add(node)
+    console.print(tree)
+
+
+def _print_copy_tree(
+    sections: list[tuple[str, dict[str, list[ProviderCopy]]]],
+) -> None:
+    """Print a Rich tree summarising copies created per provider."""
+    total = sum(len(copies) for _, copy_map in sections for copies in copy_map.values())
+    if not total:
+        return
+    tree = Tree('[bold]copy summary[/bold]')
+    for label, copy_map in sections:
+        branch = tree.add(f'[bold]{label}[/bold]')
+        for alias, copies in copy_map.items():
+            provider_node = branch.add(alias)
+            for cp in copies:
+                node = Text()
+                node.append('📋 ', style='yellow')
+                node.append(str(cp.target))
+                node.append(f'  ← {cp.source}', style='dim')
                 provider_node.add(node)
     console.print(tree)
 
@@ -94,14 +116,18 @@ def _link_config(
     location_context: str | None = None,
     *,
     force: bool = False,
-) -> tuple[int, dict[str, list[ProviderSymlink]]]:
+) -> tuple[
+    int,
+    dict[str, list[ProviderSymlink]],
+    dict[str, list[ProviderCopy]],
+]:
     """Run ensure_providers_ready for the config at *config_path*.
 
-    Returns (exit_code, resolved_symlinks).
+    Returns (exit_code, resolved_symlinks, resolved_copies).
     """
     config = load_config_file(config_path)
     if not config.providers:
-        return 0, {}
+        return 0, {}, {}
     provider_names = _get_provider_names(config)
     logger.info('linking_providers', providers=provider_names, _display_level=1)
     result = ensure_providers_ready(
@@ -117,7 +143,7 @@ def _link_config(
             failed=result.failed,
             _display_level=1,
         )
-        return 1, {}
+        return 1, {}, {}
     _print_link_success(result, config)
     resolved = resolve_config(config)
     resolved_symlinks = collect_provider_symlinks(
@@ -132,7 +158,7 @@ def _link_config(
         mode=mode,
     )
     apply_copies(resolved_copies, resolved.providers)
-    return 0, resolved_symlinks
+    return 0, resolved_symlinks, resolved_copies
 
 
 def _detect_workspace(
@@ -149,12 +175,17 @@ def _link_members(
     config_dir: Path,
     *,
     force: bool = False,
-) -> tuple[int, list[tuple[str, dict[str, list[ProviderSymlink]]]]]:
+) -> tuple[
+    int,
+    list[tuple[str, dict[str, list[ProviderSymlink]]]],
+    list[tuple[str, dict[str, list[ProviderCopy]]]],
+]:
     """Link providers in every member directory.
 
-    Returns (exit_code, list of (label, resolved_symlinks) per member).
+    Returns (exit_code, list of (label, resolved_symlinks), list of (label, resolved_copies)).
     """
-    sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
+    sym_sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
+    copy_sections: list[tuple[str, dict[str, list[ProviderCopy]]]] = []
     for m in mono_ctx.members:
         member_dir = (config_dir / m.path).resolve()
         member_config = member_dir / 'repolish.yaml'
@@ -165,17 +196,76 @@ def _link_members(
         logger.info('linking_member', member=m.name, _display_level=1)
         location_context = str(m.path)
         with chdir(member_dir):
-            rc, syms = _link_config(
+            rc, syms, copies = _link_config(
                 member_config,
                 mode='member',
                 location_context=location_context,
                 force=force,
             )
         if rc != 0:
-            return rc, sections
+            return rc, sym_sections, copy_sections
         if syms:
-            sections.append((f'Member: {m.name}', syms))
-    return 0, sections
+            sym_sections.append((f'Member: {m.name}', syms))
+        if copies:
+            copy_sections.append((f'Member: {m.name}', copies))
+    return 0, sym_sections, copy_sections
+
+
+def _command_monorepo(
+    config_path: Path,
+    config_dir: Path,
+    mono_ctx: WorkspaceContext,
+    *,
+    force: bool = False,
+) -> int:
+    """Handle the monorepo case: link root and all members.
+
+    Returns exit code (0 for success, 1 for failure).
+    """
+    console.print('[bold]Monorepo detected[/bold]')
+    rc, root_syms, root_copies = _link_config(
+        config_path,
+        mode='root',
+        location_context='root',
+        force=force,
+    )
+    if rc != 0:
+        return rc
+    sym_sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
+    copy_sections: list[tuple[str, dict[str, list[ProviderCopy]]]] = []
+    if root_syms:
+        sym_sections.append(('Root', root_syms))
+    if root_copies:
+        copy_sections.append(('Root', root_copies))
+    rc, member_sym_sections, member_copy_sections = _link_members(
+        mono_ctx,
+        config_dir,
+        force=force,
+    )
+    if rc != 0:
+        return rc
+    sym_sections.extend(member_sym_sections)
+    copy_sections.extend(member_copy_sections)
+    _print_link_tree(sym_sections)
+    _print_copy_tree(copy_sections)
+    return 0
+
+
+def _command_standalone(config_path: Path, *, force: bool = False) -> int:
+    """Handle the standalone case: link a single config.
+
+    Returns exit code (0 for success, 1 for failure).
+    """
+    config = load_config_file(config_path)
+    if not config.providers:
+        logger.warning('no_providers_configured', _display_level=1)
+        return 0
+    rc, syms, copies = _link_config(config_path, mode='standalone', force=force)
+    if rc != 0:
+        return rc
+    _print_link_tree([('Standalone', syms)])
+    _print_copy_tree([('Standalone', copies)])
+    return 0
 
 
 def command(config_path: Path, *, force: bool = False) -> int:
@@ -197,33 +287,5 @@ def command(config_path: Path, *, force: bool = False) -> int:
     mono_ctx = _detect_workspace(config, config_dir)
 
     if mono_ctx is not None:
-        # Print monorepo header once at the start
-        console.print('[bold]Monorepo detected[/bold]')
-        # Root pass first, then every member.
-        rc, root_syms = _link_config(
-            config_path,
-            mode='root',
-            location_context='root',
-            force=force,
-        )
-        if rc != 0:
-            return rc
-        sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
-        if root_syms:
-            sections.append(('Root', root_syms))
-        rc, member_sections = _link_members(mono_ctx, config_dir, force=force)
-        if rc != 0:
-            return rc
-        sections.extend(member_sections)
-        _print_link_tree(sections)
-        return 0
-
-    if not config.providers:
-        logger.warning('no_providers_configured', _display_level=1)
-        return 0
-
-    rc, syms = _link_config(config_path, mode='standalone', force=force)
-    if rc != 0:
-        return rc
-    _print_link_tree([('Standalone', syms)])
-    return 0
+        return _command_monorepo(config_path, config_dir, mono_ctx, force=force)
+    return _command_standalone(config_path, force=force)

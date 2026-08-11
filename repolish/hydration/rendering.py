@@ -409,7 +409,13 @@ def _render_single_mapping(
     if isinstance(txt, _BinaryFile):
         copy2(template_file, target)
     else:
-        rendered = _render_template_text(txt, template_file, dest_path, mapping, providers)
+        rendered = _render_template_text(
+            txt,
+            template_file,
+            dest_path,
+            mapping,
+            providers,
+        )
         target.write_text(rendered, encoding='utf-8')
 
     # Update mapping for downstream processing
@@ -420,7 +426,10 @@ def _render_single_mapping(
     )
 
 
-def _get_template_file_path(mapping: TemplateMapping, project_root: Path) -> Path | None:
+def _get_template_file_path(
+    mapping: TemplateMapping,
+    project_root: Path,
+) -> Path | None:
     """Resolve template file path from mapping.
 
     Note: Error branches (file not found) are not covered - these represent
@@ -498,7 +507,11 @@ def _process_mapping_dict(
         if not isinstance(source_val, TemplateMapping):
             continue
         if dest_path in paused_files:
-            logger.info('skipping_paused_file_mapping', dest=dest_path, _display_level=1)
+            logger.info(
+                'skipping_paused_file_mapping',
+                dest=dest_path,
+                _display_level=1,
+            )
             continue
         _try_render_mapping(dest_path, source_val, ctx, mappings, errors)
 
@@ -519,11 +532,23 @@ def _process_template_mappings(
     resolution = resolve_mappings(ctx.providers)
     paused_files = ctx.providers.paused_files
 
-    _process_mapping_dict(resolution.regular_mappings, ctx, paused_files, errors)
-    _process_mapping_dict(resolution.promoted_mappings, ctx, paused_files, errors)
+    _process_mapping_dict(
+        resolution.regular_mappings,
+        ctx,
+        paused_files,
+        errors,
+    )
+    _process_mapping_dict(
+        resolution.promoted_mappings,
+        ctx,
+        paused_files,
+        errors,
+    )
 
     if errors:
-        raise RuntimeError('errors rendering template mappings:\n' + '\n'.join(errors))
+        raise RuntimeError(
+            'errors rendering template mappings:\n' + '\n'.join(errors),
+        )
 
 
 def _try_render_mapping(
