@@ -233,3 +233,127 @@ def test_local_provider_without_repolish_py_applies_templates(
     assert (tmp_path / 'plain.txt').read_text(
         encoding='utf-8',
     ) == 'plain content\n'
+
+
+# ---------------------------------------------------------------------------
+# paused_files with multi-destination templates and keep-blocks
+# ---------------------------------------------------------------------------
+
+
+def test_paused_file_with_keepblocks_and_repolish_context_no_render_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paused file with keep-blocks and repolish context doesn't cause render errors.
+
+    This test verifies that when a file is paused, it's skipped during rendering
+    entirely - so templates using {{ repolish.repo.owner }} or {{ env_name }}
+    in a multi-destination with keep-blocks won't fail even if context is missing.
+
+    The bug was that paused files were still being rendered, causing undefined
+    variable errors. The fix skips paused files during both the generic Jinja
+    pass and the template mapping pass.
+    """
+    # Create an inline provider with a multi-destination template
+    _write(
+        tmp_path / 'multi_provider' / 'repolish.py',
+        """\
+        from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import TemplateMapping
+
+        class Ctx(BaseContext):
+            pass
+
+        class MultiProvider(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context):
+                return {
+                    'paused.toml': TemplateMapping(
+                        source_template='config.toml.jinja',
+                        extra_context={'env_name': 'paused_env'},
+                    ),
+                    'active.toml': TemplateMapping(
+                        source_template='config.toml.jinja',
+                        extra_context={'env_name': 'active_env'},
+                    ),
+                }
+        """,
+    )
+
+    # Template with keep-block AND repolish global context usage
+    _write(
+        tmp_path / 'multi_provider' / 'repolish' / 'config.toml.jinja',
+        """\
+        # Config for {{ repolish.repo.owner }}/{{ repolish.repo.name }}
+        # Environment: {{ env_name }}
+
+        ## repolish-keep-block[custom]: start="## CUSTOM_START" end="## CUSTOM_END"
+        default_section:
+          key: default_value
+        ## CUSTOM_START
+        # developer custom content here
+        ## CUSTOM_END
+        another_section: true
+        """,
+    )
+
+    # Create paused.toml with developer modifications (will be paused)
+    _write(
+        tmp_path / 'paused.toml',
+        """\
+        # Paused config
+        ## CUSTOM_START
+        paused_specific:
+          debug: true
+        ## CUSTOM_END
+        """,
+    )
+
+    # Create active.toml
+    _write(
+        tmp_path / 'active.toml',
+        """\
+        # Active config
+        ## CUSTOM_START
+        active_specific:
+          debug: false
+        ## CUSTOM_END
+        """,
+    )
+
+    # Pause only paused.toml - it should not be rendered or overwritten
+    _write(
+        tmp_path / 'repolish.yaml',
+        """\
+        providers_order: ['multi_provider']
+        providers:
+          multi_provider:
+            provider_root: ./multi_provider
+        paused_files:
+          - paused.toml
+        """,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path, owner='test-org', repo='test-repo')
+
+    # This should NOT fail with "'env_name' is undefined" or "'repolish' is undefined"
+    # because paused.toml is skipped during rendering
+    result = run_repolish(['apply'])
+    assert result.exit_code == 0, f'repolish apply failed: {result.output}'
+
+    # paused.toml should keep its original content (not overwritten)
+    paused_file = tmp_path / 'paused.toml'
+    paused_text = paused_file.read_text()
+    assert 'Paused config' in paused_text
+    assert 'paused_specific:' in paused_text
+    assert 'test-org/test-repo' not in paused_text  # Not rendered
+
+    # active.toml should be updated with rendered content
+    active_file = tmp_path / 'active.toml'
+    active_text = active_file.read_text()
+    assert 'test-org/test-repo' in active_text
+    assert 'active_env' in active_text
+    assert 'active_specific:' in active_text
