@@ -96,8 +96,8 @@ def _format_provider_message(
 ) -> str:
     """Format a success message for a linked provider.
 
-    CLI providers show the resources directory (.repolish/<alias>).
-    Static providers show the provider_root path.
+    Uses the alias (user-configured name) since that's how the user
+    refers to the provider. Shows the resources directory path.
     In monorepo mode, the location context is appended.
     """
     if provider_config.cli:
@@ -123,7 +123,7 @@ def _print_link_success(
 
     Uses the same formatting as the provider CLI decorator for consistency.
     Cached providers show a brief '(cached)' indicator. CLI and static
-    providers show the resources directory and provider name.
+    providers show the resources directory and provider alias.
     """
     for alias in result.cached:
         console.print(f'[dim]- {alias} (cached)[/dim]')
@@ -132,7 +132,11 @@ def _print_link_success(
         if alias not in result.cached:
             provider_config = config.providers.get(alias)
             if provider_config:
-                msg = _format_provider_message(alias, provider_config, location_context)
+                msg = _format_provider_message(
+                    alias,
+                    provider_config,
+                    location_context,
+                )
                 console.print(msg)
 
 
