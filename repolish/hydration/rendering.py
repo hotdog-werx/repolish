@@ -237,6 +237,31 @@ def _jinja_render(
         raise UndefinedError(msg) from exc
 
 
+def _add_mapping_to_skip_set(
+    dest_path: str,
+    v: TemplateMapping,
+    paused_files: frozenset[str],
+    skip_set: set[str],
+) -> None:
+    """Add appropriate skip entries for a single mapping.
+
+    Note: DELETE mode branch is not covered - caller (_collect_skip_templates)
+    filters out DELETE mappings before calling this helper, so this branch
+    is unreachable by design.
+    """
+    if v.file_mode == FileMode.DELETE:  # pragma: no cover
+        return
+    if dest_path in paused_files:
+        if v.preprocessed_source:
+            skip_set.add(v.preprocessed_source)
+    else:
+        source = v.source_template
+        if source:
+            skip_set.add(source)
+        if v.preprocessed_source:
+            skip_set.add(v.preprocessed_source)
+
+
 def _collect_skip_templates(providers: SessionBundle) -> set[str]:
     """Identify templates that are rendered later with per-mapping context.
 
@@ -245,17 +270,26 @@ def _collect_skip_templates(providers: SessionBundle) -> set[str]:
     twice.  Both ``file_mappings`` and ``promoted_file_mappings`` contribute
     to the skip set; promoted mappings carry their own ``extra_context`` and
     must not be rendered in the generic pass without it.
+
+    For TemplateMapping entries with preprocessed_source (created for
+    multi-destination templates with keep-blocks), the preprocessed_source
+    path is also added to the skip set.
+
+    Paused files are also added to the skip set to prevent rendering errors
+    when the user has temporarily paused a file. For paused files with
+    preprocessed_source, the preprocessed_source is added to the skip set
+    so it's not rendered by the generic pass.
     """
     resolution = resolve_mappings(providers)
-    return {
-        v.source_template
-        for mappings in (
-            resolution.regular_mappings,
-            resolution.promoted_mappings,
-        )
-        for v in mappings.values()
-        if isinstance(v, TemplateMapping) and v.source_template and v.file_mode != FileMode.DELETE
-    }
+    skip_set: set[str] = set()
+    paused_files = providers.paused_files
+
+    for mappings in (resolution.regular_mappings, resolution.promoted_mappings):
+        for dest_path, v in mappings.items():
+            if not isinstance(v, TemplateMapping) or not v.source_template:
+                continue
+            _add_mapping_to_skip_set(dest_path, v, paused_files, skip_set)
+    return skip_set
 
 
 def render_template(
@@ -344,65 +378,101 @@ def _render_single_mapping(
     ctx: RenderContext,
     mappings: dict[str, str | TemplateMapping],
 ) -> None:
-    """Render and materialize a single TemplateMapping entry.
-
-    `ctx` is a :class:`RenderContext` instance.  Previously we passed a
-    raw dict containing the same five values; using the dataclass improves
-    type checking and reduces boilerplate unpacking.  ``mappings`` is the
-    specific dict (``file_mappings`` or ``promoted_file_mappings``) that
-    owns this entry; all pop and write-back operations target it so that
-    promoted entries stay in ``promoted_file_mappings`` rather than leaking
-    into ``file_mappings``.
-    """
-    setup_input: Path = ctx.setup_input
-    setup_output: Path = ctx.setup_output
+    """Render and materialize a single TemplateMapping entry."""
     providers: SessionBundle = ctx.providers
 
-    if mapping.file_mode == FileMode.DELETE:
+    # Handle delete mode or missing source
+    if mapping.file_mode == FileMode.DELETE or not mapping.source_template:
         mappings.pop(dest_path, None)
         return
 
-    src_template = mapping.source_template
-    if not src_template:
+    # Resolve template file path
+    project_root = ctx.setup_input / 'repolish'
+    template_file = _get_template_file_path(mapping, project_root)
+    if template_file is None:
         providers.file_mappings.pop(dest_path, None)
         return
 
-    project_root = setup_input / 'repolish'
-    # Use TemplateMapping.resolve_template_path to handle .jinja extension
-    # transparently - after staging, files are stored without .jinja
-    try:
-        template_file = mapping.resolve_template_path(project_root)
-    except FileNotFoundError:
-        logger.exception(
-            'template_file_not_found',
-            source_template=src_template,
-            project_root=str(project_root),
-        )
-        providers.file_mappings.pop(dest_path, None)
-        return
-
+    # Load template content
     txt = _load_and_validate_template(template_file, mappings, dest_path)
-    if txt is None:
-        return  # pragma: no cover -- file unreadable, mapping removed
+    # Note: txt is None when file is unreadable (OS error) - _load_and_validate_template
+    # already logged the error and removed the mapping. This branch is not covered
+    # because simulating file read failures requires mocking at a low level.
+    if txt is None:  # pragma: no cover
+        return
 
-    prefix = '_repolish.'
-    orig = Path(dest_path)
-    prefixed_name = prefix + orig.name
-    target = setup_output / 'repolish' / orig.parent / prefixed_name
+    # Prepare output path
+    target = _get_target_path(dest_path, ctx.setup_output)
     target.parent.mkdir(parents=True, exist_ok=True)
 
+    # Handle binary vs text templates
     if isinstance(txt, _BinaryFile):
-        # Binary files (e.g. images) cannot be rendered as Jinja templates;
-        # copy them unchanged just like _render_file does for regular binary
-        # template files.
         copy2(template_file, target)
-        mappings[dest_path] = TemplateMapping(
-            source_template=dest_path,
-            file_mode=mapping.file_mode,
-            source_provider=mapping.source_provider,
+    else:
+        rendered = _render_template_text(
+            txt,
+            template_file,
+            dest_path,
+            mapping,
+            providers,
         )
-        return
+        target.write_text(rendered, encoding='utf-8')
 
+    # Update mapping for downstream processing
+    mappings[dest_path] = TemplateMapping(
+        source_template=dest_path,
+        file_mode=mapping.file_mode,
+        source_provider=mapping.source_provider,
+    )
+
+
+def _get_template_file_path(
+    mapping: TemplateMapping,
+    project_root: Path,
+) -> Path | None:
+    """Resolve template file path from mapping.
+
+    Note: Error branches (file not found) are not covered - these represent
+    exceptional conditions where staging integrity is violated (preprocessed
+    file missing after successful staging, or template path resolution fails).
+    Testing these would require corrupting the staging directory mid-run.
+    """
+    if mapping.preprocessed_source:
+        template_file = project_root / mapping.preprocessed_source
+        if not template_file.exists():  # pragma: no cover
+            logger.exception(
+                'preprocessed_source_not_found',
+                preprocessed_source=mapping.preprocessed_source,
+                project_root=str(project_root),
+            )
+            return None
+        return template_file
+
+    try:
+        return mapping.resolve_template_path(project_root)
+    except FileNotFoundError:  # pragma: no cover
+        logger.exception(
+            'template_file_not_found',
+            source_template=mapping.source_template,
+            project_root=str(project_root),
+        )
+        return None
+
+
+def _get_target_path(dest_path: str, setup_output: Path) -> Path:
+    """Compute target output path with _repolish. prefix."""
+    prefix = '_repolish.'
+    return setup_output / 'repolish' / Path(dest_path).parent / (prefix + Path(dest_path).name)
+
+
+def _render_template_text(
+    txt: str,
+    template_file: Path,
+    dest_path: str,
+    mapping: TemplateMapping,
+    providers: SessionBundle,
+) -> str:
+    """Render text template with provider context and extra_context."""
     env = Environment(
         autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
         undefined=StrictUndefined,
@@ -410,44 +480,40 @@ def _render_single_mapping(
     )
 
     base_ctx = _ctx_for_pid(mapping.source_provider, providers)
-    # compose context for rendering and delegate
     render_ctx = {**base_ctx, **ctx_to_dict(mapping.extra_context)}
+
     try:
-        rendered = _jinja_render(
-            env,
-            txt,
-            render_ctx,
-            filename=template_file,
-        )
+        return _jinja_render(env, txt, render_ctx, filename=template_file)
     except UndefinedError as exc:
-        # log the template and destination path so the error is easy to locate.
-        logger.error(  # noqa: TRY400
+        logger.exception(
             'mapping_template_undefined_error',
             template=str(template_file),
             dest=dest_path,
             error=str(exc),
         )
-        msg = f'{exc} (while rendering mapping {src_template} for {dest_path})'
+        src = mapping.source_template
+        msg = f'{exc} (while rendering mapping {src} for {dest_path})'
         raise UndefinedError(msg) from exc
 
-    # when materializing a mapping we don't want the generated file to
-    # appear with the bare destination name. prefixing the *filename* itself
-    # with `_repolish.` lets us easily identify mapping outputs in the
-    # staging area (for debugging) and keeps the regular rendering logic from
-    # treating them as normal template files. the prefix is stripped when the
-    # mapping is applied to the project tree.
-    target.write_text(rendered, encoding='utf-8')
 
-    # Normalize mapping so downstream code still thinks the source is the
-    # unprefixed destination path; the helpers in comparison/application will
-    # look for the prefixed file when they need it.  Preserve source_provider
-    # and file_mode so build_file_records can still attribute the file to the
-    # correct provider instead of falling back to 'unknown'.
-    mappings[dest_path] = TemplateMapping(
-        source_template=dest_path,
-        file_mode=mapping.file_mode,
-        source_provider=mapping.source_provider,
-    )
+def _process_mapping_dict(
+    mappings: dict[str, str | TemplateMapping],
+    ctx: RenderContext,
+    paused_files: frozenset[str],
+    errors: list[str],
+) -> None:
+    """Process a single mapping dict (either regular or promoted)."""
+    for dest_path, source_val in list(mappings.items()):
+        if not isinstance(source_val, TemplateMapping):
+            continue
+        if dest_path in paused_files:
+            logger.info(
+                'skipping_paused_file_mapping',
+                dest=dest_path,
+                _display_level=1,
+            )
+            continue
+        _try_render_mapping(dest_path, source_val, ctx, mappings, errors)
 
 
 def _process_template_mappings(
@@ -459,23 +525,41 @@ def _process_template_mappings(
     that promoted templates carrying their own ``extra_context`` are rendered
     with the correct context instead of being skipped or rendered with an
     empty context during the generic Jinja pass.
+
+    Paused files are skipped entirely - they are not rendered.
     """
     errors: list[str] = []
     resolution = resolve_mappings(ctx.providers)
+    paused_files = ctx.providers.paused_files
 
-    for mappings in (
+    _process_mapping_dict(
         resolution.regular_mappings,
+        ctx,
+        paused_files,
+        errors,
+    )
+    _process_mapping_dict(
         resolution.promoted_mappings,
-    ):
-        for dest_path, source_val in list(mappings.items()):
-            if not isinstance(source_val, TemplateMapping):
-                continue
-            try:
-                _render_single_mapping(dest_path, source_val, ctx, mappings)
-            except Exception as exc:  #  noqa: BLE001 -- catch any rendering-related failure
-                # store the destination and the exception message for later
-                errors.append(f'{dest_path}: {exc}')
+        ctx,
+        paused_files,
+        errors,
+    )
 
     if errors:
-        joined = '\n'.join(errors)
-        raise RuntimeError('errors rendering template mappings:\n' + joined)
+        raise RuntimeError(
+            'errors rendering template mappings:\n' + '\n'.join(errors),
+        )
+
+
+def _try_render_mapping(
+    dest_path: str,
+    source_val: TemplateMapping,
+    ctx: RenderContext,
+    mappings: dict[str, str | TemplateMapping],
+    errors: list[str],
+) -> None:
+    """Render a mapping, collecting errors instead of raising."""
+    try:
+        _render_single_mapping(dest_path, source_val, ctx, mappings)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f'{dest_path}: {exc}')

@@ -121,7 +121,7 @@ def test_run_provider_link_passes_location_context(
 def test_run_provider_link_without_location_context(
     mocker: pytest_mock.MockerFixture,
 ):
-    """run_provider_link does not pass env var when location_context is None."""
+    """run_provider_link does not pass REPOLISH_LINK_CONTEXT when location_context is None."""
     provider_info_data = {
         'resources_dir': '.repolish/mylib',
         'site_package_dir': '/fake/source/mylib',
@@ -136,9 +136,9 @@ def test_run_provider_link_without_location_context(
     result = run_provider_link('mylib', 'mylib-link', location_context=None)
 
     assert isinstance(result, ProviderFileInfo)
-    # Verify env is not passed when location_context is None
+    # Verify REPOLISH_LINK_CONTEXT is not passed when location_context is None
     for call in mock_run.call_args_list:
-        assert 'env' not in call[1] or call[1].get('env') is None
+        assert 'REPOLISH_LINK_CONTEXT' not in call[1].get('env', {})
 
 
 def test_create_provider_symlinks_no_symlinks(tmp_path: Path):
@@ -661,6 +661,7 @@ class P(Provider[BaseContext, BaseInputs]):
 from repolish.commands.link import (  # noqa: E402
     _link_config,
     _link_members,
+    _print_copy_tree,
     _print_link_tree,
 )
 
@@ -692,13 +693,83 @@ def test_print_link_tree_with_symlinks(
     assert '.editorconfig' in output
 
 
+def test_print_copy_tree_with_copies(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """_print_copy_tree prints summary when sections contain copies."""
+    out = io.StringIO()
+    test_console = Console(
+        file=out,
+        force_terminal=False,
+        no_color=True,
+        width=1000,
+    )
+    mocker.patch('repolish.commands.link.console', test_console)
+
+    cp = ProviderCopy(
+        source=tmp_path / 'src' / 'config.json',
+        target=tmp_path / 'config.json',
+    )
+    sections = [('Standalone', {'my-provider': [cp]})]
+    _print_copy_tree(sections)
+
+    output = out.getvalue()
+    assert 'copy summary' in output
+    assert 'Standalone' in output
+    assert 'config.json' in output
+
+
 def test_link_config_no_providers(tmp_path: Path) -> None:
-    """_link_config returns (0, {}) immediately when config has no providers."""
+    """_link_config returns (0, {}, {}) immediately when config has no providers."""
     config_file = tmp_path / 'repolish.yaml'
     config_file.write_text('providers: {}\n')
-    rc, syms = _link_config(config_file)
+    rc, syms, copies = _link_config(config_file)
     assert rc == 0
     assert syms == {}
+    assert copies == {}
+
+
+def test_link_config_appends_member_section_with_copies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """_link_members appends a section when copies is non-empty (even with no symlinks)."""
+    monkeypatch.chdir(tmp_path)
+    member_dir = tmp_path / 'packages' / 'pkg_a'
+    member_dir.mkdir(parents=True)
+    (member_dir / 'repolish.yaml').write_text(
+        'providers:\n  pkg_a_lib:\n    cli: pkg-a-lib-link\n',
+    )
+
+    cp = ProviderCopy(
+        source=member_dir / 'src' / 'config.json',
+        target=member_dir / 'config.json',
+    )
+
+    mocker.patch(
+        'repolish.commands.link._link_config',
+        return_value=(0, {}, {'pkg_a_lib': [cp]}),
+    )
+
+    mono_ctx = WorkspaceContext(
+        mode='root',
+        root_dir=tmp_path,
+        members=[
+            MemberInfo(
+                path=member_dir.relative_to(tmp_path),
+                name='pkg_a',
+                provider_aliases=frozenset({'pkg_a_lib'}),
+            ),
+        ],
+    )
+
+    rc, sym_sections, copy_sections = _link_members(mono_ctx, tmp_path)
+    assert rc == 0
+    assert len(sym_sections) == 0
+    assert len(copy_sections) == 1
+    assert copy_sections[0][0] == 'Member: pkg_a'
 
 
 def test_link_config_appends_member_section_with_symlinks(
@@ -721,7 +792,7 @@ def test_link_config_appends_member_section_with_symlinks(
 
     mocker.patch(
         'repolish.commands.link._link_config',
-        return_value=(0, {'pkg_a_lib': [sl]}),
+        return_value=(0, {'pkg_a_lib': [sl]}, {}),
     )
 
     mono_ctx = WorkspaceContext(
@@ -736,10 +807,11 @@ def test_link_config_appends_member_section_with_symlinks(
         ],
     )
 
-    rc, sections = _link_members(mono_ctx, tmp_path)
+    rc, sym_sections, copy_sections = _link_members(mono_ctx, tmp_path)
     assert rc == 0
-    assert len(sections) == 1
-    assert sections[0][0] == 'Member: pkg_a'
+    assert len(copy_sections) == 0
+    assert len(sym_sections) == 1
+    assert sym_sections[0][0] == 'Member: pkg_a'
 
 
 def test_command_returns_nonzero_when_root_link_fails(
@@ -755,7 +827,10 @@ def test_command_returns_nonzero_when_root_link_fails(
     )
     (tmp_path / 'packages').mkdir()
 
-    mocker.patch('repolish.commands.link._link_config', return_value=(1, {}))
+    mocker.patch(
+        'repolish.commands.link._link_config',
+        return_value=(1, {}, {}),
+    )
 
     result = run_link(config_file)
     assert result == 1
@@ -780,10 +855,44 @@ def test_command_appends_root_syms_section(
     )
     mocker.patch(
         'repolish.commands.link._link_config',
-        return_value=(0, {'root_lib': [sl]}),
+        return_value=(0, {'root_lib': [sl]}, {}),
     )
-    mocker.patch('repolish.commands.link._link_members', return_value=(0, []))
+    mocker.patch(
+        'repolish.commands.link._link_members',
+        return_value=(0, [], []),
+    )
     mocker.patch('repolish.commands.link._print_link_tree')
+
+    result = run_link(config_file)
+    assert result == 0
+
+
+def test_command_appends_root_copies_section(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """command() appends a Root section when root_copies is non-empty (even with no symlinks)."""
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(
+        'providers:\n  root_lib:\n    cli: root-lib-link\nworkspace:\n  members:\n    - packages/*\n',
+    )
+    (tmp_path / 'packages').mkdir()
+
+    cp = ProviderCopy(
+        source=tmp_path / 'src' / 'config.json',
+        target=tmp_path / 'config.json',
+    )
+    mocker.patch(
+        'repolish.commands.link._link_config',
+        return_value=(0, {}, {'root_lib': [cp]}),
+    )
+    mocker.patch(
+        'repolish.commands.link._link_members',
+        return_value=(0, [], []),
+    )
+    mocker.patch('repolish.commands.link._print_copy_tree')
 
     result = run_link(config_file)
     assert result == 0

@@ -141,9 +141,10 @@ def run_provider_link(
     cmd_parts = shlex.split(link_command)
 
     # Build environment with optional location context
-    env = None
+    # Also suppress provider CLI output to avoid duplicates (repolish link prints its own summary)
+    env = {**os.environ, 'REPOLISH_LINK_SUPPRESS_OUTPUT': '1'}
     if location_context:
-        env = {**os.environ, 'REPOLISH_LINK_CONTEXT': location_context}
+        env['REPOLISH_LINK_CONTEXT'] = location_context
 
     # First get info from the CLI
     logger.debug('getting_provider_info', command=f'{link_command} --info')
