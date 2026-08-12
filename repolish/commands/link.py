@@ -7,6 +7,7 @@ from rich.tree import Tree
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.utils import chdir
 from repolish.config import (
+    ProviderConfig,
     ProviderCopy,
     ProviderSymlink,
     RepolishConfigFile,
@@ -88,26 +89,51 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
     return list(config.providers.keys())
 
 
+def _format_provider_message(
+    alias: str,
+    provider_config: ProviderConfig,
+    location_context: str | None = None,
+) -> str:
+    """Format a success message for a linked provider.
+
+    CLI providers show the resources directory (.repolish/<alias>).
+    Static providers show the provider_root path.
+    In monorepo mode, the location context is appended.
+    """
+    if provider_config.cli:
+        resources_dir = '.repolish/' + alias
+    elif provider_config.provider_root:
+        resources_dir = str(provider_config.provider_root)
+    else:
+        # Unreachable: ProviderConfig validator requires provider_root when cli is absent
+        resources_dir = alias  # pragma: no cover
+
+    base_msg = f'- [bold cyan]{resources_dir}[/bold cyan] from [bold green]{alias}[/bold green] are now available'
+    if location_context:
+        return f'{base_msg} in "{location_context}"'
+    return base_msg
+
+
 def _print_link_success(
     result: ProviderReadinessResult,
     config: RepolishConfigFile,
+    location_context: str | None = None,
 ) -> None:
     """Print success feedback for linked providers.
 
-    Cached providers are shown with (cached) suffix, fresh links show
-    the standard 'resources from X are now available' message.
+    Uses the same formatting as the provider CLI decorator for consistency.
+    Cached providers show a brief '(cached)' indicator. CLI and static
+    providers show the resources directory and provider name.
     """
     for alias in result.cached:
-        console.print(f'[dim]✓[/dim] {alias} (cached)')
+        console.print(f'[dim]- {alias} (cached)[/dim]')
+
     for alias in result.ready:
         if alias not in result.cached:
             provider_config = config.providers.get(alias)
-            if provider_config and provider_config.cli:
-                console.print(
-                    f'[green]✓[/green] resources from [bold]{alias}[/bold] are now available',
-                )
-            else:
-                console.print(f'[green]✓[/green] [bold]{alias}[/bold] (static)')
+            if provider_config:
+                msg = _format_provider_message(alias, provider_config, location_context)
+                console.print(msg)
 
 
 def _link_config(
@@ -144,7 +170,7 @@ def _link_config(
             _display_level=1,
         )
         return 1, {}, {}
-    _print_link_success(result, config)
+    _print_link_success(result, config, location_context)
     resolved = resolve_config(config)
     resolved_symlinks = collect_provider_symlinks(
         resolved.providers,

@@ -330,12 +330,18 @@ def resource_linker_cli(
     # in monorepo mode to indicate where the linker is running).
     _link_context = os.environ.get('REPOLISH_LINK_CONTEXT')
 
-    # Create a function with auto-generated success message
+    # Check if output should be suppressed (set by repolish link to avoid duplicates)
+    _suppress_output = os.environ.get('REPOLISH_LINK_SUPPRESS_OUTPUT') == '1'
+
+    # Create a function with auto-generated success message (or no-op if suppressed)
     def _success_message() -> None:
-        """Auto-generated success message."""
+        """Auto-generated success message (suppressed when called from repolish link)."""
+        if _suppress_output:
+            # Covered in integration tests, but not visible to coverage
+            # because repolish link runs provider CLIs in a subprocess
+            return  # pragma: no cover
         if _link_context:
             # Monorepo mode: show location context in the message
-            # (The "Monorepo detected" header is printed once by the link command)
             console.print(
                 f'- [bold cyan]{resources_dir}[/bold cyan] from '
                 f'[bold green]{detected_library_name}[/bold green] are now available '

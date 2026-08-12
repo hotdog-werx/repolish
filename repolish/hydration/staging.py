@@ -142,7 +142,7 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
             source_provider=args.source_val.source_provider,
             preprocessed_source=preproc_name,
         )
-        logger.info(
+        logger.debug(
             'created_preprocessed_copy',
             source=args.source_val.source_template,
             preprocessed=preproc_name,

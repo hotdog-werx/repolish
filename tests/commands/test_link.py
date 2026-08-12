@@ -54,7 +54,7 @@ def test_link_uses_cache_when_already_linked(tmp_path: Path) -> None:
 
     # First run - should link fresh
     output1 = _run_link([], tmp_path)
-    assert '✓' in output1
+    assert 'are now available' in output1
 
     # Verify provider-info was created
     info_file = tmp_path / '.repolish' / '_' / 'provider-info.test.json'
@@ -97,7 +97,7 @@ def test_link_force_ignores_cache(tmp_path: Path) -> None:
 
     # First run - force by default
     output1 = _run_link([], tmp_path)
-    assert '✓' in output1
+    assert 'are now available' in output1
 
     # Second run - force by default, should NOT show (cached)
     output2 = _run_link([], tmp_path)
@@ -136,7 +136,7 @@ def test_link_no_force_uses_cache(tmp_path: Path) -> None:
 
     # First run
     output1 = _run_link([], tmp_path)
-    assert '✓' in output1
+    assert 'are now available' in output1
 
     # Second run with --no-force - should use cache and show (cached)
     output2 = _run_link(['--no-force'], tmp_path)

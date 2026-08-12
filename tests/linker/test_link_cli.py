@@ -121,7 +121,7 @@ def test_run_provider_link_passes_location_context(
 def test_run_provider_link_without_location_context(
     mocker: pytest_mock.MockerFixture,
 ):
-    """run_provider_link does not pass env var when location_context is None."""
+    """run_provider_link does not pass REPOLISH_LINK_CONTEXT when location_context is None."""
     provider_info_data = {
         'resources_dir': '.repolish/mylib',
         'site_package_dir': '/fake/source/mylib',
@@ -136,9 +136,9 @@ def test_run_provider_link_without_location_context(
     result = run_provider_link('mylib', 'mylib-link', location_context=None)
 
     assert isinstance(result, ProviderFileInfo)
-    # Verify env is not passed when location_context is None
+    # Verify REPOLISH_LINK_CONTEXT is not passed when location_context is None
     for call in mock_run.call_args_list:
-        assert 'env' not in call[1] or call[1].get('env') is None
+        assert 'REPOLISH_LINK_CONTEXT' not in call[1].get('env', {})
 
 
 def test_create_provider_symlinks_no_symlinks(tmp_path: Path):

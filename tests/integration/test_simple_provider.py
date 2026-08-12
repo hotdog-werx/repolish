@@ -4,6 +4,7 @@ Covers the three main integration surfaces for an installed provider:
 - CLI: ``simple-provider-link --info`` returns valid ``ProviderFileInfo`` JSON.
 - Loader: ``create_providers`` discovers and loads ``SimpleProvider``.
 - Apply: ``repolish apply`` renders the expected output files in a fixture repo.
+- Link: ``repolish link`` produces consistent output messages.
 """
 
 from __future__ import annotations
@@ -101,3 +102,56 @@ def test_file_context_debug_file_created(
     assert data['owner'] == 'simple-provider'
     assert data['provider_context_file'] == 'provider-context.standalone.simple-provider.json'
     assert data['extra_context'] == {}
+
+
+def test_repolish_link_output_format(
+    installed_providers: InstalledProviders,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``repolish link`` produces consistent output format with colors and structure.
+
+    Verifies the output format matches the decorator style:
+    - Uses "- {resources_dir} from {provider} are now available" format
+    - No duplicate messages (provider CLI output is suppressed)
+    - Only one message per provider
+    """
+    repo = fixtures.simple_repo.stage(tmp_path)
+    monkeypatch.chdir(repo)
+
+    result = run_repolish(['link'])
+    output = result.output
+
+    # Verify the new format is used (dash format, not checkmark)
+    assert '- .repolish/simple-provider from simple-provider are now available' in output
+    # Verify no duplicate messages (old checkmark format should not appear)
+    assert '✓' not in output
+    # Verify only one "are now available" message (no duplicates from decorator)
+    count = output.count('are now available')
+    assert count == 1, f'Expected 1 "are now available" message, got {count}'
+
+
+def test_repolish_link_monorepo_output_format(
+    installed_providers: InstalledProviders,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``repolish link`` in monorepo mode includes location context in output.
+
+    Verifies the monorepo output format:
+    - Shows "Monorepo detected" header
+    - Each provider message includes the location context (e.g., "in root")
+    - No duplicate messages
+    """
+    repo = fixtures.monorepo_basic.stage(tmp_path)
+    monkeypatch.chdir(repo)
+
+    result = run_repolish(['link'])
+    output = result.output
+
+    # Verify monorepo header
+    assert 'Monorepo detected' in output
+    # Verify location context is included in provider messages
+    assert 'in "root"' in output or 'in "packages/' in output
+    # Verify no duplicate messages
+    assert '✓' not in output
