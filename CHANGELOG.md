@@ -8,6 +8,32 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.7.0] <a name="1.7.0" href="#1.7.0">-</a> August 12, 2026
+
+### 🚀 Features
+
+- _(cli)_ Add --providers filter option to apply command by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+### 🐛 Bug Fixes
+
+- _(link)_ Use cache by default, add --force flag for re-linking by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Multi-destination templates lose developer keep-block content (#68) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#68](https://github.com/hotdog-werx/repolish/pull/68)
+- Link command output improvements and paused_files rendering fix (#69) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#69](https://github.com/hotdog-werx/repolish/pull/69)
+
+### 🧪 Testing
+
+- Add RepolishTemplatePath and snapshot update mode (#67) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#67](https://github.com/hotdog-werx/repolish/pull/67)
+
+[1.7.0]: https://github.com/hotdog-werx/repolish/compare/1.6.2...1.7.0
+
 ## [1.6.2] <a name="1.6.2" href="#1.6.2">-</a> July 23, 2026
 
 ### 🐛 Bug Fixes
