@@ -112,14 +112,22 @@ def build_final_providers(
         alias_to_pid,
     )
 
+    # Extract file_mappings overrides from config (not handled by _build_override_maps)
+    file_mapping_overrides: dict[str, object] = {}
+    for alias, info in config.providers.items():
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+        if info.overrides and info.overrides.file_mappings:
+            file_mapping_overrides[pid] = info.overrides.file_mappings
+
     # Build ProviderContributions from the override maps.
-    # Iterate over the union of keys so anchor-only providers are not dropped.
-    all_override_pids = set(provider_overrides) | set(anchor_overrides)
+    # Iterate over the union of keys so anchor/file-mapping-only providers are not dropped.
+    all_override_pids = set(provider_overrides) | set(anchor_overrides) | set(file_mapping_overrides)
     contributions = ProviderContributions(
         overrides={
             pid: ProviderOverrides(
                 context_merge=provider_overrides.get(pid),
                 anchors=anchor_overrides.get(pid),
+                file_mappings=file_mapping_overrides.get(pid),  # type: ignore[arg-type]
             )
             for pid in all_override_pids
         },

@@ -15,6 +15,7 @@ from repolish.providers.models import (
     BaseInputs,
     Decision,
     FileMode,
+    FileMappingOptions,
     FinalizeContextOptions,
     GlobalContext,
     ProvideInputsOptions,
@@ -515,6 +516,7 @@ def _collect_provider_contribution(
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
     anchor_overrides: dict[str, dict[str, str]] | None = None,
+    file_mapping_overrides: dict[str, dict[str, FileMappingOptions]] | None = None,
 ) -> None:
     """Process a single provider's anchors, file mappings, and promotions."""
     inst = module_dict.get('_repolish_provider_instance')
@@ -541,6 +543,17 @@ def _collect_provider_contribution(
         call_provider_method(inst, 'create_file_mappings', own_ctx),
     )
     _process_provider_fm(provider_id, fm, accum)
+
+    # Apply per-file overrides from contributions (e.g. enabled=False → suppress)
+    if file_mapping_overrides and (fm_opts := file_mapping_overrides.get(provider_id)):
+        for dest, opts in fm_opts.items():
+            if not opts.enabled:
+                accum.merged_file_mappings.pop(dest, None)
+                # Also suppress the dest from auto-staging (for files not in
+                # create_file_mappings, the auto-stage path uses suppressed_sources
+                # to skip files from the rendered output directory).
+                accum.suppressed_sources.add(dest)
+
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 
@@ -549,6 +562,7 @@ def collect_provider_contributions(
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
     anchor_overrides: dict[str, dict[str, str]] | None = None,
+    file_mapping_overrides: dict[str, dict[str, FileMappingOptions]] | None = None,
 ) -> None:
     """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
@@ -561,4 +575,5 @@ def collect_provider_contributions(
             provider_contexts,
             accum,
             anchor_overrides=anchor_overrides,
+            file_mapping_overrides=file_mapping_overrides,
         )

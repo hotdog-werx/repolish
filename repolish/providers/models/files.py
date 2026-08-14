@@ -23,6 +23,40 @@ from repolish.providers.models.context import (
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
+class BaseProviderMethodOptions(BaseModel):
+    """Base class for options controlling provider method behavior.
+
+    Establishes a common contract for all provider methods that support
+    user-configurable options. Subclasses add method-specific fields while
+    inheriting the common enabled and priority controls.
+
+    Attributes:
+        enabled: Whether this method is active. When False the method's effect
+            is ignored even if declared by the provider.
+        priority: Integer priority for conflict resolution. Higher values win.
+            Used when multiple providers contribute to the same target.
+    """
+
+    enabled: bool = True
+    priority: int = 0
+
+
+class FileMappingOptions(BaseProviderMethodOptions):
+    """Options controlling the behavior of a single file_mapping entry.
+
+    Provides fine-grained control over individual file mappings, allowing
+    users to enable/disable specific mappings or control rendering behavior
+    without modifying provider code.
+
+    Attributes:
+        skip_render: When True, the template is staged but Jinja rendering is
+            skipped. Useful for templates that should only be used for anchor
+            extraction or post-processing.
+    """
+
+    skip_render: bool = False
+
+
 class Action(str, Enum):
     """Enumeration of possible actions for a path."""
 

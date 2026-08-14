@@ -11,6 +11,7 @@ from pydantic import (
 )
 
 from repolish.exceptions import ProviderConfigError
+from repolish.providers.models.files import FileMappingOptions
 
 
 class ProviderOverrides(BaseModel):
@@ -67,12 +68,12 @@ class ProviderOverrides(BaseModel):
         default=None,
         description="Anchor overrides on top of provider's create_anchors output.",
     )
-    file_mappings: dict[str, dict[str, Any] | bool] | None = Field(
+    file_mappings: dict[str, FileMappingOptions] | None = Field(
         default=None,
         description=(
-            'Per-file enabled overrides keyed by destination path. '
+            'Per-file options keyed by destination path. '
             'Shortcut: use ``false`` to disable (sets ``enabled: false``). '
-            'Full form: dict with ``enabled`` (bool).'
+            'Full form: dict with ``enabled``, ``priority``, ``skip_render`` fields.'
         ),
     )
 
@@ -81,7 +82,7 @@ class ProviderOverrides(BaseModel):
     def normalize_file_mappings(
         cls,
         value: dict[str, dict[str, Any] | bool] | None,
-    ) -> dict[str, dict[str, Any] | bool] | None:
+    ) -> dict[str, dict[str, Any]] | None:
         """Normalize file_mappings to support shortcut syntax.
 
         Allows:
@@ -94,7 +95,7 @@ class ProviderOverrides(BaseModel):
         if value is None:
             return value
 
-        normalized: dict[str, dict[str, Any] | bool] = {}
+        normalized: dict[str, dict[str, Any]] = {}
         for path, val in value.items():
             if isinstance(val, bool):
                 # Shortcut: false -> {enabled: false}, true -> {enabled: true}
