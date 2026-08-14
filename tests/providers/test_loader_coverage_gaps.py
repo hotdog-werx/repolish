@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 from repolish import ProviderEntry
 from repolish.config import RepolishConfig, ResolvedProviderInfo
+from repolish.config.models.provider import ProviderOverrides
 from repolish.hydration.context import build_final_providers
 from repolish.misc import ctx_keys, ctx_to_dict
 from repolish.providers import (
@@ -349,16 +350,16 @@ class Receiver(Provider[RecCtx, Msg]):
                 alias='sender',
                 provider_root=Path(sdir),
                 resources_dir=Path(sdir),
-                context=None,
-                context_overrides={
-                    'foo': 'overridden',
-                    'repo.name': 'new_name',
-                },
+                overrides=ProviderOverrides(
+                    context_merge={'foo': 'overridden'},
+                    context_dotted={'repo.name': 'new_name'},
+                ),
             ),
             'receiver': ResolvedProviderInfo(
                 alias='receiver',
                 provider_root=Path(rdir),
                 resources_dir=Path(rdir),
+                overrides=None,
             ),
         },
     )

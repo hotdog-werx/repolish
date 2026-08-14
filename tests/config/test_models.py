@@ -13,7 +13,7 @@ from repolish.config import (
     RepolishConfigFile,
 )
 from repolish.config.models import AliasRegistry, ProviderFileInfo
-from repolish.config.models.provider import ProviderSymlink
+from repolish.config.models.provider import ProviderOverrides, ProviderSymlink
 from repolish.config.resolution import resolve_config
 from repolish.exceptions import ProviderConfigError
 
@@ -263,25 +263,22 @@ def test_provider_config_context_roundtrip(tmp_path: Path):
         providers={
             'foo': ProviderConfig(
                 provider_root=str(prov_dir),
-                context={'a': 1},
-                context_overrides={'a': 2, 'nested.key': 'val'},
+                overrides=ProviderOverrides(
+                    context_merge={'a': 1},
+                    context_dotted={'a': 2, 'nested.key': 'val'},
+                ),
             ),
         },
     )
-    # normalization should leave our field intact
-    assert 'foo' in raw.providers
-    assert raw.providers['foo'].context == {'a': 1}
-
-    # resolve to runtime config and ensure context is preserved
 
     tmpdir = tmp_path / 'cfg'
     tmpdir.mkdir()
     raw.config_file = tmpdir / 'repolish.yaml'
     resolved = resolve_config(raw)
     assert 'foo' in resolved.providers
-    assert resolved.providers['foo'].context == {'a': 1}
-    # context_overrides should roundtrip as well
-    assert resolved.providers['foo'].context_overrides == {
+    assert resolved.providers['foo'].overrides is not None
+    assert resolved.providers['foo'].overrides.context_merge == {'a': 1}
+    assert resolved.providers['foo'].overrides.context_dotted == {
         'a': 2,
         'nested.key': 'val',
     }

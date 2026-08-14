@@ -1,6 +1,7 @@
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
+from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.misc import ctx_to_dict
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
@@ -23,16 +24,24 @@ def _build_override_maps(
     anchor_overrides: dict[str, dict[str, str]] = {}
     for alias, info in config.providers.items():
         pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        merged: dict[str, object] = {}
-        if info.context:
-            merged.update(ctx_to_dict(info.context))
-        if info.context_overrides:
-            merged.update(info.context_overrides)
+        merged = _merge_context_overrides(info)
         if merged:
             provider_overrides[pid] = merged
-        if info.anchors:
-            anchor_overrides[pid] = info.anchors
+        if info.overrides and info.overrides.anchors:
+            anchor_overrides[pid] = info.overrides.anchors
     return provider_overrides, anchor_overrides
+
+
+def _merge_context_overrides(info: ResolvedProviderInfo) -> dict[str, object]:
+    """Merge context overrides from a provider info into a single dict."""
+    merged: dict[str, object] = {}
+    if not info.overrides:
+        return merged
+    if info.overrides.context_merge:
+        merged.update(ctx_to_dict(info.overrides.context_merge))
+    if info.overrides.context_dotted:
+        merged.update(info.overrides.context_dotted)
+    return merged
 
 
 def _apply_delete_overrides(
