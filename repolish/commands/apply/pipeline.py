@@ -2,7 +2,7 @@ from hotlog import get_logger
 
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
-from repolish.config.models.provider import ResolvedProviderInfo
+from repolish.config.models.provider import ProviderOverrides, ResolvedProviderInfo
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import (
@@ -16,6 +16,7 @@ from repolish.providers.models import (
     ProviderEntry,
     get_global_context,
 )
+from repolish.providers.models.pipeline import ProviderContributions
 from repolish.providers.orchestrator import create_providers
 
 logger = get_logger(__name__)
@@ -75,9 +76,14 @@ def _collect_session_outputs(
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
     provider_overrides = _build_provider_overrides(config, alias_to_pid)
 
+    # Build ProviderContributions from per-provider overrides
+    contributions = ProviderContributions(
+        overrides={pid: ProviderOverrides(context_dotted=overrides) for pid, overrides in provider_overrides.items()},
+    )
+
     dry = create_providers(
         dirs,
-        provider_overrides=provider_overrides,
+        contributions=contributions,
         global_context=global_context,
         dry_run=True,
     )

@@ -303,7 +303,9 @@ class TestLegacyOverridesMigration:
 
     def test_migrate_context_to_context_merge(self):
         """Legacy 'context' field migrates to overrides.context_merge with deprecation warning."""
-        with pytest.deprecated_call(match="Provider config field 'context' at top level is deprecated"):
+        with pytest.deprecated_call(
+            match="Provider config field 'context' at top level is deprecated",
+        ):
             config = ProviderConfig(
                 provider_root='/test/provider',
                 context={'key': 'value'},
@@ -313,7 +315,9 @@ class TestLegacyOverridesMigration:
 
     def test_migrate_context_overrides_to_context_dotted(self):
         """Legacy 'context_overrides' field migrates to overrides.context_dotted with deprecation warning."""
-        with pytest.deprecated_call(match="Provider config field 'context_overrides' at top level is deprecated"):
+        with pytest.deprecated_call(
+            match="Provider config field 'context_overrides' at top level is deprecated",
+        ):
             config = ProviderConfig(
                 provider_root='/test/provider',
                 context_overrides={'nested.key': 'value'},
@@ -323,7 +327,9 @@ class TestLegacyOverridesMigration:
 
     def test_migrate_anchors_to_anchors(self):
         """Legacy 'anchors' field migrates to overrides.anchors with deprecation warning."""
-        with pytest.deprecated_call(match="Provider config field 'anchors' at top level is deprecated"):
+        with pytest.deprecated_call(
+            match="Provider config field 'anchors' at top level is deprecated",
+        ):
             config = ProviderConfig(
                 provider_root='/test/provider',
                 anchors={'my_anchor': 'value'},

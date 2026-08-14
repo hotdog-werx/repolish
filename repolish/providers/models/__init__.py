@@ -37,7 +37,11 @@ from repolish.providers.models.files import (
     build_file_records,
     map_folder,
 )
-from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
+from repolish.providers.models.pipeline import (
+    DryRunResult,
+    PipelineOptions,
+    ProviderContributions,
+)
 from repolish.providers.models.provider import (
     ContextT,
     FinalizeContextOptions,
@@ -77,6 +81,7 @@ __all__ = [
     'PipelineOptions',
     'ProvideInputsOptions',
     'Provider',
+    'ProviderContributions',
     'ProviderEntry',
     'ProviderInfo',
     'ProviderSession',

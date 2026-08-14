@@ -5,6 +5,7 @@ These models are the input/output contracts for the provider pipeline:
 - `PipelineOptions` — runtime parameters passed to the pipeline (overrides,
   alias map, global context, dry-run flag, extra entries and inputs for
   cross-session routing)
+- `ProviderContributions` — consolidated container for provider contribution data
 - `DryRunResult` — data returned when `PipelineOptions.dry_run` is `True`;
   carries contexts and emitted inputs without writing any files
 """
@@ -21,7 +22,32 @@ from repolish.providers.models.context import (
 )
 
 if TYPE_CHECKING:
+    from repolish.config.models.provider import ProviderOverrides
+    from repolish.providers.models.files import TemplateMapping
     from repolish.providers.models.provider import ProviderEntry
+
+
+@dataclass
+class ProviderContributions:
+    """Consolidated container for all provider contribution data.
+
+    Single source of truth for what each provider contributes:
+    - overrides: context_merge, context_dotted, anchors, file_mappings
+    - promoted mappings and suppressed sources (cross-provider concerns)
+
+    This replaces passing multiple separate dicts (anchor_overrides,
+    provider_overrides, file_mappings, etc.) through the provider pipeline.
+    """
+
+    # Per-provider overrides container (keyed by provider_id)
+    # Each ProviderOverrides has: context_merge, context_dotted, anchors, file_mappings
+    overrides: dict[str, ProviderOverrides] = field(default_factory=dict)
+
+    # Cross-provider/merged data that doesn't fit per-provider overrides
+    promoted_file_mappings: dict[str, str | TemplateMapping] = field(
+        default_factory=dict,
+    )
+    suppressed_sources: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -33,10 +59,6 @@ class PipelineOptions:
     without customisation.
     """
 
-    context_overrides: dict[str, object] | None = None
-    """Dot-notation overrides applied globally to all provider contexts after creation."""
-    provider_overrides: dict[str, dict[str, object]] | None = None
-    """Per-provider dot-notation overrides keyed by provider alias."""
     alias_map: dict[str, str] | None = None
     """Mapping from provider_id (filesystem path key) to config alias."""
     global_context: GlobalContext = field(default_factory=GlobalContext)
@@ -47,9 +69,10 @@ class PipelineOptions:
     """Provider entries from member sessions injected into the root session pass."""
     extra_inputs: list[BaseInputs] | None = None
     """Emitted inputs from member sessions injected into the root session routing pool."""
-    anchor_overrides: dict[str, dict[str, str]] | None = None
-    """Per-provider anchor overrides keyed by provider_id (posix path). Applied on top of
-    each provider's create_anchors() output before merging into the session anchors."""
+    contributions: ProviderContributions = field(
+        default_factory=ProviderContributions,
+    )
+    """Consolidated provider contributions: overrides, file mappings, and promoted sources."""
 
 
 @dataclass

@@ -3,10 +3,7 @@ from pathlib import Path
 from typing import Literal, overload
 
 from repolish.providers import SessionBundle
-from repolish.providers.context import (
-    _apply_overrides_to_provider_contexts,
-    _apply_provider_overrides,
-)
+from repolish.providers.context import _apply_provider_overrides
 from repolish.providers.exchange import (
     build_provider_metadata,
     collect_all_emitted_inputs,
@@ -22,7 +19,11 @@ from repolish.providers.models import (
     ProviderEntry,
     get_global_context,
 )
-from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
+from repolish.providers.models.pipeline import (
+    DryRunResult,
+    PipelineOptions,
+    ProviderContributions,
+)
 from repolish.providers.module import _load_module_cache
 from repolish.providers.pipeline import (
     _build_all_providers_list,
@@ -46,6 +47,11 @@ def _run_provider_pipeline(
     """
     accum = Accumulators()
     _opts = options or PipelineOptions()
+    _contrib = _opts.contributions
+
+    # Pre-load accum with contributions' promoted mappings and suppressed sources
+    accum.promoted_file_mappings.update(_contrib.promoted_file_mappings)
+    accum.suppressed_sources.update(_contrib.suppressed_sources)
 
     instances = build_provider_metadata(module_cache)
     _set_provider_metadata(module_cache, instances, _opts.alias_map or {})
@@ -56,7 +62,21 @@ def _run_provider_pipeline(
         provider_contexts,
         _opts.global_context,
     )
-    _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
+
+    # Apply per-provider overrides from contributions
+    for pid, overrides in _contrib.overrides.items():
+        # Apply context_merge (shallow merge) first
+        if overrides.context_merge:
+            _apply_provider_overrides(
+                provider_contexts,
+                {pid: overrides.context_merge},
+            )
+        # Then apply context_dotted (deep overrides)
+        if overrides.context_dotted:
+            _apply_provider_overrides(
+                provider_contexts,
+                {pid: overrides.context_dotted},
+            )
 
     all_providers_list: list[ProviderEntry] = _build_all_providers_list(
         module_cache,
@@ -68,11 +88,8 @@ def _run_provider_pipeline(
     if _opts.extra_provider_entries:
         all_providers_list = all_providers_list + _opts.extra_provider_entries
 
-    if _opts.context_overrides:
-        _apply_overrides_to_provider_contexts(
-            provider_contexts,
-            _opts.context_overrides,
-        )
+    # Apply global context overrides (from contributions if needed)
+    # Note: global context overrides would go here if added to ProviderContributions
 
     if _opts.dry_run:
         emitted = collect_all_emitted_inputs(
@@ -104,18 +121,14 @@ def _run_provider_pipeline(
         global_context=_opts.global_context,
     )
 
-    if _opts.context_overrides:
-        _apply_overrides_to_provider_contexts(
-            provider_contexts,
-            _opts.context_overrides,
-        )
-    _apply_provider_overrides(provider_contexts, _opts.provider_overrides)
+    # Apply anchor overrides from contributions
+    anchor_overrides = {pid: overrides.anchors for pid, overrides in _contrib.overrides.items() if overrides.anchors}
 
     collect_provider_contributions(
         module_cache,
         provider_contexts,
         accum,
-        anchor_overrides=_opts.anchor_overrides,
+        anchor_overrides=anchor_overrides or None,
     )
 
     return SessionBundle(
@@ -133,10 +146,8 @@ def _run_provider_pipeline(
 @overload
 def create_providers(
     directories: Sequence[str | tuple[str, str]],
-    context_overrides: dict[str, object] | None = ...,
     *,
-    provider_overrides: dict[str, dict[str, object]] | None = ...,
-    anchor_overrides: dict[str, dict[str, str]] | None = ...,
+    contributions: ProviderContributions | None = ...,
     global_context: GlobalContext | None = ...,
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
@@ -147,10 +158,8 @@ def create_providers(
 @overload
 def create_providers(
     directories: Sequence[str | tuple[str, str]],
-    context_overrides: dict[str, object] | None = ...,
     *,
-    provider_overrides: dict[str, dict[str, object]] | None = ...,
-    anchor_overrides: dict[str, dict[str, str]] | None = ...,
+    contributions: ProviderContributions | None = ...,
     global_context: GlobalContext | None = ...,
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
@@ -158,12 +167,10 @@ def create_providers(
 ) -> DryRunResult: ...
 
 
-def create_providers(  # noqa: PLR0913
+def create_providers(  # noqa: PLR0913 - skip for now
     directories: Sequence[str | tuple[str, str]],
-    context_overrides: dict[str, object] | None = None,
     *,
-    provider_overrides: dict[str, dict[str, object]] | None = None,
-    anchor_overrides: dict[str, dict[str, str]] | None = None,
+    contributions: ProviderContributions | None = None,
     global_context: GlobalContext | None = None,
     extra_provider_entries: list[ProviderEntry] | None = None,
     extra_inputs: list[BaseInputs] | None = None,
@@ -184,6 +191,9 @@ def create_providers(  # noqa: PLR0913
     When *global_context* is ``None``, it is computed via :func:`get_global_context`.
     When *dry_run* is ``True``, returns a :class:`DryRunResult` instead of a
     :class:`SessionBundle` object.
+
+    Use :class:`ProviderContributions` to pass per-provider overrides, anchors,
+    and file mappings in a single consolidated container.
     """
     # Use the provided global context or compute it from git
     global_ctx_obj = global_context if global_context is not None else get_global_context()
@@ -202,11 +212,6 @@ def create_providers(  # noqa: PLR0913
             normalized_dirs.append(path_str)
 
     module_cache = _load_module_cache(normalized_dirs)
-    # provider contexts are populated by _populate_provider_context via
-    # create_context(); start empty so the guard in
-    # _synthesize_provider_context_for_pid correctly calls create_context()
-    # for every provider (a pre-seeded BaseContext() instance would satisfy
-    # the isinstance guard and cause create_context() to be skipped).
     provider_contexts: dict[str, BaseContext] = {}
 
     return _run_provider_pipeline(
@@ -214,9 +219,7 @@ def create_providers(  # noqa: PLR0913
         provider_contexts,
         PipelineOptions(
             global_context=global_ctx_obj,
-            context_overrides=context_overrides,
-            provider_overrides=provider_overrides,
-            anchor_overrides=anchor_overrides,
+            contributions=contributions or ProviderContributions(),
             alias_map=alias_map,
             dry_run=dry_run,
             extra_provider_entries=extra_provider_entries,

@@ -1,10 +1,14 @@
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
-from repolish.config.models.provider import ResolvedProviderInfo
+from repolish.config.models.provider import (
+    ProviderOverrides,
+    ResolvedProviderInfo,
+)
 from repolish.misc import ctx_to_dict
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
+from repolish.providers.models.pipeline import ProviderContributions
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
@@ -108,18 +112,25 @@ def build_final_providers(
         alias_to_pid,
     )
 
+    # Build ProviderContributions from the override maps.
+    # Iterate over the union of keys so anchor-only providers are not dropped.
+    all_override_pids = set(provider_overrides) | set(anchor_overrides)
+    contributions = ProviderContributions(
+        overrides={
+            pid: ProviderOverrides(
+                context_merge=provider_overrides.get(pid),
+                anchors=anchor_overrides.get(pid),
+            )
+            for pid in all_override_pids
+        },
+    )
+
     # determine directories from provider info (alias_to_pid holds the
     # normalized loader IDs constructed from target_dir)
-    # type is union because create_providers accepts either plain strings or
-    # (alias,path) tuples.  we only provide strings here, hence the explicit
-    # annotation to satisfy the type checker.
-    # pass (alias, pid) tuples so the loader can assign the config key to
-    # Provider.alias before create_context is called.
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
     result = create_providers(
         dirs,
-        provider_overrides=provider_overrides,
-        anchor_overrides=anchor_overrides or None,
+        contributions=contributions,
         global_context=global_context,
         extra_provider_entries=extra_provider_entries,
         extra_inputs=extra_inputs,

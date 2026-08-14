@@ -20,7 +20,10 @@ from repolish.providers import (
     logger,
 )
 from repolish.providers import Provider as _ProviderBase
-from repolish.providers.context import _apply_overrides_to_model
+from repolish.providers.context import (
+    _apply_overrides_to_model,
+    _apply_overrides_to_provider_contexts,
+)
 from repolish.providers.exchange import (
     _apply_annotated_tm,
     _collect_promoted_fm,
@@ -37,6 +40,7 @@ from repolish.providers.models import (
     FileMode,
     FinalizeContextOptions,
     GlobalContext,
+    ProviderContributions,
     TemplateMapping,
 )
 from repolish.providers.pipeline import (
@@ -420,9 +424,12 @@ class P(Provider[IntCtx, BaseInputs]):
             'repolish.providers.context.logger',
             mock_logger,
         )
-        providers = create_providers(
-            [pdir],
-            context_overrides={'x': 'not-an-int'},
+        contributions = ProviderContributions()
+        providers = create_providers([pdir], contributions=contributions)
+        # Apply context overrides after creation (for this test)
+        _apply_overrides_to_provider_contexts(
+            providers.provider_contexts,
+            {'x': 'not-an-int'},
         )
         ctx = next(iter(providers.provider_contexts.values()))
         assert isinstance(ctx, BaseContext)
@@ -464,7 +471,12 @@ class P(Provider[SimpleCtx, BaseInputs]):
             'repolish.providers.context.logger',
             mock_logger,
         )
-        providers = create_providers([pdir], context_overrides={'y': 'value'})
+        contributions = ProviderContributions()
+        providers = create_providers([pdir], contributions=contributions)
+        _apply_overrides_to_provider_contexts(
+            providers.provider_contexts,
+            {'y': 'value'},
+        )
         ctx = next(iter(providers.provider_contexts.values()))
         assert isinstance(ctx, BaseContext)
         ctx_typed = cast('Any', ctx)
@@ -503,7 +515,12 @@ class P(Provider[Ctx, BaseInputs]):
         return Ctx()
 """
     pdir = make_provider(src, 'p')
-    providers = create_providers([pdir], context_overrides={'inner.x': 42})
+    contributions = ProviderContributions()
+    providers = create_providers([pdir], contributions=contributions)
+    _apply_overrides_to_provider_contexts(
+        providers.provider_contexts,
+        {'inner.x': 42},
+    )
     ctx = next(iter(providers.provider_contexts.values()))
     assert isinstance(ctx, BaseContext)
     ctx_typed = cast('Any', ctx)
