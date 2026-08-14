@@ -9,11 +9,13 @@ from repolish.hydration.rendering import (
     _BinaryFile,
     _load_and_validate_template,
 )
-from repolish.providers.exchange import (
-    _retrieve_instance_inputs,
-    _schema_matches,
+from repolish.providers.finalize import (
     _validate_raw_inputs,
     finalize_provider_contexts,
+)
+from repolish.providers.inputs import (
+    _retrieve_instance_inputs,
+    _schema_matches,
 )
 from repolish.providers.models import (
     BaseContext,

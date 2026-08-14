@@ -2,7 +2,10 @@ from hotlog import get_logger
 
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
-from repolish.config.models.provider import ProviderOverrides, ResolvedProviderInfo
+from repolish.config.models.provider import (
+    ProviderOverrides,
+    ResolvedProviderInfo,
+)
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import (

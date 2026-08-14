@@ -97,7 +97,9 @@ def test_file_mapping_disabled_via_config(
 
     provider_config: dict[str, object] = {'provider_root': './p'}
     if case.config_file_mappings is not None:
-        provider_config['overrides'] = {'file_mappings': case.config_file_mappings}
+        provider_config['overrides'] = {
+            'file_mappings': case.config_file_mappings,
+        }
 
     (tmp_path / 'repolish.yaml').write_text(
         json.dumps({'providers': {'p': provider_config}}),
@@ -132,14 +134,16 @@ def test_disabled_file_not_shown_as_paused_in_output(
     )
 
     (tmp_path / 'repolish.yaml').write_text(
-        json.dumps({
-            'providers': {
-                'p': {
-                    'provider_root': './p',
-                    'overrides': {'file_mappings': {'managed.txt': False}},
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {'file_mappings': {'managed.txt': False}},
+                    },
                 },
             },
-        }),
+        ),
         encoding='utf-8',
     )
 
@@ -219,14 +223,18 @@ def test_provider_disabled_by_default_config_re_enables(
     _make_provider_with_explicit_mappings(tmp_path / 'p', default_enabled=False)
 
     (tmp_path / 'repolish.yaml').write_text(
-        json.dumps({
-            'providers': {
-                'p': {
-                    'provider_root': './p',
-                    'overrides': {'file_mappings': {'opt_in.txt': {'enabled': True}}},
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'file_mappings': {'opt_in.txt': {'enabled': True}},
+                        },
+                    },
                 },
             },
-        }),
+        ),
         encoding='utf-8',
     )
 
@@ -235,4 +243,6 @@ def test_provider_disabled_by_default_config_re_enables(
     run_repolish(['apply'])
 
     assert (tmp_path / 'opt_in.txt').exists()
-    assert (tmp_path / 'opt_in.txt').read_text(encoding='utf-8') == 'opt-in content\n'
+    assert (tmp_path / 'opt_in.txt').read_text(
+        encoding='utf-8',
+    ) == 'opt-in content\n'

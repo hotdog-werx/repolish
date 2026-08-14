@@ -24,16 +24,16 @@ from repolish.providers.context import (
     _apply_overrides_to_model,
     _apply_overrides_to_provider_contexts,
 )
-from repolish.providers.exchange import (
+from repolish.providers.contributions import (
     _apply_annotated_tm,
     _collect_promoted_fm,
     _collect_provider_contribution,
     _handle_promote_file_mappings,
     _process_provider_fm,
     collect_provider_contributions,
-    finalize_provider_contexts,
-    gather_received_inputs,
 )
+from repolish.providers.finalize import finalize_provider_contexts
+from repolish.providers.inputs import gather_received_inputs
 from repolish.providers.models import (
     Accumulators,
     BaseInputs,
@@ -595,7 +595,7 @@ def test_handle_promote_file_mappings_warns_in_standalone_mode(
     mock_inst = MagicMock(spec=DummyProvider)
     mock_inst.promote_file_mappings.return_value = {'README.md': 'tmpl.md'}
 
-    mock_warn = mocker.patch('repolish.providers.exchange.logger.warning')
+    mock_warn = mocker.patch('repolish.providers.contributions.logger.warning')
     accum = Accumulators()
     own_ctx = BaseContext()  # workspace.mode defaults to 'standalone'
     _handle_promote_file_mappings(mock_inst, own_ctx, 'p', accum)
