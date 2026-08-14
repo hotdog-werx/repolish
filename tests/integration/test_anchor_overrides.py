@@ -110,7 +110,7 @@ def test_anchor_override(
 
     provider_config: dict[str, object] = {'provider_root': './p'}
     if case.config_anchors is not None:
-        provider_config['anchors'] = case.config_anchors
+        provider_config['overrides'] = {'anchors': case.config_anchors}
 
     config = {'providers': {'p': provider_config}}
 

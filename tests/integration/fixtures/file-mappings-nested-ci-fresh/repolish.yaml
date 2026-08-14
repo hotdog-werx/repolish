@@ -1,5 +1,6 @@
 providers:
   scaffold-provider:
     cli: scaffold-provider-link
-    context:
-      include_ci_workflow: true
+    overrides:
+      context_merge:
+        include_ci_workflow: true

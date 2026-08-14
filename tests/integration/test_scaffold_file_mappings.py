@@ -151,8 +151,9 @@ def test_check_exits_zero_when_mapped_destination_already_seeded(
             providers:
               scaffold-provider:
                 cli: scaffold-provider-link
-                context:
-                  config_variant: a
+                overrides:
+                  context_merge:
+                    config_variant: a
                 symlinks:
                   - source: configs/some-config.yaml
                     target: new-symlink-config.yaml

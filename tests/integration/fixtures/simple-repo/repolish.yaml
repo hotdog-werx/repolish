@@ -1,5 +1,6 @@
 providers:
   simple-provider:
     cli: simple-provider-link
-    context_overrides:
-      greeting: 'Hello, world!'
+    overrides:
+      context_dotted:
+        greeting: 'Hello, world!'

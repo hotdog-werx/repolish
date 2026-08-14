@@ -227,7 +227,18 @@ class ProviderConfig(BaseModel):
         - ``context_overrides`` -> ``overrides.context_dotted``
         - ``anchors`` -> ``overrides.anchors``
         """
-        overrides_data: dict[str, Any] = data.get('overrides') or {}
+        raw_overrides = data.get('overrides')
+
+        # Convert ProviderOverrides instance to dict for merging
+        if isinstance(raw_overrides, ProviderOverrides):
+            overrides_data = {
+                'context_merge': raw_overrides.context_merge,
+                'context_dotted': raw_overrides.context_dotted,
+                'anchors': raw_overrides.anchors,
+                'file_mappings': raw_overrides.file_mappings,
+            }
+        else:
+            overrides_data = dict(raw_overrides) if raw_overrides else {}
 
         cls._migrate_field(
             data,

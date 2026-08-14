@@ -1,5 +1,6 @@
 providers:
   scaffold-provider:
     cli: scaffold-provider-link
-    context:
-      project_name: notice-project
+    overrides:
+      context_merge:
+        project_name: notice-project
