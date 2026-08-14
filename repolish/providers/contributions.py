@@ -56,6 +56,23 @@ def _apply_annotated_tm(
         accum.merged_file_mappings[dest] = annotated
 
 
+def _effective_enabled_state(
+    dest: str,
+    annotated: str | TemplateMapping,
+    config_overrides: dict[str, FileMappingOptions] | None = None,
+) -> bool:
+    """Determine the effective enabled state for a file mapping.
+
+    Config overrides take precedence over provider-declared options.
+    """
+    config_opts = config_overrides.get(dest) if config_overrides else None
+    if config_opts is not None:
+        return config_opts.enabled
+    if isinstance(annotated, TemplateMapping) and annotated.options is not None:
+        return annotated.options.enabled
+    return True
+
+
 def _process_provider_fm(
     provider_id: str,
     fm: dict[str, str | TemplateMapping | None],
@@ -78,15 +95,11 @@ def _process_provider_fm(
             accum.suppressed_sources.add(dest)
             continue
 
-        # Determine effective enabled state:
-        # config overrides take precedence over provider-declared options.
-        config_opts = config_overrides.get(dest) if config_overrides else None
-        if config_opts is not None:
-            effective_enabled = config_opts.enabled
-        elif isinstance(src, TemplateMapping) and src.options is not None:
-            effective_enabled = src.options.enabled
-        else:
-            effective_enabled = True
+        effective_enabled = _effective_enabled_state(
+            dest,
+            src,
+            config_overrides,
+        )
 
         if not effective_enabled:
             accum.suppressed_sources.add(dest)
@@ -167,7 +180,38 @@ def _handle_promote_file_mappings(
         )
 
 
-def _collect_provider_contribution(  # noqa: C901 - revisit when we add more contributions
+def _get_inst_and_ctx(
+    provider_id: str,
+    module_dict: dict,
+    provider_contexts: dict[str, BaseContext],
+) -> tuple[_ProviderBase, BaseContext] | None:
+    """Return the provider instance and its context for a given provider_id."""
+    inst = module_dict.get('_repolish_provider_instance')
+    if not inst:
+        return None
+    inst = cast('_ProviderBase', inst)
+    own_ctx = provider_contexts.get(provider_id, BaseContext())
+    if not isinstance(own_ctx, BaseContext):
+        return None
+    return inst, own_ctx
+
+
+def _suppress_auto_staged_files(
+    fm_config_opts: dict[str, FileMappingOptions] | None,
+    accum: Accumulators,
+) -> None:
+    """Suppress auto-staged files disabled via config overrides.
+
+    Explicitly-mapped files are already handled inside _process_provider_fm.
+    """
+    if fm_config_opts:
+        for dest, opts in fm_config_opts.items():
+            if not opts.enabled:
+                accum.merged_file_mappings.pop(dest, None)
+                accum.suppressed_sources.add(dest)
+
+
+def _collect_provider_contribution(
     provider_id: str,
     module_dict: dict,
     provider_contexts: dict[str, BaseContext],
@@ -175,24 +219,19 @@ def _collect_provider_contribution(  # noqa: C901 - revisit when we add more con
     contributions: ProviderContributions | None = None,
 ) -> None:
     """Process a single provider's anchors, file mappings, and promotions."""
-    inst = module_dict.get('_repolish_provider_instance')
-    if not inst:
+    inst_ctx = _get_inst_and_ctx(provider_id, module_dict, provider_contexts)
+    if not inst_ctx:
         return
-    inst = cast('_ProviderBase', inst)
-
-    own_ctx = provider_contexts.get(provider_id, {})
-    if not isinstance(own_ctx, BaseContext):
-        return
+    inst, own_ctx = inst_ctx
 
     # Look up this provider's overrides from contributions once.
     provider_overrides: ProviderOverrides | None = contributions.overrides.get(provider_id) if contributions else None
 
     val = call_provider_method(inst, 'create_anchors', own_ctx)
-    if val:
-        if not isinstance(val, dict):
-            msg = 'create_anchors() must return a dict'
-            raise TypeError(msg)
-        accum.merged_anchors.update(cast('dict[str, str]', val))
+    if not isinstance(val, dict):
+        msg = 'create_anchors() must return a dict'
+        raise TypeError(msg)
+    accum.merged_anchors.update(cast('dict[str, str]', val))
     if provider_overrides and provider_overrides.anchors:
         accum.merged_anchors.update(provider_overrides.anchors)
 
@@ -208,14 +247,7 @@ def _collect_provider_contribution(  # noqa: C901 - revisit when we add more con
         config_overrides=fm_config_opts,
     )
 
-    # Suppress auto-staged files disabled via config overrides.
-    # Explicitly-mapped files are already handled inside _process_provider_fm.
-    if fm_config_opts:
-        for dest, opts in fm_config_opts.items():
-            if not opts.enabled:
-                accum.merged_file_mappings.pop(dest, None)
-                accum.suppressed_sources.add(dest)
-
+    _suppress_auto_staged_files(fm_config_opts, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 
