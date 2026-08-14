@@ -18,4 +18,6 @@ tmp*
 /.editorconfig
 .repolish
 site
+*.lock
+!uv.lock
 

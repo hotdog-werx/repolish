@@ -9,11 +9,16 @@ Flow
    test environment and is not on PyPI, so dependency resolution would fail.
 3. Yield an ``InstalledProviders`` object that carries the paths tests need.
 4. Uninstall the packages and delete the temporary dist directory on teardown.
+
+When running with pytest-xdist, a file lock ensures only one worker
+builds/installs the providers, while all workers share the same installation.
+Cleanup is skipped when running with xdist to avoid race conditions.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -23,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from filelock import FileLock
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
@@ -276,33 +282,53 @@ def _discover_providers(examples_dir: Path) -> list[ProviderSpec]:
 
 
 @pytest.fixture(scope='session', autouse=True)
-def installed_providers() -> Generator[InstalledProviders, None, None]:
+def installed_providers(
+    pytestconfig: pytest.Config,
+) -> Generator[InstalledProviders, None, None]:
     """Auto-discover, build, and install all providers in provider-examples/; uninstall on teardown.
 
     Walks provider-examples/ recursively; every ``pyproject.toml`` that
     declares a ``[project]`` table is built as a wheel and installed.  Monorepo
     layouts (workspace roots containing multiple sub-packages) are handled
     transparently because each sub-package has its own ``[project]`` table.
-    """
-    specs = _discover_providers(_EXAMPLES_DIR)
-    for spec in specs:
-        # Wheel filename is derived from dist name (hyphens → underscores)
-        pkg_name = spec.dist_name.replace('-', '_')
-        wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
-        _install_wheel(wheel)
 
-    providers: dict[str, InstalledProvider] = {
-        spec.dist_name: InstalledProvider(
-            root=_pkg_sub_path(spec.import_path, 'resources/templates'),
-        )
-        for spec in specs
-    }
+    When running with pytest-xdist, a file lock ensures only one worker
+    builds/installs the providers, while all workers share the same installation.
+    Cleanup is skipped when running with xdist to avoid race conditions.
+    """
+    # Detect if running with xdist using environment variable set by pytest-xdist
+    # PYTEST_XDIST_WORKER is set to the worker ID (e.g., 'gw0') when running with -n
+    using_xdist = 'PYTEST_XDIST_WORKER' in os.environ
+
+    # Use a lock file to ensure only one worker builds/installs providers
+    # All workers share the same _DIST_DIR and installed packages
+    lock_path = _DIST_DIR.with_name('.provider-install.lock')
+    lock = FileLock(lock_path)
+
+    with lock:
+        # Only build/install if not already done (wheel files exist)
+        specs = _discover_providers(_EXAMPLES_DIR)
+        for spec in specs:
+            pkg_name = spec.dist_name.replace('-', '_')
+            if not any(_DIST_DIR.glob(f'{pkg_name}-*.whl')):
+                wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
+                _install_wheel(wheel)
+
+        providers: dict[str, InstalledProvider] = {
+            spec.dist_name: InstalledProvider(
+                root=_pkg_sub_path(spec.import_path, 'resources/templates'),
+            )
+            for spec in specs
+        }
 
     yield InstalledProviders(
         venv_bin=Path(sys.executable).parent,
         providers=providers,
     )
 
-    for spec in specs:
-        _uninstall_package(spec.dist_name)
-    shutil.rmtree(_DIST_DIR, ignore_errors=True)
+    # Skip cleanup when running with xdist to avoid race conditions
+    # Packages will be cleaned up on the next non-xdist test run
+    if not using_xdist:
+        for spec in specs:
+            _uninstall_package(spec.dist_name)
+        shutil.rmtree(_DIST_DIR, ignore_errors=True)
