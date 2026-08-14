@@ -1,19 +1,14 @@
 """Session-scoped fixtures that install test providers into the live test venv.
 
-Flow
-----
-1. Build a wheel for each fixture provider (``uv build``).
-2. Install the wheel into the same Python that is running pytest
-   (``uv pip install --python <sys.executable> --no-deps``).
-   ``--no-deps`` is intentional: ``repolish`` is already present in the
-   test environment and is not on PyPI, so dependency resolution would fail.
-3. Yield an ``InstalledProviders`` object that carries the paths tests need.
-4. Uninstall the packages and delete the temporary dist directory on teardown.
+Providers are built and installed once by pytest_configure_node() in the
+root conftest before any workers start. This module just provides the
+fixture that returns provider info for test use.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -208,7 +203,23 @@ def _build_wheel(source_dir: Path, out_dir: Path, package_name: str) -> Path:
 
 
 def _install_wheel(wheel: Path) -> None:
-    """Install a wheel into the running Python, skipping its dependencies."""
+    """Install a wheel into the running Python, skipping its dependencies.
+
+    Skips installation if the package is already installed (checked via uv pip show).
+    """
+    # Extract distribution name from wheel filename
+    # (e.g., 'simple_provider-0.1.0-py3-none-any.whl' -> 'simple-provider')
+    dist_name = wheel.name.split('-')[0].replace('_', '-')
+
+    # Check if already installed using uv pip show (more reliable than import for namespace packages)
+    result = subprocess.run(  # noqa: S603 - test code, no user input
+        ['uv', 'pip', 'show', '--python', sys.executable, dist_name],  # noqa: S607 - test code
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return  # Already installed, skip
+
     subprocess.run(  # noqa: S603 - hardcoded install args, no user input
         [  # noqa: S607 - uv is a known tool resolved from PATH
             'uv',
@@ -276,20 +287,21 @@ def _discover_providers(examples_dir: Path) -> list[ProviderSpec]:
 
 
 @pytest.fixture(scope='session', autouse=True)
-def installed_providers() -> Generator[InstalledProviders, None, None]:
-    """Auto-discover, build, and install all providers in provider-examples/; uninstall on teardown.
+def installed_providers(
+    pytestconfig: pytest.Config,
+) -> Generator[InstalledProviders, None, None]:
+    """Return installed provider info for integration tests.
 
-    Walks provider-examples/ recursively; every ``pyproject.toml`` that
-    declares a ``[project]`` table is built as a wheel and installed.  Monorepo
-    layouts (workspace roots containing multiple sub-packages) are handled
-    transparently because each sub-package has its own ``[project]`` table.
+    Providers are built and installed once by pytest_configure_node() in the
+    root conftest before any workers start. This fixture just returns the
+    provider info for test use.
+
+    Cleanup is skipped when running with xdist to avoid race conditions.
     """
+    # Detect if running with xdist
+    using_xdist = 'PYTEST_XDIST_WORKER' in os.environ
+
     specs = _discover_providers(_EXAMPLES_DIR)
-    for spec in specs:
-        # Wheel filename is derived from dist name (hyphens → underscores)
-        pkg_name = spec.dist_name.replace('-', '_')
-        wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
-        _install_wheel(wheel)
 
     providers: dict[str, InstalledProvider] = {
         spec.dist_name: InstalledProvider(
@@ -303,6 +315,8 @@ def installed_providers() -> Generator[InstalledProviders, None, None]:
         providers=providers,
     )
 
-    for spec in specs:
-        _uninstall_package(spec.dist_name)
-    shutil.rmtree(_DIST_DIR, ignore_errors=True)
+    # Skip cleanup when running with xdist to avoid race conditions
+    if not using_xdist:
+        for spec in specs:
+            _uninstall_package(spec.dist_name)
+        shutil.rmtree(_DIST_DIR, ignore_errors=True)
