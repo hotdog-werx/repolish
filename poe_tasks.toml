@@ -10,10 +10,10 @@ include = [
 [tool.poe.tasks]
 ci-checks.help = "run all checks for CI"
 ci-checks.sequence = [
-  "check-dprint",
-  "check-python",
   "check-ty",
   "check-complexity",
+  "check-dprint",
+  "check-python",
   "check-coverage",
 ]
 

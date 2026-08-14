@@ -1,18 +1,8 @@
 """Session-scoped fixtures that install test providers into the live test venv.
 
-Flow
-----
-1. Build a wheel for each fixture provider (``uv build``).
-2. Install the wheel into the same Python that is running pytest
-   (``uv pip install --python <sys.executable> --no-deps``).
-   ``--no-deps`` is intentional: ``repolish`` is already present in the
-   test environment and is not on PyPI, so dependency resolution would fail.
-3. Yield an ``InstalledProviders`` object that carries the paths tests need.
-4. Uninstall the packages and delete the temporary dist directory on teardown.
-
-When running with pytest-xdist, a file lock ensures only one worker
-builds/installs the providers, while all workers share the same installation.
-Cleanup is skipped when running with xdist to avoid race conditions.
+Providers are built and installed once by pytest_configure_node() in the
+root conftest before any workers start. This module just provides the
+fixture that returns provider info for test use.
 """
 
 from __future__ import annotations
@@ -28,7 +18,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from filelock import FileLock
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
@@ -214,7 +203,23 @@ def _build_wheel(source_dir: Path, out_dir: Path, package_name: str) -> Path:
 
 
 def _install_wheel(wheel: Path) -> None:
-    """Install a wheel into the running Python, skipping its dependencies."""
+    """Install a wheel into the running Python, skipping its dependencies.
+
+    Skips installation if the package is already installed (checked via uv pip show).
+    """
+    # Extract distribution name from wheel filename
+    # (e.g., 'simple_provider-0.1.0-py3-none-any.whl' -> 'simple-provider')
+    dist_name = wheel.name.split('-')[0].replace('_', '-')
+
+    # Check if already installed using uv pip show (more reliable than import for namespace packages)
+    result = subprocess.run(  # noqa: S603 - test code, no user input
+        ['uv', 'pip', 'show', '--python', sys.executable, dist_name],  # noqa: S607 - test code
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return  # Already installed, skip
+
     subprocess.run(  # noqa: S603 - hardcoded install args, no user input
         [  # noqa: S607 - uv is a known tool resolved from PATH
             'uv',
@@ -285,41 +290,25 @@ def _discover_providers(examples_dir: Path) -> list[ProviderSpec]:
 def installed_providers(
     pytestconfig: pytest.Config,
 ) -> Generator[InstalledProviders, None, None]:
-    """Auto-discover, build, and install all providers in provider-examples/; uninstall on teardown.
+    """Return installed provider info for integration tests.
 
-    Walks provider-examples/ recursively; every ``pyproject.toml`` that
-    declares a ``[project]`` table is built as a wheel and installed.  Monorepo
-    layouts (workspace roots containing multiple sub-packages) are handled
-    transparently because each sub-package has its own ``[project]`` table.
+    Providers are built and installed once by pytest_configure_node() in the
+    root conftest before any workers start. This fixture just returns the
+    provider info for test use.
 
-    When running with pytest-xdist, a file lock ensures only one worker
-    builds/installs the providers, while all workers share the same installation.
     Cleanup is skipped when running with xdist to avoid race conditions.
     """
-    # Detect if running with xdist using environment variable set by pytest-xdist
-    # PYTEST_XDIST_WORKER is set to the worker ID (e.g., 'gw0') when running with -n
+    # Detect if running with xdist
     using_xdist = 'PYTEST_XDIST_WORKER' in os.environ
 
-    # Use a lock file to ensure only one worker builds/installs providers
-    # All workers share the same _DIST_DIR and installed packages
-    lock_path = _DIST_DIR.with_name('.provider-install.lock')
-    lock = FileLock(lock_path)
+    specs = _discover_providers(_EXAMPLES_DIR)
 
-    with lock:
-        # Only build/install if not already done (wheel files exist)
-        specs = _discover_providers(_EXAMPLES_DIR)
-        for spec in specs:
-            pkg_name = spec.dist_name.replace('-', '_')
-            if not any(_DIST_DIR.glob(f'{pkg_name}-*.whl')):
-                wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
-                _install_wheel(wheel)
-
-        providers: dict[str, InstalledProvider] = {
-            spec.dist_name: InstalledProvider(
-                root=_pkg_sub_path(spec.import_path, 'resources/templates'),
-            )
-            for spec in specs
-        }
+    providers: dict[str, InstalledProvider] = {
+        spec.dist_name: InstalledProvider(
+            root=_pkg_sub_path(spec.import_path, 'resources/templates'),
+        )
+        for spec in specs
+    }
 
     yield InstalledProviders(
         venv_bin=Path(sys.executable).parent,
@@ -327,7 +316,6 @@ def installed_providers(
     )
 
     # Skip cleanup when running with xdist to avoid race conditions
-    # Packages will be cleaned up on the next non-xdist test run
     if not using_xdist:
         for spec in specs:
             _uninstall_package(spec.dist_name)

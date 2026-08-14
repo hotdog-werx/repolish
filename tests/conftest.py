@@ -5,6 +5,36 @@ from textwrap import dedent
 
 import pytest
 
+from .integration.conftest import (
+    _DIST_DIR,
+    _EXAMPLES_DIR,
+    _build_wheel,
+    _discover_providers,
+    _install_wheel,
+)
+
+
+def pytest_configure() -> None:
+    """Build/install test providers once before any tests run.
+
+    Uses a marker file to ensure providers are only built once,
+    even when multiple pytest processes start (xdist workers).
+    """
+    # Use a marker file to ensure idempotency across workers
+    marker = _DIST_DIR / '.providers-ready'
+    if marker.exists():
+        return  # Already done
+
+    # Build and install all providers once
+    _DIST_DIR.mkdir(parents=True, exist_ok=True)
+    specs = _discover_providers(_EXAMPLES_DIR)
+    for spec in specs:
+        pkg_name = spec.dist_name.replace('-', '_')
+        wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
+        _install_wheel(wheel)
+
+    marker.touch()
+
 
 def _git(*args: str, cwd: Path) -> None:
     """Run git command silently in given directory."""

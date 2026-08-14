@@ -46,17 +46,19 @@ class TestStandaloneModeUnchanged:
 
 
 class TestMonorepoRootPass:
-    def test_monorepo_root_pass_suppresses_auto_staging(
+    def test_monorepo_root_pass(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``--root-only`` runs cleanly but auto-staged files are suppressed.
+        """``--root-only`` runs cleanly with correct mode and suppressed auto-staging.
 
         Root-pass providers must use explicit ``create_file_mappings`` to write
         files; auto-staging is intentionally disabled for root passes so that
         providers designed for member repos don't litter the monorepo root.
+
+        Also verifies that debug JSON shows ``mode="root"``.
         """
         repo = fixtures.monorepo_basic.stage(tmp_path)
         monkeypatch.chdir(repo)
@@ -70,18 +72,7 @@ class TestMonorepoRootPass:
         assert not (repo / 'packages' / 'pkg-a' / 'README.simple-provider.md').exists()
         assert not (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
 
-    def test_monorepo_root_context_is_root_mode(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Root pass debug JSON must show ``mode="root"``."""
-        repo = fixtures.monorepo_basic.stage(tmp_path)
-        monkeypatch.chdir(repo)
-
-        run_repolish(['apply', '--root-only'])
-
+        # Verify debug JSON shows root mode
         debug_files = list(
             (repo / '.repolish' / '_').glob('provider-context.*.json'),
         )
@@ -137,71 +128,43 @@ class TestMonorepoMemberPass:
 
 
 class TestMonorepoFullRun:
-    def test_monorepo_full_run_all_passes(
+    def test_monorepo_full_run(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Full ``repolish apply`` creates files at root, pkg-a, and pkg-b."""
+        """Full ``repolish apply`` creates member files with correct context and debug info.
+
+        Verifies:
+        - Files created at member directories (pkg-a, pkg-b), not at root or pkg-no-repolish
+        - Each member's context_overrides applied (greeting message)
+        - .repolish/ directories created at root and each member
+        - Debug JSON shows mode="member" for member passes
+        """
         repo = fixtures.monorepo_basic.stage(tmp_path)
         monkeypatch.chdir(repo)
 
         run_repolish(['apply'])
 
-        # Root pass suppresses auto-staging; only member files appear.
+        # Files created at members, not at root or pkg-no-repolish
         assert not (repo / 'README.simple-provider.md').exists()
-        assert (repo / 'packages' / 'pkg-a' / 'README.simple-provider.md').exists()
-        assert (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
-        # pkg-no-repolish must be untouched.
+        readme_a = repo / 'packages' / 'pkg-a' / 'README.simple-provider.md'
+        readme_b = repo / 'packages' / 'pkg-b' / 'README.simple-provider.md'
+        assert readme_a.exists()
+        assert readme_b.exists()
         assert not (repo / 'packages' / 'pkg-no-repolish' / 'README.simple-provider.md').exists()
 
-    def test_monorepo_member_isolation(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Each member produces output with its own context_overrides (greeting)."""
-        repo = fixtures.monorepo_basic.stage(tmp_path)
-        monkeypatch.chdir(repo)
+        # Each member's context_overrides applied
+        assert 'Hello from pkg-a!' in readme_a.read_text()
+        assert 'Hello from pkg-b!' in readme_b.read_text()
 
-        run_repolish(['apply'])
-
-        content_a = (repo / 'packages' / 'pkg-a' / 'README.simple-provider.md').read_text()
-        content_b = (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').read_text()
-
-        assert 'Hello from pkg-a!' in content_a
-        assert 'Hello from pkg-b!' in content_b
-
-    def test_monorepo_local_repolish_dirs(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """.repolish/ is written at root, pkg-a, and pkg-b; no path escaping."""
-        repo = fixtures.monorepo_basic.stage(tmp_path)
-        monkeypatch.chdir(repo)
-
-        run_repolish(['apply'])
-
+        # .repolish/ directories created
         assert (repo / '.repolish').is_dir()
         assert (repo / 'packages' / 'pkg-a' / '.repolish').is_dir()
         assert (repo / 'packages' / 'pkg-b' / '.repolish').is_dir()
 
-    def test_monorepo_full_run_member_mode_in_debug(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Member debug JSON shows ``mode="member"``."""
-        repo = fixtures.monorepo_basic.stage(tmp_path)
-        monkeypatch.chdir(repo)
-
-        run_repolish(['apply'])
-
+        # Debug JSON shows member mode
         debug_files = list(
             (repo / 'packages' / 'pkg-a' / '.repolish' / '_').glob(
                 'provider-context.*.json',
@@ -214,46 +177,34 @@ class TestMonorepoFullRun:
 
 
 class TestR10Guard:
-    def test_running_from_member_applies_standalone_with_note(
+    def test_r10_guard_behavior(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Running from inside a member succeeds (standalone) and prints a note."""
+        """Running from inside a member shows note; --standalone suppresses it."""
         repo = fixtures.monorepo_basic.stage(tmp_path)
         pkg_a = repo / 'packages' / 'pkg-a'
         monkeypatch.chdir(pkg_a)
 
-        result = run_repolish(['apply'])
-
-        # Member's own files must be applied.
+        # Without --standalone: note should appear
+        result_default = run_repolish(['apply'])
         assert (pkg_a / 'README.simple-provider.md').exists()
-        # Root and other members must be untouched.
         assert not (repo / 'README.simple-provider.md').exists()
         assert not (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
-        # An informational note (not an error) must appear.
-        assert 'note:' in result.output
-        assert 'root pass skipped' in result.output
+        assert 'note:' in result_default.output
+        assert 'root pass skipped' in result_default.output
 
-    def test_standalone_flag_suppresses_note(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """``--standalone`` runs a single-pass apply without printing the member note."""
-        repo = fixtures.monorepo_basic.stage(tmp_path)
-        pkg_a = repo / 'packages' / 'pkg-a'
-        monkeypatch.chdir(pkg_a)
+        # Clean up for second run
+        (pkg_a / 'README.simple-provider.md').unlink()
 
-        result = run_repolish(['apply', '--standalone'])
-
+        # With --standalone: note should NOT appear
+        result_standalone = run_repolish(['apply', '--standalone'])
         assert (pkg_a / 'README.simple-provider.md').exists()
-        # Root and pkg-b must be untouched.
         assert not (repo / 'README.simple-provider.md').exists()
         assert not (repo / 'packages' / 'pkg-b' / 'README.simple-provider.md').exists()
-        assert 'note:' not in result.output
+        assert 'note:' not in result_standalone.output
 
 
 class TestExplicitMembersConfig:
@@ -376,77 +327,37 @@ class TestDevkitProviderCommunication:
 class TestPromoteFileMappings:
     """Integration tests for promote_file_mappings — promoting files from members to root."""
 
-    def test_promoted_files_written_to_root(
+    def test_promoted_files_behavior(
         self,
         installed_providers: InstalledProviders,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """promote_file_mappings writes files at the repo root, not in the member dir.
-
-        The devkit-python provider's PythonMemberHandler.promote_file_mappings
-        returns a per-member CI workflow keyed by member name.  After a full
-        ``repolish apply`` run on the monorepo-devkit fixture, both pkg-alpha
-        and pkg-beta workflow files must appear at the repo root under
-        ``.github/workflows/``.
-        """
+        """Promoted files appear at root, not in member dirs; --check validates state."""
         repo = fixtures.monorepo_devkit.stage(tmp_path)
         monkeypatch.chdir(repo)
 
+        # First verify --check fails before apply (promoted files missing)
+        run_repolish(['apply', '--check'], exit_code=2)
+
+        # Apply should create promoted files at root
         run_repolish(['apply'])
 
         alpha_workflow = repo / '.github' / 'workflows' / '_ci-checks_pkg-alpha.yaml'
         beta_workflow = repo / '.github' / 'workflows' / '_ci-checks_pkg-beta.yaml'
 
-        assert alpha_workflow.exists(), f'expected {alpha_workflow} to be promoted to root'
-        assert beta_workflow.exists(), f'expected {beta_workflow} to be promoted to root'
-
-        # Each workflow must contain the rendering of its member name.
+        assert alpha_workflow.exists()
+        assert beta_workflow.exists()
         assert 'pkg-alpha' in alpha_workflow.read_text()
         assert 'pkg-beta' in beta_workflow.read_text()
 
-    def test_promoted_files_not_written_in_member_dir(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Promoted files must NOT appear inside the member package directory."""
-        repo = fixtures.monorepo_devkit.stage(tmp_path)
-        monkeypatch.chdir(repo)
-
-        run_repolish(['apply'])
-
-        # The _ci-checks.yaml template should not leak into member dirs.
+        # Promoted files must NOT appear in member dirs
         for pkg in ('pkg-alpha', 'pkg-beta'):
             member_dir = repo / 'packages' / pkg
             leaked = list(member_dir.rglob('_ci-checks*.yaml'))
-            assert not leaked, f'promoted template leaked into member dir {pkg}: {leaked}'
+            assert not leaked, f'promoted template leaked into member dir {pkg}'
 
-    def test_check_flag_detects_missing_promoted_files(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """``repolish apply --check`` exits non-zero when promoted files are missing."""
-        repo = fixtures.monorepo_devkit.stage(tmp_path)
-        monkeypatch.chdir(repo)
-
-        # Check without applying first — promoted files are absent from disk.
-        run_repolish(['apply', '--check'], exit_code=2)
-
-    def test_check_flag_passes_after_apply(
-        self,
-        installed_providers: InstalledProviders,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """``repolish apply --check`` exits 0 when promoted files are up to date."""
-        repo = fixtures.monorepo_devkit.stage(tmp_path)
-        monkeypatch.chdir(repo)
-
-        run_repolish(['apply'])
+        # --check should now pass
         run_repolish(['apply', '--check'], exit_code=0)
 
     def test_root_only_skips_promotion_pass(
