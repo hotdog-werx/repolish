@@ -150,3 +150,89 @@ def test_disabled_file_not_shown_as_paused_in_output(
     assert not (tmp_path / 'managed.txt').exists()
     assert (tmp_path / 'other.txt').exists()
     assert 'paused' not in result.output
+
+
+def _make_provider_with_explicit_mappings(
+    directory: Path,
+    *,
+    default_enabled: bool,
+) -> None:
+    """Provider that explicitly declares a file_mapping with a provider-level enabled flag."""
+    _write(directory / 'repolish' / 'opt_in.txt', 'opt-in content\n')
+    _write(
+        directory / 'repolish.py',
+        f"""\
+        from repolish import BaseContext, Provider, BaseInputs, TemplateMapping
+        from repolish.providers.models import FileMappingOptions
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, ctx):
+                return {{
+                    'opt_in.txt': TemplateMapping(
+                        source_template='opt_in.txt',
+                        options=FileMappingOptions(enabled={default_enabled}),
+                    ),
+                }}
+        """,
+    )
+
+
+def test_provider_disabled_by_default_no_config_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider declares enabled=False in TemplateMapping.options; no config override.
+
+    The file must not be written. This exercises the elif branch in
+    _process_provider_fm where the provider's own options control the
+    effective enabled state (no config_opts present).
+    """
+    _make_provider_with_explicit_mappings(tmp_path / 'p', default_enabled=False)
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert not (tmp_path / 'opt_in.txt').exists()
+
+
+def test_provider_disabled_by_default_config_re_enables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider declares enabled=False; config explicitly re-enables it.
+
+    The config override takes precedence over the provider default and the
+    file must be written.
+    """
+    _make_provider_with_explicit_mappings(tmp_path / 'p', default_enabled=False)
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({
+            'providers': {
+                'p': {
+                    'provider_root': './p',
+                    'overrides': {'file_mappings': {'opt_in.txt': {'enabled': True}}},
+                },
+            },
+        }),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / 'opt_in.txt').exists()
+    assert (tmp_path / 'opt_in.txt').read_text(encoding='utf-8') == 'opt-in content\n'

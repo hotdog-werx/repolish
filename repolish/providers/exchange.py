@@ -19,6 +19,7 @@ from repolish.providers.models import (
     FinalizeContextOptions,
     GlobalContext,
     ProvideInputsOptions,
+    ProviderContributions,
     ProviderEntry,
     ProviderInfo,
     TemplateMapping,
@@ -33,6 +34,8 @@ from repolish.providers.models.template_path import RepolishTemplatePath
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from repolish.config.models.provider import ProviderOverrides
 
 
 def build_provider_metadata(
@@ -423,12 +426,16 @@ def _process_provider_fm(
     provider_id: str,
     fm: dict[str, str | TemplateMapping | None],
     accum: Accumulators,
+    config_overrides: dict[str, FileMappingOptions] | None = None,
 ) -> None:
     """Process one provider's file_mappings in a single pass.
 
     Handles all modes in order: plain string sources, DELETE, KEEP,
     CREATE_ONLY, and REGULAR entries.  Populates `merged_file_mappings`,
     `delete_set`, `create_only_set`, and `history` on `accum`.
+
+    Config overrides (from ``ProviderContributions``) take precedence over the
+    provider's own ``TemplateMapping.options``.
     """
     for dest, src in fm.items():
         if src is None:
@@ -436,6 +443,21 @@ def _process_provider_fm(
             # it so the builder can exclude it from auto-staging.
             accum.suppressed_sources.add(dest)
             continue
+
+        # Determine effective enabled state:
+        # config overrides take precedence over provider-declared options.
+        config_opts = config_overrides.get(dest) if config_overrides else None
+        if config_opts is not None:
+            effective_enabled = config_opts.enabled
+        elif isinstance(src, TemplateMapping) and src.options is not None:
+            effective_enabled = src.options.enabled
+        else:
+            effective_enabled = True
+
+        if not effective_enabled:
+            accum.suppressed_sources.add(dest)
+            continue
+
         if isinstance(src, str):
             # Wrap plain-string sources in a TemplateMapping so they carry
             # source_provider. Store with .jinja stripped to match what's
@@ -453,6 +475,7 @@ def _process_provider_fm(
             source_template=tpl.logical_name if tpl else None,
             extra_context=src.extra_context,
             file_mode=src.file_mode,
+            options=src.options,
             source_provider=provider_id,
         )
         _apply_annotated_tm(dest, annotated, provider_id, accum)
@@ -515,8 +538,7 @@ def _collect_provider_contribution(
     module_dict: dict,
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
-    anchor_overrides: dict[str, dict[str, str]] | None = None,
-    file_mapping_overrides: dict[str, dict[str, FileMappingOptions]] | None = None,
+    contributions: ProviderContributions | None = None,
 ) -> None:
     """Process a single provider's anchors, file mappings, and promotions."""
     inst = module_dict.get('_repolish_provider_instance')
@@ -528,30 +550,33 @@ def _collect_provider_contribution(
     if not isinstance(own_ctx, BaseContext):
         return
 
+    # Look up this provider's overrides from contributions once.
+    provider_overrides: ProviderOverrides | None = (
+        contributions.overrides.get(provider_id) if contributions else None
+    )
+
     val = call_provider_method(inst, 'create_anchors', own_ctx)
     if val:
         if not isinstance(val, dict):
             msg = 'create_anchors() must return a dict'
             raise TypeError(msg)
         accum.merged_anchors.update(cast('dict[str, str]', val))
-    # apply config-level anchor overrides scoped to this provider only
-    if anchor_overrides and (overrides := anchor_overrides.get(provider_id)):
-        accum.merged_anchors.update(overrides)
+    if provider_overrides and provider_overrides.anchors:
+        accum.merged_anchors.update(provider_overrides.anchors)
 
     fm = cast(
         'dict[str, str | TemplateMapping | None]',
         call_provider_method(inst, 'create_file_mappings', own_ctx),
     )
-    _process_provider_fm(provider_id, fm, accum)
+    fm_config_opts = provider_overrides.file_mappings if provider_overrides else None
+    _process_provider_fm(provider_id, fm, accum, config_overrides=fm_config_opts)
 
-    # Apply per-file overrides from contributions (e.g. enabled=False → suppress)
-    if file_mapping_overrides and (fm_opts := file_mapping_overrides.get(provider_id)):
-        for dest, opts in fm_opts.items():
+    # Suppress auto-staged files disabled via config overrides.
+    # Explicitly-mapped files are already handled inside _process_provider_fm.
+    if fm_config_opts:
+        for dest, opts in fm_config_opts.items():
             if not opts.enabled:
                 accum.merged_file_mappings.pop(dest, None)
-                # Also suppress the dest from auto-staging (for files not in
-                # create_file_mappings, the auto-stage path uses suppressed_sources
-                # to skip files from the rendered output directory).
                 accum.suppressed_sources.add(dest)
 
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
@@ -561,8 +586,7 @@ def collect_provider_contributions(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
-    anchor_overrides: dict[str, dict[str, str]] | None = None,
-    file_mapping_overrides: dict[str, dict[str, FileMappingOptions]] | None = None,
+    contributions: ProviderContributions | None = None,
 ) -> None:
     """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
@@ -574,6 +598,5 @@ def collect_provider_contributions(
             module_dict,
             provider_contexts,
             accum,
-            anchor_overrides=anchor_overrides,
-            file_mapping_overrides=file_mapping_overrides,
+            contributions=contributions,
         )

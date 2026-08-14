@@ -111,6 +111,10 @@ class TemplateMapping:
           fail loudly if they differ (default, safe for shared CI templates).
         - ``"last_wins"`` — last member session processed wins silently.
         - ``"error"`` — fail immediately on any conflict.
+      - options: optional :class:`FileMappingOptions` controlling per-file
+        behaviour (enabled, priority, skip_render).  When ``enabled=False``
+        the mapping is suppressed by default; users can re-enable it via the
+        project config ``overrides.file_mappings`` entry.
       - source_provider: provider alias that originally supplied the template.
         This is not something the provider needs to set; the loader populates
         it during merging so we can track provenance.
@@ -129,6 +133,7 @@ class TemplateMapping:
     extra_context: object | None = None
     file_mode: FileMode = FileMode.REGULAR
     promote_conflict: Literal['identical', 'last_wins', 'error'] = 'identical'
+    options: FileMappingOptions | None = None
     # provider alias that originally supplied the template.  This is not
     # something the provider needs to set; the loader populates it during
     # merging so we can track provenance of conditional/create-only/delete

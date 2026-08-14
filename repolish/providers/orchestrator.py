@@ -121,16 +121,11 @@ def _run_provider_pipeline(
         global_context=_opts.global_context,
     )
 
-    # Apply anchor overrides from contributions
-    anchor_overrides = {pid: overrides.anchors for pid, overrides in _contrib.overrides.items() if overrides.anchors}
-    file_mapping_overrides = {pid: overrides.file_mappings for pid, overrides in _contrib.overrides.items() if overrides.file_mappings}
-
     collect_provider_contributions(
         module_cache,
         provider_contexts,
         accum,
-        anchor_overrides=anchor_overrides or None,
-        file_mapping_overrides=file_mapping_overrides or None,
+        contributions=_contrib,
     )
 
     return SessionBundle(
