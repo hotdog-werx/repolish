@@ -144,7 +144,7 @@ def test_per_provider_context_override_with_nested_directory(tmp_path: Path):
         provider_root=sub,
         resources_dir=prov,
         symlinks=[],
-        context={'foo': 'override'},
+        overrides={'context_merge': {'foo': 'override'}},
     )
     cfg = RepolishConfig.model_validate(
         {

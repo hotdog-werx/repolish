@@ -113,9 +113,12 @@ def apply_session(
     if render_templates(setup_input, providers, setup_output) != 0:
         return 1
 
-    # Run any configured post-processing commands in the rendered output dir
+    # Run any configured post-processing commands only when the rendered output
+    # directory actually exists. A disabled mapping may leave the session with
+    # no rendered files at all, and in that no-op case repolish should not
+    # execute post-process commands for a non-existent render tree.
     post_cwd = setup_output / 'repolish'
-    if not skip_post_process:
+    if not skip_post_process and post_cwd.exists() and any(post_cwd.iterdir()):
         run_post_process(config.post_process, post_cwd)
 
     is_root_pass = session.global_context.workspace.mode == 'root'

@@ -1,5 +1,6 @@
 providers:
   scaffold-provider:
     cli: scaffold-provider-link
-    context:
-      config_variant: a
+    overrides:
+      context_merge:
+        config_variant: a

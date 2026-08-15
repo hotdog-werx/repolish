@@ -225,8 +225,9 @@ class TestExplicitMembersConfig:
             'providers:\n'
             '  simple-provider:\n'
             '    cli: simple-provider-link\n'
-            '    context_overrides:\n'
-            "      greeting: 'Hello from root!'\n",
+            '    overrides:\n'
+            '      context_dotted:\n'
+            "        greeting: 'Hello from root!'\n",
             encoding='utf-8',
         )
 

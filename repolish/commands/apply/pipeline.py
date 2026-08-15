@@ -2,6 +2,10 @@ from hotlog import get_logger
 
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
+from repolish.config.models.provider import (
+    ProviderOverrides,
+    ResolvedProviderInfo,
+)
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import (
@@ -15,6 +19,7 @@ from repolish.providers.models import (
     ProviderEntry,
     get_global_context,
 )
+from repolish.providers.models.pipeline import ProviderContributions
 from repolish.providers.orchestrator import create_providers
 
 logger = get_logger(__name__)
@@ -33,6 +38,32 @@ def _ordered_aliases(config: RepolishConfig) -> list[str]:
     return config.providers_order or list(config.providers.keys())
 
 
+def _build_provider_overrides(
+    config: RepolishConfig,
+    alias_to_pid: dict[str, str],
+) -> dict[str, dict[str, object]]:
+    """Build provider overrides map keyed by provider id."""
+    provider_overrides: dict[str, dict[str, object]] = {}
+    for alias, info in config.providers.items():
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+        merged = _merge_overrides(info)
+        if merged:
+            provider_overrides[pid] = merged
+    return provider_overrides
+
+
+def _merge_overrides(info: ResolvedProviderInfo) -> dict[str, object]:
+    """Merge context overrides from a provider info into a single dict."""
+    merged: dict[str, object] = {}
+    if not info.overrides:
+        return merged
+    if info.overrides.context_merge:
+        merged.update(ctx_to_dict(info.overrides.context_merge))
+    if info.overrides.context_dotted:
+        merged.update(info.overrides.context_dotted)
+    return merged
+
+
 def _collect_session_outputs(
     config: RepolishConfig,
     alias_to_pid: dict[str, str],
@@ -46,21 +77,16 @@ def _collect_session_outputs(
     complete picture of each member's contributions.
     """
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
+    provider_overrides = _build_provider_overrides(config, alias_to_pid)
 
-    provider_overrides: dict[str, dict[str, object]] = {}
-    for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        merged: dict[str, object] = {}
-        if info.context:
-            merged.update(ctx_to_dict(info.context))
-        if info.context_overrides:
-            merged.update(info.context_overrides)
-        if merged:
-            provider_overrides[pid] = merged
+    # Build ProviderContributions from per-provider overrides
+    contributions = ProviderContributions(
+        overrides={pid: ProviderOverrides(context_dotted=overrides) for pid, overrides in provider_overrides.items()},
+    )
 
     dry = create_providers(
         dirs,
-        provider_overrides=provider_overrides,
+        contributions=contributions,
         global_context=global_context,
         dry_run=True,
     )

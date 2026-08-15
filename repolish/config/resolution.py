@@ -126,9 +126,7 @@ def _resolved_from_info(
         provider_root=provider_root,
         resources_dir=resources_dir,
         symlinks=symlinks,
-        context=provider_config.context,
-        context_overrides=provider_config.context_overrides or None,
-        anchors=provider_config.anchors,
+        overrides=provider_config.overrides,
     )
 
 
@@ -153,9 +151,7 @@ def _resolved_from_static(
         provider_root=provider_root,
         resources_dir=resources_dir,
         symlinks=symlinks,
-        context=provider_config.context,
-        context_overrides=provider_config.context_overrides or None,
-        anchors=provider_config.anchors,
+        overrides=provider_config.overrides,
     )
 
 

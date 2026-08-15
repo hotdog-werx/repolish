@@ -13,7 +13,7 @@ from repolish.config import (
     RepolishConfigFile,
 )
 from repolish.config.models import AliasRegistry, ProviderFileInfo
-from repolish.config.models.provider import ProviderSymlink
+from repolish.config.models.provider import ProviderOverrides, ProviderSymlink
 from repolish.config.resolution import resolve_config
 from repolish.exceptions import ProviderConfigError
 
@@ -263,25 +263,22 @@ def test_provider_config_context_roundtrip(tmp_path: Path):
         providers={
             'foo': ProviderConfig(
                 provider_root=str(prov_dir),
-                context={'a': 1},
-                context_overrides={'a': 2, 'nested.key': 'val'},
+                overrides=ProviderOverrides(
+                    context_merge={'a': 1},
+                    context_dotted={'a': 2, 'nested.key': 'val'},
+                ),
             ),
         },
     )
-    # normalization should leave our field intact
-    assert 'foo' in raw.providers
-    assert raw.providers['foo'].context == {'a': 1}
-
-    # resolve to runtime config and ensure context is preserved
 
     tmpdir = tmp_path / 'cfg'
     tmpdir.mkdir()
     raw.config_file = tmpdir / 'repolish.yaml'
     resolved = resolve_config(raw)
     assert 'foo' in resolved.providers
-    assert resolved.providers['foo'].context == {'a': 1}
-    # context_overrides should roundtrip as well
-    assert resolved.providers['foo'].context_overrides == {
+    assert resolved.providers['foo'].overrides is not None
+    assert resolved.providers['foo'].overrides.context_merge == {'a': 1}
+    assert resolved.providers['foo'].overrides.context_dotted == {
         'a': 2,
         'nested.key': 'val',
     }
@@ -298,3 +295,97 @@ def test_provider_symlink_json_serializes_paths_as_posix():
         'source': 'configs/.editorconfig',
         'target': '.editorconfig',
     }
+
+
+# Remove in V2.0: legacy top-level fields context, context_overrides, anchors are deprecated
+class TestLegacyOverridesMigration:
+    """Tests for migration of legacy top-level override fields to overrides container."""
+
+    def test_migrate_context_to_context_merge(self):
+        """Legacy 'context' field migrates to overrides.context_merge with deprecation warning."""
+        with pytest.deprecated_call(
+            match="Provider config field 'context' at top level is deprecated",
+        ):
+            config = ProviderConfig(
+                provider_root='/test/provider',
+                context={'key': 'value'},
+            )
+        assert config.overrides is not None
+        assert config.overrides.context_merge == {'key': 'value'}
+
+    def test_migrate_context_overrides_to_context_dotted(self):
+        """Legacy 'context_overrides' field migrates to overrides.context_dotted with deprecation warning."""
+        with pytest.deprecated_call(
+            match="Provider config field 'context_overrides' at top level is deprecated",
+        ):
+            config = ProviderConfig(
+                provider_root='/test/provider',
+                context_overrides={'nested.key': 'value'},
+            )
+        assert config.overrides is not None
+        assert config.overrides.context_dotted == {'nested.key': 'value'}
+
+    def test_migrate_anchors_to_anchors(self):
+        """Legacy 'anchors' field migrates to overrides.anchors with deprecation warning."""
+        with pytest.deprecated_call(
+            match="Provider config field 'anchors' at top level is deprecated",
+        ):
+            config = ProviderConfig(
+                provider_root='/test/provider',
+                anchors={'my_anchor': 'value'},
+            )
+        assert config.overrides is not None
+        assert config.overrides.anchors == {'my_anchor': 'value'}
+
+    def test_migrate_all_legacy_fields_at_once(self):
+        """All three legacy fields migrate correctly in a single validation."""
+        with pytest.deprecated_call():
+            config = ProviderConfig(
+                provider_root='/test/provider',
+                context={'a': 1},
+                context_overrides={'b': 2},
+                anchors={'c': '3'},
+            )
+        assert config.overrides is not None
+        assert config.overrides.context_merge == {'a': 1}
+        assert config.overrides.context_dotted == {'b': 2}
+        assert config.overrides.anchors == {'c': '3'}
+
+    def test_explicit_overrides_takes_precedence_over_legacy(self):
+        """When overrides.context_merge is explicitly set, legacy context is ignored."""
+        # No warning should be emitted since the legacy value is not used
+        # (explicit override takes precedence)
+        config = ProviderConfig(
+            provider_root='/test/provider',
+            context={'legacy': 'value'},
+            overrides=ProviderOverrides(context_merge={'explicit': 'value'}),
+        )
+        # Explicit overrides should win
+        assert config.overrides is not None
+        assert config.overrides.context_merge == {'explicit': 'value'}
+
+    def test_legacy_fills_empty_overrides_field(self):
+        """When overrides is empty dict, legacy fields populate it."""
+        with pytest.deprecated_call():
+            config = ProviderConfig(
+                provider_root='/test/provider',
+                context={'key': 'value'},
+                overrides=ProviderOverrides(),
+            )
+        assert config.overrides is not None
+        assert config.overrides.context_merge == {'key': 'value'}
+
+    def test_no_warning_when_using_new_overrides_syntax(self):
+        """Using the new overrides container does not emit deprecation warnings."""
+        config = ProviderConfig(
+            provider_root='/test/provider',
+            overrides=ProviderOverrides(
+                context_merge={'a': 1},
+                context_dotted={'b': 2},
+                anchors={'c': '3'},
+            ),
+        )
+        assert config.overrides is not None
+        assert config.overrides.context_merge == {'a': 1}
+        assert config.overrides.context_dotted == {'b': 2}
+        assert config.overrides.anchors == {'c': '3'}

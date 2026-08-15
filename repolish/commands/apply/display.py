@@ -186,6 +186,8 @@ def _file_skip_reason(
     are never written to the root).
     """
     if record.mode == FileMode.SUPPRESS:
+        if record.path in session.providers.disabled_file_mappings:
+            return 'disabled'
         return 'suppressed'
     if record.path in frozenset(session.config.paused_files):
         return 'paused'

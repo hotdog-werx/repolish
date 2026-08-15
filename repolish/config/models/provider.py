@@ -1,9 +1,109 @@
+import warnings
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from repolish.exceptions import ProviderConfigError
+from repolish.providers.models.files import FileMappingOptions
+
+
+class ProviderOverrides(BaseModel):
+    """Consolidated container for provider-level overrides.
+
+    This is the single extension point for overriding provider behavior
+    from the project configuration. All override types belong here:
+
+    - ``context_merge``: Simple key-value merges into provider context (shallow)
+    - ``context_dotted``: Dot-notation overrides for nested context values (deep)
+    - ``anchors``: Anchor definitions to override provider defaults
+    - ``file_mappings``: Per-file enabled/disabled overrides
+
+    Usage in repolish.yaml::
+
+        providers:
+          my-provider:
+            cli: my-provider-link
+            overrides:
+              # Shallow merge: {greeting: 'Hello', name: 'World'}
+              context_merge:
+                greeting: Hello
+                name: World
+              # Deep override: nested.key -> value
+              context_dotted:
+                database.host: localhost
+                database.port: 5432
+              anchors:
+                my_anchor: overridden_value
+              # Full options dict
+              file_mappings:
+                path/to/file.yaml:
+                  enabled: false
+              # Shortcut: just disable a file
+              file_mappings:
+                path/to/file.yaml: false
+    """
+
+    context_merge: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            'Simple key-value overrides merged shallow into provider context. '
+            'Top-level keys only; nested values replace entirely.'
+        ),
+    )
+    context_dotted: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            'Dot-notation overrides for nested context values. '
+            'Keys use dotted path syntax (e.g., "database.host") for deep access.'
+        ),
+    )
+    anchors: dict[str, str] | None = Field(
+        default=None,
+        description="Anchor overrides on top of provider's create_anchors output.",
+    )
+    file_mappings: dict[str, FileMappingOptions] | None = Field(
+        default=None,
+        description=(
+            'Per-file options keyed by destination path. '
+            'Shortcut: use ``false`` to disable (sets ``enabled: false``). '
+            'Full form: dict with ``enabled``, ``priority``, ``skip_render`` fields.'
+        ),
+    )
+
+    @field_validator('file_mappings', mode='before')
+    @classmethod
+    def normalize_file_mappings(
+        cls,
+        value: dict[str, dict[str, Any] | bool] | None,
+    ) -> dict[str, dict[str, Any]] | None:
+        """Normalize file_mappings to support shortcut syntax.
+
+        Allows:
+            file_mappings:
+              path/to/file.yaml: false    # shortcut for {enabled: false}
+              path/to/other.yaml:
+                enabled: true
+                skip_render: false
+        """
+        if value is None:
+            return value
+
+        normalized: dict[str, dict[str, Any]] = {}
+        for path, val in value.items():
+            if isinstance(val, bool):
+                # Shortcut: false -> {enabled: false}, true -> {enabled: true}
+                normalized[path] = {'enabled': val}
+            else:
+                normalized[path] = val
+
+        return normalized
 
 
 class ProviderSymlink(BaseModel):
@@ -45,6 +145,12 @@ class ProviderConfig(BaseModel):
     defaults without editing the provider code.  This field is intentionally
     named `context` to mirror the top-level configuration key and keep the
     YAML concise.
+
+    .. deprecated::
+        The ``context``, ``context_overrides``, and ``anchors`` fields at the
+        top level are deprecated in favor of the consolidated ``overrides``
+        field. Legacy fields are still supported but will emit deprecation
+        warnings.
     """
 
     cli: str | None = Field(
@@ -79,22 +185,109 @@ class ProviderConfig(BaseModel):
     )
     context: dict[str, Any] | None = Field(
         default=None,
-        description="Optional overrides to merge into this provider's context after evaluation.",
+        description=(
+            "Optional overrides to merge into this provider's context after evaluation. "
+            'Deprecated: use overrides.context_merge instead.'
+        ),
+        deprecated='use overrides.context_merge instead.',
     )
     context_overrides: dict[str, Any] = Field(
         default_factory=dict,
         description=(
             "Dot-notation overrides to apply to this provider's context (opt-in;"
-            ' providers must also be migrated to use).'
+            ' providers must also be migrated to use). '
+            'Deprecated: use overrides.context_dotted instead.'
         ),
+        deprecated='use overrides.context_dotted instead.',
     )
     anchors: dict[str, str] | None = Field(
         default=None,
         description=(
             'Optional anchor overrides for this provider. '
-            'Merged on top of anchors returned by the provider create_anchors hook.'
+            'Merged on top of anchors returned by the provider create_anchors hook. '
+            'Deprecated: use overrides.anchors instead.'
         ),
+        deprecated='use overrides.anchors instead.',
     )
+    overrides: ProviderOverrides | None = Field(
+        default=None,
+        description='Consolidated container for all provider-level overrides.',
+    )
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_legacy_overrides(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Normalize legacy top-level override fields into the overrides container.
+
+        This provides backward compatibility for configs that use the old
+        top-level ``context``, ``context_overrides``, and ``anchors`` fields.
+        Emits deprecation warnings for each legacy field used.
+
+        Legacy field mapping:
+        - ``context`` -> ``overrides.context_merge``
+        - ``context_overrides`` -> ``overrides.context_dotted``
+        - ``anchors`` -> ``overrides.anchors``
+        """
+        raw_overrides = data.get('overrides')
+
+        # Convert ProviderOverrides instance to dict for merging
+        if isinstance(raw_overrides, ProviderOverrides):
+            overrides_data = {
+                'context_merge': raw_overrides.context_merge,
+                'context_dotted': raw_overrides.context_dotted,
+                'anchors': raw_overrides.anchors,
+                'file_mappings': raw_overrides.file_mappings,
+            }
+        else:
+            overrides_data = dict(raw_overrides) if raw_overrides else {}
+
+        cls._migrate_field(
+            data,
+            overrides_data,
+            'context',
+            'context_merge',
+            'context_merge',
+        )
+        cls._migrate_field(
+            data,
+            overrides_data,
+            'context_overrides',
+            'context_dotted',
+            'context_dotted',
+        )
+        cls._migrate_field(
+            data,
+            overrides_data,
+            'anchors',
+            'anchors',
+            'anchors',
+        )
+
+        if overrides_data:
+            data['overrides'] = overrides_data
+
+        return data
+
+    @staticmethod
+    def _migrate_field(
+        data: dict[str, Any],
+        overrides: dict[str, Any],
+        old: str,
+        new: str,
+        target: str,
+    ) -> None:
+        """Migrate a single legacy field into the overrides container."""
+        if old not in data or data[old] is None:
+            return
+        if new in overrides and overrides[new] is not None:
+            return
+
+        warnings.warn(
+            f"Provider config field '{old}' at top level is deprecated. Use 'overrides.{target}' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        overrides[new] = data[old]
 
     @model_validator(mode='after')
     def validate_cli_or_provider_root(self) -> 'ProviderConfig':
@@ -146,20 +339,10 @@ class ResolvedProviderInfo(BaseModel):
         default_factory=list,
         description='Files to copy from provider resources to repo',
     )
-    context: dict[str, Any] | None = Field(
-        default=None,
-        description='Provider-specific context overrides from the project configuration.',
-    )
-    context_overrides: dict[str, Any] | None = Field(
+    overrides: ProviderOverrides | None = Field(
         default=None,
         description=(
-            'Provider-scoped dotted-path overrides; applied after `context` and before global context overrides.'
-        ),
-    )
-    anchors: dict[str, str] | None = Field(
-        default=None,
-        description=(
-            'Provider-scoped anchor overrides from the project configuration. '
-            'Merged on top of anchors returned by the provider create_anchors hook.'
+            'Consolidated container for all provider-level overrides (resolved). '
+            'Contains context_merge, context_dotted, anchors, and file_mappings.'
         ),
     )

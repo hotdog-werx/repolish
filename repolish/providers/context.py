@@ -205,7 +205,7 @@ def _apply_overrides_to_provider_contexts(
 
 def _apply_provider_overrides(
     provider_contexts: dict[str, BaseContext],
-    provider_overrides: dict[str, dict[str, object]] | None,
+    provider_overrides: dict[str, dict[str, object]],
 ) -> None:
     """Apply per-provider overrides (handles BaseModel and dict contexts).
 
@@ -213,9 +213,6 @@ def _apply_provider_overrides(
     Behaviour mirrors :func:`_apply_overrides_to_provider_contexts` --
     failures are logged and the original context is preserved.
     """
-    if not provider_overrides:
-        return
-
     for pid, overrides in provider_overrides.items():
         ctx = provider_contexts.get(pid)
         if ctx:

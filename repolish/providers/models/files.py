@@ -23,6 +23,40 @@ from repolish.providers.models.context import (
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
+class BaseProviderMethodOptions(BaseModel):
+    """Base class for options controlling provider method behavior.
+
+    Establishes a common contract for all provider methods that support
+    user-configurable options. Subclasses add method-specific fields while
+    inheriting the common enabled and priority controls.
+
+    Attributes:
+        enabled: Whether this method is active. When False the method's effect
+            is ignored even if declared by the provider.
+        priority: Integer priority for conflict resolution. Higher values win.
+            Used when multiple providers contribute to the same target.
+    """
+
+    enabled: bool = True
+    priority: int = 0
+
+
+class FileMappingOptions(BaseProviderMethodOptions):
+    """Options controlling the behavior of a single file_mapping entry.
+
+    Provides fine-grained control over individual file mappings, allowing
+    users to enable/disable specific mappings or control rendering behavior
+    without modifying provider code.
+
+    Attributes:
+        skip_render: When True, the template is staged but Jinja rendering is
+            skipped. Useful for templates that should only be used for anchor
+            extraction or post-processing.
+    """
+
+    skip_render: bool = False
+
+
 class Action(str, Enum):
     """Enumeration of possible actions for a path."""
 
@@ -77,6 +111,10 @@ class TemplateMapping:
           fail loudly if they differ (default, safe for shared CI templates).
         - ``"last_wins"`` — last member session processed wins silently.
         - ``"error"`` — fail immediately on any conflict.
+      - options: optional :class:`FileMappingOptions` controlling per-file
+        behaviour (enabled, priority, skip_render).  When ``enabled=False``
+        the mapping is suppressed by default; users can re-enable it via the
+        project config ``overrides.file_mappings`` entry.
       - source_provider: provider alias that originally supplied the template.
         This is not something the provider needs to set; the loader populates
         it during merging so we can track provenance.
@@ -95,6 +133,7 @@ class TemplateMapping:
     extra_context: object | None = None
     file_mode: FileMode = FileMode.REGULAR
     promote_conflict: Literal['identical', 'last_wins', 'error'] = 'identical'
+    options: FileMappingOptions | None = None
     # provider alias that originally supplied the template.  This is not
     # something the provider needs to set; the loader populates it during
     # merging so we can track provenance of conditional/create-only/delete
@@ -308,6 +347,11 @@ class SessionBundle(BaseModel):
     suppressed_sources: set[str] = Field(default_factory=set)
     """Template paths explicitly suppressed via a `None` mapping in
     `create_file_mappings`; excluded from auto-staging."""
+    disabled_file_mappings: dict[str, str] = Field(default_factory=dict)
+    """Destination paths explicitly disabled via config overrides.
+    Kept separate from `suppressed_sources` so they can be shown in the
+    apply summary as a visible reason without triggering the paused warning
+    path."""
     template_overlay_dirs: dict[str, str] = Field(default_factory=dict)
     """Relative template path → mode subdir name for files staged from a
     mode overlay directory (e.g. ``{'ci.yaml': 'root'}`` for a file that
@@ -450,6 +494,13 @@ def build_file_records(
     files.update(
         _records_from_file_mappings(providers.file_mappings, pid_to_alias),
     )
+    for dest, provider_id in providers.disabled_file_mappings.items():
+        files[dest] = FileRecord(
+            path=dest,
+            mode=FileMode.SUPPRESS,
+            owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
+            source=None,
+        )
     files.update(
         _records_from_delete_files(
             providers.delete_files,
@@ -486,6 +537,9 @@ class Accumulators:
     # destination paths that providers explicitly mapped to None — these
     # should not be auto-staged even though no file_mappings entry exists.
     suppressed_sources: set[str] = field(default_factory=set)
+    # destination paths explicitly disabled by config overrides; kept separate
+    # so they can appear in the summary as disabled rather than paused.
+    disabled_file_mappings: dict[str, str] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(

@@ -87,14 +87,23 @@ class ProviderConfig(BaseModel):
     provider_root: Path | None = None
     resources_dir: Path | None = None
     symlinks: list[Symlink] | None = None
+    copies: list[ProviderCopy] | None = None
     context: dict[str, Any] | None = None
     context_overrides: dict[str, Any] = {}
     anchors: dict[str, str] | None = None
+    overrides: ProviderOverrides | None = None
 ```
 
 Each provider entry must specify at least one of `cli` or `provider_root`; they
 may also be combined. See the [Provider configuration](providers.md) guide for
 the full resolution rules and CLI protocol.
+
+> The consolidated `overrides` field is the recommended location for all
+> provider-level overrides. It covers `context_merge`, `context_dotted`,
+> `anchors`, and `file_mappings` in one place. The older top-level fields
+> (`context`, `context_overrides`, and `anchors`) are still supported for
+> backwards compatibility, but they are deprecated and should be migrated to
+> `overrides.*`.
 
 - **`cli`** - a shell command (string) that will be executed by `repolish link`.
   The command must write a `.provider-info.json` file under the
@@ -113,21 +122,33 @@ the full resolution rules and CLI protocol.
   created into the project. When omitted it defaults to `provider_root`. Specify
   this when the symlink root lives inside a subdirectory of `provider_root`.
 
+- **`overrides`** - the preferred consolidated override container for this
+  provider. Use it to set `context_merge`, `context_dotted`, `anchors`, and
+  `file_mappings` in one place. This is the canonical API for project-side
+  configuration overrides and is the location to use for new work.
+
 - **`context`** - optional mapping merged into this provider's context after
   `create_context()` runs. Each top-level key replaces the provider's value
-  wholesale. See [Override Context](../project-controls/context-overrides.md).
+  wholesale. Deprecated in favor of `overrides.context_merge`. See
+  [Override Context](../project-controls/context-overrides.md).
 
 - **`context_overrides`** - dot-notation overrides applied after
   `finalize_context()`. Allows surgical patching of nested context fields
-  without repeating the entire object. See
+  without repeating the entire object. Deprecated in favor of
+  `overrides.context_dotted`. See
   [Override Context](../project-controls/context-overrides.md).
 
 - **`anchors`** - optional mapping of anchor name to replacement string. Merged
   on top of whatever `create_anchors()` returns for this provider; config-level
   values take precedence. Overrides are scoped to the provider they appear under
   — one provider's `anchors` cannot affect another provider's anchors. Providers
-  should document which anchor keys they support. See
-  [Block anchors](../project-controls/anchors.md).
+  should document which anchor keys they support. Deprecated in favor of
+  `overrides.anchors`. See [Block anchors](../project-controls/anchors.md).
+
+- **`file_mappings`** - per-file options within `overrides.file_mappings`. Each
+  destination path may be enabled or disabled independently, and can also carry
+  `skip_render` and `priority` settings. This is the project-level mechanism for
+  opting files in or out without modifying provider code.
 
 Shorthand notation is supported in the YAML. Instead of writing::
 

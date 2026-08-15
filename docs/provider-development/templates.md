@@ -61,6 +61,49 @@ Pass `None` as a value to suppress a file entirely:
 "some-file.yml": None,  # don't copy this file at all
 ```
 
+## Per-file options and opt-in files
+
+`TemplateMapping` supports per-file options via the `options` field. The most
+common option is `enabled`, which lets a provider keep a template in its source
+code but opt that destination in or out at runtime:
+
+```python
+from repolish import BaseContext, BaseInputs, FileMappingOptions, Provider, TemplateMapping
+
+class Ctx(BaseContext):
+    include_ci: bool = False
+
+class MyProvider(Provider[Ctx, BaseInputs]):
+    def create_file_mappings(self, context: Ctx):
+        return {
+            '.github/workflows/ci.yml': TemplateMapping(
+                '_repolish.ci.yml',
+                options=FileMappingOptions(enabled=context.include_ci),
+            ),
+            'README.md': '_repolish.readme.md',
+        }
+```
+
+This pattern is useful when a provider ships several template files, but only
+some are relevant for a given project or environment. The project can also
+override those choices later via `providers.<alias>.overrides.file_mappings`:
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./provider
+    overrides:
+      file_mappings:
+        .github/workflows/ci.yml: false
+        README.md:
+          enabled: true
+          skip_render: false
+```
+
+The shortcut form `false` disables a mapping entirely; the full-form dict lets a
+project tune `enabled`, `skip_render`, and `priority` without changing provider
+code.
+
 ## Grouping a variant into a folder
 
 When a conditional variant spans multiple files, placing them all under a

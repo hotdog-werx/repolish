@@ -1,9 +1,14 @@
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
+from repolish.config.models.provider import (
+    ProviderOverrides,
+    ResolvedProviderInfo,
+)
 from repolish.misc import ctx_to_dict
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
+from repolish.providers.models.pipeline import ProviderContributions
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
@@ -23,16 +28,24 @@ def _build_override_maps(
     anchor_overrides: dict[str, dict[str, str]] = {}
     for alias, info in config.providers.items():
         pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        merged: dict[str, object] = {}
-        if info.context:
-            merged.update(ctx_to_dict(info.context))
-        if info.context_overrides:
-            merged.update(info.context_overrides)
+        merged = _merge_context_overrides(info)
         if merged:
             provider_overrides[pid] = merged
-        if info.anchors:
-            anchor_overrides[pid] = info.anchors
+        if info.overrides and info.overrides.anchors:
+            anchor_overrides[pid] = info.overrides.anchors
     return provider_overrides, anchor_overrides
+
+
+def _merge_context_overrides(info: ResolvedProviderInfo) -> dict[str, object]:
+    """Merge context overrides from a provider info into a single dict."""
+    merged: dict[str, object] = {}
+    if not info.overrides:
+        return merged
+    if info.overrides.context_merge:
+        merged.update(ctx_to_dict(info.overrides.context_merge))
+    if info.overrides.context_dotted:
+        merged.update(info.overrides.context_dotted)
+    return merged
 
 
 def _apply_delete_overrides(
@@ -99,18 +112,33 @@ def build_final_providers(
         alias_to_pid,
     )
 
+    # Extract file_mappings overrides from config (not handled by _build_override_maps)
+    file_mapping_overrides: dict[str, object] = {}
+    for alias, info in config.providers.items():
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+        if info.overrides and info.overrides.file_mappings:
+            file_mapping_overrides[pid] = info.overrides.file_mappings
+
+    # Build ProviderContributions from the override maps.
+    # Iterate over the union of keys so anchor/file-mapping-only providers are not dropped.
+    all_override_pids = set(provider_overrides) | set(anchor_overrides) | set(file_mapping_overrides)
+    contributions = ProviderContributions(
+        overrides={
+            pid: ProviderOverrides(
+                context_merge=provider_overrides.get(pid),
+                anchors=anchor_overrides.get(pid),
+                file_mappings=file_mapping_overrides.get(pid),  # type: ignore[arg-type]
+            )
+            for pid in all_override_pids
+        },
+    )
+
     # determine directories from provider info (alias_to_pid holds the
     # normalized loader IDs constructed from target_dir)
-    # type is union because create_providers accepts either plain strings or
-    # (alias,path) tuples.  we only provide strings here, hence the explicit
-    # annotation to satisfy the type checker.
-    # pass (alias, pid) tuples so the loader can assign the config key to
-    # Provider.alias before create_context is called.
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
     result = create_providers(
         dirs,
-        provider_overrides=provider_overrides,
-        anchor_overrides=anchor_overrides or None,
+        contributions=contributions,
         global_context=global_context,
         extra_provider_entries=extra_provider_entries,
         extra_inputs=extra_inputs,
