@@ -11,6 +11,7 @@ Scenarios covered:
 from __future__ import annotations
 
 import json
+import sys
 import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -154,6 +155,46 @@ def test_disabled_file_not_shown_as_paused_in_output(
     assert not (tmp_path / 'managed.txt').exists()
     assert (tmp_path / 'other.txt').exists()
     assert 'paused' not in result.output
+
+
+def test_local_provider_single_disabled_mapping_is_noop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A local provider with exactly one disabled mapping should do nothing.
+
+    This is the minimal regression case for provider_root-based local providers:
+    a single file mapping is suppressed, and the provider should not crash or
+    write any output files.
+    """
+    _make_provider(tmp_path / 'local-p', files={'managed.txt': 'from provider\n'})
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'local': {
+                        'provider_root': './local-p',
+                        'overrides': {'file_mappings': {'managed.txt': False}},
+                    },
+                },
+                'post_process': [
+                    sys.executable,
+                    '-c',
+                    'from pathlib import Path; Path("sentinel.txt").write_text("ok")',
+                ],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'])
+
+    assert not (tmp_path / 'managed.txt').exists()
+    assert 'paused' not in result.output
+    assert not (tmp_path / 'sentinel.txt').exists()
 
 
 def _make_provider_with_explicit_mappings(
