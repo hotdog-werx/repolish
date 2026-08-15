@@ -260,17 +260,6 @@ def _handle_provider_validators(
     for path, path_validators in validators.items():
         accum.file_validators.setdefault(path, {}).update(path_validators)
         accum.validator_sources[path] = provider_id
-        from repolish.commands.apply.validators import _validator_entry_enabled  # noqa: PLC0415 - debugging
-
-        for validator_name, validator_entry in path_validators.items():
-            logger.warning(
-                'DEBUG_REMOVE_LATER_validator_registered',
-                provider=provider_id,
-                path=path,
-                validator=validator_name,
-                enabled=_validator_entry_enabled(validator_entry),
-                entry_type=type(validator_entry).__name__,
-            )
 
 
 def _override_validator_entry(
@@ -303,12 +292,6 @@ def _disable_validators_for_file(
         entry = validators.get(name)
         if entry is not None:
             validators[name] = _override_validator_entry(entry, enabled=enabled)
-            logger.warning(
-                'DEBUG_REMOVE_LATER_validator_override_applied',
-                validator=name,
-                enabled=enabled,
-                entry_type=type(entry).__name__,
-            )
 
 
 def _apply_validator_overrides(

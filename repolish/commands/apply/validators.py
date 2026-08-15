@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from repolish.providers._log import logger
 from repolish.providers.models import BaseContext, SessionBundle
 from repolish.providers.models.files import (
     FileValidatorEntry,
@@ -90,13 +89,6 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
             resolved_path,
         )
     except Exception as exc:  # noqa: BLE001 - validation failures are surfaced to users
-        logger.warning(
-            'DEBUG_REMOVE_LATER_validator_exception',
-            validator=validator_name,
-            path=rel_path,
-            resolved_path=str(resolved_path),
-            error=str(exc),
-        )
         return (
             ValidationStatus.ERROR,
             f'Validator {validator_name!r} for {rel_path!r} crashed: {exc}',
@@ -105,14 +97,6 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
     status, message, _display_name = _validator_outcome(
         validation,
         validator_name,
-    )
-    logger.warning(
-        'DEBUG_REMOVE_LATER_validator_result',
-        validator=validator_name,
-        path=rel_path,
-        resolved_path=str(resolved_path),
-        status=status.value,
-        message=message,
     )
     if status == ValidationStatus.PASS:
         return ValidationStatus.PASS, None
