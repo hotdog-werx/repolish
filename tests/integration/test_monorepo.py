@@ -256,12 +256,12 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
         assert 'demo-github' in result.output
         assert 'lint' in result.output
 
-    def test_monorepo_root_validator_failure_exits_nonzero_in_strict_mode(
+    def test_monorepo_root_validator_failure_exits_nonzero_when_warnings_are_forced_to_fail(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A failing root validator on a workspace-owned file still aborts in strict mode."""
+        """A failing root validator on a workspace-owned file still aborts when warnings are treated as fatal."""
         repo = fixtures.monorepo_basic.stage(tmp_path)
         (repo / 'workspace-provider').mkdir()
         (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
@@ -340,7 +340,7 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
         )
 
         monkeypatch.chdir(repo)
-        result = run_repolish(['apply', '--strict'], exit_code=1)
+        result = run_repolish(['apply', '--fail-on-warnings'], exit_code=1)
         assert (repo / '.gitignore').exists()
 
         # The file is still rendered by the workspace provider, but the failing

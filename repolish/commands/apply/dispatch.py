@@ -47,7 +47,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
                 (root / 'repolish.yaml').resolve(),
                 CoordinateOptions(
                     check_only=params.check,
-                    strict=params.strict,
+                    fail_on_warnings=params.fail_on_warnings,
                     member=str(rel),
                     skip_post_process=params.skip_post_process,
                 ),
@@ -59,7 +59,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
             ApplyOptions(
                 config_path=config_path,
                 check_only=params.check,
-                strict=params.strict,
+                fail_on_warnings=params.fail_on_warnings,
                 skip_post_process=params.skip_post_process,
                 provider_filter=params.provider_filter,
             ),
@@ -69,7 +69,7 @@ def apply_command(params: ApplyCommandOptions) -> int:
         config_path,
         CoordinateOptions(
             check_only=params.check,
-            strict=params.strict,
+            fail_on_warnings=params.fail_on_warnings,
             member=params.member,
             root_only=params.root_only,
             skip_post_process=params.skip_post_process,

@@ -494,7 +494,7 @@ def test_validator_override_branches_cover_missing_and_empty_registries(
     assert 'lint' in result.output
 
 
-def test_validator_failure_warns_but_does_not_fail_without_strict(
+def test_validator_failure_warns_but_does_not_fail_without_fail_on_warnings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -523,11 +523,11 @@ def test_validator_failure_warns_but_does_not_fail_without_strict(
     assert '⚠' in output
 
 
-def test_validator_failure_exits_nonzero_in_strict_mode(
+def test_validator_failure_exits_nonzero_in_fail_on_warnings_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Strict mode turns a validator error into a non-zero CLI exit and prints the reason."""
+    """The fail-on-warnings mode turns warnings into a non-zero CLI exit and prints the reason."""
     _make_validator_provider(
         tmp_path / 'p',
         fail=True,
@@ -542,7 +542,7 @@ def test_validator_failure_exits_nonzero_in_strict_mode(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply', '--strict'], exit_code=1)
+    result = run_repolish(['apply', '--fail-on-warnings'], exit_code=1)
 
     assert (tmp_path / 'config.toml').exists()
     output = result.output.lower()

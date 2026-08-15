@@ -117,7 +117,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         aliases,
         filtered_raw_providers,
         config_dir,
-        strict=options.strict,
+        fail_on_warnings=options.fail_on_warnings,
         location_context=None,
     )
     if readiness.failed:

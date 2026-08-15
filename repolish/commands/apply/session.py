@@ -110,7 +110,7 @@ def apply_session(
     *,
     check_only: bool = False,
     skip_post_process: bool = False,
-    strict: bool = False,
+    fail_on_warnings: bool = False,
 ) -> int:
     """Run the apply/check pipeline for an already-resolved session.
 
@@ -199,7 +199,7 @@ def apply_session(
     apply_symlinks(resolved_symlinks, config.providers)
     apply_copies(session.resolved_copies, config.providers)
 
-    if strict and _strict_validation_failed(session):
+    if fail_on_warnings and _strict_validation_failed(session):
         logger.error(
             'validators_failed',
             files=sorted(session.validation_results),
@@ -224,7 +224,7 @@ def run_session(options: ApplyOptions) -> int:
         session,
         check_only=options.check_only,
         skip_post_process=options.skip_post_process,
-        strict=options.strict,
+        fail_on_warnings=options.fail_on_warnings,
     )
     print_summary_tree([session])
     return rc
