@@ -23,7 +23,10 @@ from repolish.providers.models.context import (
 
 if TYPE_CHECKING:
     from repolish.config.models.provider import ProviderOverrides
-    from repolish.providers.models.files import FileValidatorsByPath, TemplateMapping
+    from repolish.providers.models.files import (
+        FileValidatorsByPath,
+        TemplateMapping,
+    )
     from repolish.providers.models.provider import ProviderEntry
 
 

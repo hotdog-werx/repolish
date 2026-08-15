@@ -12,6 +12,8 @@ from repolish.providers.models import (
     FileMappingOptions,
     FileMode,
     FileValidatorEntry,
+    FileValidatorOptions,
+    FileValidatorSpec,
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
@@ -240,6 +242,7 @@ def _handle_provider_file_mappings(
 def _handle_provider_validators(
     inst: _ProviderBase,
     own_ctx: BaseContext,
+    provider_id: str,
     accum: Accumulators,
 ) -> None:
     """Collect validator registrations for one provider."""
@@ -247,11 +250,57 @@ def _handle_provider_validators(
         'dict[str, dict[str, FileValidatorEntry]]',
         call_provider_method(inst, 'create_file_validators', own_ctx),
     )
-    if not isinstance(validators, dict):
-        return
     for path, path_validators in validators.items():
-        if isinstance(path_validators, dict):
-            accum.file_validators.setdefault(path, {}).update(path_validators)
+        accum.file_validators.setdefault(path, {}).update(path_validators)
+        accum.validator_sources.setdefault(path, provider_id)
+
+
+def _override_validator_entry(
+    entry: FileValidatorEntry,
+    *,
+    enabled: bool,
+) -> FileValidatorEntry:
+    """Return a validator entry with the requested enabled state."""
+    if callable(entry):
+        if enabled:
+            return entry
+        return FileValidatorSpec(
+            fn=entry,
+            options=FileValidatorOptions(enabled=False),
+        )
+    # entry is a FileValidatorSpec; return a new spec with the updated enabled state
+    updated = entry.options.model_copy(update={'enabled': enabled})
+    return FileValidatorSpec(
+        fn=entry.fn,
+        options=updated,
+    )
+
+
+def _disable_validators_for_file(
+    validators: dict[str, FileValidatorEntry],
+    validator_overrides: dict[str, bool],
+) -> None:
+    """Apply config-based validator flags to a single file's validator registry."""
+    for name, enabled in validator_overrides.items():
+        entry = validators.get(name)
+        if entry is not None:
+            validators[name] = _override_validator_entry(entry, enabled=enabled)
+
+
+def _apply_validator_overrides(
+    overrides: ProviderOverrides | None,
+    accum: Accumulators,
+) -> None:
+    """Disable any validators explicitly turned off by config overrides."""
+    if not overrides or not overrides.validators:
+        return
+    for dest, validator_overrides in overrides.validators.items():
+        validators = accum.file_validators.get(dest)
+        if validators is None or not validator_overrides:
+            continue
+        _disable_validators_for_file(validators, validator_overrides)
+        if not validators:
+            accum.file_validators.pop(dest, None)
 
 
 def _collect_provider_contribution(
@@ -285,7 +334,8 @@ def _collect_provider_contribution(
         accum,
         provider_overrides,
     )
-    _handle_provider_validators(inst, own_ctx, accum)
+    _handle_provider_validators(inst, own_ctx, provider_id, accum)
+    _apply_validator_overrides(provider_overrides, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 

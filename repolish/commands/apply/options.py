@@ -8,6 +8,7 @@ from repolish.providers.models import (
     GlobalContext,
     ProviderEntry,
     SessionBundle,
+    ValidationResult,
 )
 
 
@@ -120,3 +121,8 @@ class ResolvedSession:
     """Per-file apply status for promoted files: ``'written'``, ``'unchanged'``,
     or ``'overridden_by_root'``.  Populated by the coordinator promotion pass.
     Empty for member and standalone sessions."""
+    validation_results: dict[str, dict[str, ValidationResult]] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    """Per-file per-validator results keyed by destination path."""

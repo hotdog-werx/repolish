@@ -13,7 +13,10 @@ from repolish.providers.models import (
     BaseContext,
     FileMode,
     FileRecord,
+    FileValidatorEntry,
+    FileValidatorSpec,
     SessionBundle,
+    ValidationStatus,
 )
 from repolish.version import __version__
 
@@ -200,6 +203,7 @@ def _file_skip_reason(
             FileMode.SUPPRESS,
         )
         and record.path not in session.providers.file_mappings
+        and record.path not in session.providers.file_validators
     ):
         return 'not in create_file_mappings (root mode)'
     return None
@@ -235,22 +239,78 @@ def _promoted_file_node(
     return node
 
 
-def _file_node(
+def _validator_entry_enabled(entry: FileValidatorEntry) -> bool:
+    """Return whether the entry should still execute."""
+    if isinstance(entry, FileValidatorSpec):
+        return bool(entry.options.enabled)
+    return True
+
+
+def _is_validator_only_not_staged(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> bool:
+    """Return True when a validator is attached to a file that was never staged.
+
+    This covers provider-only validation targets such as existing project files
+    with no `file_mappings` entry. Those files are still meaningful to the
+    provider, but they are not materialized in the render stage.
+    """
+    return bool(
+        record.path in session.providers.file_validators
+        and not (session.apply_result and record.path in session.apply_result)
+        and record.path not in session.providers.file_mappings
+        and record.path not in session.providers.template_sources,
+    )
+
+
+def _validator_summary_node(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> Text:
+    """Render per-validator success/failure lines beneath a file node."""
+    node = Text()
+    validation_results = session.validation_results.get(record.path, {}) if session.validation_results else {}
+    file_validators = session.providers.file_validators.get(record.path, {})
+    is_not_staged = _is_validator_only_not_staged(record, session)
+    prefix, prefix_style = ('◌ ', 'yellow') if is_not_staged else ('✓ ', 'green')
+    node.append(prefix, style=prefix_style)
+    node.append(record.path)
+    if is_not_staged:
+        node.append('  no file in stage', style='dim yellow')
+    node.append('\n  validators:', style='dim green')
+    for validator_name in sorted(file_validators):
+        entry = file_validators[validator_name]
+        result = validation_results.get(validator_name)
+        if not _validator_entry_enabled(entry):
+            node.append(f'\n    - ✗ {validator_name}: disabled', style='yellow')
+        elif result is not None:
+            if result.status == ValidationStatus.WARNING:
+                node.append(
+                    f'\n    - ⚠ {validator_name}: {result.message}',
+                    style='yellow',
+                )
+            else:
+                node.append(
+                    f'\n    - ✗ {validator_name}: {result.message}',
+                    style='red',
+                )
+        else:
+            node.append(f'\n    - ✓ {validator_name}', style='green')
+    return node
+
+
+def _file_status_node(
     record: FileRecord,
     session: ResolvedSession,
     debug_dir: Path,
 ) -> Text:
-    reason = _file_skip_reason(record, session)
-    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
+    """Render a normal file node when there are no validator entries to display."""
     node = Text()
-    if reason:
-        node.append('✗ ', style='yellow')
-        node.append(record.path)
-        node.append(f'  {reason}', style='dim yellow')
-        return node
     file_status = session.apply_result.get(record.path) if session.apply_result else None
     prefix, pfx_style = _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
     node.append(prefix, style=pfx_style)
+    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
     link = (
         f'link file://{file_ctx_file.absolute()}'
         if supports_hyperlinks and record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)
@@ -267,6 +327,24 @@ def _file_node(
     if source:
         node.append(f'  ← {source}', style='dim')
     return node
+
+
+def _file_node(
+    record: FileRecord,
+    session: ResolvedSession,
+    debug_dir: Path,
+) -> Text:
+    reason = _file_skip_reason(record, session)
+    if reason:
+        node = Text()
+        node.append('✗ ', style='yellow')
+        node.append(record.path)
+        node.append(f'  {reason}', style='dim yellow')
+        return node
+    file_validators = session.providers.file_validators.get(record.path, {})
+    if file_validators:
+        return _validator_summary_node(record, session)
+    return _file_status_node(record, session, debug_dir)
 
 
 def _append_stat_parts(label: Text, parts: list[str]) -> None:

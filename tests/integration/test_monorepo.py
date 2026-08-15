@@ -82,6 +82,90 @@ class TestMonorepoRootPass:
         assert monorepo.get('mode') == 'root'
 
 
+class TestMonorepoValidatorDispatch:
+    def test_monorepo_root_mode_calls_validators(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A root-mode handler can register a validator during a monorepo root pass."""
+        repo = fixtures.monorepo_basic.stage(tmp_path)
+        (repo / 'README.root-validated.md').write_text(
+            '# Root validation target\n',
+            encoding='utf-8',
+        )
+
+        provider_dir = repo / 'demo-validator-provider'
+        provider_dir.mkdir()
+        (provider_dir / 'repolish' / 'config.toml').parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        (provider_dir / 'repolish' / 'config.toml').write_text(
+            'name = "demo-validator"\n',
+            encoding='utf-8',
+        )
+        (provider_dir / 'repolish.py').write_text(
+            """
+from pathlib import Path
+
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider
+from repolish.providers.models import ValidationResult
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class RootHandler(ModeHandler[Ctx, BaseInputs]):
+    def create_file_validators(self, ctx):
+        def lint(context, path: Path):
+            text = path.read_text(encoding='utf-8')
+            return ValidationResult(
+                status='pass' if '# Root validation target' in text else 'error',
+                message='root validator ok',
+                path=str(path),
+                validator_name='lint',
+            )
+
+        return {'README.root-validated.md': {'lint': lint}}
+
+
+class DemoProvider(Provider[Ctx, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+            encoding='utf-8',
+        )
+
+        (repo / 'repolish.yaml').write_text(
+            json.dumps(
+                {
+                    'providers': {
+                        'demo-validator-provider': {
+                            'provider_root': './demo-validator-provider',
+                        },
+                    },
+                },
+            ),
+            encoding='utf-8',
+        )
+
+        monkeypatch.chdir(repo)
+        result = run_repolish(['apply', '--root-only'])
+        assert (repo / 'README.root-validated.md').exists()
+        assert 'README.root-validated.md' in result.output
+        assert 'no file in stage' in result.output
+        assert '✓ lint' in result.output
+        assert 'config.toml' in result.output
+        assert 'not in create_file_mappings (root mode)' in result.output
+
+
 class TestMonorepoMemberPass:
     def test_monorepo_member_pass_creates_member_files(
         self,

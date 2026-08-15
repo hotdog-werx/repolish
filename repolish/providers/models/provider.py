@@ -149,6 +149,13 @@ class ModeHandler(Generic[ContextT, InputT]):
         """See :meth:`Provider.create_anchors`."""
         return {}
 
+    def create_file_validators(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> dict[str, ValidatorMapping[ContextT]]:
+        """See :meth:`Provider.create_file_validators`."""
+        return {}
+
     def create_default_symlinks(
         self,
     ) -> list[Symlink]:
@@ -439,14 +446,17 @@ class Provider(ABC, Generic[ContextT, InputT]):
     def create_file_validators(
         self,
         context: ContextT,  # noqa: ARG002 - parameter may be unused
-    ) -> dict[str, ValidatorMapping]:
+    ) -> dict[str, ValidatorMapping[ContextT]]:
         """Optional: register file-level validators for this provider.
 
         The mapping looks like:
             {
                 'config.toml': {
                     'lint': validator_fn,
-                    'schema': {'fn': validator_fn, 'options': FileValidatorOptions(enabled=True)},
+                    'schema': FileValidatorSpec(
+                        fn=validator_fn,
+                        options=FileValidatorOptions(enabled=True),
+                    ),
                 }
             }
         """
