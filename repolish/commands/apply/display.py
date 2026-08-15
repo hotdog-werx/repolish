@@ -324,7 +324,11 @@ def _validator_summary_node(
     for validator_name in sorted(file_validators):
         entry = file_validators[validator_name]
         result = validation_results.get(validator_name)
-        marker, style, text = _validator_row_display(validator_name, entry, result)
+        marker, style, text = _validator_row_display(
+            validator_name,
+            entry,
+            result,
+        )
         node.append(f'\n    - {marker} {text}', style=style)
     return node
 
