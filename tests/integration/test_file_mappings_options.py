@@ -116,7 +116,7 @@ def test_file_mapping_disabled_via_config(
 
     for name in case.expected_missing:
         assert not (tmp_path / name).exists(), f'{name} should not have been written'
-        # The disabled file must not appear with the "paused" marker in output
+        assert 'disabled' in result.output
         assert 'paused' not in result.output
 
 
@@ -154,6 +154,7 @@ def test_disabled_file_not_shown_as_paused_in_output(
 
     assert not (tmp_path / 'managed.txt').exists()
     assert (tmp_path / 'other.txt').exists()
+    assert 'disabled' in result.output
     assert 'paused' not in result.output
 
 
@@ -193,6 +194,7 @@ def test_local_provider_single_disabled_mapping_is_noop(
     result = run_repolish(['apply'])
 
     assert not (tmp_path / 'managed.txt').exists()
+    assert 'disabled' in result.output
     assert 'paused' not in result.output
     assert not (tmp_path / 'sentinel.txt').exists()
 

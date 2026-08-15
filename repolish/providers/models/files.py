@@ -347,6 +347,11 @@ class SessionBundle(BaseModel):
     suppressed_sources: set[str] = Field(default_factory=set)
     """Template paths explicitly suppressed via a `None` mapping in
     `create_file_mappings`; excluded from auto-staging."""
+    disabled_file_mappings: dict[str, str] = Field(default_factory=dict)
+    """Destination paths explicitly disabled via config overrides.
+    Kept separate from `suppressed_sources` so they can be shown in the
+    apply summary as a visible reason without triggering the paused warning
+    path."""
     template_overlay_dirs: dict[str, str] = Field(default_factory=dict)
     """Relative template path → mode subdir name for files staged from a
     mode overlay directory (e.g. ``{'ci.yaml': 'root'}`` for a file that
@@ -489,6 +494,13 @@ def build_file_records(
     files.update(
         _records_from_file_mappings(providers.file_mappings, pid_to_alias),
     )
+    for dest, provider_id in providers.disabled_file_mappings.items():
+        files[dest] = FileRecord(
+            path=dest,
+            mode=FileMode.SUPPRESS,
+            owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
+            source=None,
+        )
     files.update(
         _records_from_delete_files(
             providers.delete_files,
@@ -525,6 +537,9 @@ class Accumulators:
     # destination paths that providers explicitly mapped to None — these
     # should not be auto-staged even though no file_mappings entry exists.
     suppressed_sources: set[str] = field(default_factory=set)
+    # destination paths explicitly disabled by config overrides; kept separate
+    # so they can appear in the summary as disabled rather than paused.
+    disabled_file_mappings: dict[str, str] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(

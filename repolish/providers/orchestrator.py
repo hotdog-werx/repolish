@@ -138,6 +138,7 @@ def _run_provider_pipeline(
         delete_history=accum.history,
         provider_contexts=provider_contexts,
         suppressed_sources=accum.suppressed_sources,
+        disabled_file_mappings=accum.disabled_file_mappings,
         promoted_file_mappings=accum.promoted_file_mappings,
     )
 

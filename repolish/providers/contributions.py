@@ -102,6 +102,7 @@ def _process_provider_fm(
         )
 
         if not effective_enabled:
+            accum.disabled_file_mappings[dest] = provider_id
             accum.suppressed_sources.add(dest)
             continue
 
@@ -197,6 +198,7 @@ def _get_inst_and_ctx(
 
 
 def _suppress_auto_staged_files(
+    provider_id: str,
     fm_config_opts: dict[str, FileMappingOptions] | None,
     accum: Accumulators,
 ) -> None:
@@ -208,6 +210,7 @@ def _suppress_auto_staged_files(
         for dest, opts in fm_config_opts.items():
             if not opts.enabled:
                 accum.merged_file_mappings.pop(dest, None)
+                accum.disabled_file_mappings.setdefault(dest, provider_id)
                 accum.suppressed_sources.add(dest)
 
 
@@ -247,7 +250,7 @@ def _collect_provider_contribution(
         config_overrides=fm_config_opts,
     )
 
-    _suppress_auto_staged_files(fm_config_opts, accum)
+    _suppress_auto_staged_files(provider_id, fm_config_opts, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 
