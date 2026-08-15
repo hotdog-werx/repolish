@@ -11,6 +11,7 @@ from repolish.providers.models import (
     Decision,
     FileMappingOptions,
     FileMode,
+    FileValidatorEntry,
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
@@ -214,6 +215,45 @@ def _suppress_auto_staged_files(
                 accum.suppressed_sources.add(dest)
 
 
+def _handle_provider_file_mappings(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+    provider_overrides: ProviderOverrides | None,
+) -> None:
+    """Collect and normalize file_mappings contributions for one provider."""
+    fm = cast(
+        'dict[str, str | TemplateMapping | None]',
+        call_provider_method(inst, 'create_file_mappings', own_ctx),
+    )
+    fm_config_opts = provider_overrides.file_mappings if provider_overrides else None
+    _process_provider_fm(
+        provider_id,
+        fm,
+        accum,
+        config_overrides=fm_config_opts,
+    )
+    _suppress_auto_staged_files(provider_id, fm_config_opts, accum)
+
+
+def _handle_provider_validators(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    accum: Accumulators,
+) -> None:
+    """Collect validator registrations for one provider."""
+    validators = cast(
+        'dict[str, dict[str, FileValidatorEntry]]',
+        call_provider_method(inst, 'create_file_validators', own_ctx),
+    )
+    if not isinstance(validators, dict):
+        return
+    for path, path_validators in validators.items():
+        if isinstance(path_validators, dict):
+            accum.file_validators.setdefault(path, {}).update(path_validators)
+
+
 def _collect_provider_contribution(
     provider_id: str,
     module_dict: dict,
@@ -238,19 +278,14 @@ def _collect_provider_contribution(
     if provider_overrides and provider_overrides.anchors:
         accum.merged_anchors.update(provider_overrides.anchors)
 
-    fm = cast(
-        'dict[str, str | TemplateMapping | None]',
-        call_provider_method(inst, 'create_file_mappings', own_ctx),
-    )
-    fm_config_opts = provider_overrides.file_mappings if provider_overrides else None
-    _process_provider_fm(
+    _handle_provider_file_mappings(
+        inst,
+        own_ctx,
         provider_id,
-        fm,
         accum,
-        config_overrides=fm_config_opts,
+        provider_overrides,
     )
-
-    _suppress_auto_staged_files(provider_id, fm_config_opts, accum)
+    _handle_provider_validators(inst, own_ctx, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 

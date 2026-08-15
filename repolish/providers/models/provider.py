@@ -30,7 +30,11 @@ from repolish.providers.models.context import (
     ResourceCopy,
     Symlink,
 )
-from repolish.providers.models.files import FileMode, TemplateMapping
+from repolish.providers.models.files import (
+    FileMode,
+    TemplateMapping,
+    ValidatorMapping,
+)
 
 # Type variable for provider context models.  We intentionally
 # bind this to :class:`BaseContext` so that type checkers will flag
@@ -429,6 +433,22 @@ class Provider(ABC, Generic[ContextT, InputT]):
         """Optional: return anchors mapping for this provider.
 
         Default: no anchors (empty dict).
+        """
+        return {}
+
+    def create_file_validators(
+        self,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
+    ) -> dict[str, ValidatorMapping]:
+        """Optional: register file-level validators for this provider.
+
+        The mapping looks like:
+            {
+                'config.toml': {
+                    'lint': validator_fn,
+                    'schema': {'fn': validator_fn, 'options': FileValidatorOptions(enabled=True)},
+                }
+            }
         """
         return {}
 
