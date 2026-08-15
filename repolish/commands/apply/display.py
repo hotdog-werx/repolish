@@ -18,6 +18,7 @@ from repolish.providers.models import (
     SessionBundle,
     ValidationStatus,
 )
+from repolish.providers.models.files import ValidationResult
 from repolish.version import __version__
 
 
@@ -264,6 +265,45 @@ def _is_validator_only_not_staged(
     )
 
 
+def _validator_file_owner(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> str | None:
+    """Return the non-matching provider that owns the file path, if any."""
+    other_owners = {
+        r.owner for r in session.providers.file_records if r.path == record.path and r.owner != record.owner
+    }
+    if len(other_owners) == 1:
+        return next(iter(other_owners))
+    return None
+
+
+def _validator_display_prefix(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> tuple[str, str]:
+    """Return the display prefix for a validator summary row."""
+    other_owner = _validator_file_owner(record, session)
+    if _is_validator_only_not_staged(record, session) or other_owner is not None:
+        return '◌ ', 'yellow'
+    return '✓ ', 'green'
+
+
+def _validator_row_display(
+    validator_name: str,
+    entry: FileValidatorEntry,
+    result: ValidationResult | None,
+) -> tuple[str, str, str]:
+    """Render one validator line as text + color metadata."""
+    if not _validator_entry_enabled(entry):
+        return '✗', 'yellow', f'{validator_name}: disabled'
+    if result is None:
+        return '✓', 'green', validator_name
+    if result.status == ValidationStatus.WARNING:
+        return '⚠', 'yellow', f'{validator_name}: {result.message}'
+    return '✗', 'red', f'{validator_name}: {result.message}'
+
+
 def _validator_summary_node(
     record: FileRecord,
     session: ResolvedSession,
@@ -272,31 +312,20 @@ def _validator_summary_node(
     node = Text()
     validation_results = session.validation_results.get(record.path, {}) if session.validation_results else {}
     file_validators = session.providers.file_validators.get(record.path, {})
-    is_not_staged = _is_validator_only_not_staged(record, session)
-    prefix, prefix_style = ('◌ ', 'yellow') if is_not_staged else ('✓ ', 'green')
+    other_owner = _validator_file_owner(record, session)
+    prefix, prefix_style = _validator_display_prefix(record, session)
     node.append(prefix, style=prefix_style)
     node.append(record.path)
-    if is_not_staged:
+    if other_owner:
+        node.append(f'  owned by {other_owner}', style='dim yellow')
+    elif _is_validator_only_not_staged(record, session):
         node.append('  no file in stage', style='dim yellow')
     node.append('\n  validators:', style='dim green')
     for validator_name in sorted(file_validators):
         entry = file_validators[validator_name]
         result = validation_results.get(validator_name)
-        if not _validator_entry_enabled(entry):
-            node.append(f'\n    - ✗ {validator_name}: disabled', style='yellow')
-        elif result is not None:
-            if result.status == ValidationStatus.WARNING:
-                node.append(
-                    f'\n    - ⚠ {validator_name}: {result.message}',
-                    style='yellow',
-                )
-            else:
-                node.append(
-                    f'\n    - ✗ {validator_name}: {result.message}',
-                    style='red',
-                )
-        else:
-            node.append(f'\n    - ✓ {validator_name}', style='green')
+        marker, style, text = _validator_row_display(validator_name, entry, result)
+        node.append(f'\n    - {marker} {text}', style=style)
     return node
 
 

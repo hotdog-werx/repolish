@@ -342,9 +342,14 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
         monkeypatch.chdir(repo)
         result = run_repolish(['apply', '--strict'], exit_code=1)
         assert (repo / '.gitignore').exists()
+
+        # The file is still rendered by the workspace provider, but the failing
+        # validator is attributed to the GitHub provider that declared it.
+        assert 'workspace-provider@' in result.output
         assert 'demo-github@' in result.output
         assert 'lint' in result.output
         assert 'gitignore missing required rule' in result.output
+        assert result.output.index('demo-github@') < result.output.index('lint')
         assert 'error' in result.output.lower()
 
 
