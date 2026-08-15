@@ -168,7 +168,10 @@ def test_local_provider_single_disabled_mapping_is_noop(
     a single file mapping is suppressed, and the provider should not crash or
     write any output files.
     """
-    _make_provider(tmp_path / 'local-p', files={'managed.txt': 'from provider\n'})
+    _make_provider(
+        tmp_path / 'local-p',
+        files={'managed.txt': 'from provider\n'},
+    )
 
     (tmp_path / 'repolish.yaml').write_text(
         json.dumps(
