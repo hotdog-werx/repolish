@@ -343,7 +343,16 @@ def _file_node(
         return node
     file_validators = session.providers.file_validators.get(record.path, {})
     if file_validators:
-        return _validator_summary_node(record, session)
+        validator_provider = session.providers.validator_sources.get(
+            record.path,
+        )
+        validator_alias = (
+            session.pid_to_alias.get(validator_provider, validator_provider)
+            if validator_provider is not None
+            else None
+        )
+        if validator_alias is None or validator_alias == record.owner:
+            return _validator_summary_node(record, session)
     return _file_status_node(record, session, debug_dir)
 
 
@@ -503,13 +512,41 @@ def _add_root_branch_to_tree(
             )
 
 
-def _build_summary_tree(session: ResolvedSession) -> Tree:
-    """Build a Tree summarising providers grouped by role with per-file status."""
-    debug_dir = session.config.config_dir / '.repolish' / '_'
+def _records_by_owner(session: ResolvedSession) -> dict[str, list[FileRecord]]:
+    """Group file records by the provider alias that owns them."""
     records_by_owner: dict[str, list[FileRecord]] = {}
     for record in session.providers.file_records:
         records_by_owner.setdefault(record.owner, []).append(record)
+    return records_by_owner
 
+
+def _attach_validator_owner_records(
+    records_by_owner: dict[str, list[FileRecord]],
+    session: ResolvedSession,
+) -> None:
+    """Add validator-owned entries beneath the provider that declared them."""
+    for dest, validator_provider in session.providers.validator_sources.items():
+        validator_alias = session.pid_to_alias.get(
+            validator_provider,
+            validator_provider,
+        )
+        alias_records = records_by_owner.setdefault(validator_alias, [])
+        if dest in session.providers.file_validators and not any(record.path == dest for record in alias_records):
+            alias_records.append(
+                FileRecord(
+                    path=dest,
+                    mode=FileMode.REGULAR,
+                    owner=validator_alias,
+                    source=None,
+                ),
+            )
+
+
+def _build_summary_tree(session: ResolvedSession) -> Tree:
+    """Build a Tree summarising providers grouped by role with per-file status."""
+    debug_dir = session.config.config_dir / '.repolish' / '_'
+    records_by_owner = _records_by_owner(session)
+    _attach_validator_owner_records(records_by_owner, session)
     root_aliases, member_aliases, standalone_aliases = _classify_aliases(
         session,
     )
@@ -522,6 +559,7 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         session,
         debug_dir,
     )
+
     for member_name, m_aliases in member_aliases.items():
         branch = tree.add(f'[bold]Member: {member_name}[/bold]')
         for alias in m_aliases:
@@ -532,6 +570,7 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
                 session,
                 debug_dir,
             )
+
     if standalone_aliases:
         branch = tree.add('[bold]Standalone[/bold]')
         for alias in standalone_aliases:

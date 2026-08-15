@@ -245,14 +245,21 @@ def _handle_provider_validators(
     provider_id: str,
     accum: Accumulators,
 ) -> None:
-    """Collect validator registrations for one provider."""
+    """Collect validator registrations for one provider.
+
+    The validator registry is additive, but the per-file source ownership used for
+    summary/display and override targeting should follow the most recently
+    contributed provider for that file path. This keeps the human-facing "who
+    owns this validator" metadata aligned with the provider that actually
+    declared the check for the target path.
+    """
     validators = cast(
         'dict[str, dict[str, FileValidatorEntry]]',
         call_provider_method(inst, 'create_file_validators', own_ctx),
     )
     for path, path_validators in validators.items():
         accum.file_validators.setdefault(path, {}).update(path_validators)
-        accum.validator_sources.setdefault(path, provider_id)
+        accum.validator_sources[path] = provider_id
 
 
 def _override_validator_entry(

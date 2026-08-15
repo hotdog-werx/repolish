@@ -81,7 +81,10 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
         render_root,
     )
     try:
-        validation = cast('Callable[[BaseContext, Path], ValidationResult]', validator)(
+        validation = cast(
+            'Callable[[BaseContext, Path], ValidationResult]',
+            validator,
+        )(
             context,
             resolved_path,
         )

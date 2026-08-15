@@ -584,9 +584,9 @@ def _apply_member_sessions(
                 skip_post_process=opts.skip_post_process,
                 strict=opts.strict,
             )
+        completed.append(session)
         if rc != 0:
             return rc, completed
-        completed.append(session)
     return 0, completed
 
 
@@ -618,13 +618,13 @@ def _run_root_pass(
             skip_post_process=opts.skip_post_process,
             strict=opts.strict,
         )
+    completed_sessions.append(root_session)
     if rc != 0:
         return rc
 
     if not opts.check_only and not opts.skip_post_process:
         _post_process_promoted_files(root_session, config_dir)
 
-    completed_sessions.append(root_session)
     return 2 if promotion_stale else 0
 
 
