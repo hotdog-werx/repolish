@@ -84,6 +84,7 @@ def test_provider_insertion_updates_non_owned_file(
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert '◌ README.md  no file in stage' in result.output
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
     report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.json'
@@ -231,7 +232,7 @@ def test_provider_insertion_uses_function_args_across_three_blocks(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    run_repolish(['apply'])
+    result = run_repolish(['apply'])
     expected = dedent(
         """\
         Controlled sections
@@ -249,6 +250,7 @@ def test_provider_insertion_uses_function_args_across_three_blocks(
         <!-- repolish:off:three -->
         """,
     )
+    assert '3 ok, 0 failed' in result.output
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
 
 
@@ -314,8 +316,7 @@ def test_provider_insertion_resolves_two_functions_for_same_file(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    run_repolish(['apply'])
-
+    result = run_repolish(['apply'])
     expected = dedent(
         """\
         Function registry demo
@@ -330,6 +331,7 @@ def test_provider_insertion_resolves_two_functions_for_same_file(
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert '2 ok, 0 failed' in result.output
 
 
 def test_provider_insertion_resolves_same_function_name_by_provider(
@@ -414,8 +416,7 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    run_repolish(['apply'])
-
+    result = run_repolish(['apply'])
     expected = dedent(
         """\
         Provider-qualified lookup
@@ -433,6 +434,7 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
         <!-- repolish:off:three -->
         """,
     )
+    assert 'no file in stage' in result.output
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
 
 

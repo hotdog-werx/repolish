@@ -45,6 +45,25 @@ class TCase:
             render=lambda block: 'rendered-docs' if block.tag == 'docs' else '',
         ),
         TCase(
+            name='html_style_replacement_indented',
+            text="""
+                before
+                    <!-- repolish:on:docs render foo true -->
+                    alpha
+                    beta
+                    <!-- repolish:off:docs -->
+                after
+                """,
+            expected="""
+                before
+                    <!-- repolish:on:docs render foo true -->
+                rendered-docs
+                    <!-- repolish:off:docs -->
+                after
+                """,
+            render=lambda block: 'rendered-docs\n' if block.tag == 'docs' else '',
+        ),
+        TCase(
             name='hash_style_replacement',
             text="""
                 # repolish:on:docs render foo true
@@ -104,7 +123,10 @@ class TCase:
                 alpha
                 <!-- repolish:off:docs -->
                 """,
-            expected="""<!-- repolish:on:docs render -->\n\n<!-- repolish:off:docs -->""",
+            expected="""
+                <!-- repolish:on:docs render -->
+                <!-- repolish:off:docs -->
+                """,
             render=lambda _: (_ for _ in ()).throw(RuntimeError('boom')),
         ),
         TCase(

@@ -36,8 +36,10 @@ class WriteBackResult:
 
 def _preserve_block_whitespace(body: str) -> tuple[str, str]:
     """Return the body margins that should be preserved around replacement text."""
-    leading = body[: len(body) - len(body.lstrip())]
-    trailing = body[len(body.rstrip()) :]
+    lines = body.splitlines()
+    leading = f'{lines[0]}\n'
+    last_line = lines[-1] if len(lines) > 1 else ''
+    trailing = last_line[len(last_line.rstrip()) :]
     return leading, trailing
 
 
@@ -125,6 +127,9 @@ def write_back(
                 ),
             )
             result.append('')
+        if result[-1] and not result[-1].endswith('\n'):
+            # no trailing newline in the rendered content, so preserve the original trailing whitespace
+            result.append('\n')
         result.append(trailing)
         result.append(text[block.body_end : block.end])
         cursor = block.end

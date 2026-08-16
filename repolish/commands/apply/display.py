@@ -290,6 +290,31 @@ def _validator_display_prefix(
     return '✓ ', 'green'
 
 
+def _is_insertion_only_not_staged(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> bool:
+    """Return True when insertions target a file that was never staged."""
+    return bool(
+        record.path in session.providers.file_insertions
+        and not (session.apply_result and record.path in session.apply_result)
+        and record.path not in session.providers.file_mappings
+        and record.path not in session.providers.template_sources,
+    )
+
+
+def _insertion_display_prefix(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> tuple[str, str]:
+    """Return the display prefix for insertion-only or non-owned rows."""
+    other_owner = _validator_file_owner(record, session)
+    if _is_insertion_only_not_staged(record, session) or other_owner is not None:
+        return '◌ ', 'yellow'
+    file_status = session.apply_result.get(record.path) if session.apply_result else None
+    return _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
+
+
 def _validator_row_display(
     validator_name: str,
     entry: FileValidatorEntry,
@@ -368,8 +393,7 @@ def _file_status_node(
 ) -> Text:
     """Render a normal file node when there are no validator entries to display."""
     node = Text()
-    file_status = session.apply_result.get(record.path) if session.apply_result else None
-    prefix, pfx_style = _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
+    prefix, pfx_style = _insertion_display_prefix(record, session)
     node.append(prefix, style=pfx_style)
     file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
     link = (
@@ -387,6 +411,13 @@ def _file_status_node(
         source = f'{record.overlay_dir}/'
     if source:
         node.append(f'  ← {source}', style='dim')
+
+    other_owner = _validator_file_owner(record, session)
+    if other_owner:
+        node.append(f'  owned by {other_owner}', style='dim yellow')
+    elif _is_insertion_only_not_staged(record, session):
+        node.append('  no file in stage', style='dim yellow')
+
     _append_insertion_summary_line(node, record, session)
     return node
 
