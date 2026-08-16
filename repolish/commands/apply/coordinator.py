@@ -528,6 +528,7 @@ def _resolve_member_sessions(
         apply_opts = ApplyOptions(
             config_path=(member_dir / 'repolish.yaml').resolve(),
             check_only=opts.check_only,
+            strict=opts.strict,
             fail_on_warnings=opts.fail_on_warnings,
             skip_post_process=opts.skip_post_process,
             provider_filter=opts.provider_filter,
@@ -557,6 +558,7 @@ def _resolve_root_session(
     apply_opts = ApplyOptions(
         config_path=config_path.resolve(),
         check_only=opts.check_only,
+        strict=opts.strict,
         fail_on_warnings=opts.fail_on_warnings,
         skip_post_process=opts.skip_post_process,
         provider_filter=opts.provider_filter,
@@ -690,6 +692,7 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
             ApplyOptions(
                 config_path=config_path.resolve(),
                 check_only=opts.check_only,
+                strict=opts.strict,
                 fail_on_warnings=opts.fail_on_warnings,
                 skip_post_process=opts.skip_post_process,
                 provider_filter=opts.provider_filter,
