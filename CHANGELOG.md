@@ -8,6 +8,30 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.8.0] <a name="1.8.0" href="#1.8.0">-</a> August 16, 2026
+
+### 🚀 Features
+
+- Overrides to disable file rendering (#72) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#72](https://github.com/hotdog-werx/repolish/pull/72)
+- Introduce strongly typed file validators (#73) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#73](https://github.com/hotdog-werx/repolish/pull/73)
+
+### 🐛 Bug Fixes
+
+- Restore --strict cli option (#74) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#74](https://github.com/hotdog-werx/repolish/pull/74)
+
+### 🧪 Testing
+
+- Speed up with xdist (#71) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#71](https://github.com/hotdog-werx/repolish/pull/71)
+
+[1.8.0]: https://github.com/hotdog-werx/repolish/compare/1.7.0...1.8.0
+
 ## [1.7.0] <a name="1.7.0" href="#1.7.0">-</a> August 12, 2026
 
 ### 🚀 Features
