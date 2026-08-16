@@ -652,6 +652,7 @@ def test_mode_handler_base_defaults() -> None:
     )
     assert handler.create_file_mappings(ctx) == {}
     assert handler.create_file_validators(ctx) == {}
+    assert handler.create_file_insertions(ctx) == {}
     assert handler.create_anchors(ctx) == {}
     assert handler.promote_file_mappings(ctx) == {}
     assert handler.create_default_symlinks() == []

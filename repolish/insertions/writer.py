@@ -29,6 +29,9 @@ class WriteBackResult:
 
     text: str
     diagnostics: list[WriteDiagnostic] = field(default_factory=list)
+    total_blocks: int = 0
+    failed_blocks: int = 0
+    functions: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _preserve_block_whitespace(body: str) -> tuple[str, str]:
@@ -99,8 +102,11 @@ def write_back(
 
     result: list[str] = []
     diagnostics: list[WriteDiagnostic] = []
+    functions: list[str] = []
+    failed_blocks = 0
     cursor = 0
     for block in parsed.blocks:
+        functions.append(block.function)
         result.append(text[cursor : block.start])
         result.append(text[block.start : block.body_start])
         leading, trailing = _preserve_block_whitespace(
@@ -110,6 +116,7 @@ def write_back(
         try:
             result.append(_render_block(render, block))
         except Exception as exc:  # noqa: BLE001 - record renderer failures for later diagnostics output
+            failed_blocks += 1
             diagnostics.append(
                 WriteDiagnostic(
                     tag=block.tag,
@@ -123,7 +130,13 @@ def write_back(
         cursor = block.end
 
     result.append(text[cursor:])
-    return WriteBackResult(text=''.join(result), diagnostics=diagnostics)
+    return WriteBackResult(
+        text=''.join(result),
+        diagnostics=diagnostics,
+        total_blocks=len(parsed.blocks),
+        failed_blocks=failed_blocks,
+        functions=tuple(functions),
+    )
 
 
 def write_file(

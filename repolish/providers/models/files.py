@@ -635,6 +635,16 @@ def build_file_records(
                 source=None,
             ),
         )
+    for dest, provider_id in providers.insertion_sources.items():
+        files.setdefault(
+            dest,
+            FileRecord(
+                path=dest,
+                mode=FileMode.REGULAR,
+                owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
+                source=None,
+            ),
+        )
     for dest, provider_id in providers.disabled_file_mappings.items():
         files[dest] = FileRecord(
             path=dest,

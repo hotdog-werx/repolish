@@ -12,6 +12,17 @@ from repolish.providers.models import (
 )
 
 
+@dataclass(frozen=True)
+class InsertionFileResult:
+    """Compact per-file insertion execution summary for apply output and reports."""
+
+    total_blocks: int
+    failed_blocks: int
+    functions: tuple[str, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    report_path: str | None = None
+
+
 @dataclass
 class ApplyOptions:
     """Parameters for the apply command (framework-agnostic)."""
@@ -128,3 +139,8 @@ class ResolvedSession:
         repr=False,
     )
     """Per-file per-validator results keyed by destination path."""
+    insertion_results: dict[str, InsertionFileResult] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    """Per-file insertion execution summaries keyed by destination path."""

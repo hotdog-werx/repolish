@@ -14,6 +14,7 @@ from repolish.commands.apply.debug import (
 from repolish.commands.apply.display import (
     print_summary_tree,
 )
+from repolish.commands.apply.insertions import apply_registered_insertions
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
@@ -200,6 +201,7 @@ def apply_session(
         base_dir,
         disable_auto_staging=is_root_pass,
     )
+    session.insertion_results = apply_registered_insertions(providers, base_dir)
     apply_symlinks(resolved_symlinks, config.providers)
     apply_copies(session.resolved_copies, config.providers)
 

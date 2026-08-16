@@ -205,6 +205,7 @@ def _file_skip_reason(
         )
         and record.path not in session.providers.file_mappings
         and record.path not in session.providers.file_validators
+        and record.path not in session.providers.file_insertions
     ):
         return 'not in create_file_mappings (root mode)'
     return None
@@ -330,7 +331,33 @@ def _validator_summary_node(
             result,
         )
         node.append(f'\n    - {marker} {text}', style=style)
+    _append_insertion_summary_line(node, record, session)
     return node
+
+
+def _append_insertion_summary_line(
+    node: Text,
+    record: FileRecord,
+    session: ResolvedSession,
+) -> None:
+    """Append a compact insertion status line that points to the report artifact."""
+    insertion_result = session.insertion_results.get(record.path)
+    if insertion_result is None:
+        return
+
+    ok = insertion_result.failed_blocks == 0
+    marker = '✓' if ok else '✗'
+    style = 'dim green' if ok else 'yellow'
+    noun = 'insertion' if insertion_result.total_blocks == 1 else 'insertions'
+    node.append(
+        f'\n  insertions: {marker} ({insertion_result.total_blocks}) {noun}',
+        style=style,
+    )
+    if insertion_result.report_path and supports_hyperlinks:
+        node.append(
+            ' [details]',
+            style=f'link file://{Path(insertion_result.report_path).absolute()}',
+        )
 
 
 def _file_status_node(
@@ -359,6 +386,7 @@ def _file_status_node(
         source = f'{record.overlay_dir}/'
     if source:
         node.append(f'  ← {source}', style='dim')
+    _append_insertion_summary_line(node, record, session)
     return node
 
 
