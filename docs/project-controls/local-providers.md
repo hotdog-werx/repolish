@@ -74,9 +74,11 @@ installed the provider normally), the local `provider_root` is ignored and a
 warning is logged. If the CLI is not installed or produces no info file, the
 local directory is used as a fallback.
 
-!!! note When both `cli` and `provider_root` are set and a provider-info file
-_is_ found, repolish logs a `provider_root_ignored` warning to tell you the
-local directory is not being used.
+!!! note
+
+    When both `cli` and `provider_root` are set and a provider-info file
+    _is_ found, repolish logs a `provider_root_ignored` warning to tell you the
+    local directory is not being used.
 
 ## The `resources_dir` separation
 

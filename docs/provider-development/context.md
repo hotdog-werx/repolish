@@ -192,10 +192,12 @@ When this is set, `lint` remains in the registry but is treated as `disabled`
 during execution. The user still sees that the validator existed and that it was
 intentionally turned off.
 
-!!! note "Paused files skip validators entirely" If a destination file is listed
-in `paused_files`, repolish skips that file before rendering or validation. In
-that state, the file is shown as `paused`, and the validator list for that file
-is intentionally not shown because the validators never ran.
+!!! note "Paused files skip validators entirely"
+
+    If a destination file is listed
+    in `paused_files`, repolish skips that file before rendering or validation. In
+    that state, the file is shown as `paused`, and the validator list for that file
+    is intentionally not shown because the validators never ran.
 
     This is by design: a paused file is treated as intentionally out of scope for
     the current apply run, so its validator results are not meaningful until the

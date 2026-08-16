@@ -1,35 +1,68 @@
-# Configuration
+# Provider anatomy
 
-This section is the reference for every `repolish.yaml` key and for the Python
-provider API. Use it when you know what you are looking for. If you want a
-conceptual introduction to how things fit together, start with
+This is the page to start with when you are building or extending a provider. It
+walks through the same shape repolish uses internally: configure the provider,
+resolve it, build context, stage templates, render output, validate the final
+files, and handle monorepo-specific behavior.
+
+If you want the conceptual background before diving in, start with
 [How It Works](../concepts/overview.md).
 
-## Pages in this section
+## The provider lifecycle
 
-### [repolish.yaml schema](config-file.md)
+Every provider passes through the same rough pipeline:
 
-The full list of top-level keys accepted by `repolish.yaml` — `providers`,
-`providers_order`, `template_overrides`, `workspace`, `context`,
-`context_overrides`, `anchors`, `delete_files`, `post_process`, and
-`paused_files`. Covers the Pydantic model behind the file and notes on schema
-evolution.
+1. [Provider Setup](config-file.md) — define the provider in `repolish.yaml`
+2. [Provider Resolution](providers.md) — resolve `cli`, `provider_root`, and
+   `resources_dir`
+3. [Context & Inputs](context.md) — build typed context and share data between
+   providers
+4. [Templates](templates.md) — stage and render the canonical files
+5. [Validators](validators.md) — enforce correctness after rendering
+6. [Monorepo](monorepo.md) — handle root/member behavior and session wiring
+7. [Testing Providers](testing.md) — verify provider behavior in isolation
 
-### [Provider settings](providers.md)
+## Common tasks
 
-How each provider entry is resolved: the `cli`, `provider_root`, and
-`resources_dir` fields; the resolution priority rules; how `repolish link`
-registers providers; and the CLI protocol a link command must follow.
+### I need to describe the provider in config
 
-### [Provider Python API](context.md)
+See [Provider Setup](config-file.md) and [Provider Resolution](providers.md).
 
-The Python-side authoring reference: writing `create_context()` with a typed
-Pydantic model, using `BaseContext`, class-based `Provider` subclasses, per-file
-`TemplateMapping` extra context, cross-provider inputs via `provide_inputs()` /
-`finalize_context()`, and how to test provider context.
+### I need to author a Python provider
 
-### [Testing Providers](testing.md)
+Start with [Context & Inputs](context.md), then continue to
+[Templates](templates.md), [Preprocessors](preprocessors.md), and
+[Validators](validators.md).
 
-Using `ProviderTestBed`, `make_context`, and `assert_snapshots` from
-`repolish.testing` to test provider hooks, template rendering, and mode-handler
-dispatch without the full CLI pipeline.
+### I need to make the provider work in a monorepo
+
+Read [Monorepo](monorepo.md) and [Mode Handlers](mode-handler.md).
+
+### I need to validate the final rendered output
+
+Use [Validators](validators.md). This is the place for post-render checks like
+schema enforcement, file headers, and warnings vs hard failures.
+
+### I need to test the provider without the full CLI pipeline
+
+See [Testing Providers](testing.md).
+
+## Start here
+
+If you only read three pages, make them these:
+
+1. [Provider Setup](config-file.md) — how the provider is declared and resolved
+2. [Context & Inputs](context.md) — how a provider builds and shares state
+3. [Templates](templates.md) — how provider content is staged and rendered
+
+Then branch out to [Validators](validators.md) and [Monorepo](monorepo.md) once
+those core concepts are clear.
+
+## Related concept pages
+
+- [How It Works](../concepts/overview.md)
+- [Providers](../concepts/providers.md)
+- [Templates](../concepts/templates.md)
+- [Context](../concepts/context.md)
+- [Preprocessors](../concepts/preprocessors.md)
+- [Monorepo](../concepts/monorepo.md)
