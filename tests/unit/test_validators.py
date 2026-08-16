@@ -74,6 +74,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {'passing_validator': passing_validator},
         }
@@ -103,6 +104,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {'failing_validator': failing_validator},
         }
@@ -130,6 +132,7 @@ class TestRunValidators:
             raise RuntimeError(crash_message)
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {'crashing_validator': crashing_validator},
         }
@@ -158,6 +161,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {
                 'disabled_validator': FileValidatorSpec(
@@ -193,6 +197,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {'missing_message': failing_without_message},
         }
@@ -222,6 +227,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {'warning_validator': warning_validator},
         }
@@ -330,6 +336,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test1.txt': {'failing_validator_1': failing_validator_1},
             'test2.txt': {'failing_validator_2': failing_validator_2},
@@ -372,6 +379,7 @@ class TestRunValidators:
             )
 
         bundle = MagicMock(spec=SessionBundle)
+        bundle.paused_files = set()
         bundle.file_validators = {
             'test.txt': {
                 'passing_validator': passing_validator,

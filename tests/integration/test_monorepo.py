@@ -256,12 +256,12 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
         assert 'demo-github' in result.output
         assert 'lint' in result.output
 
-    def test_monorepo_root_validator_failure_exits_nonzero_when_warnings_are_forced_to_fail(
+    def test_monorepo_root_validator_warning_exits_nonzero_when_fail_on_warnings_is_set(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A failing root validator on a workspace-owned file still aborts when warnings are treated as fatal."""
+        """A warning-only root validator aborts when warnings are treated as fatal."""
         repo = fixtures.monorepo_basic.stage(tmp_path)
         (repo / 'workspace-provider').mkdir()
         (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
@@ -314,7 +314,7 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
     def create_file_validators(self, ctx):
         def lint(context, path: Path):
             return ValidationResult(
-                status='error',
+                status='warning',
                 message='gitignore missing required rule',
                 path=str(path),
                 validator_name='lint',
@@ -350,7 +350,8 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
         assert 'lint' in result.output
         assert 'gitignore missing required rule' in result.output
         assert result.output.index('demo-github@') < result.output.index('lint')
-        assert 'error' in result.output.lower()
+        assert 'validators_failed' in result.output.lower()
+        assert '⚠' in result.output or 'warn' in result.output.lower() or 'warning' in result.output.lower()
 
 
 class TestMonorepoMemberPass:

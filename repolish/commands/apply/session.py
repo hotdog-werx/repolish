@@ -96,10 +96,19 @@ def _run_post_process_if_needed(
             run_post_process(config.post_process, post_cwd)
 
 
-def _strict_validation_failed(session: ResolvedSession) -> bool:
-    """Return whether strict mode should fail because any validator reported non-pass."""
+def _validation_has_errors(session: ResolvedSession) -> bool:
+    """Return whether any validator reported an actual error."""
     return any(
-        result.status != ValidationStatus.PASS
+        result.status == ValidationStatus.ERROR
+        for by_name in session.validation_results.values()
+        for result in by_name.values()
+    )
+
+
+def _validation_has_warnings(session: ResolvedSession) -> bool:
+    """Return whether any validator reported a warning."""
+    return any(
+        result.status == ValidationStatus.WARNING
         for by_name in session.validation_results.values()
         for result in by_name.values()
     )
@@ -164,11 +173,6 @@ def apply_session(
     if render_templates(setup_input, providers, setup_output) != 0:
         return 1
 
-    session.validation_results = _collect_file_validation_messages(
-        providers,
-        config.config_dir,
-        setup_output / 'repolish',
-    )
     _run_post_process_if_needed(
         config,
         setup_output,
@@ -199,13 +203,28 @@ def apply_session(
     apply_symlinks(resolved_symlinks, config.providers)
     apply_copies(session.resolved_copies, config.providers)
 
-    if fail_on_warnings and _strict_validation_failed(session):
+    session.validation_results = _collect_file_validation_messages(
+        providers,
+        config.config_dir,
+        setup_output / 'repolish',
+    )
+
+    if _validation_has_errors(session):
         logger.error(
             'validators_failed',
             files=sorted(session.validation_results),
             validator_count=sum(len(v) for v in session.validation_results.values()),
         )
         return 1
+
+    if fail_on_warnings and _validation_has_warnings(session):
+        logger.error(
+            'validators_failed',
+            files=sorted(session.validation_results),
+            validator_count=sum(len(v) for v in session.validation_results.values()),
+        )
+        return 1
+
     return 0
 
 

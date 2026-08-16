@@ -356,7 +356,7 @@ def test_validators_from_multiple_providers_can_coexist_on_same_file(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'])
+    result = run_repolish(['apply'], exit_code=0)
 
     assert (tmp_path / 'config.toml').exists()
     output = result.output
@@ -523,16 +523,16 @@ def test_validator_failure_warns_but_does_not_fail_without_fail_on_warnings(
     assert '⚠' in output
 
 
-def test_validator_failure_exits_nonzero_in_fail_on_warnings_mode(
+def test_validator_warning_exits_nonzero_in_fail_on_warnings_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fail-on-warnings mode turns warnings into a non-zero CLI exit and prints the reason."""
+    """The fail-on-warnings mode turns a warning into a non-zero CLI exit and prints the reason."""
     _make_validator_provider(
         tmp_path / 'p',
         fail=True,
         fail_message='bad config',
-        status=ValidationStatus.ERROR,
+        status=ValidationStatus.WARNING,
     )
 
     (tmp_path / 'repolish.yaml').write_text(
@@ -549,4 +549,174 @@ def test_validator_failure_exits_nonzero_in_fail_on_warnings_mode(
     assert 'validators' in output
     assert 'lint' in output
     assert 'bad config' in output
-    assert 'error' in output or 'failed' in output
+    assert '⚠' in output or 'warn' in output or 'warning' in output
+
+
+def test_validator_mixed_warning_and_error_are_both_displayed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single apply run shows both warning and error validator outcomes and exits non-zero."""
+    _write(tmp_path / 'p' / 'repolish' / 'config.toml', 'name = "demo"\n')
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        dedent("""\
+        from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import ValidationResult
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, ctx):
+                return {'config.toml': 'config.toml'}
+
+            def create_file_validators(self, ctx):
+                def warn(context, path):
+                    return ValidationResult(
+                        status='warning',
+                        message='deprecated config',
+                        path=str(path),
+                        validator_name='warn',
+                    )
+
+                def fail(context, path):
+                    return ValidationResult(
+                        status='error',
+                        message='missing required setting',
+                        path=str(path),
+                        validator_name='fail',
+                    )
+
+                return {'config.toml': {'warn': warn, 'fail': fail}}
+        """),
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=1)
+
+    assert (tmp_path / 'config.toml').exists()
+    output = result.output
+    assert 'validators' in output
+    assert 'warn' in output
+    assert 'fail' in output
+    assert 'deprecated config' in output
+    assert 'missing required setting' in output
+    assert '⚠' in output
+    assert '✗' in output
+
+
+def test_validator_missing_file_without_mapping_fails_when_attempting_to_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A validator that tries to read a missing file falls through to the error path."""
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        dedent("""\
+        from pathlib import Path
+
+        from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import ValidationResult
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, ctx):
+                return {}
+
+            def create_file_validators(self, ctx):
+                def lint(context, path: Path):
+                    text = path.read_text(encoding='utf-8')  # raises FileNotFoundError
+                    return ValidationResult(
+                        status='error',
+                        message=f'{path} is missing',
+                        path=str(path),
+                        validator_name='lint',
+                    )
+
+                return {'config.toml': {'lint': lint}}
+        """),
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=1)
+
+    output = result.output
+    assert 'config.toml' in output
+    assert 'lint' in output
+    assert 'crashed' in output
+    assert 'No such file or directory' in output
+    assert '✗' in output
+
+
+def test_validator_missing_file_without_mapping_fails_with_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A validator that targets a file that is absent in the workspace and stage fails as an error."""
+    _write(tmp_path / 'p' / 'repolish' / 'config.toml', 'name = "demo"\n')
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        dedent("""\
+        from pathlib import Path
+
+        from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import ValidationResult
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, ctx):
+                return {}
+
+            def create_file_validators(self, ctx):
+                def lint(context, path: Path):
+                    return ValidationResult(
+                        status='error',
+                        message=f'{path} is missing',
+                        path=str(path),
+                        validator_name='lint',
+                    )
+
+                return {'config.toml': {'lint': lint}}
+        """),
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=1)
+
+    output = result.output
+    assert 'config.toml' in output
+    assert 'lint' in output
+    assert 'is missing' in output
+    assert '✗' in output

@@ -151,6 +151,8 @@ def _collect_file_validation_messages(
     provider_contexts = bundle.provider_contexts
 
     for rel_path, validators in validators_by_file.items():
+        if rel_path in bundle.paused_files:
+            continue
         file_ok, file_results = _run_validators_for_file(
             rel_path,
             validators,
