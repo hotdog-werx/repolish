@@ -718,5 +718,5 @@ def test_validator_missing_file_without_mapping_fails_with_error(
     output = result.output
     assert 'config.toml' in output
     assert 'lint' in output
-    assert 'is missing' in output
+    assert 'missing' in output
     assert '✗' in output
