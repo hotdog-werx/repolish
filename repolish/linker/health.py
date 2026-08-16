@@ -170,7 +170,7 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
     config_dir: Path,
     *,
     force: bool = False,
-    fail_on_warnings: bool = False,
+    strict: bool = False,
     location_context: str | None = None,
 ) -> ProviderReadinessResult:
     """Ensure every provider is registered and its cached paths are valid.
@@ -192,7 +192,7 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
         config_dir: Directory containing ``repolish.yaml``.
         force: Re-register even when an existing info file is valid.
             Used by ``repolish link`` to always refresh registrations.
-        fail_on_warnings: Raise :exc:`~repolish.exceptions.ProviderNotReadyError`
+        strict: Raise :exc:`~repolish.exceptions.ProviderNotReadyError`
             when any provider could not be registered.  Use for CI.
         location_context: Optional context string for monorepo awareness
             (e.g., 'root', 'packages/package_a'). Passed to provider CLIs
@@ -230,7 +230,7 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
             )
             result.failed.append(alias)
 
-    if fail_on_warnings and result.failed:
+    if strict and result.failed:
         msg = f'providers not ready: {", ".join(result.failed)}'
         raise ProviderNotReadyError(msg)
 

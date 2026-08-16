@@ -18,6 +18,7 @@ class ApplyOptions:
 
     config_path: Path
     check_only: bool = False
+    strict: bool = False
     fail_on_warnings: bool = False
     skip_post_process: bool = False
     provider_filter: list[str] | None = None
@@ -35,6 +36,7 @@ class ApplyCommandOptions:
 
     config: Path
     check: bool = False
+    strict: bool = False
     fail_on_warnings: bool = False
     root_only: bool = False
     member: str | None = None

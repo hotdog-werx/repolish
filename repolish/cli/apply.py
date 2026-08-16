@@ -19,6 +19,10 @@ class ApplyParams(BaseModel):
         default=False,
         description='Load config and create context (dry-run check)',
     )
+    strict: bool = Field(
+        default=False,
+        description='Exit with an error if any provider could not be registered (useful for CI)',
+    )
     fail_on_warnings: bool = Field(
         default=False,
         description='Treat validator warnings as fatal errors (useful for CI)',
@@ -70,6 +74,7 @@ def apply(params: ApplyParams = _DEFAULT_APPLY_PARAMS) -> None:
             ApplyCommandOptions(
                 config=params.config,
                 check=params.check,
+                strict=params.strict,
                 fail_on_warnings=params.fail_on_warnings,
                 root_only=params.root_only,
                 member=params.member,

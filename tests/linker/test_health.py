@@ -250,7 +250,7 @@ def test_strict_mode_raises_when_provider_fails(
             providers,
             tmp_path,
             force=True,
-            fail_on_warnings=True,
+            strict=True,
         )
 
 
@@ -269,7 +269,7 @@ def test_strict_mode_does_not_raise_when_all_ready(
         providers,
         tmp_path,
         force=True,
-        fail_on_warnings=True,
+        strict=True,
     )
 
     assert result.all_ready
