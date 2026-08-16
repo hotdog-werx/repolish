@@ -32,6 +32,7 @@ from repolish.providers.models.context import (
 )
 from repolish.providers.models.files import (
     FileMode,
+    InsertionRegistry,
     TemplateMapping,
     ValidatorMapping,
 )
@@ -154,6 +155,13 @@ class ModeHandler(Generic[ContextT, InputT]):
         context: ContextT,  # noqa: ARG002 - unused in base implementation
     ) -> dict[str, ValidatorMapping[ContextT]]:
         """See :meth:`Provider.create_file_validators`."""
+        return {}
+
+    def create_file_insertions(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> dict[str, InsertionRegistry]:
+        """See :meth:`Provider.create_file_insertions`."""
         return {}
 
     def create_default_symlinks(
@@ -459,6 +467,26 @@ class Provider(ABC, Generic[ContextT, InputT]):
                     ),
                 }
             }
+        """
+        return {}
+
+    def create_file_insertions(
+        self,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
+    ) -> dict[str, InsertionRegistry]:
+        """Optional: register insertion handlers for file-local comment blocks.
+
+        The mapping looks like:
+            {
+                'docs/README.md': {
+                    'render_enum_fields': render_enum_fields,
+                    'render_status': render_status,
+                }
+            }
+
+        Each callable receives the parsed insertion metadata and returns the string
+        to write into the reserved block.  This is intentionally additive and
+        mode-aware: only the active workspace context should contribute functions.
         """
         return {}
 

@@ -25,7 +25,11 @@ from repolish import (
     Provider,
     call_provider_method,
 )
-from repolish.providers.models import ValidationResult, ValidatorMapping
+from repolish.providers.models import (
+    InsertionRegistry,
+    ValidationResult,
+    ValidatorMapping,
+)
 from repolish.providers.models.context import ProviderInfo, RepolishContext
 from repolish.providers.models.workspace import (
     ProviderSession,
@@ -107,6 +111,20 @@ class RootHandler(ModeHandler[MyCtx, MyInputs]):
 
         return {'root.md': {'root-check': root_validator}}
 
+    def create_file_insertions(
+        self,
+        context: MyCtx,
+    ) -> dict[str, InsertionRegistry]:
+        def root_render(
+            *,
+            context: MyCtx,
+            tag: str,
+            args: tuple[str, ...],
+        ) -> str:
+            return f'root:{tag}:{args}'
+
+        return {'root.md': {'root-render': root_render}}
+
 
 class MemberHandler(ModeHandler[MyCtx, MyInputs]):
     def provide_inputs(
@@ -147,6 +165,20 @@ class MemberHandler(ModeHandler[MyCtx, MyInputs]):
             )
 
         return {'member.md': {'member-check': member_validator}}
+
+    def create_file_insertions(
+        self,
+        context: MyCtx,
+    ) -> dict[str, InsertionRegistry]:
+        def member_render(
+            *,
+            context: MyCtx,
+            tag: str,
+            args: tuple[str, ...],
+        ) -> str:
+            return f'member:{tag}:{args}'
+
+        return {'member.md': {'member-render': member_render}}
 
 
 class HandlerWithProvideOverride(ModeHandler[MyCtx, MyInputs]):
@@ -382,6 +414,49 @@ def test_create_file_validators_no_handler_returns_empty() -> None:
     provider = _HandledProvider()
     ctx = MyCtx(repolish=_make_ctx('standalone').repolish)
     assert call_provider_method(provider, 'create_file_validators', ctx) == {}
+
+
+@dataclass
+class InsertionCase:
+    name: str
+    mode: str
+    expected_key: str
+    expected_function: str
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        InsertionCase(
+            name='root_mode_dispatches',
+            mode='root',
+            expected_key='root.md',
+            expected_function='root-render',
+        ),
+        InsertionCase(
+            name='member_mode_dispatches',
+            mode='member',
+            expected_key='member.md',
+            expected_function='member-render',
+        ),
+    ],
+    ids=lambda c: c.name,
+)
+def test_create_file_insertions_dispatches_to_handler(
+    case: InsertionCase,
+) -> None:
+    provider = _HandledProvider()
+    ctx = MyCtx(repolish=_make_ctx(case.mode).repolish)
+    result = call_provider_method(provider, 'create_file_insertions', ctx)
+    assert isinstance(result, dict)
+    assert case.expected_key in result
+    assert case.expected_function in result[case.expected_key]
+
+
+def test_create_file_insertions_no_handler_returns_empty() -> None:
+    provider = _HandledProvider()
+    ctx = MyCtx(repolish=_make_ctx('standalone').repolish)
+    assert call_provider_method(provider, 'create_file_insertions', ctx) == {}
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from repolish.providers.models import (
     FileValidatorEntry,
     FileValidatorOptions,
     FileValidatorSpec,
+    InsertionRegistry,
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
@@ -262,6 +263,27 @@ def _handle_provider_validators(
         accum.validator_sources[path] = provider_id
 
 
+def _handle_provider_insertions(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Collect insertion-function registrations for one provider.
+
+    This mirrors validation registration but keeps the registry keyed by file path
+    and function name so later resolution can look up the callables by the parsed
+    insertion metadata without leaking registration state across monorepo modes.
+    """
+    insertions = cast(
+        'dict[str, InsertionRegistry]',
+        call_provider_method(inst, 'create_file_insertions', own_ctx),
+    )
+    for path, functions in insertions.items():
+        accum.file_insertions.setdefault(path, {}).update(functions)
+        accum.insertion_sources[path] = provider_id
+
+
 def _override_validator_entry(
     entry: FileValidatorEntry,
     *,
@@ -342,6 +364,7 @@ def _collect_provider_contribution(
         provider_overrides,
     )
     _handle_provider_validators(inst, own_ctx, provider_id, accum)
+    _handle_provider_insertions(inst, own_ctx, provider_id, accum)
     _apply_validator_overrides(provider_overrides, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 

@@ -158,6 +158,15 @@ FileValidatorsForFile: TypeAlias = ValidatorMapping[ContextT]
 FileValidatorsByPath: TypeAlias = dict[str, ValidatorMapping[ContextT]]
 """Top-level map keyed by destination path."""
 
+InsertionRenderer: TypeAlias = Callable[..., str]
+"""Renderer callable used for an insertion block; must return the replacement text."""
+
+InsertionRegistry: TypeAlias = dict[str, InsertionRenderer]
+"""Function name → renderer callable for a single destination file."""
+
+InsertionRegistryByPath: TypeAlias = dict[str, InsertionRegistry]
+"""Top-level map keyed by destination path for insertion renderers."""
+
 
 class Action(str, Enum):
     """Enumeration of possible actions for a path."""
@@ -482,6 +491,17 @@ class SessionBundle(BaseModel):
     Providers can register validation hooks via ``create_file_validators()``;
     the runner resolves the callables and executes them against the file on disk.
     """
+    file_insertions: InsertionRegistryByPath = Field(default_factory=dict)
+    """Destination path → insertion-function name → callable for file-local blocks.
+    Providers can register insertion functions via ``create_file_insertions()``;
+    the writer later resolves the function by the block metadata and writes the
+    rendered content back into the file.
+    """
+    insertion_sources: dict[str, str] = Field(default_factory=dict)
+    """Destination path → provider id that contributed an insertion registry.
+    Used for summary/debug output when the same target file is updated by more than
+    one provider in a monorepo or multi-provider session.
+    """
 
 
 def _records_from_template_sources(
@@ -667,6 +687,11 @@ class Accumulators:
     # Destination path → provider id for validator-only registrations that do not
     # also appear in a file_mappings entry.
     validator_sources: dict[str, str] = field(default_factory=dict)
+    # Destination path → insertion function name → callable collected from
+    # create_file_insertions(). This is additive and mode-aware, so each active
+    # provider contributes only the functions valid in its current workspace mode.
+    file_insertions: InsertionRegistryByPath = field(default_factory=dict)
+    insertion_sources: dict[str, str] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(

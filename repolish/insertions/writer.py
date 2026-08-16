@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import inspect
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from repolish.insertions.models import CommentStyle, InsertionBlock
 from repolish.insertions.parser import parse_text
 
 Renderer = Callable[[InsertionBlock], str]
+RenderRegistry = Mapping[str, Callable[..., str]]
 
 
 @dataclass(frozen=True)
@@ -36,9 +38,53 @@ def _preserve_block_whitespace(body: str) -> tuple[str, str]:
     return leading, trailing
 
 
+def _call_registered_renderer(
+    registry: RenderRegistry,
+    block: InsertionBlock,
+) -> str:
+    """Resolve and call a function from a registry using the block metadata."""
+    function_name = block.function
+    fn = registry.get(function_name)
+    if fn is None and ':' in function_name:
+        fn = registry.get(function_name.rsplit(':', 1)[1])
+    if fn is None:
+        msg = f'No renderer registered for function {function_name!r}.'
+        raise KeyError(msg)
+
+    params = tuple(inspect.signature(fn).parameters.values())
+    has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+    positional = [
+        p
+        for p in params
+        if p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+
+    if positional and len(positional) == 1 and not has_varargs:
+        return fn(block)
+    if block.args:
+        return fn(*block.args)
+    return fn()
+
+
+def _render_block(
+    render: Renderer | RenderRegistry | None,
+    block: InsertionBlock,
+) -> str:
+    """Render a block using either a direct callback or a named function registry."""
+    if render is None:
+        return block.body
+    if isinstance(render, Mapping):
+        return _call_registered_renderer(render, block)
+    return render(block)
+
+
 def write_back(
     text: str,
-    render: Renderer | None = None,
+    render: Renderer | RenderRegistry | None = None,
     *,
     comment_styles: Iterable[CommentStyle | str] | None = None,
 ) -> WriteBackResult:
@@ -51,7 +97,6 @@ def write_back(
     if not parsed.blocks:
         return WriteBackResult(text=text)
 
-    renderer = render or (lambda block: block.body)
     result: list[str] = []
     diagnostics: list[WriteDiagnostic] = []
     cursor = 0
@@ -63,7 +108,7 @@ def write_back(
         )
         result.append(leading)
         try:
-            result.append(renderer(block))
+            result.append(_render_block(render, block))
         except Exception as exc:  # noqa: BLE001 - record renderer failures for later diagnostics output
             diagnostics.append(
                 WriteDiagnostic(
@@ -83,7 +128,7 @@ def write_back(
 
 def write_file(
     path: str | Path,
-    render: Renderer | None = None,
+    render: Renderer | RenderRegistry | None = None,
     *,
     comment_styles: Iterable[CommentStyle | str] | None = None,
 ) -> WriteBackResult:

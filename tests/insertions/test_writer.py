@@ -5,7 +5,12 @@ from textwrap import dedent
 
 import pytest
 
-from repolish.insertions import InsertionBlock, Renderer, WriteBackResult, write_back
+from repolish.insertions import (
+    InsertionBlock,
+    Renderer,
+    WriteBackResult,
+    write_back,
+)
 
 
 @dataclass
@@ -158,5 +163,43 @@ def test_write_back_uses_block_metadata() -> None:
         .rstrip('\n')
     )
     result = write_back(text, render)
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_resolves_registry_functions() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs render foo true -->
+        alpha
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    registry = {
+        'render': lambda *args: f'{args[0]}={args[1]}',
+    }
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs render foo true -->
+        foo=true
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, registry)
     assert isinstance(result, WriteBackResult)
     assert result.text.rstrip('\n') == expected
