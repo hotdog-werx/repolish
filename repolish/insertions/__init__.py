@@ -5,7 +5,7 @@ from repolish.insertions.models import (
     InsertionBlock,
     ParsedInsertions,
 )
-from repolish.insertions.parser import parse_file, parse_text
+from repolish.insertions.parser import parse_text
 from repolish.insertions.writer import (
     Renderer,
     WriteBackResult,
@@ -21,7 +21,6 @@ __all__ = [
     'Renderer',
     'WriteBackResult',
     'WriteDiagnostic',
-    'parse_file',
     'parse_text',
     'write_back',
     'write_file',

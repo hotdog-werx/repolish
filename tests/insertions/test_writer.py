@@ -203,3 +203,142 @@ def test_write_back_resolves_registry_functions() -> None:
     result = write_back(text, registry)
     assert isinstance(result, WriteBackResult)
     assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_resolves_qualified_name_to_unqualified_registry() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs alpha:render foo true -->
+        alpha
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    registry = {
+        'render': lambda *args: f'{args[0]}={args[1]}',
+    }
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs alpha:render foo true -->
+        foo=true
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, registry)
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_registry_calls_noarg_renderer() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs render -->
+        alpha
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    registry = {
+        'render': lambda: 'from-noarg-renderer',
+    }
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs render -->
+        from-noarg-renderer
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, registry)
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_records_missing_renderer_as_diagnostic() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs missing-renderer -->
+        alpha
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, {'render': lambda: 'unused'})
+
+    assert isinstance(result, WriteBackResult)
+    assert result.total_blocks == 1
+    assert result.failed_blocks == 1
+    assert len(result.diagnostics) == 1
+    assert result.diagnostics[0].tag == 'docs'
+    assert "No renderer registered for function 'missing-renderer'." in result.diagnostics[0].message
+
+
+def test_write_back_registry_preserves_quoted_args_with_spaces() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs some-function 'this is the first arg' 'second arg' 3 -->
+        alpha
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    registry = {
+        'some-function': lambda *args: '|'.join(args),
+    }
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs some-function 'this is the first arg' 'second arg' 3 -->
+        this is the first arg|second arg|3
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, registry)
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected

@@ -24,7 +24,7 @@ separate steps.
 
 from __future__ import annotations
 
-from pathlib import Path
+import shlex
 from typing import TYPE_CHECKING
 
 from repolish.insertions.models import (
@@ -65,7 +65,12 @@ def _split_function_args(raw: str | None) -> tuple[str, tuple[str, ...]]:
     if raw is None:
         return '', ()
 
-    parts = raw.split()
+    try:
+        parts = shlex.split(raw)
+    except ValueError as exc:
+        msg = f'Invalid insertion marker arguments: {exc}'
+        raise ValueError(msg) from exc
+
     if not parts:
         return '', ()
     return parts[0], tuple(parts[1:])
@@ -170,16 +175,3 @@ def parse_text(
         raise ValueError(msg)
 
     return ParsedInsertions(text=text, blocks=blocks)
-
-
-def parse_file(
-    path: str | Path,
-    *,
-    comment_styles: Iterable[CommentStyle | str] | None = DEFAULT_COMMENT_STYLES,
-) -> ParsedInsertions:
-    """Parse insertion markers from a file path."""
-    file_path = Path(path)
-    return parse_text(
-        file_path.read_text(encoding='utf-8'),
-        comment_styles=comment_styles,
-    )

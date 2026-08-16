@@ -348,9 +348,10 @@ def _append_insertion_summary_line(
     ok = insertion_result.failed_blocks == 0
     marker = '✓' if ok else '✗'
     style = 'dim green' if ok else 'yellow'
-    noun = 'insertion' if insertion_result.total_blocks == 1 else 'insertions'
+    succeeded = insertion_result.total_blocks - insertion_result.failed_blocks
+    status_label = 'ok' if ok else 'failed'
     node.append(
-        f'\n  insertions: {marker} ({insertion_result.total_blocks}) {noun}',
+        (f'\n  insertions: {marker} {status_label} ({succeeded} ok, {insertion_result.failed_blocks} failed)'),
         style=style,
     )
     if insertion_result.report_path and supports_hyperlinks:

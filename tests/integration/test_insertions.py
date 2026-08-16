@@ -84,7 +84,7 @@ def test_provider_insertion_updates_non_owned_file(
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert '(1) insertion' in result.output
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
     report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.json'
     assert report.exists()
@@ -94,6 +94,79 @@ def test_provider_insertion_updates_non_owned_file(
     assert data['total_blocks'] == 1
     assert data['failed_blocks'] == 0
     assert data['functions'] == ['display-year']
+
+
+def test_provider_insertion_invalid_function_name_reports_failed_blocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing insertion functions are reported as failed in output and report artifacts."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Mixed insertion blocks
+
+        <!-- repolish:on:ok display-year -->
+        <!-- repolish:off:ok -->
+
+        <!-- repolish:on:bad missing-function -->
+        <!-- repolish:off:bad -->
+        """,
+    )
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+
+        class Ctx(BaseContext):
+            pass
+
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def display_year(*, args):
+                    return '2026'
+
+                return {'README.md': {'display-year': display_year}}
+        """,
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'])
+
+    rendered = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert '<!-- repolish:on:ok display-year -->\n2026\n<!-- repolish:off:ok -->' in rendered
+    assert '<!-- repolish:on:bad missing-function -->' in rendered
+    assert '<!-- repolish:off:bad -->' in rendered
+    assert 'insertions: ✗ failed (1 ok, 1 failed)' in result.output
+
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.json'
+    assert report.exists()
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['file'] == 'README.md'
+    assert data['total_blocks'] == 2
+    assert data['failed_blocks'] == 1
+    assert data['functions'] == ['display-year', 'missing-function']
+    assert data['diagnostics']
+    assert "No renderer registered for function 'missing-function'." in data['diagnostics'][0]['message']
 
 
 def test_provider_insertion_uses_function_args_across_three_blocks(

@@ -58,6 +58,24 @@ class TCase:
             expected_bodies=('\nfirst\n', '\nsecond\n'),
         ),
         TCase(
+            name='quoted_args_with_spaces',
+            text="""
+                <!-- repolish:on:docs some-function 'this is the first arg' "second arg" 3 -->
+                content
+                <!-- repolish:off:docs -->
+                """,
+            expected_tags=('docs',),
+            expected_functions=('some-function',),
+            expected_args=(
+                (
+                    'this is the first arg',
+                    'second arg',
+                    '3',
+                ),
+            ),
+            expected_bodies=('\ncontent\n',),
+        ),
+        TCase(
             name='hash_comment_block',
             text="""
                 # repolish:on:docs render foo true
@@ -153,6 +171,16 @@ class TCase:
                 """,
             raises=ValueError,
             match='already open',
+        ),
+        TCase(
+            name='invalid_quoted_args',
+            text="""
+                    <!-- repolish:on:docs some-function 'unterminated -->
+                    content
+                    <!-- repolish:off:docs -->
+                    """,
+            raises=ValueError,
+            match='Invalid insertion marker arguments',
         ),
     ],
     ids=lambda c: c.name,
