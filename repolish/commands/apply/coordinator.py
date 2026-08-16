@@ -528,7 +528,7 @@ def _resolve_member_sessions(
         apply_opts = ApplyOptions(
             config_path=(member_dir / 'repolish.yaml').resolve(),
             check_only=opts.check_only,
-            strict=opts.strict,
+            fail_on_warnings=opts.fail_on_warnings,
             skip_post_process=opts.skip_post_process,
             provider_filter=opts.provider_filter,
             global_context=build_global_context(workspace),
@@ -557,7 +557,7 @@ def _resolve_root_session(
     apply_opts = ApplyOptions(
         config_path=config_path.resolve(),
         check_only=opts.check_only,
-        strict=opts.strict,
+        fail_on_warnings=opts.fail_on_warnings,
         skip_post_process=opts.skip_post_process,
         provider_filter=opts.provider_filter,
         global_context=build_global_context(workspace),
@@ -582,10 +582,11 @@ def _apply_member_sessions(
                 session,
                 check_only=opts.check_only,
                 skip_post_process=opts.skip_post_process,
+                fail_on_warnings=opts.fail_on_warnings,
             )
+        completed.append(session)
         if rc != 0:
             return rc, completed
-        completed.append(session)
     return 0, completed
 
 
@@ -615,14 +616,15 @@ def _run_root_pass(
             root_session,
             check_only=opts.check_only,
             skip_post_process=opts.skip_post_process,
+            fail_on_warnings=opts.fail_on_warnings,
         )
+    completed_sessions.append(root_session)
     if rc != 0:
         return rc
 
     if not opts.check_only and not opts.skip_post_process:
         _post_process_promoted_files(root_session, config_dir)
 
-    completed_sessions.append(root_session)
     return 2 if promotion_stale else 0
 
 
@@ -688,7 +690,7 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
             ApplyOptions(
                 config_path=config_path.resolve(),
                 check_only=opts.check_only,
-                strict=opts.strict,
+                fail_on_warnings=opts.fail_on_warnings,
                 skip_post_process=opts.skip_post_process,
                 provider_filter=opts.provider_filter,
             ),

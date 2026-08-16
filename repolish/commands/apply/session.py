@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from hotlog import get_logger
 
 from repolish.commands.apply.check import (
@@ -18,17 +20,98 @@ from repolish.commands.apply.staging import (
     create_staged_template,
 )
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
+from repolish.commands.apply.validators import _collect_file_validation_messages
+from repolish.config.models.project import RepolishConfig
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
     preprocess_templates,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.providers.models import build_file_records
+from repolish.providers.models import SessionBundle, build_file_records
+from repolish.providers.models.files import ValidationStatus
 from repolish.utils import run_post_process
 from repolish.version import __version__
 
 logger = get_logger(__name__)
+
+
+def _resolve_template_alias_map(
+    sources: dict[str, str],
+    alias_to_pid: dict[str, str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve staged template aliases to provider PIDs while preserving overlay metadata."""
+    overlay_dirs: dict[str, str] = {}
+    pid_map: dict[str, str] = {}
+    for rel, raw_alias in sources.items():
+        if ':' in raw_alias:
+            base_alias, mode_suffix = raw_alias.split(':', 1)
+            overlay_dirs[rel] = mode_suffix
+        else:
+            base_alias = raw_alias
+        pid_map[rel] = alias_to_pid.get(base_alias, base_alias)
+    return pid_map, overlay_dirs
+
+
+def _write_debug_files(
+    base_dir: Path,
+    config: RepolishConfig,
+    providers: SessionBundle,
+    alias_to_pid: dict[str, str],
+) -> None:
+    """Write provider/file debug context JSON for troubleshooting and inspection."""
+    write_provider_debug_files(
+        base_dir,
+        config,
+        providers,
+        alias_to_pid,
+    )
+    write_file_context_debug_files(
+        base_dir,
+        providers,
+        alias_to_pid,
+    )
+
+
+def _log_paused_files(paused: frozenset[str]) -> None:
+    """Emit a warning when any configured files are excluded from validation and apply."""
+    if paused:
+        logger.warning(
+            'files_paused',
+            files=sorted(paused),
+            suggestion='remove entries from paused_files once the provider is fixed',
+        )
+
+
+def _run_post_process_if_needed(
+    config: RepolishConfig,
+    setup_output: Path,
+    *,
+    skip_post_process: bool,
+) -> None:
+    """Run configured post-processing only when a real rendered tree exists."""
+    if not skip_post_process:
+        post_cwd = setup_output / 'repolish'
+        if post_cwd.exists() and any(post_cwd.iterdir()):
+            run_post_process(config.post_process, post_cwd)
+
+
+def _validation_has_errors(session: ResolvedSession) -> bool:
+    """Return whether any validator reported an actual error."""
+    return any(
+        result.status == ValidationStatus.ERROR
+        for by_name in session.validation_results.values()
+        for result in by_name.values()
+    )
+
+
+def _validation_has_warnings(session: ResolvedSession) -> bool:
+    """Return whether any validator reported a warning."""
+    return any(
+        result.status == ValidationStatus.WARNING
+        for by_name in session.validation_results.values()
+        for result in by_name.values()
+    )
 
 
 def apply_session(
@@ -36,6 +119,7 @@ def apply_session(
     *,
     check_only: bool = False,
     skip_post_process: bool = False,
+    fail_on_warnings: bool = False,
 ) -> int:
     """Run the apply/check pipeline for an already-resolved session.
 
@@ -62,48 +146,24 @@ def apply_session(
         mapped_sources=(mapped_sources | providers.suppressed_sources),
         workspace_mode=session.global_context.workspace.mode,
     )
-    # stage_templates records alias as the provider id; provider_contexts is
-    # keyed by the full directory path (pid).  Files from mode overlay dirs
-    # carry an annotated alias like 'myprovider:root'; split that off before
-    # resolving to pid so the renderer always gets a valid context key.
-    overlay_dirs: dict[str, str] = {}
-    pid_map: dict[str, str] = {}
-    for rel, raw_alias in sources.items():
-        if ':' in raw_alias:
-            base_alias, mode_suffix = raw_alias.split(':', 1)
-            overlay_dirs[rel] = mode_suffix
-        else:
-            base_alias = raw_alias
-        pid_map[rel] = alias_to_pid.get(base_alias, base_alias)
-    providers.template_sources = pid_map
-    providers.template_overlay_dirs = overlay_dirs
+    providers.template_sources, providers.template_overlay_dirs = _resolve_template_alias_map(
+        sources,
+        alias_to_pid,
+    )
     providers.file_records = build_file_records(
         providers,
         pid_to_alias,
         config_pid,
     )
-
-    # write per-provider debug JSON to .repolish/_/provider-context.<alias>.json
-    write_provider_debug_files(
+    _write_debug_files(
         base_dir,
         config,
         providers,
         alias_to_pid,
     )
-    # write per-rendered-file context debug JSON to .repolish/_/file-context.<slug>.json
-    write_file_context_debug_files(
-        base_dir,
-        providers,
-        alias_to_pid,
-    )
 
     paused = frozenset(config.paused_files)
-    if paused:
-        logger.warning(
-            'files_paused',
-            files=sorted(paused),
-            suggestion='remove entries from paused_files once the provider is fixed',
-        )
+    _log_paused_files(paused)
     providers.paused_files = paused
 
     # Preprocess templates (anchor-driven replacements)
@@ -113,13 +173,11 @@ def apply_session(
     if render_templates(setup_input, providers, setup_output) != 0:
         return 1
 
-    # Run any configured post-processing commands only when the rendered output
-    # directory actually exists. A disabled mapping may leave the session with
-    # no rendered files at all, and in that no-op case repolish should not
-    # execute post-process commands for a non-existent render tree.
-    post_cwd = setup_output / 'repolish'
-    if not skip_post_process and post_cwd.exists() and any(post_cwd.iterdir()):
-        run_post_process(config.post_process, post_cwd)
+    _run_post_process_if_needed(
+        config,
+        setup_output,
+        skip_post_process=skip_post_process,
+    )
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
@@ -144,6 +202,29 @@ def apply_session(
     )
     apply_symlinks(resolved_symlinks, config.providers)
     apply_copies(session.resolved_copies, config.providers)
+
+    session.validation_results = _collect_file_validation_messages(
+        providers,
+        config.config_dir,
+        setup_output / 'repolish',
+    )
+
+    if _validation_has_errors(session):
+        logger.error(
+            'validators_failed',
+            files=sorted(session.validation_results),
+            validator_count=sum(len(v) for v in session.validation_results.values()),
+        )
+        return 1
+
+    if fail_on_warnings and _validation_has_warnings(session):
+        logger.error(
+            'validators_failed',
+            files=sorted(session.validation_results),
+            validator_count=sum(len(v) for v in session.validation_results.values()),
+        )
+        return 1
+
     return 0
 
 
@@ -162,6 +243,7 @@ def run_session(options: ApplyOptions) -> int:
         session,
         check_only=options.check_only,
         skip_post_process=options.skip_post_process,
+        fail_on_warnings=options.fail_on_warnings,
     )
     print_summary_tree([session])
     return rc

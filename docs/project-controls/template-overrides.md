@@ -51,9 +51,11 @@ template_overrides:
   .github/workflows/*: ~ # we own all CI files ourselves
 ```
 
-!!! note Glob matching uses the standard `fnmatch` rules. `*` matches within a
-single path segment; it does not cross directory boundaries. Use `**/*.yml` to
-match across directories.
+!!! note
+
+    Glob matching uses the standard `fnmatch` rules. `*` matches within a
+    single path segment; it does not cross directory boundaries. Use `**/*.yml` to
+    match across directories.
 
 ## Comparison with `paused_files`
 

@@ -15,7 +15,7 @@ class CoordinateOptions:
     """Run-time options threaded through all coordinate_sessions helpers."""
 
     check_only: bool
-    strict: bool = False
+    fail_on_warnings: bool = False
     member: str | None = None
     root_only: bool = False
     skip_post_process: bool = field(default=False)

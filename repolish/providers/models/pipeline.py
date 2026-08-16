@@ -23,7 +23,10 @@ from repolish.providers.models.context import (
 
 if TYPE_CHECKING:
     from repolish.config.models.provider import ProviderOverrides
-    from repolish.providers.models.files import TemplateMapping
+    from repolish.providers.models.files import (
+        FileValidatorsByPath,
+        TemplateMapping,
+    )
     from repolish.providers.models.provider import ProviderEntry
 
 
@@ -48,6 +51,7 @@ class ProviderContributions:
         default_factory=dict,
     )
     suppressed_sources: set[str] = field(default_factory=set)
+    file_validators: FileValidatorsByPath = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

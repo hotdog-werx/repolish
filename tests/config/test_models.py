@@ -297,6 +297,36 @@ def test_provider_symlink_json_serializes_paths_as_posix():
     }
 
 
+def test_provider_overrides_validator_shorthand_normalizes_to_enabled_flags() -> None:
+    """Validator overrides accept both per-name toggles and file-level shortcut syntax."""
+    overrides = ProviderOverrides(
+        validators={
+            'config.toml': {'lint': False, 'schema': True},
+            'pyproject.toml': False,
+        },
+    )
+
+    assert overrides.validators == {
+        'config.toml': {'lint': False, 'schema': True},
+        'pyproject.toml': {'enabled': False},
+    }
+
+
+def test_provider_overrides_validator_full_form_is_preserved() -> None:
+    """The full validator override dict is preserved without rewriting names."""
+    overrides = ProviderOverrides(
+        validators={
+            'config.toml': {'lint': False},
+            'settings.toml': {'schema': True},
+        },
+    )
+
+    assert overrides.validators == {
+        'config.toml': {'lint': False},
+        'settings.toml': {'schema': True},
+    }
+
+
 # Remove in V2.0: legacy top-level fields context, context_overrides, anchors are deprecated
 class TestLegacyOverridesMigration:
     """Tests for migration of legacy top-level override fields to overrides container."""

@@ -10,16 +10,15 @@ Defines the types that track what happens to each file across all providers:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path  # noqa: TC003 - used in runtime type annotations
-from typing import Literal
+from pathlib import Path
+from typing import Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
-from repolish.providers.models.context import (
-    BaseContext,  # noqa: TC001 - Pydantic model field requires runtime resolution
-)
+from repolish.providers.models.context import BaseContext
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
@@ -55,6 +54,109 @@ class FileMappingOptions(BaseProviderMethodOptions):
     """
 
     skip_render: bool = False
+
+
+class FileValidatorOptions(BaseProviderMethodOptions):
+    """Options controlling validator execution for a file or provider.
+
+    The common `enabled` flag disables the whole validator set for a file when
+    set to ``False``. `validators` lets a provider declare a named allow-list or
+    deny-list for individual validators without requiring project-level override
+    machinery.
+
+    Example:
+        FileValidatorOptions(
+            enabled=True,
+            validators={'lint': True, 'schema': False},
+        )
+    """
+
+    validators: dict[str, bool] = Field(default_factory=dict)
+
+
+class ValidationStatus(str, Enum):
+    """Status used to classify the outcome of a validator."""
+
+    PASS = 'pass'  # noqa: S105 - things can have a pass sir!!. Not everything is a password
+    WARNING = 'warning'
+    ERROR = 'error'
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    """Result returned by a validator.
+
+    Prefer ``status`` to a boolean ``passed`` flag so validators can distinguish
+    between a clean pass, a warning, and an actual error.
+    """
+
+    status: ValidationStatus = ValidationStatus.PASS
+    message: str = ''
+    path: str = ''
+    validator_name: str = ''
+
+    def __init__(
+        self,
+        *,
+        status: ValidationStatus | str = ValidationStatus.PASS,
+        message: str = '',
+        path: str = '',
+        validator_name: str = '',
+    ) -> None:
+        """Normalize validator results to a typed status enum."""
+        if isinstance(status, str):
+            status = ValidationStatus(status.lower())
+        object.__setattr__(self, 'status', status)
+        object.__setattr__(self, 'message', message)
+        object.__setattr__(self, 'path', path)
+        object.__setattr__(self, 'validator_name', validator_name)
+
+
+ContextT = TypeVar('ContextT', bound=BaseContext)
+
+
+ValidatorFn: TypeAlias = Callable[[ContextT, Path], ValidationResult]
+"""Function signature for a file validator.
+
+The callable receives the provider's concrete context and the resolved path,
+then returns a :class:`ValidationResult` describing whether validation passed and
+any user-facing message.
+"""
+
+
+class FileValidatorSpec(BaseModel, Generic[ContextT]):
+    """Concrete typed payload for a single validator registration.
+
+    This is the public contract used by ``create_file_validators()`` so provider
+    authors can express a validator as either a bare callable or a structured
+    specification with per-validator options::
+
+        {
+            'config.toml': {
+                'lint': validator_fn,
+                'schema': {
+                    'fn': validator_fn,
+                    'options': FileValidatorOptions(enabled=True),
+                },
+            }
+        }
+    """
+
+    fn: Callable[[ContextT, Path], ValidationResult]
+    options: FileValidatorOptions = Field(default_factory=FileValidatorOptions)
+
+
+FileValidatorEntry: TypeAlias = FileValidatorSpec[ContextT] | Callable[[ContextT, Path], ValidationResult]
+"""One validator entry used in a file validator registry."""
+
+ValidatorMapping: TypeAlias = dict[str, FileValidatorEntry[ContextT]]
+"""All validators registered for a specific destination file."""
+
+FileValidatorsForFile: TypeAlias = ValidatorMapping[ContextT]
+"""Backward-compatible alias for validator entries on a single file."""
+
+FileValidatorsByPath: TypeAlias = dict[str, ValidatorMapping[ContextT]]
+"""Top-level map keyed by destination path."""
 
 
 class Action(str, Enum):
@@ -371,6 +473,15 @@ class SessionBundle(BaseModel):
     Populated from ``config.paused_files`` at session setup time; analogous to
     ``suppressed_sources`` but driven by project config rather than provider
     declarations."""
+    validator_sources: dict[str, str] = Field(default_factory=dict)
+    """Destination path → provider id that contributed a validator for that file.
+    Used to display validator-only files in the summary even when no
+    ``create_file_mappings()`` entry exists for that destination."""
+    file_validators: FileValidatorsByPath = Field(default_factory=dict)
+    """Destination path → validator name → validator callable or validator config.
+    Providers can register validation hooks via ``create_file_validators()``;
+    the runner resolves the callables and executes them against the file on disk.
+    """
 
 
 def _records_from_template_sources(
@@ -494,6 +605,16 @@ def build_file_records(
     files.update(
         _records_from_file_mappings(providers.file_mappings, pid_to_alias),
     )
+    for dest, provider_id in providers.validator_sources.items():
+        files.setdefault(
+            dest,
+            FileRecord(
+                path=dest,
+                mode=FileMode.REGULAR,
+                owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
+                source=None,
+            ),
+        )
     for dest, provider_id in providers.disabled_file_mappings.items():
         files[dest] = FileRecord(
             path=dest,
@@ -540,6 +661,12 @@ class Accumulators:
     # destination paths explicitly disabled by config overrides; kept separate
     # so they can appear in the summary as disabled rather than paused.
     disabled_file_mappings: dict[str, str] = field(default_factory=dict)
+    # Destination path → validator name → validator callable/config collected from
+    # create_file_validators().
+    file_validators: FileValidatorsByPath = field(default_factory=dict)
+    # Destination path → provider id for validator-only registrations that do not
+    # also appear in a file_mappings entry.
+    validator_sources: dict[str, str] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(

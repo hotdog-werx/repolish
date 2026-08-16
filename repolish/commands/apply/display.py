@@ -13,8 +13,12 @@ from repolish.providers.models import (
     BaseContext,
     FileMode,
     FileRecord,
+    FileValidatorEntry,
+    FileValidatorSpec,
     SessionBundle,
+    ValidationStatus,
 )
+from repolish.providers.models.files import ValidationResult
 from repolish.version import __version__
 
 
@@ -200,6 +204,7 @@ def _file_skip_reason(
             FileMode.SUPPRESS,
         )
         and record.path not in session.providers.file_mappings
+        and record.path not in session.providers.file_validators
     ):
         return 'not in create_file_mappings (root mode)'
     return None
@@ -235,22 +240,110 @@ def _promoted_file_node(
     return node
 
 
-def _file_node(
+def _validator_entry_enabled(entry: FileValidatorEntry) -> bool:
+    """Return whether the entry should still execute."""
+    if isinstance(entry, FileValidatorSpec):
+        return bool(entry.options.enabled)
+    return True
+
+
+def _is_validator_only_not_staged(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> bool:
+    """Return True when a validator is attached to a file that was never staged.
+
+    This covers provider-only validation targets such as existing project files
+    with no `file_mappings` entry. Those files are still meaningful to the
+    provider, but they are not materialized in the render stage.
+    """
+    return bool(
+        record.path in session.providers.file_validators
+        and not (session.apply_result and record.path in session.apply_result)
+        and record.path not in session.providers.file_mappings
+        and record.path not in session.providers.template_sources,
+    )
+
+
+def _validator_file_owner(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> str | None:
+    """Return the non-matching provider that owns the file path, if any."""
+    other_owners = {
+        r.owner for r in session.providers.file_records if r.path == record.path and r.owner != record.owner
+    }
+    if len(other_owners) == 1:
+        return next(iter(other_owners))
+    return None
+
+
+def _validator_display_prefix(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> tuple[str, str]:
+    """Return the display prefix for a validator summary row."""
+    other_owner = _validator_file_owner(record, session)
+    if _is_validator_only_not_staged(record, session) or other_owner is not None:
+        return '◌ ', 'yellow'
+    return '✓ ', 'green'
+
+
+def _validator_row_display(
+    validator_name: str,
+    entry: FileValidatorEntry,
+    result: ValidationResult | None,
+) -> tuple[str, str, str]:
+    """Render one validator line as text + color metadata."""
+    if not _validator_entry_enabled(entry):
+        return '✗', 'yellow', f'{validator_name}: disabled'
+    if result is None:
+        return '✓', 'green', validator_name
+    if result.status == ValidationStatus.WARNING:
+        return '⚠', 'yellow', f'{validator_name}: {result.message}'
+    return '✗', 'red', f'{validator_name}: {result.message}'
+
+
+def _validator_summary_node(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> Text:
+    """Render per-validator success/failure lines beneath a file node."""
+    node = Text()
+    validation_results = session.validation_results.get(record.path, {}) if session.validation_results else {}
+    file_validators = session.providers.file_validators.get(record.path, {})
+    other_owner = _validator_file_owner(record, session)
+    prefix, prefix_style = _validator_display_prefix(record, session)
+    node.append(prefix, style=prefix_style)
+    node.append(record.path)
+    if other_owner:
+        node.append(f'  owned by {other_owner}', style='dim yellow')
+    elif _is_validator_only_not_staged(record, session):
+        node.append('  no file in stage', style='dim yellow')
+    node.append('\n  validators:', style='dim green')
+    for validator_name in sorted(file_validators):
+        entry = file_validators[validator_name]
+        result = validation_results.get(validator_name)
+        marker, style, text = _validator_row_display(
+            validator_name,
+            entry,
+            result,
+        )
+        node.append(f'\n    - {marker} {text}', style=style)
+    return node
+
+
+def _file_status_node(
     record: FileRecord,
     session: ResolvedSession,
     debug_dir: Path,
 ) -> Text:
-    reason = _file_skip_reason(record, session)
-    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
+    """Render a normal file node when there are no validator entries to display."""
     node = Text()
-    if reason:
-        node.append('✗ ', style='yellow')
-        node.append(record.path)
-        node.append(f'  {reason}', style='dim yellow')
-        return node
     file_status = session.apply_result.get(record.path) if session.apply_result else None
     prefix, pfx_style = _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
     node.append(prefix, style=pfx_style)
+    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
     link = (
         f'link file://{file_ctx_file.absolute()}'
         if supports_hyperlinks and record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)
@@ -267,6 +360,33 @@ def _file_node(
     if source:
         node.append(f'  ← {source}', style='dim')
     return node
+
+
+def _file_node(
+    record: FileRecord,
+    session: ResolvedSession,
+    debug_dir: Path,
+) -> Text:
+    reason = _file_skip_reason(record, session)
+    if reason:
+        node = Text()
+        node.append('✗ ', style='yellow')
+        node.append(record.path)
+        node.append(f'  {reason}', style='dim yellow')
+        return node
+    file_validators = session.providers.file_validators.get(record.path, {})
+    if file_validators:
+        validator_provider = session.providers.validator_sources.get(
+            record.path,
+        )
+        validator_alias = (
+            session.pid_to_alias.get(validator_provider, validator_provider)
+            if validator_provider is not None
+            else None
+        )
+        if validator_alias is None or validator_alias == record.owner:
+            return _validator_summary_node(record, session)
+    return _file_status_node(record, session, debug_dir)
 
 
 def _append_stat_parts(label: Text, parts: list[str]) -> None:
@@ -425,13 +545,41 @@ def _add_root_branch_to_tree(
             )
 
 
-def _build_summary_tree(session: ResolvedSession) -> Tree:
-    """Build a Tree summarising providers grouped by role with per-file status."""
-    debug_dir = session.config.config_dir / '.repolish' / '_'
+def _records_by_owner(session: ResolvedSession) -> dict[str, list[FileRecord]]:
+    """Group file records by the provider alias that owns them."""
     records_by_owner: dict[str, list[FileRecord]] = {}
     for record in session.providers.file_records:
         records_by_owner.setdefault(record.owner, []).append(record)
+    return records_by_owner
 
+
+def _attach_validator_owner_records(
+    records_by_owner: dict[str, list[FileRecord]],
+    session: ResolvedSession,
+) -> None:
+    """Add validator-owned entries beneath the provider that declared them."""
+    for dest, validator_provider in session.providers.validator_sources.items():
+        validator_alias = session.pid_to_alias.get(
+            validator_provider,
+            validator_provider,
+        )
+        alias_records = records_by_owner.setdefault(validator_alias, [])
+        if dest in session.providers.file_validators and not any(record.path == dest for record in alias_records):
+            alias_records.append(
+                FileRecord(
+                    path=dest,
+                    mode=FileMode.REGULAR,
+                    owner=validator_alias,
+                    source=None,
+                ),
+            )
+
+
+def _build_summary_tree(session: ResolvedSession) -> Tree:
+    """Build a Tree summarising providers grouped by role with per-file status."""
+    debug_dir = session.config.config_dir / '.repolish' / '_'
+    records_by_owner = _records_by_owner(session)
+    _attach_validator_owner_records(records_by_owner, session)
     root_aliases, member_aliases, standalone_aliases = _classify_aliases(
         session,
     )
@@ -444,6 +592,7 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         session,
         debug_dir,
     )
+
     for member_name, m_aliases in member_aliases.items():
         branch = tree.add(f'[bold]Member: {member_name}[/bold]')
         for alias in m_aliases:
@@ -454,6 +603,7 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
                 session,
                 debug_dir,
             )
+
     if standalone_aliases:
         branch = tree.add('[bold]Standalone[/bold]')
         for alias in standalone_aliases:

@@ -28,7 +28,18 @@ nav:
       - Preprocessors: concepts/preprocessors.md
       - Context: concepts/context.md
       - File Modes: concepts/file-modes.md
-      - Monorepo: concepts/monorepo.md
+
+  - Provider Anatomy:
+      - Overview: provider-development/overview.md
+      - Provider Setup: provider-development/config-file.md
+      - Provider Resolution: provider-development/providers.md
+      - Context & Inputs: provider-development/context.md
+      - Templates: provider-development/templates.md
+      - Validators: provider-development/validators.md
+      - Preprocessors: provider-development/preprocessors.md
+      - Monorepo: provider-development/monorepo.md
+      - Mode Handlers: provider-development/mode-handler.md
+      - Testing Providers: provider-development/testing.md
 
   - Project Controls:
       - You Are in Charge: project-controls/index.md
@@ -39,16 +50,7 @@ nav:
       - Preserve Your Edits: project-controls/anchors.md
 
   - Provider Development:
-      - Overview: provider-development/overview.md
-      - repolish.yaml Schema: provider-development/config-file.md
-      - Provider Settings: provider-development/providers.md
-      - Provider Python API: provider-development/context.md
-      - Templates: provider-development/templates.md
-      - Preprocessors: provider-development/preprocessors.md
-      - Monorepo Setup: provider-development/monorepo.md
-      - Mode Handlers: provider-development/mode-handler.md
       - Resource Linker: provider-development/linker.md
-      - Testing Providers: provider-development/testing.md
       - Provider Migration: provider-development/provider-migration.md
 
   - Reference:

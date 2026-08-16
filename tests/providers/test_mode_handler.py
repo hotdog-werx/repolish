@@ -25,6 +25,7 @@ from repolish import (
     Provider,
     call_provider_method,
 )
+from repolish.providers.models import ValidationResult, ValidatorMapping
 from repolish.providers.models.context import ProviderInfo, RepolishContext
 from repolish.providers.models.workspace import (
     ProviderSession,
@@ -89,6 +90,23 @@ class RootHandler(ModeHandler[MyCtx, MyInputs]):
     def create_anchors(self, context: MyCtx) -> dict[str, str]:
         return {'ROOT': 'yes'}
 
+    def create_file_validators(
+        self,
+        context: MyCtx,
+    ) -> dict[str, ValidatorMapping[MyCtx]]:
+        def root_validator(
+            context: MyCtx,
+            path: Path,
+        ) -> ValidationResult:
+            return ValidationResult(
+                status='pass',
+                path=str(path),
+                validator_name='root-check',
+                message='root ok',
+            )
+
+        return {'root.md': {'root-check': root_validator}}
+
 
 class MemberHandler(ModeHandler[MyCtx, MyInputs]):
     def provide_inputs(
@@ -112,6 +130,23 @@ class MemberHandler(ModeHandler[MyCtx, MyInputs]):
 
     def create_anchors(self, context: MyCtx) -> dict[str, str]:
         return {'MEMBER': 'yes'}
+
+    def create_file_validators(
+        self,
+        context: MyCtx,
+    ) -> dict[str, ValidatorMapping[MyCtx]]:
+        def member_validator(
+            context: MyCtx,
+            path: Path,
+        ) -> ValidationResult:
+            return ValidationResult(
+                status='pass',
+                path=str(path),
+                validator_name='member-check',
+                message='member ok',
+            )
+
+        return {'member.md': {'member-check': member_validator}}
 
 
 class HandlerWithProvideOverride(ModeHandler[MyCtx, MyInputs]):
@@ -306,6 +341,49 @@ def test_create_file_mappings_no_handler_returns_empty() -> None:
     assert call_provider_method(provider, 'create_file_mappings', ctx) == {}
 
 
+@dataclass
+class ValidatorCase:
+    name: str
+    mode: str
+    expected_key: str
+    expected_validator: str
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        ValidatorCase(
+            name='root_mode_dispatches',
+            mode='root',
+            expected_key='root.md',
+            expected_validator='root-check',
+        ),
+        ValidatorCase(
+            name='member_mode_dispatches',
+            mode='member',
+            expected_key='member.md',
+            expected_validator='member-check',
+        ),
+    ],
+    ids=lambda c: c.name,
+)
+def test_create_file_validators_dispatches_to_handler(
+    case: ValidatorCase,
+) -> None:
+    provider = _HandledProvider()
+    ctx = MyCtx(repolish=_make_ctx(case.mode).repolish)
+    result = call_provider_method(provider, 'create_file_validators', ctx)
+    assert isinstance(result, dict)
+    assert case.expected_key in result
+    assert case.expected_validator in result[case.expected_key]
+
+
+def test_create_file_validators_no_handler_returns_empty() -> None:
+    provider = _HandledProvider()
+    ctx = MyCtx(repolish=_make_ctx('standalone').repolish)
+    assert call_provider_method(provider, 'create_file_validators', ctx) == {}
+
+
 # ---------------------------------------------------------------------------
 # Tests: create_anchors dispatch
 # ---------------------------------------------------------------------------
@@ -498,6 +576,7 @@ def test_mode_handler_base_defaults() -> None:
         is ctx
     )
     assert handler.create_file_mappings(ctx) == {}
+    assert handler.create_file_validators(ctx) == {}
     assert handler.create_anchors(ctx) == {}
     assert handler.promote_file_mappings(ctx) == {}
     assert handler.create_default_symlinks() == []

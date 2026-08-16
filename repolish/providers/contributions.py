@@ -11,6 +11,9 @@ from repolish.providers.models import (
     Decision,
     FileMappingOptions,
     FileMode,
+    FileValidatorEntry,
+    FileValidatorOptions,
+    FileValidatorSpec,
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
@@ -214,6 +217,99 @@ def _suppress_auto_staged_files(
                 accum.suppressed_sources.add(dest)
 
 
+def _handle_provider_file_mappings(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+    provider_overrides: ProviderOverrides | None,
+) -> None:
+    """Collect and normalize file_mappings contributions for one provider."""
+    fm = cast(
+        'dict[str, str | TemplateMapping | None]',
+        call_provider_method(inst, 'create_file_mappings', own_ctx),
+    )
+    fm_config_opts = provider_overrides.file_mappings if provider_overrides else None
+    _process_provider_fm(
+        provider_id,
+        fm,
+        accum,
+        config_overrides=fm_config_opts,
+    )
+    _suppress_auto_staged_files(provider_id, fm_config_opts, accum)
+
+
+def _handle_provider_validators(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Collect validator registrations for one provider.
+
+    The validator registry is additive, but the per-file source ownership used for
+    summary/display and override targeting should follow the most recently
+    contributed provider for that file path. This keeps the human-facing "who
+    owns this validator" metadata aligned with the provider that actually
+    declared the check for the target path.
+    """
+    validators = cast(
+        'dict[str, dict[str, FileValidatorEntry]]',
+        call_provider_method(inst, 'create_file_validators', own_ctx),
+    )
+    for path, path_validators in validators.items():
+        accum.file_validators.setdefault(path, {}).update(path_validators)
+        accum.validator_sources[path] = provider_id
+
+
+def _override_validator_entry(
+    entry: FileValidatorEntry,
+    *,
+    enabled: bool,
+) -> FileValidatorEntry:
+    """Return a validator entry with the requested enabled state."""
+    if callable(entry):
+        if enabled:
+            return entry
+        return FileValidatorSpec(
+            fn=entry,
+            options=FileValidatorOptions(enabled=False),
+        )
+    # entry is a FileValidatorSpec; return a new spec with the updated enabled state
+    updated = entry.options.model_copy(update={'enabled': enabled})
+    return FileValidatorSpec(
+        fn=entry.fn,
+        options=updated,
+    )
+
+
+def _disable_validators_for_file(
+    validators: dict[str, FileValidatorEntry],
+    validator_overrides: dict[str, bool],
+) -> None:
+    """Apply config-based validator flags to a single file's validator registry."""
+    for name, enabled in validator_overrides.items():
+        entry = validators.get(name)
+        if entry is not None:
+            validators[name] = _override_validator_entry(entry, enabled=enabled)
+
+
+def _apply_validator_overrides(
+    overrides: ProviderOverrides | None,
+    accum: Accumulators,
+) -> None:
+    """Disable any validators explicitly turned off by config overrides."""
+    if not overrides or not overrides.validators:
+        return
+    for dest, validator_overrides in overrides.validators.items():
+        validators = accum.file_validators.get(dest)
+        if validators is None or not validator_overrides:
+            continue
+        _disable_validators_for_file(validators, validator_overrides)
+        if not validators:
+            accum.file_validators.pop(dest, None)
+
+
 def _collect_provider_contribution(
     provider_id: str,
     module_dict: dict,
@@ -238,19 +334,15 @@ def _collect_provider_contribution(
     if provider_overrides and provider_overrides.anchors:
         accum.merged_anchors.update(provider_overrides.anchors)
 
-    fm = cast(
-        'dict[str, str | TemplateMapping | None]',
-        call_provider_method(inst, 'create_file_mappings', own_ctx),
-    )
-    fm_config_opts = provider_overrides.file_mappings if provider_overrides else None
-    _process_provider_fm(
+    _handle_provider_file_mappings(
+        inst,
+        own_ctx,
         provider_id,
-        fm,
         accum,
-        config_overrides=fm_config_opts,
+        provider_overrides,
     )
-
-    _suppress_auto_staged_files(provider_id, fm_config_opts, accum)
+    _handle_provider_validators(inst, own_ctx, provider_id, accum)
+    _apply_validator_overrides(provider_overrides, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 

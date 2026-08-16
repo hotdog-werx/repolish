@@ -144,7 +144,31 @@ _runner = CliRunner()
 
 
 def run_repolish(args: list[str], *, exit_code: int = 0) -> Result:
-    """Invoke the repolish CLI, assert the exit code, and return the result."""
+    """Invoke the repolish CLI, assert the exit code, and return the result.
+
+    Use this helper for both success and failure-based tests.
+
+    Typical workflow:
+
+    - When a command is expected to succeed, inspect ``result.output`` and make
+      assertions against the user-visible text. This is the normal path for
+      behaviour-based integration tests.
+    - When a command is expected to fail, pass ``exit_code=1`` (or the expected
+      non-zero code) and inspect ``result.exception``. Print the traceback with
+      ``traceback.print_exception(result.exception)`` to reveal the underlying
+      crash or error, and inspect ``result.output`` to see which user-facing
+      message was emitted.
+
+    Example::
+
+        result = run_repolish(['apply'], exit_code=1)
+        import traceback
+        traceback.print_exception(result.exception)
+        assert 'some expected message' in result.output
+
+    This keeps the test focused on the public contract while still making it
+    easy to distinguish a real repolish bug from a bad assertion.
+    """
     result = _runner.invoke(app, args)
     if exit_code != -1:  # escape-hatch for debugging with --exit-code=-1 to skip the assertion
         assert result.exit_code == exit_code, (

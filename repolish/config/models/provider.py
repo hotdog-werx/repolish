@@ -76,6 +76,13 @@ class ProviderOverrides(BaseModel):
             'Full form: dict with ``enabled``, ``priority``, ``skip_render`` fields.'
         ),
     )
+    validators: dict[str, dict[str, bool]] | None = Field(
+        default=None,
+        description=(
+            'Per-file validator toggles keyed by destination path. '
+            'Example: {"config.toml": {"lint": false, "schema": true}}.'
+        ),
+    )
 
     @field_validator('file_mappings', mode='before')
     @classmethod
@@ -103,6 +110,23 @@ class ProviderOverrides(BaseModel):
             else:
                 normalized[path] = val
 
+        return normalized
+
+    @field_validator('validators', mode='before')
+    @classmethod
+    def normalize_validators(
+        cls,
+        value: dict[str, dict[str, bool] | bool] | None,
+    ) -> dict[str, dict[str, bool]] | None:
+        """Normalize validator overrides to a dict of enabled flags."""
+        if value is None:
+            return value
+        normalized: dict[str, dict[str, bool]] = {}
+        for path, val in value.items():
+            if isinstance(val, bool):
+                normalized[path] = {'enabled': val}
+            elif isinstance(val, dict):
+                normalized[path] = {name: bool(enabled) for name, enabled in val.items()}
         return normalized
 
 
@@ -237,6 +261,7 @@ class ProviderConfig(BaseModel):
                 'context_dotted': raw_overrides.context_dotted,
                 'anchors': raw_overrides.anchors,
                 'file_mappings': raw_overrides.file_mappings,
+                'validators': raw_overrides.validators,
             }
         else:
             overrides_data = dict(raw_overrides) if raw_overrides else {}

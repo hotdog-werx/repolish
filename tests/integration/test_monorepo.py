@@ -82,6 +82,278 @@ class TestMonorepoRootPass:
         assert monorepo.get('mode') == 'root'
 
 
+class TestMonorepoValidatorDispatch:
+    def test_monorepo_root_mode_calls_validators(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A root-mode handler can register a validator during a monorepo root pass."""
+        repo = fixtures.monorepo_basic.stage(tmp_path)
+        (repo / 'README.root-validated.md').write_text(
+            '# Root validation target\n',
+            encoding='utf-8',
+        )
+
+        provider_dir = repo / 'demo-validator-provider'
+        provider_dir.mkdir()
+        (provider_dir / 'repolish' / 'config.toml').parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        (provider_dir / 'repolish' / 'config.toml').write_text(
+            'name = "demo-validator"\n',
+            encoding='utf-8',
+        )
+        (provider_dir / 'repolish.py').write_text(
+            """
+from pathlib import Path
+
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider
+from repolish.providers.models import ValidationResult
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class RootHandler(ModeHandler[Ctx, BaseInputs]):
+    def create_file_validators(self, ctx):
+        def lint(context, path: Path):
+            text = path.read_text(encoding='utf-8')
+            return ValidationResult(
+                status='pass' if '# Root validation target' in text else 'error',
+                message='root validator ok',
+                path=str(path),
+                validator_name='lint',
+            )
+
+        return {'README.root-validated.md': {'lint': lint}}
+
+
+class DemoProvider(Provider[Ctx, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+            encoding='utf-8',
+        )
+
+        (repo / 'repolish.yaml').write_text(
+            json.dumps(
+                {
+                    'providers': {
+                        'demo-validator-provider': {
+                            'provider_root': './demo-validator-provider',
+                        },
+                    },
+                },
+            ),
+            encoding='utf-8',
+        )
+
+        monkeypatch.chdir(repo)
+        result = run_repolish(['apply', '--root-only'])
+        assert (repo / 'README.root-validated.md').exists()
+        assert 'README.root-validated.md' in result.output
+        assert 'no file in stage' in result.output
+        assert '✓ lint' in result.output
+        assert 'config.toml' in result.output
+        assert 'not in create_file_mappings (root mode)' in result.output
+
+    def test_monorepo_root_validator_stays_with_owning_provider_for_workspace_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A validator for a workspace-owned root file is attributed to the validator provider."""
+        repo = fixtures.monorepo_basic.stage(tmp_path)
+        (repo / 'workspace-provider').mkdir()
+        (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
+        (repo / 'workspace-provider' / 'repolish' / 'config.toml').write_text(
+            'name = "workspace"\n',
+        )
+        (repo / 'workspace-provider' / 'repolish' / '.gitignore.jinja').write_text(
+            'node_modules/\n',
+            encoding='utf-8',
+        )
+        (repo / 'workspace-provider' / 'repolish.py').write_text(
+            """
+from repolish import BaseContext, BaseInputs, Provider
+
+class Ctx(BaseContext):
+    pass
+
+class WorkspaceProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {'.gitignore': '.gitignore.jinja'}
+""",
+            encoding='utf-8',
+        )
+
+        (repo / 'demo-github').mkdir()
+        (repo / 'demo-github' / 'repolish').mkdir(parents=True)
+        (repo / 'demo-github' / 'repolish' / 'config.toml').write_text(
+            'name = "demo-github"\n',
+        )
+        (repo / 'demo-github' / 'repolish.py').write_text(
+            """
+from pathlib import Path
+
+from repolish import BaseContext, BaseInputs, Provider
+from repolish.providers.models import ValidationResult
+
+class Ctx(BaseContext):
+    pass
+
+class GitHubProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+
+    def create_file_validators(self, ctx):
+        def lint(context, path: Path):
+            text = path.read_text(encoding='utf-8')
+            return ValidationResult(
+                status='pass' if 'node_modules/' in text else 'error',
+                message='missing dependency ignore rule',
+                path=str(path),
+                validator_name='lint',
+            )
+
+        return {'.gitignore': {'lint': lint}}
+""",
+            encoding='utf-8',
+        )
+
+        (repo / 'repolish.yaml').write_text(
+            json.dumps(
+                {
+                    'providers': {
+                        'workspace-provider': {
+                            'provider_root': './workspace-provider',
+                        },
+                        'demo-github': {'provider_root': './demo-github'},
+                    },
+                },
+            ),
+            encoding='utf-8',
+        )
+
+        monkeypatch.chdir(repo)
+        result = run_repolish(['apply'])
+        assert (repo / '.gitignore').exists()
+        assert 'workspace-provider' in result.output
+        assert 'demo-github' in result.output
+        assert 'lint' in result.output
+
+    def test_monorepo_root_validator_warning_exits_nonzero_when_fail_on_warnings_is_set(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A warning-only root validator aborts when warnings are treated as fatal."""
+        repo = fixtures.monorepo_basic.stage(tmp_path)
+        (repo / 'workspace-provider').mkdir()
+        (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
+        (repo / 'workspace-provider' / 'repolish' / 'config.toml').write_text(
+            'name = "workspace"\n',
+        )
+        (repo / 'workspace-provider' / 'repolish' / '.gitignore.jinja').write_text(
+            '# generated\n',
+            encoding='utf-8',
+        )
+        (repo / 'workspace-provider' / 'repolish.py').write_text(
+            """
+from repolish import BaseContext, BaseInputs, Provider
+
+class Ctx(BaseContext):
+    pass
+
+class WorkspaceProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {'.gitignore': '.gitignore.jinja'}
+""",
+            encoding='utf-8',
+        )
+
+        (repo / 'demo-github').mkdir()
+        (repo / 'demo-github' / 'repolish').mkdir(parents=True)
+        (repo / 'demo-github' / 'repolish' / 'config.toml').write_text(
+            'name = "demo-github"\n',
+        )
+        (repo / 'demo-github' / 'repolish.py').write_text(
+            """
+from pathlib import Path
+
+from repolish import BaseContext, BaseInputs, Provider
+from repolish.providers.models import ValidationResult
+
+class Ctx(BaseContext):
+    pass
+
+class GitHubProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+
+    def create_file_validators(self, ctx):
+        def lint(context, path: Path):
+            return ValidationResult(
+                status='warning',
+                message='gitignore missing required rule',
+                path=str(path),
+                validator_name='lint',
+            )
+
+        return {'.gitignore': {'lint': lint}}
+""",
+            encoding='utf-8',
+        )
+
+        (repo / 'repolish.yaml').write_text(
+            json.dumps(
+                {
+                    'providers': {
+                        'workspace-provider': {
+                            'provider_root': './workspace-provider',
+                        },
+                        'demo-github': {'provider_root': './demo-github'},
+                    },
+                },
+            ),
+            encoding='utf-8',
+        )
+
+        monkeypatch.chdir(repo)
+        result = run_repolish(['apply', '--fail-on-warnings'], exit_code=1)
+        assert (repo / '.gitignore').exists()
+
+        # The file is still rendered by the workspace provider, but the failing
+        # validator is attributed to the GitHub provider that declared it.
+        assert 'workspace-provider@' in result.output
+        assert 'demo-github@' in result.output
+        assert 'lint' in result.output
+        assert 'gitignore missing required rule' in result.output
+        assert result.output.index('demo-github@') < result.output.index('lint')
+        assert 'validators_failed' in result.output.lower()
+        assert '⚠' in result.output or 'warn' in result.output.lower() or 'warning' in result.output.lower()
+
+
 class TestMonorepoMemberPass:
     def test_monorepo_member_pass_creates_member_files(
         self,
