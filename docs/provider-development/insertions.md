@@ -23,21 +23,21 @@ content is stale, `repolish apply --check` fails just like template drift.
 A reserved block is defined with an `on/off` pair and a tag:
 
 ```html
-<!-- repolish:on:year display-year -->
-<!-- repolish:off:year -->
+<!-- repolish:on:updated last-updated -->
+<!-- repolish:off:updated -->
 ```
 
 The `on` marker includes:
 
-- tag: `year`
-- function name: `display-year`
+- tag: `updated`
+- function name: `last-updated`
 - optional args after the function name
 
 Example with args:
 
 ```html
-<!-- repolish:on:mode display-mode on -->
-<!-- repolish:off:mode -->
+<!-- repolish:on:env env-info PYTHON_VERSION -->
+<!-- repolish:off:env -->
 ```
 
 ## Registering insertion functions
@@ -47,6 +47,7 @@ name.
 
 ```python
 from repolish import BaseContext, BaseInputs, Provider
+from datetime import datetime
 
 
 class Ctx(BaseContext):
@@ -58,21 +59,29 @@ class MyProvider(Provider[Ctx, BaseInputs]):
         return Ctx()
 
     def create_file_insertions(self, context: Ctx):
-        def display_year(*, context, tag, args):
-            return '2026'
+        def last_updated(*, context, tag, args):
+            """Return the current date in ISO format."""
+            return datetime.now().strftime('%Y-%m-%d')
 
-        def display_mode(*, args):
-            flag = args[0]
-            if flag == 'on':
-                return 'VISIBLE'
-            if flag == 'off':
-                return 'HIDDEN'
-            return f'UNKNOWN:{flag}'
+        def package_version(*, context, tag, args):
+            """Read version from pyproject.toml or package metadata."""
+            import importlib.metadata
+            try:
+                return importlib.metadata.version('my-package')
+            except importlib.metadata.PackageNotFoundError:
+                return 'unreleased'
+
+        def env_info(*, args):
+            """Display environment info based on args."""
+            key = args[0] if args else 'unknown'
+            import os
+            return os.environ.get(key, 'not set')
 
         return {
             'README.md': {
-                'display-year': display_year,
-                'display-mode': display_mode,
+                'last-updated': last_updated,
+                'package-version': package_version,
+                'env-info': env_info,
             },
         }
 ```
@@ -151,6 +160,117 @@ insertions: ✗ failed (1 ok, 1 failed)
 ```
 
 This makes partial success explicit for files with multiple insertion blocks.
+
+## Real-world examples
+
+### Auto-generating Pydantic model documentation
+
+A common use case is keeping API documentation in sync with code. Instead of
+manually updating docs when model fields change, a provider can read the model
+and generate the documentation automatically:
+
+```python
+from repolish import BaseContext, BaseInputs, Provider
+from pydantic import BaseModel
+import importlib
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class PydanticDocsProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self) -> Ctx:
+        return Ctx()
+
+    def create_file_insertions(self, context: Ctx):
+        def describe_model(model_path: str) -> str:
+            """Load a Pydantic model and return formatted field documentation.
+            
+            Usage: describe_model('myapp.models:UserCreate')
+            """
+            module_path, class_name = model_path.rsplit(':', 1)
+            module = importlib.import_module(module_path)
+            model_class = getattr(module, class_name)
+            
+            lines = [f'### {class_name}', '']
+            for field_name, field_info in model_class.model_fields.items():
+                field_type = getattr(field_info.annotation, '__name__', str(field_info.annotation))
+                description = field_info.description or 'No description'
+                lines.append(f'- **{field_name}** (`{field_type}`): {description}')
+            return '\n'.join(lines)
+
+        return {
+            'docs/api/models.md': {
+                'describe-model': describe_model,
+            },
+        }
+```
+
+Then in your documentation file:
+
+```markdown
+# API Models
+
+<!-- repolish:on:models describe-model myapp.models:UserCreate -->
+<!-- repolish:off:models -->
+```
+
+When you run `repolish apply`, the insertion function loads the actual Pydantic
+class and generates up-to-date field documentation automatically. No more
+forgetting to update docs when you add a field.
+
+### Listing GitHub organization repositories
+
+Fetch external data and embed it directly in your docs:
+
+```python
+import httpx
+from repolish import BaseContext, BaseInputs, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class GitHubProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self) -> Ctx:
+        return Ctx()
+
+    def create_file_insertions(self, context: Ctx):
+        def list_repos() -> str:
+            """Fetch and list all public repos from a GitHub organization."""
+            response = httpx.get('https://api.github.com/orgs/myorg/repos')
+            response.raise_for_status()
+            repos = response.json()
+            
+            lines = ['| Repository | Description | Stars |', '|-------------|-------------|-------|']
+            for repo in sorted(repos, key=lambda r: r['stargazers_count'], reverse=True):
+                name = repo['name']
+                desc = repo['description'] or 'No description'
+                stars = repo['stargazers_count']
+                url = repo['html_url']
+                lines.append(f'| [{name}]({url}) | {desc} | {stars} |')
+            return '\n'.join(lines)
+
+        return {
+            'docs/resources/repos.md': {
+                'list-repos': list_repos,
+            },
+        }
+```
+
+Usage in markdown:
+
+```markdown
+# Our Open Source Projects
+
+<!-- repolish:on:repos list-repos -->
+<!-- repolish:off:repos -->
+```
+
+This keeps your documentation automatically updated with the latest repository
+information. Run `repolish apply` in CI to keep it fresh.
 
 ## Insertion reports
 
