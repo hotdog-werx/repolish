@@ -55,6 +55,7 @@ def _run_provider_pipeline(
     accum.promoted_file_mappings.update(_contrib.promoted_file_mappings)
     accum.suppressed_sources.update(_contrib.suppressed_sources)
     accum.file_validators.update(_contrib.file_validators)
+    accum.file_insertions.update(_contrib.file_insertions)
 
     instances = build_provider_metadata(module_cache)
     _set_provider_metadata(module_cache, instances, _opts.alias_map or {})
@@ -142,6 +143,8 @@ def _run_provider_pipeline(
         disabled_file_mappings=accum.disabled_file_mappings,
         file_validators=accum.file_validators,
         validator_sources=accum.validator_sources,
+        file_insertions=accum.file_insertions,
+        insertion_sources=accum.insertion_sources,
         promoted_file_mappings=accum.promoted_file_mappings,
     )
 

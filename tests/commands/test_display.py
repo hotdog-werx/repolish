@@ -18,7 +18,7 @@ from repolish.commands.apply.display import (
     print_files_summary,
     print_summary_tree,
 )
-from repolish.commands.apply.options import ResolvedSession
+from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config.models import RepolishConfig
 from repolish.config.models.provider import ProviderSymlink
 from repolish.providers.models import (
@@ -411,3 +411,68 @@ def test_summary_tree_overlay_dir_shown(
     output = _capture(mocker, [session])
     assert 'README.md' in output
     assert 'root/' in output
+
+
+def test_summary_tree_insertion_only_file_shows_hollow_marker(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Insertion-only files that are not staged show a hollow marker like validator-only rows."""
+    session = _make_session(
+        tmp_path,
+        mode='standalone',
+        file_records=[
+            FileRecord(
+                path='README.md',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+            ),
+        ],
+    )
+    session.insertion_results = {
+        'README.md': InsertionFileResult(total_blocks=1, failed_blocks=0),
+    }
+    session.providers.file_insertions = {
+        'README.md': {
+            'display-year': lambda: '2026',
+        },
+    }
+
+    output = _capture(mocker, [session])
+    assert '◌ README.md  no file in stage' in output
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in output
+
+
+def test_summary_tree_insertion_row_owned_by_other_provider_shows_hollow_marker(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Insertion rows for files owned by another provider show a hollow marker."""
+    session = _make_session(
+        tmp_path,
+        mode='standalone',
+        file_records=[
+            FileRecord(
+                path='README.md',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+            ),
+            FileRecord(
+                path='README.md',
+                mode=FileMode.REGULAR,
+                owner='other-provider',
+                source='_repolish.readme.md',
+            ),
+        ],
+    )
+    session.insertion_results = {
+        'README.md': InsertionFileResult(total_blocks=1, failed_blocks=0),
+    }
+    session.providers.file_insertions = {
+        'README.md': {
+            'display-year': lambda: '2026',
+        },
+    }
+
+    output = _capture(mocker, [session])
+    assert '◌ README.md  owned by other-provider' in output

@@ -5,7 +5,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from repolish.commands.apply.debug import _file_context_slug, debug_file_slug
-from repolish.commands.apply.options import ResolvedSession
+from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console, supports_hyperlinks
 from repolish.providers._log import logger
@@ -205,6 +205,7 @@ def _file_skip_reason(
         )
         and record.path not in session.providers.file_mappings
         and record.path not in session.providers.file_validators
+        and record.path not in session.providers.file_insertions
     ):
         return 'not in create_file_mappings (root mode)'
     return None
@@ -269,12 +270,20 @@ def _validator_file_owner(
     record: FileRecord,
     session: ResolvedSession,
 ) -> str | None:
-    """Return the non-matching provider that owns the file path, if any."""
-    other_owners = {
-        r.owner for r in session.providers.file_records if r.path == record.path and r.owner != record.owner
+    """Return the non-matching provider that owns the file path, if any.
+
+    Only considers providers that own the file via file_mappings or template_sources,
+    not just via insertions. This avoids false "owned by" messages for project files
+    that multiple providers add insertions to.
+    """
+    # Check if the file has a "real" owner (via file_mappings or template_sources)
+    real_owners = {
+        r.owner
+        for r in session.providers.file_records
+        if r.path == record.path and r.owner != record.owner and r.source is not None
     }
-    if len(other_owners) == 1:
-        return next(iter(other_owners))
+    if len(real_owners) == 1:
+        return next(iter(real_owners))
     return None
 
 
@@ -287,6 +296,43 @@ def _validator_display_prefix(
     if _is_validator_only_not_staged(record, session) or other_owner is not None:
         return '◌ ', 'yellow'
     return '✓ ', 'green'
+
+
+def _is_insertion_only_not_staged(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> bool:
+    """Return True when insertions target a file that was never staged."""
+    # Check if this record's provider has actual insertions (total_blocks > 0)
+    provider_has_insertions = (
+        record.owner in session.provider_insertion_results
+        and record.path in session.provider_insertion_results.get(record.owner, {})
+        and session.provider_insertion_results[record.owner][record.path].total_blocks > 0
+    )
+
+    # Check if file_insertions has actual functions (non-empty dict)
+    file_insertions_has_functions = (
+        record.path in session.providers.file_insertions and session.providers.file_insertions[record.path]
+    )
+
+    return bool(
+        (provider_has_insertions or file_insertions_has_functions)
+        and not (session.apply_result and record.path in session.apply_result)
+        and record.path not in session.providers.file_mappings
+        and record.path not in session.providers.template_sources,
+    )
+
+
+def _insertion_display_prefix(
+    record: FileRecord,
+    session: ResolvedSession,
+) -> tuple[str, str]:
+    """Return the display prefix for insertion-only or non-owned rows."""
+    other_owner = _validator_file_owner(record, session)
+    if _is_insertion_only_not_staged(record, session) or other_owner is not None:
+        return '◌ ', 'yellow'
+    file_status = session.apply_result.get(record.path) if session.apply_result else None
+    return _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
 
 
 def _validator_row_display(
@@ -330,7 +376,66 @@ def _validator_summary_node(
             result,
         )
         node.append(f'\n    - {marker} {text}', style=style)
+    _append_insertion_summary_line(node, record, session)
     return node
+
+
+def _format_insertion_status(
+    result: InsertionFileResult,
+) -> tuple[str, str, str]:
+    """Format insertion result as (marker, style, status_text)."""
+    ok = result.failed_blocks == 0
+    marker = '✓' if ok else '✗'
+    style = 'dim green' if ok else 'yellow'
+    succeeded = result.total_blocks - result.failed_blocks
+    status_label = 'ok' if ok else 'failed'
+    return (
+        marker,
+        style,
+        f'{status_label} ({succeeded} ok, {result.failed_blocks} failed)',
+    )
+
+
+def _append_insertion_details(
+    node: Text,
+    result: InsertionFileResult,
+) -> None:
+    """Append insertion status line and optional details link to node."""
+    marker, style, status_text = _format_insertion_status(result)
+    node.append(f'\n  insertions: {marker} {status_text}', style=style)
+    # Always append, but use empty style when no hyperlink (avoids uncovered branch)
+    details_style = (
+        f'link file://{Path(result.report_path).absolute()}' if result.report_path and supports_hyperlinks else ''
+    )
+    node.append(' [details]' if details_style else '', style=details_style)
+
+
+def _append_insertion_summary_line(
+    node: Text,
+    record: FileRecord,
+    session: ResolvedSession,
+) -> None:
+    """Append a compact insertion status line for the current provider.
+
+    When the record's owner has insertion results, show only that provider's
+    insertions. This avoids duplicating output when a file appears under
+    multiple provider branches.
+    """
+    provider_alias = record.owner
+
+    # Check if this provider has insertion results for this file
+    if provider_alias in session.provider_insertion_results:
+        file_results = session.provider_insertion_results[provider_alias]
+        if record.path in file_results:
+            result = file_results[record.path]
+            if result.total_blocks > 0:
+                _append_insertion_details(node, result)
+            return
+
+    # Fall back to aggregated result
+    insertion_result = session.insertion_results.get(record.path)
+    if insertion_result is not None and insertion_result.total_blocks > 0:
+        _append_insertion_details(node, insertion_result)
 
 
 def _file_status_node(
@@ -340,8 +445,7 @@ def _file_status_node(
 ) -> Text:
     """Render a normal file node when there are no validator entries to display."""
     node = Text()
-    file_status = session.apply_result.get(record.path) if session.apply_result else None
-    prefix, pfx_style = _FILE_STATUS_PREFIX.get(file_status, ('✓ ', 'green'))
+    prefix, pfx_style = _insertion_display_prefix(record, session)
     node.append(prefix, style=pfx_style)
     file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
     link = (
@@ -359,6 +463,14 @@ def _file_status_node(
         source = f'{record.overlay_dir}/'
     if source:
         node.append(f'  ← {source}', style='dim')
+
+    other_owner = _validator_file_owner(record, session)
+    if other_owner:
+        node.append(f'  owned by {other_owner}', style='dim yellow')
+    elif _is_insertion_only_not_staged(record, session):
+        node.append('  no file in stage', style='dim yellow')
+
+    _append_insertion_summary_line(node, record, session)
     return node
 
 
@@ -575,11 +687,43 @@ def _attach_validator_owner_records(
             )
 
 
+def _attach_insertion_owner_records(
+    records_by_owner: dict[str, list[FileRecord]],
+    session: ResolvedSession,
+) -> None:
+    """Add insertion-owned entries beneath each provider that declared insertions.
+
+    When multiple providers target the same file with insertions, the file appears
+    under each provider showing that provider's insertion count.
+    """
+    for dest, provider_ids in session.providers.insertion_sources.items():
+        for provider_id in provider_ids:
+            provider_alias = session.pid_to_alias.get(provider_id, provider_id)
+            # Only add if this provider actually has insertions (total_blocks > 0)
+            has_insertions = (
+                provider_alias in session.provider_insertion_results
+                and dest in session.provider_insertion_results[provider_alias]
+                and session.provider_insertion_results[provider_alias][dest].total_blocks > 0
+            )
+            alias_records = records_by_owner.setdefault(provider_alias, [])
+            # Only add if not already present for this provider
+            if has_insertions and not any(record.path == dest for record in alias_records):
+                alias_records.append(
+                    FileRecord(
+                        path=dest,
+                        mode=FileMode.REGULAR,
+                        owner=provider_alias,
+                        source=None,
+                    ),
+                )
+
+
 def _build_summary_tree(session: ResolvedSession) -> Tree:
     """Build a Tree summarising providers grouped by role with per-file status."""
     debug_dir = session.config.config_dir / '.repolish' / '_'
     records_by_owner = _records_by_owner(session)
     _attach_validator_owner_records(records_by_owner, session)
+    _attach_insertion_owner_records(records_by_owner, session)
     root_aliases, member_aliases, standalone_aliases = _classify_aliases(
         session,
     )

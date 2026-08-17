@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from repolish.config.models.provider import ProviderOverrides
     from repolish.providers.models.files import (
         FileValidatorsByPath,
+        InsertionRegistry,
         TemplateMapping,
     )
     from repolish.providers.models.provider import ProviderEntry
@@ -52,6 +53,7 @@ class ProviderContributions:
     )
     suppressed_sources: set[str] = field(default_factory=set)
     file_validators: FileValidatorsByPath = field(default_factory=dict)
+    file_insertions: dict[str, InsertionRegistry] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

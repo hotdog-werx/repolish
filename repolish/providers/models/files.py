@@ -158,6 +158,15 @@ FileValidatorsForFile: TypeAlias = ValidatorMapping[ContextT]
 FileValidatorsByPath: TypeAlias = dict[str, ValidatorMapping[ContextT]]
 """Top-level map keyed by destination path."""
 
+InsertionRenderer: TypeAlias = Callable[..., str]
+"""Renderer callable used for an insertion block; must return the replacement text."""
+
+InsertionRegistry: TypeAlias = dict[str, InsertionRenderer]
+"""Function name → renderer callable for a single destination file."""
+
+InsertionRegistryByPath: TypeAlias = dict[str, InsertionRegistry]
+"""Top-level map keyed by destination path for insertion renderers."""
+
 
 class Action(str, Enum):
     """Enumeration of possible actions for a path."""
@@ -482,6 +491,17 @@ class SessionBundle(BaseModel):
     Providers can register validation hooks via ``create_file_validators()``;
     the runner resolves the callables and executes them against the file on disk.
     """
+    file_insertions: InsertionRegistryByPath = Field(default_factory=dict)
+    """Destination path → insertion-function name → callable for file-local blocks.
+    Providers can register insertion functions via ``create_file_insertions()``;
+    the writer later resolves the function by the block metadata and writes the
+    rendered content back into the file.
+    """
+    insertion_sources: dict[str, list[str]] = Field(default_factory=dict)
+    """Destination path → list of provider ids that contributed an insertion registry.
+    Used for summary/debug output when the same target file is updated by more than
+    one provider in a monorepo or multi-provider session.
+    """
 
 
 def _records_from_template_sources(
@@ -565,10 +585,64 @@ def _records_from_delete_files(
     return files
 
 
+def _should_skip_insertion_file(
+    dest: str,
+    file_insertions: dict[str, dict],
+) -> bool:
+    """Return True if the file has no actual insertions to render."""
+    return dest not in file_insertions or not file_insertions[dest]
+
+
+def _add_insertion_file_records(
+    files: dict[str, FileRecord],
+    insertion_sources: dict[str, list[str]],
+    file_insertions: dict[str, dict],
+    pid_to_alias: dict[str, str],
+    base_dir: Path,
+) -> None:
+    """Add FileRecord entries for files with insertion registries."""
+    for dest, provider_ids in insertion_sources.items():
+        if _should_skip_insertion_file(dest, file_insertions):
+            continue
+        # Only add if the file actually exists on disk
+        target = base_dir / dest
+        if not target.exists() or target.is_dir():
+            continue
+        primary_provider_id = provider_ids[0] if provider_ids else 'unknown'
+        files.setdefault(
+            dest,
+            FileRecord(
+                path=dest,
+                mode=FileMode.REGULAR,
+                owner=pid_to_alias.get(
+                    primary_provider_id,
+                    primary_provider_id or 'unknown',
+                ),
+                source=None,
+            ),
+        )
+
+
+def _add_disabled_file_records(
+    files: dict[str, FileRecord],
+    disabled_file_mappings: dict[str, str],
+    pid_to_alias: dict[str, str],
+) -> None:
+    """Add FileRecord entries for disabled/suppressed files."""
+    for dest, provider_id in disabled_file_mappings.items():
+        files[dest] = FileRecord(
+            path=dest,
+            mode=FileMode.SUPPRESS,
+            owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
+            source=None,
+        )
+
+
 def build_file_records(
     providers: SessionBundle,
     pid_to_alias: dict[str, str],
     config_pid: str,
+    base_dir: Path,
 ) -> list[FileRecord]:
     """Build the unified file disposition list from all provider contributions.
 
@@ -582,10 +656,6 @@ def build_file_records(
     - delete: last `Decision` in `delete_history`; source == config_pid -> owner 'config'
     """
     create_only_posix = {p.as_posix() for p in providers.create_only_files}
-    # collect all source paths explicitly claimed by file_mappings so they can
-    # be excluded from the auto-staged template records.  these paths are
-    # registered in template_sources (for provider context lookup) but are not
-    # standalone managed output files.
     explicit_sources: set[str] = set()
     for _src in providers.file_mappings.values():
         if isinstance(_src, str):
@@ -615,13 +685,18 @@ def build_file_records(
                 source=None,
             ),
         )
-    for dest, provider_id in providers.disabled_file_mappings.items():
-        files[dest] = FileRecord(
-            path=dest,
-            mode=FileMode.SUPPRESS,
-            owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
-            source=None,
-        )
+    _add_insertion_file_records(
+        files,
+        providers.insertion_sources,
+        providers.file_insertions,
+        pid_to_alias,
+        base_dir,
+    )
+    _add_disabled_file_records(
+        files,
+        providers.disabled_file_mappings,
+        pid_to_alias,
+    )
     files.update(
         _records_from_delete_files(
             providers.delete_files,
@@ -667,6 +742,11 @@ class Accumulators:
     # Destination path → provider id for validator-only registrations that do not
     # also appear in a file_mappings entry.
     validator_sources: dict[str, str] = field(default_factory=dict)
+    # Destination path → insertion function name → callable collected from
+    # create_file_insertions(). This is additive and mode-aware, so each active
+    # provider contributes only the functions valid in its current workspace mode.
+    file_insertions: InsertionRegistryByPath = field(default_factory=dict)
+    insertion_sources: dict[str, list[str]] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(

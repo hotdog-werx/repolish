@@ -3,6 +3,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.commands.apply.insertions import check_registered_insertions
 from repolish.commands.apply.symlinks import check_symlinks
 from repolish.config import ResolvedProviderInfo
 from repolish.hydration import (
@@ -53,6 +54,12 @@ def finish_check(ctx: CheckContext) -> tuple[int, dict[str, str]]:
         ctx.providers,
         ctx.base_dir,
         disable_auto_staging=ctx.disable_auto_staging,
+    )
+    diffs.extend(
+        check_registered_insertions(
+            ctx.providers,
+            ctx.base_dir,
+        ),
     )
     symlink_issues = check_symlinks(ctx.resolved_symlinks, ctx.provider_infos)
     if diffs:

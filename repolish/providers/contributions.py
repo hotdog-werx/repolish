@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
@@ -14,6 +15,7 @@ from repolish.providers.models import (
     FileValidatorEntry,
     FileValidatorOptions,
     FileValidatorSpec,
+    InsertionRegistry,
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
@@ -24,7 +26,102 @@ from repolish.providers.models import (
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from repolish.config.models.provider import ProviderOverrides
+    from repolish.insertions.models import InsertionBlock
+
+
+def _build_insertion_attempts(
+    *,
+    params: tuple[inspect.Parameter, ...],
+    has_var_keywords: bool,
+    accepts_single_positional: bool,
+    base_kwargs: dict[str, object],
+    block: InsertionBlock,
+) -> list[tuple[tuple[object, ...], dict[str, object]]]:
+    """Return invocation attempts in order of preference for an insertion renderer."""
+    allowed = {p.name for p in params}
+    keyword_args = (
+        base_kwargs if has_var_keywords else {key: value for key, value in base_kwargs.items() if key in allowed}
+    )
+
+    attempts: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    if accepts_single_positional:
+        attempts.append(((block,), {}))
+    attempts.extend(
+        [
+            ((), keyword_args),
+            (tuple(block.args), {}),
+            ((), {}),
+        ],
+    )
+    return attempts
+
+
+def _build_insertion_wrapper(
+    fn: Callable[..., str],
+    own_ctx: BaseContext,
+) -> Callable[[InsertionBlock], str]:
+    """Adapt provider insertion functions to the writer's block renderer contract."""
+    sig = inspect.signature(fn)
+    params = tuple(sig.parameters.values())
+    has_var_keywords = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params)
+    accepts_single_positional = len(params) == 1 and params[0].kind in {
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    }
+
+    def _invoke(
+        args: tuple[object, ...],
+        kwargs: dict[str, object],
+    ) -> str | None:
+        try:
+            sig.bind(*args, **kwargs)
+        except TypeError:
+            return None
+        return fn(*args, **kwargs)
+
+    def _render(block: InsertionBlock) -> str:
+        base_kwargs: dict[str, object] = {
+            'context': own_ctx,
+            'block': block,
+            'tag': block.tag,
+            'function': block.function,
+            'args': block.args,
+            'body': block.body,
+            'comment_style': block.comment_style,
+        }
+
+        attempts = _build_insertion_attempts(
+            params=params,
+            has_var_keywords=has_var_keywords,
+            accepts_single_positional=accepts_single_positional,
+            base_kwargs=base_kwargs,
+            block=block,
+        )
+
+        for args, kwargs in attempts:
+            rendered = _invoke(args, kwargs)
+            if rendered is not None:
+                return rendered
+
+        fn_name = fn.__name__ if hasattr(fn, '__name__') else repr(fn)
+        msg = f'Cannot call insertion function {fn_name!r} with supported arguments.'
+        raise TypeError(msg)
+
+    return _render
+
+
+def _bind_insertions_with_context(
+    insertions: InsertionRegistry,
+    own_ctx: BaseContext,
+) -> InsertionRegistry:
+    """Return insertion functions wrapped with the provider's own context."""
+    bound: InsertionRegistry = {}
+    for function_name, fn in insertions.items():
+        bound[function_name] = _build_insertion_wrapper(fn, own_ctx)
+    return bound
 
 
 def _apply_annotated_tm(
@@ -262,6 +359,36 @@ def _handle_provider_validators(
         accum.validator_sources[path] = provider_id
 
 
+def _handle_provider_insertions(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Collect insertion-function registrations for one provider.
+
+    This mirrors validation registration but keeps the registry keyed by file path
+    and function name so later resolution can look up the callables by the parsed
+    insertion metadata without leaking registration state across monorepo modes.
+    """
+    insertions = cast(
+        'dict[str, InsertionRegistry]',
+        call_provider_method(inst, 'create_file_insertions', own_ctx),
+    )
+    provider_name = inst.alias or provider_id
+    for path, functions in insertions.items():
+        registry = accum.file_insertions.setdefault(path, {})
+        for function_name, bound_fn in _bind_insertions_with_context(
+            functions,
+            own_ctx,
+        ).items():
+            # Keep the first unqualified name as deterministic fallback.
+            registry.setdefault(function_name, bound_fn)
+            # Always expose provider-qualified keys for explicit targeting.
+            registry[f'{provider_name}:{function_name}'] = bound_fn
+        accum.insertion_sources.setdefault(path, []).append(provider_id)
+
+
 def _override_validator_entry(
     entry: FileValidatorEntry,
     *,
@@ -342,6 +469,7 @@ def _collect_provider_contribution(
         provider_overrides,
     )
     _handle_provider_validators(inst, own_ctx, provider_id, accum)
+    _handle_provider_insertions(inst, own_ctx, provider_id, accum)
     _apply_validator_overrides(provider_overrides, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 

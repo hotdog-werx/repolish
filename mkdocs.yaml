@@ -36,6 +36,7 @@ nav:
       - Context & Inputs: provider-development/context.md
       - Templates: provider-development/templates.md
       - Validators: provider-development/validators.md
+      - Insertions: provider-development/insertions.md
       - Preprocessors: provider-development/preprocessors.md
       - Monorepo: provider-development/monorepo.md
       - Mode Handlers: provider-development/mode-handler.md
