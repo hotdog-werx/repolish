@@ -4,82 +4,320 @@ from __future__ import annotations
 
 import difflib
 import json
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.options import InsertionFileResult
-from repolish.insertions import write_back, write_file
+from repolish.insertions import write_back
+from repolish.insertions.parser import InsertionBlock, parse_text
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from repolish.insertions.writer import WriteBackResult
     from repolish.providers import SessionBundle
 
 logger = get_logger(__name__)
 
 
-def apply_registered_insertions(
-    providers: SessionBundle,
-    base_dir: Path,
-) -> dict[str, InsertionFileResult]:
-    """Render provider-registered insertion blocks into target files in-place."""
-    results: dict[str, InsertionFileResult] = {}
-    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
-    reports_dir.mkdir(parents=True, exist_ok=True)
+@dataclass
+class _ProviderInsertionContext:
+    """State object for tracking insertion processing across providers."""
 
-    for rel_path, registry in providers.file_insertions.items():
-        if rel_path in providers.paused_files:
-            continue
+    rel_path: str
+    registry: dict
+    paused_files: frozenset
+    base_dir: Path
+    provider_ids: list[str]
+    pid_to_alias: dict[str, str] | None
+    reports_dir: Path
 
-        target = base_dir / rel_path
-        if not target.exists() or target.is_dir():
-            continue
+    results: dict[str, InsertionFileResult] = field(default_factory=dict)
+    provider_results: dict[str, dict[str, InsertionFileResult]] = field(
+        default_factory=dict,
+    )
 
-        result = write_file(target, registry)
-        if result.total_blocks == 0:
-            continue
 
-        report_file = reports_dir / f'insertions.{_report_slug(rel_path)}.json'
-        source_provider = providers.insertion_sources.get(rel_path)
+def _classify_block_for_provider(
+    block_func: str,
+    provider_alias: str,
+    *,
+    is_first_provider: bool = False,
+) -> bool:
+    """Check if a block function belongs to a specific provider.
+
+    A block belongs to a provider if:
+    - It's provider-qualified with this provider's alias (e.g., 'alpha:display-year')
+    - It's unqualified and this provider is the first one (owns the fallback)
+
+    For unqualified functions, the first provider owns ALL unqualified blocks,
+    even if the function isn't registered (the failure is still that provider's).
+
+    Args:
+        block_func: The function name from the insertion block
+        provider_alias: The provider's alias (e.g., 'alpha')
+        provider_id: The provider's ID (filesystem path)
+        registry: The full insertion registry
+        is_first_provider: Whether this is the first provider for this file
+    """
+    if ':' in block_func:
+        return block_func.startswith(f'{provider_alias}:')
+    # Unqualified function - belongs to first provider only
+    # Include ALL unqualified blocks for the first provider, even missing functions
+    # (the failure is still that provider's responsibility)
+    return bool(is_first_provider)
+
+
+def _get_blocks_for_provider(
+    text: str,
+    provider_alias: str,
+    *,
+    is_first_provider: bool = False,
+) -> list[InsertionBlock]:
+    """Get insertion blocks that belong to a specific provider."""
+    parsed = parse_text(text)
+    return [
+        b
+        for b in parsed.blocks
+        if _classify_block_for_provider(
+            b.function,
+            provider_alias,
+            is_first_provider=is_first_provider,
+        )
+    ]
+
+
+def _build_tag_to_func_map(blocks: list[InsertionBlock]) -> dict[str, str]:
+    """Build a mapping from block tags to function names."""
+    return {b.tag: b.function for b in blocks}
+
+
+def _filter_provider_functions(
+    functions: tuple[str, ...],
+    provider_alias: str,
+    *,
+    is_first_provider: bool = False,
+) -> list[str]:
+    """Filter functions to only those belonging to a specific provider."""
+    return [
+        f
+        for f in functions
+        if _classify_block_for_provider(
+            f,
+            provider_alias,
+            is_first_provider=is_first_provider,
+        )
+    ]
+
+
+def _filter_provider_diagnostics(
+    diagnostics: list,
+    tag_to_func: dict[str, str],
+    provider_alias: str,
+    *,
+    is_first_provider: bool = False,
+) -> tuple[int, list]:
+    """Filter diagnostics to only those belonging to a specific provider.
+
+    Returns:
+        Tuple of (failed_count, filtered_diagnostics)
+    """
+    failed = 0
+    filtered = []
+    for d in diagnostics:
+        func_name = tag_to_func.get(d.tag, d.tag)
+        if _classify_block_for_provider(
+            func_name,
+            provider_alias,
+            is_first_provider=is_first_provider,
+        ):
+            failed += 1
+            filtered.append(d)
+    return failed, filtered
+
+
+def _process_provider_insertions(
+    ctx: _ProviderInsertionContext,
+    original_text: str,
+    result: WriteBackResult,
+    tag_to_func: dict[str, str],
+) -> tuple[InsertionFileResult, dict[str, InsertionFileResult]]:
+    """Process insertions for each provider and write reports."""
+    provider_results: dict[str, InsertionFileResult] = {}
+    report_paths: list[str] = []
+
+    for idx, provider_id in enumerate(ctx.provider_ids):
+        provider_alias = ctx.pid_to_alias.get(provider_id, provider_id) if ctx.pid_to_alias else provider_id
+        is_first_provider = idx == 0
+
+        provider_blocks = _get_blocks_for_provider(
+            original_text,
+            provider_alias,
+            is_first_provider=is_first_provider,
+        )
+        provider_functions = _filter_provider_functions(
+            result.functions,
+            provider_alias,
+            is_first_provider=is_first_provider,
+        )
+        provider_failed, provider_diagnostics = _filter_provider_diagnostics(
+            result.diagnostics,
+            tag_to_func,
+            provider_alias,
+            is_first_provider=is_first_provider,
+        )
+
+        report_file = ctx.reports_dir / f'insertions.{_report_slug(ctx.rel_path)}.{provider_alias}.json'
         report_file.write_text(
             json.dumps(
                 {
-                    'file': rel_path,
-                    'source_provider': source_provider,
-                    'total_blocks': result.total_blocks,
-                    'failed_blocks': result.failed_blocks,
-                    'functions': list(result.functions),
-                    'diagnostics': [
-                        {
-                            'tag': diag.tag,
-                            'message': diag.message,
-                        }
-                        for diag in result.diagnostics
-                    ],
+                    'file': ctx.rel_path,
+                    'source_provider': provider_id,
+                    'provider_alias': provider_alias,
+                    'total_blocks': len(provider_blocks),
+                    'failed_blocks': provider_failed,
+                    'functions': provider_functions,
+                    'diagnostics': [{'tag': diag.tag, 'message': diag.message} for diag in provider_diagnostics],
                 },
                 indent=2,
             ),
             encoding='utf-8',
         )
 
-        results[rel_path] = InsertionFileResult(
-            total_blocks=result.total_blocks,
-            failed_blocks=result.failed_blocks,
-            functions=result.functions,
-            diagnostics=tuple(diag.message for diag in result.diagnostics),
+        report_paths.append(report_file.as_posix())
+
+        provider_results[provider_alias] = InsertionFileResult(
+            total_blocks=len(provider_blocks),
+            failed_blocks=provider_failed,
+            functions=tuple(provider_functions),
+            diagnostics=tuple(d.message for d in provider_diagnostics),
             report_path=report_file.as_posix(),
         )
 
-        if result.diagnostics:
-            logger.warning(
-                'file_insertions_render_failed',
-                file=rel_path,
-                diagnostics=[diag.message for diag in result.diagnostics],
-                _display_level=1,
-            )
+    aggregated = InsertionFileResult(
+        total_blocks=result.total_blocks,
+        failed_blocks=result.failed_blocks,
+        functions=result.functions,
+        diagnostics=tuple(diag.message for diag in result.diagnostics),
+        report_path=report_paths[0] if report_paths else None,
+    )
 
-    return results
+    return aggregated, provider_results
+
+
+def _apply_file_insertions(
+    ctx: _ProviderInsertionContext,
+) -> tuple[InsertionFileResult, dict[str, dict[str, InsertionFileResult]]]:
+    """Apply insertions for a single file and return results."""
+    target = ctx.base_dir / ctx.rel_path
+    original_text = target.read_text(encoding='utf-8')
+    result = write_back(original_text, ctx.registry)
+    target.write_text(result.text, encoding='utf-8')
+
+    if result.total_blocks == 0:
+        return (
+            InsertionFileResult(
+                total_blocks=0,
+                failed_blocks=0,
+                functions=(),
+                diagnostics=(),
+            ),
+            {},
+        )
+
+    tag_to_func = _build_tag_to_func_map(parse_text(original_text).blocks)
+    aggregated, per_provider = _process_provider_insertions(
+        ctx,
+        original_text,
+        result,
+        tag_to_func,
+    )
+
+    if aggregated.diagnostics:
+        logger.warning(
+            'file_insertions_render_failed',
+            file=ctx.rel_path,
+            diagnostics=list(aggregated.diagnostics),
+            _display_level=1,
+        )
+
+    return aggregated, {ctx.rel_path: per_provider}
+
+
+def _should_skip_file(
+    rel_path: str,
+    paused_files: frozenset,
+    base_dir: Path,
+    provider_ids: list[str],
+) -> bool:
+    """Check if a file should be skipped for insertion processing."""
+    if rel_path in paused_files:
+        return True
+    if not provider_ids:
+        return True
+    target = base_dir / rel_path
+    return not target.exists() or target.is_dir()
+
+
+def _merge_provider_results(
+    provider_results: dict[str, dict[str, InsertionFileResult]],
+    rel_path: str,
+    file_provider_results: dict[str, InsertionFileResult],
+) -> None:
+    """Merge per-provider results into the top-level dict."""
+    for provider_alias, file_result in file_provider_results.items():
+        provider_results.setdefault(provider_alias, {})[rel_path] = file_result
+
+
+def apply_registered_insertions(
+    providers: SessionBundle,
+    base_dir: Path,
+    pid_to_alias: dict[str, str] | None = None,
+) -> tuple[
+    dict[str, InsertionFileResult],
+    dict[str, dict[str, InsertionFileResult]],
+]:
+    """Render provider-registered insertion blocks into target files in-place.
+
+    When multiple providers target the same file, each provider's insertions
+    are tracked separately for reporting. Reports are written per-provider.
+    """
+    results: dict[str, InsertionFileResult] = {}
+    provider_results: dict[str, dict[str, InsertionFileResult]] = {}
+    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    for rel_path, registry in providers.file_insertions.items():
+        provider_ids = providers.insertion_sources.get(rel_path, [])
+        if _should_skip_file(
+            rel_path,
+            providers.paused_files,
+            base_dir,
+            provider_ids,
+        ):
+            continue
+
+        ctx = _ProviderInsertionContext(
+            rel_path=rel_path,
+            registry=registry,
+            paused_files=providers.paused_files,
+            base_dir=base_dir,
+            provider_ids=provider_ids,
+            pid_to_alias=pid_to_alias,
+            reports_dir=reports_dir,
+        )
+
+        aggregated, file_provider_results = _apply_file_insertions(ctx)
+        results[rel_path] = aggregated
+        _merge_provider_results(
+            provider_results,
+            rel_path,
+            file_provider_results[ctx.rel_path],
+        )
+
+    return results, provider_results
 
 
 def _report_slug(path: str) -> str:

@@ -87,7 +87,8 @@ def test_provider_insertion_updates_non_owned_file(
     assert '◌ README.md  no file in stage' in result.output
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
-    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.json'
+    # Check per-provider report (provider alias is 'p')
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
     assert report.exists()
     data = json.loads(report.read_text(encoding='utf-8'))
     assert data['file'] == 'README.md'
@@ -159,7 +160,8 @@ def test_provider_insertion_invalid_function_name_reports_failed_blocks(
     assert '<!-- repolish:off:bad -->' in rendered
     assert 'insertions: ✗ failed (1 ok, 1 failed)' in result.output
 
-    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.json'
+    # Check per-provider report (provider alias is 'p')
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
     assert report.exists()
     data = json.loads(report.read_text(encoding='utf-8'))
     assert data['file'] == 'README.md'
@@ -416,7 +418,7 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'])
+    result = run_repolish(['apply'], exit_code=0)
     expected = dedent(
         """\
         Provider-qualified lookup

@@ -386,7 +386,7 @@ def _handle_provider_insertions(
             registry.setdefault(function_name, bound_fn)
             # Always expose provider-qualified keys for explicit targeting.
             registry[f'{provider_name}:{function_name}'] = bound_fn
-        accum.insertion_sources[path] = provider_id
+        accum.insertion_sources.setdefault(path, []).append(provider_id)
 
 
 def _override_validator_entry(

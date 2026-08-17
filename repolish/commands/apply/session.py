@@ -201,7 +201,13 @@ def apply_session(
         base_dir,
         disable_auto_staging=is_root_pass,
     )
-    session.insertion_results = apply_registered_insertions(providers, base_dir)
+    file_results, provider_results = apply_registered_insertions(
+        providers,
+        base_dir,
+        pid_to_alias,
+    )
+    session.insertion_results = file_results
+    session.provider_insertion_results = provider_results
     apply_symlinks(resolved_symlinks, config.providers)
     apply_copies(session.resolved_copies, config.providers)
 

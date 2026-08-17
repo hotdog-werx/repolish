@@ -497,8 +497,8 @@ class SessionBundle(BaseModel):
     the writer later resolves the function by the block metadata and writes the
     rendered content back into the file.
     """
-    insertion_sources: dict[str, str] = Field(default_factory=dict)
-    """Destination path → provider id that contributed an insertion registry.
+    insertion_sources: dict[str, list[str]] = Field(default_factory=dict)
+    """Destination path → list of provider ids that contributed an insertion registry.
     Used for summary/debug output when the same target file is updated by more than
     one provider in a monorepo or multi-provider session.
     """
@@ -635,13 +635,18 @@ def build_file_records(
                 source=None,
             ),
         )
-    for dest, provider_id in providers.insertion_sources.items():
+    for dest, provider_ids in providers.insertion_sources.items():
+        # Use the first provider as the primary owner for display purposes
+        primary_provider_id = provider_ids[0] if provider_ids else 'unknown'
         files.setdefault(
             dest,
             FileRecord(
                 path=dest,
                 mode=FileMode.REGULAR,
-                owner=pid_to_alias.get(provider_id, provider_id or 'unknown'),
+                owner=pid_to_alias.get(
+                    primary_provider_id,
+                    primary_provider_id or 'unknown',
+                ),
                 source=None,
             ),
         )
@@ -701,7 +706,7 @@ class Accumulators:
     # create_file_insertions(). This is additive and mode-aware, so each active
     # provider contributes only the functions valid in its current workspace mode.
     file_insertions: InsertionRegistryByPath = field(default_factory=dict)
-    insertion_sources: dict[str, str] = field(default_factory=dict)
+    insertion_sources: dict[str, list[str]] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(

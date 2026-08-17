@@ -144,3 +144,8 @@ class ResolvedSession:
         repr=False,
     )
     """Per-file insertion execution summaries keyed by destination path."""
+    provider_insertion_results: dict[str, dict[str, InsertionFileResult]] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    """Per-provider per-file insertion results: provider_id -> file_path -> result."""
