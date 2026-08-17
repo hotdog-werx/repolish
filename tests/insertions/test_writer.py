@@ -102,6 +102,32 @@ class TCase:
             render=lambda block: f'{block.body.strip()}:dup',
         ),
         TCase(
+            name='handle_mixed_styles',
+            text="""
+                intro
+                /* repolish:on:dup render */
+                first
+                /* repolish:off:dup */
+                middle
+                // repolish:on:dup render
+                second
+                // repolish:off:dup
+                outro
+                """,
+            expected="""
+                intro
+                /* repolish:on:dup render */
+                first:dup
+                /* repolish:off:dup */
+                middle
+                // repolish:on:dup render
+                second:dup
+                // repolish:off:dup
+                outro
+                """,
+            render=lambda block: f'{block.body.strip()}:dup',
+        ),
+        TCase(
             name='block_style_replacement',
             text="""
                 /* repolish:on:style render src styles.css */
