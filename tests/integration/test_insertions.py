@@ -657,3 +657,115 @@ def test_provider_insertion_parametrized(
 
     if case.assert_fn:
         case.assert_fn(tmp_path, result)
+
+
+def test_monorepo_root_mode_insertions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A root-mode handler can register insertions on workspace-owned files.
+
+    This test mirrors test_monorepo_root_validator_stays_with_owning_provider_for_workspace_file
+    but for insertions instead of validators.
+    """
+    from .conftest import fixtures
+
+    repo = fixtures.monorepo_basic.stage(tmp_path)
+
+    # Create a workspace-owned file at root with insertion markers
+    (repo / 'README.workspace.md').write_text(
+        '# Workspace README\n\n<!-- repolish:on:version insert-version -->\n<!-- repolish:off:version -->\n',
+        encoding='utf-8',
+    )
+
+    # Create a provider that owns the workspace file (no template needed)
+    (repo / 'workspace-provider').mkdir()
+    (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
+    (repo / 'workspace-provider' / 'repolish' / 'config.toml').write_text(
+        'name = "workspace"\n',
+        encoding='utf-8',
+    )
+    (repo / 'workspace-provider' / 'repolish.py').write_text(
+        """
+from repolish import BaseContext, BaseInputs, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class WorkspaceProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        # File already exists with markers; we just claim ownership
+        return {}
+""",
+        encoding='utf-8',
+    )
+
+    # Create an insertion provider with root_mode handler
+    (repo / 'insertion-provider').mkdir()
+    (repo / 'insertion-provider' / 'repolish').mkdir(parents=True)
+    (repo / 'insertion-provider' / 'repolish' / 'config.toml').write_text(
+        'name = "insertion-provider"\n',
+        encoding='utf-8',
+    )
+    (repo / 'insertion-provider' / 'repolish.py').write_text(
+        """
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class RootHandler(ModeHandler[Ctx, BaseInputs]):
+    def create_file_insertions(self, ctx):
+        def insert_version(*, context, tag, args):
+            return '1.0.0'
+
+        return {'README.workspace.md': {'insert-version': insert_version}}
+
+
+class InsertionProvider(Provider[Ctx, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+        encoding='utf-8',
+    )
+
+    # Update repolish.yaml to include both providers
+    (repo / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'workspace-provider': {
+                        'provider_root': './workspace-provider',
+                    },
+                    'insertion-provider': {
+                        'provider_root': './insertion-provider',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(repo)
+    result = run_repolish(['apply'], exit_code=0)
+
+    # File should exist and have insertion applied
+    readme = repo / 'README.workspace.md'
+    assert readme.exists()
+    content = readme.read_text(encoding='utf-8')
+    assert '1.0.0' in content
+    assert '<!-- repolish:on:version insert-version -->' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
