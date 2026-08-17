@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from repolish.insertions.models import CommentStyle, InsertionBlock
 from repolish.insertions.parser import parse_text
@@ -80,11 +79,9 @@ def _render_block(
     block: InsertionBlock,
 ) -> str:
     """Render a block using either a direct callback or a named function registry."""
-    if render is None:
-        return block.body
     if isinstance(render, Mapping):
         return _call_registered_renderer(render, block)
-    return render(block)
+    return render(block) if render else block.body
 
 
 def write_back(
@@ -142,21 +139,3 @@ def write_back(
         failed_blocks=failed_blocks,
         functions=tuple(functions),
     )
-
-
-def write_file(
-    path: str | Path,
-    render: Renderer | RenderRegistry | None = None,
-    *,
-    comment_styles: Iterable[CommentStyle | str] | None = None,
-) -> WriteBackResult:
-    """Render insertion blocks in a file and write the updated content back."""
-    file_path = Path(path)
-    original = file_path.read_text(encoding='utf-8')
-    updated = write_back(
-        original,
-        render,
-        comment_styles=comment_styles,
-    )
-    file_path.write_text(updated.text, encoding='utf-8')
-    return updated

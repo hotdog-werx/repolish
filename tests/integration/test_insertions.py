@@ -19,6 +19,149 @@ def _write(path: Path, text: str) -> None:
     path.write_text(dedent(text), encoding='utf-8')
 
 
+def test_provider_no_insertions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider that registers empty insertions doesn't clutter the summary."""
+    _write(tmp_path / 'README.md', 'no-insertions-here\n')
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                return {'README.md': {}}
+        """,
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+    # File should NOT appear in summary when there are zero insertions
+    assert 'README.md' not in result.output
+    assert 'insertions:' not in result.output
+
+    # File content should be unchanged
+    expected = dedent(
+        """\
+        no-insertions-here
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+
+
+def test_provider_insertion_missing_file_is_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insertions for a non-existent file are silently skipped."""
+    # Do NOT create the target file
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def display_year(*, context, tag, args):
+                    return '2026'
+                return {'missing.md': {'display-year': display_year}}
+        """,
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+    # File should not appear since it doesn't exist
+    assert 'missing.md' not in result.output
+    assert 'no file in stage' not in result.output
+
+
+def test_provider_insertion_check_missing_file_is_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check mode skips insertions for non-existent files."""
+    # Do NOT create the target file
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def display_year(*, context, tag, args):
+                    return '2026'
+                return {'missing.md': {'display-year': display_year}}
+        """,
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    # Check mode should succeed (no drift for missing file)
+    result = run_repolish(['apply', '--check'], exit_code=0)
+    assert 'missing.md' not in result.output
+
+
 def test_provider_insertion_updates_non_owned_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

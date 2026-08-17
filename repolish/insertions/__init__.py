@@ -11,7 +11,6 @@ from repolish.insertions.writer import (
     WriteBackResult,
     WriteDiagnostic,
     write_back,
-    write_file,
 )
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     'WriteDiagnostic',
     'parse_text',
     'write_back',
-    'write_file',
 ]

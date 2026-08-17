@@ -28,7 +28,6 @@ class _ProviderInsertionContext:
 
     rel_path: str
     registry: dict
-    paused_files: frozenset
     base_dir: Path
     provider_ids: list[str]
     pid_to_alias: dict[str, str] | None
@@ -224,7 +223,7 @@ def _apply_file_insertions(
                 functions=(),
                 diagnostics=(),
             ),
-            {},
+            {ctx.rel_path: {}},
         )
 
     tag_to_func = _build_tag_to_func_map(parse_text(original_text).blocks)
@@ -248,15 +247,9 @@ def _apply_file_insertions(
 
 def _should_skip_file(
     rel_path: str,
-    paused_files: frozenset,
     base_dir: Path,
-    provider_ids: list[str],
 ) -> bool:
     """Check if a file should be skipped for insertion processing."""
-    if rel_path in paused_files:
-        return True
-    if not provider_ids:
-        return True
     target = base_dir / rel_path
     return not target.exists() or target.is_dir()
 
@@ -291,31 +284,23 @@ def apply_registered_insertions(
 
     for rel_path, registry in providers.file_insertions.items():
         provider_ids = providers.insertion_sources.get(rel_path, [])
-        if _should_skip_file(
-            rel_path,
-            providers.paused_files,
-            base_dir,
-            provider_ids,
-        ):
-            continue
+        if not _should_skip_file(rel_path, base_dir):
+            ctx = _ProviderInsertionContext(
+                rel_path=rel_path,
+                registry=registry,
+                base_dir=base_dir,
+                provider_ids=provider_ids,
+                pid_to_alias=pid_to_alias,
+                reports_dir=reports_dir,
+            )
 
-        ctx = _ProviderInsertionContext(
-            rel_path=rel_path,
-            registry=registry,
-            paused_files=providers.paused_files,
-            base_dir=base_dir,
-            provider_ids=provider_ids,
-            pid_to_alias=pid_to_alias,
-            reports_dir=reports_dir,
-        )
-
-        aggregated, file_provider_results = _apply_file_insertions(ctx)
-        results[rel_path] = aggregated
-        _merge_provider_results(
-            provider_results,
-            rel_path,
-            file_provider_results[ctx.rel_path],
-        )
+            aggregated, file_provider_results = _apply_file_insertions(ctx)
+            results[rel_path] = aggregated
+            _merge_provider_results(
+                provider_results,
+                rel_path,
+                file_provider_results[ctx.rel_path],
+            )
 
     return results, provider_results
 
@@ -333,9 +318,6 @@ def check_registered_insertions(
     diffs: list[tuple[str, str]] = []
 
     for rel_path, registry in providers.file_insertions.items():
-        if rel_path in providers.paused_files:
-            continue
-
         target = base_dir / rel_path
         if not target.exists() or target.is_dir():
             continue

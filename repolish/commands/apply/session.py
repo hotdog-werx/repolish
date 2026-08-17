@@ -155,6 +155,7 @@ def apply_session(
         providers,
         pid_to_alias,
         config_pid,
+        base_dir,
     )
     _write_debug_files(
         base_dir,
