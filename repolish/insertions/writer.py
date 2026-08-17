@@ -94,13 +94,27 @@ def write_back(
 
     The renderer receives the full insertion metadata so repeated tags are handled
     naturally and each block can decide what content should be inserted.
+
+    Parse diagnostics (malformed markers, unclosed blocks) are passed through
+    so callers can see both parse and render issues.
     """
     parsed = parse_text(text, comment_styles=comment_styles)
+
+    # Convert parse diagnostics to write diagnostics
+    diagnostics: list[WriteDiagnostic] = [
+        WriteDiagnostic(tag='<parse>', message=d.message) for d in parsed.diagnostics
+    ]
+
     if not parsed.blocks:
-        return WriteBackResult(text=text)
+        return WriteBackResult(
+            text=text,
+            diagnostics=diagnostics,
+            total_blocks=0,
+            failed_blocks=len(diagnostics),
+            functions=(),
+        )
 
     result: list[str] = []
-    diagnostics: list[WriteDiagnostic] = []
     functions: list[str] = []
     failed_blocks = 0
     cursor = 0
@@ -136,6 +150,6 @@ def write_back(
         text=''.join(result),
         diagnostics=diagnostics,
         total_blocks=len(parsed.blocks),
-        failed_blocks=failed_blocks,
+        failed_blocks=failed_blocks + len(parsed.diagnostics),
         functions=tuple(functions),
     )

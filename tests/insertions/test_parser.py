@@ -16,8 +16,7 @@ class TCase:
     expected_functions: tuple[str, ...] = ()
     expected_args: tuple[tuple[str, ...], ...] = ()
     expected_bodies: tuple[str, ...] = ()
-    raises: type[Exception] | None = None
-    match: str | None = None
+    expected_diagnostics: tuple[str, ...] = ()
     comment_styles: tuple[str, ...] | None = None
 
 
@@ -145,20 +144,17 @@ class TCase:
         TCase(
             name='unclosed_marker',
             text='<!-- repolish:on:broken build -->\ncontent\n',
-            raises=ValueError,
-            match='Unclosed insertion markers remain',
+            expected_diagnostics=('Unclosed insertion marker for tag',),
         ),
         TCase(
             name='missing_open_marker',
             text='<!-- repolish:off:broken -->\n',
-            raises=ValueError,
-            match='without a matching opener',
+            expected_diagnostics=('without a matching opener',),
         ),
         TCase(
             name='missing_function_name',
             text='<!-- repolish:on:bad -->\ncontent\n<!-- repolish:off:bad -->\n',
-            raises=ValueError,
-            match='missing a function name',
+            expected_diagnostics=('missing a function name',),
         ),
         TCase(
             name='nested_same_tag',
@@ -169,8 +165,12 @@ class TCase:
                 inner
                 <!-- repolish:off:dup -->
                 """,
-            raises=ValueError,
-            match='already open',
+            expected_tags=('dup',),
+            expected_functions=('assemble',),
+            expected_args=((),),
+            # When a nested same-tag 'on' is skipped, the body includes everything up to the 'off'
+            expected_bodies=('\nouter\n<!-- repolish:on:dup nested -->\ninner\n',),
+            expected_diagnostics=('already open',),
         ),
         TCase(
             name='invalid_quoted_args',
@@ -179,19 +179,13 @@ class TCase:
                     content
                     <!-- repolish:off:docs -->
                     """,
-            raises=ValueError,
-            match='Invalid insertion marker arguments',
+            expected_diagnostics=('Invalid insertion marker arguments',),
         ),
     ],
     ids=lambda c: c.name,
 )
 def test_parse_insertions(case: TCase) -> None:
     text = dedent(case.text).lstrip('\n')
-    if case.raises is not None:
-        with pytest.raises(case.raises, match=case.match):
-            parse_text(text, comment_styles=case.comment_styles)
-        return
-
     parsed = parse_text(text, comment_styles=case.comment_styles)
 
     assert [block.tag for block in parsed.blocks] == list(case.expected_tags)
@@ -201,3 +195,11 @@ def test_parse_insertions(case: TCase) -> None:
     assert [block.args for block in parsed.blocks] == list(case.expected_args)
     assert [block.body for block in parsed.blocks] == list(case.expected_bodies)
     assert parsed.has_insertions is bool(case.expected_tags)
+
+    # Check diagnostics
+    if case.expected_diagnostics:
+        assert len(parsed.diagnostics) > 0
+        for expected in case.expected_diagnostics:
+            assert any(expected in d.message for d in parsed.diagnostics), (
+                f'Expected diagnostic {expected!r} not found in {parsed.diagnostics}'
+            )

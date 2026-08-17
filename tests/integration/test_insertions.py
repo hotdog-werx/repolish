@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from .conftest import init_git_repo, run_repolish
+from .conftest import fixtures, init_git_repo, run_repolish
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -668,8 +668,6 @@ def test_monorepo_root_mode_insertions(
     This test mirrors test_monorepo_root_validator_stays_with_owning_provider_for_workspace_file
     but for insertions instead of validators.
     """
-    from .conftest import fixtures
-
     repo = fixtures.monorepo_basic.stage(tmp_path)
 
     # Create a workspace-owned file at root with insertion markers

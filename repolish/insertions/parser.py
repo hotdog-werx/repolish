@@ -31,6 +31,7 @@ from repolish.insertions.models import (
     DEFAULT_COMMENT_STYLES,
     CommentStyle,
     InsertionBlock,
+    ParseDiagnostic,
     ParsedInsertions,
 )
 
@@ -135,43 +136,108 @@ def _close_block(
     )
 
 
+def _process_marker(
+    style: CommentStyle,
+    match: re.Match[str],
+    open_stack: dict[str, InsertionBlock],
+    diagnostics: list[ParseDiagnostic],
+    text: str,
+) -> InsertionBlock | None:
+    """Process a single marker match and return a completed block if closing."""
+    tag = match.group('tag')
+    kind = match.group('kind')
+    payload = match.group('body')
+
+    if kind == 'on':
+        _handle_open_marker(tag, payload, style, match, open_stack, diagnostics)
+        return None
+
+    return _handle_close_marker(tag, match, open_stack, diagnostics, text)
+
+
+def _handle_open_marker(  # noqa: PLR0913 - helper function, refactor later
+    tag: str,
+    payload: str | None,
+    style: CommentStyle,
+    match: re.Match[str],
+    open_stack: dict[str, InsertionBlock],
+    diagnostics: list[ParseDiagnostic],
+) -> None:
+    """Handle an opening marker, detecting duplicates and invalid syntax."""
+    if tag in open_stack:
+        diagnostics.append(
+            ParseDiagnostic(
+                message=f'Insertion tag {tag!r} is already open in this file.',
+                position=match.start(),
+            ),
+        )
+        return
+
+    try:
+        open_stack[tag] = _open_block(tag, payload, style=style, match=match)
+    except ValueError as exc:
+        diagnostics.append(
+            ParseDiagnostic(message=str(exc), position=match.start()),
+        )
+
+
+def _handle_close_marker(
+    tag: str,
+    match: re.Match[str],
+    open_stack: dict[str, InsertionBlock],
+    diagnostics: list[ParseDiagnostic],
+    text: str,
+) -> InsertionBlock | None:
+    """Handle a closing marker, detecting mismatches."""
+    if tag not in open_stack:
+        diagnostics.append(
+            ParseDiagnostic(
+                message=f'Found closing insertion marker for tag {tag!r} without a matching opener.',
+                position=match.start(),
+            ),
+        )
+        return None
+
+    opener = open_stack.pop(tag)
+    return _close_block(opener, text=text, match=match)
+
+
+def _finalize_unclosed_markers(
+    open_stack: dict[str, InsertionBlock],
+    diagnostics: list[ParseDiagnostic],
+) -> None:
+    """Record diagnostics for any markers that were never closed."""
+    for tag, block in open_stack.items():
+        diagnostics.append(
+            ParseDiagnostic(
+                message=f'Unclosed insertion marker for tag {tag!r}.',
+                position=block.start,
+            ),
+        )
+
+
 def parse_text(
     text: str,
     *,
     comment_styles: Iterable[CommentStyle | str] | None = DEFAULT_COMMENT_STYLES,
 ) -> ParsedInsertions:
-    """Parse insertion markers from a string and return the structured blocks."""
+    """Parse insertion markers from a string and return the structured blocks.
+
+    Parse errors (unclosed markers, mismatched pairs, invalid syntax) are collected
+    as diagnostics rather than raising, allowing callers to partially process files
+    with malformed regions while still reporting what went wrong.
+    """
     styles = _normalize_comment_styles(comment_styles)
     matches = _iter_marker_matches(text, styles)
     blocks: list[InsertionBlock] = []
+    diagnostics: list[ParseDiagnostic] = []
     open_stack: dict[str, InsertionBlock] = {}
 
     for style, match in matches:
-        tag = match.group('tag')
-        kind = match.group('kind')
-        payload = match.group('body')
+        block = _process_marker(style, match, open_stack, diagnostics, text)
+        if block is not None:
+            blocks.append(block)
 
-        if kind == 'on':
-            if tag in open_stack:
-                msg = f'Insertion tag {tag!r} is already open in this file.'
-                raise ValueError(msg)
-            open_stack[tag] = _open_block(
-                tag,
-                payload,
-                style=style,
-                match=match,
-            )
-            continue
+    _finalize_unclosed_markers(open_stack, diagnostics)
 
-        if tag not in open_stack:
-            msg = f'Found closing insertion marker for tag {tag!r} without a matching opener.'
-            raise ValueError(msg)
-
-        blocks.append(_close_block(open_stack.pop(tag), text, match=match))
-
-    if open_stack:
-        dangling = ', '.join(sorted(open_stack))
-        msg = f'Unclosed insertion markers remain: {dangling}'
-        raise ValueError(msg)
-
-    return ParsedInsertions(text=text, blocks=blocks)
+    return ParsedInsertions(text=text, blocks=blocks, diagnostics=diagnostics)

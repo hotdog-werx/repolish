@@ -70,11 +70,20 @@ class InsertionBlock:
 
 
 @dataclass(frozen=True)
+class ParseDiagnostic:
+    """A structured summary of a parse failure."""
+
+    message: str
+    position: int | None = None
+
+
+@dataclass(frozen=True)
 class ParsedInsertions:
     """The parsed result for a file containing insertion blocks."""
 
     text: str
     blocks: list[InsertionBlock] = field(default_factory=list)
+    diagnostics: list[ParseDiagnostic] = field(default_factory=list)
 
     @property
     def has_insertions(self) -> bool:
