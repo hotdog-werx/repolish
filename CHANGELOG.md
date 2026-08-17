@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.9.0] <a name="1.9.0" href="#1.9.0">-</a> August 17, 2026
+
+### 🚀 Features
+
+- Provider-driven insertions for developer-marked regions (#76) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#76](https://github.com/hotdog-werx/repolish/pull/76)
+
+[1.9.0]: https://github.com/hotdog-werx/repolish/compare/1.8.0...1.9.0
+
 ## [1.8.0] <a name="1.8.0" href="#1.8.0">-</a> August 16, 2026
 
 ### 🚀 Features
