@@ -46,7 +46,12 @@ class CommentStyle(StrEnum):
         return re.compile(self.pattern)
 
 
-DEFAULT_COMMENT_STYLES: tuple[CommentStyle, ...] = (CommentStyle.HTML,)
+DEFAULT_COMMENT_STYLES: tuple[CommentStyle, ...] = (
+    CommentStyle.HTML,
+    CommentStyle.HASH,
+    CommentStyle.JS,
+    CommentStyle.BLOCK,
+)
 
 
 @dataclass(frozen=True)

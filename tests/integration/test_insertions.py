@@ -3,20 +3,139 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from textwrap import dedent
 from typing import TYPE_CHECKING
+
+import pytest
 
 from .conftest import init_git_repo, run_repolish
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
-    import pytest
+    from repolish.cli.testing import Result
+
+
+@dataclass
+class TCase:
+    """Test case for parametrized insertion tests."""
+
+    name: str
+    file_path: str
+    file_content: str
+    insertion_body: str
+    expected_content: str
+    extra_imports: str = ''
+    extra_methods: str = ''
+    expected_output_checks: tuple[str, ...] = ()
+    exit_code: int | None = None
+    check_mode: bool = False
+    assert_fn: Callable[[Path, Result], None] | None = None
 
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(dedent(text), encoding='utf-8')
+
+
+def _make_insertion_provider(
+    directory: Path,
+    file_insertions_body: str,
+    extra_imports: str = '',
+    extra_methods: str = '',
+) -> None:
+    """Create a minimal provider with the specified create_file_insertions body.
+
+    Args:
+        directory: The provider directory (where repolish.py will be written)
+        file_insertions_body: The body of create_file_insertions method
+            (the return statement with the registry dict). Use a dedented
+            multi-line string starting with backslash-quote.
+        extra_imports: Optional extra imports for the provider
+        extra_methods: Optional extra methods like create_file_validators
+    """
+    body_dedented = dedent(file_insertions_body).strip()
+    body_indented = '\n'.join(f'                {line}' for line in body_dedented.splitlines())
+
+    methods_text = ''
+    if extra_methods:
+        methods_dedented = dedent(extra_methods).strip()
+        methods_text = '\n'.join(f'    {line}' for line in methods_dedented.splitlines())
+
+    provider_code = f"""\
+from repolish import BaseContext, BaseInputs, Provider
+{extra_imports}
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_insertions(self, context):
+{body_indented}
+{methods_text}
+"""
+
+    _write(directory / 'repolish.py', provider_code)
+
+
+def _write_repolish_yaml(
+    directory: Path,
+    providers: dict[str, str],
+    providers_order: list[str] | None = None,
+) -> None:
+    """Write a repolish.yaml with the specified provider configurations.
+
+    Args:
+        directory: The directory where repolish.yaml will be written
+        providers: Dict mapping provider alias to provider_root path
+        providers_order: Optional list specifying provider order
+    """
+    config: dict = {
+        'providers': {alias: {'provider_root': root} for alias, root in providers.items()},
+    }
+    if providers_order:
+        config['providers_order'] = providers_order
+
+    (directory / 'repolish.yaml').write_text(
+        json.dumps(config, indent=4),
+        encoding='utf-8',
+    )
+
+
+def _assert_report_exists(tmp_path: Path, result: Result) -> None:
+    """Assert that the per-provider insertion report exists and has expected fields."""
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    assert report.exists()
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['file'] == 'README.md'
+    assert data['source_provider']
+    assert data['total_blocks'] == 1
+    assert data['failed_blocks'] == 0
+    assert data['functions'] == ['display-year']
+
+
+def _assert_report_failed_blocks(tmp_path: Path, result: Result) -> None:
+    """Assert that the report shows failed blocks."""
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    assert report.exists()
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['file'] == 'README.md'
+    assert data['total_blocks'] == 2
+    assert data['failed_blocks'] == 1
+    assert data['functions'] == ['display-year', 'missing-function']
+    assert data['diagnostics']
+    assert "No renderer registered for function 'missing-function'." in data['diagnostics'][0]['message']
+
+
+def _assert_check_drift(tmp_path: Path, result: Result) -> None:
+    """Assert that check mode reports drift."""
+    assert 'README.md' in result.output
+    assert 'run `repolish apply` to apply changes' in result.output
 
 
 def test_provider_no_insertions(
@@ -25,35 +144,12 @@ def test_provider_no_insertions(
 ) -> None:
     """A provider that registers empty insertions doesn't clutter the summary."""
     _write(tmp_path / 'README.md', 'no-insertions-here\n')
-    _write(
-        tmp_path / 'p' / 'repolish.py',
-        """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-        class Ctx(BaseContext):
-            pass
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                return {'README.md': {}}
-        """,
+    _make_insertion_provider(
+        tmp_path / 'p',
+        "return {'README.md': {}}",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
@@ -77,37 +173,15 @@ def test_provider_insertion_missing_file_is_skipped(
 ) -> None:
     """Insertions for a non-existent file are silently skipped."""
     # Do NOT create the target file
-    _write(
-        tmp_path / 'p' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'p',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-        class Ctx(BaseContext):
-            pass
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, context, tag, args):
-                    return '2026'
-                return {'missing.md': {'display-year': display_year}}
-        """,
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'missing.md': {'display-year': display_year}}""",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
@@ -123,37 +197,15 @@ def test_provider_insertion_check_missing_file_is_skipped(
 ) -> None:
     """Check mode skips insertions for non-existent files."""
     # Do NOT create the target file
-    _write(
-        tmp_path / 'p' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'p',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-        class Ctx(BaseContext):
-            pass
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, context, tag, args):
-                    return '2026'
-                return {'missing.md': {'display-year': display_year}}
-        """,
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'missing.md': {'display-year': display_year}}""",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
@@ -162,321 +214,105 @@ def test_provider_insertion_check_missing_file_is_skipped(
     assert 'missing.md' not in result.output
 
 
-def test_provider_insertion_updates_non_owned_file(
+def test_provider_insertion_with_hash_comment_style(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A provider can fill a reserved block in a file it does not own via mappings."""
+    """Insertions work with # comment style (e.g., TOML, YAML, shell files)."""
     _write(
-        tmp_path / 'README.md',
+        tmp_path / 'ruff.toml',
         """\
-        This is the current year
+        # Ruff configuration
+        line-length = 88
 
-        <!-- repolish:on:year display-year -->
-        <!-- repolish:off:year -->
+        # repolish:on:lint add_rules
+        # repolish:off:lint
         """,
     )
-    _write(
-        tmp_path / 'p' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'p',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, context, tag, args):
-                    assert tag == 'year'
-                    assert args == ()
-                    assert context.repolish.workspace.mode in {'standalone', 'root', 'member'}
-                    return '2026'
-
-                return {'README.md': {'display-year': display_year}}
-        """,
+        def add_rules():
+            return 'select = ["E", "W"]'
+        return {'ruff.toml': {'add_rules': add_rules}}""",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'])
+    result = run_repolish(['apply'], exit_code=0)
+
     expected = dedent(
         """\
-        This is the current year
+        # Ruff configuration
+        line-length = 88
 
-        <!-- repolish:on:year display-year -->
-        2026
-        <!-- repolish:off:year -->
+        # repolish:on:lint add_rules
+        select = ["E", "W"]
+        # repolish:off:lint
         """,
     )
-    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert '◌ README.md  no file in stage' in result.output
+    assert (tmp_path / 'ruff.toml').read_text(encoding='utf-8') == expected
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
-    # Check per-provider report (provider alias is 'p')
-    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
-    assert report.exists()
-    data = json.loads(report.read_text(encoding='utf-8'))
-    assert data['file'] == 'README.md'
-    assert data['source_provider']
-    assert data['total_blocks'] == 1
-    assert data['failed_blocks'] == 0
-    assert data['functions'] == ['display-year']
 
-
-def test_provider_insertion_invalid_function_name_reports_failed_blocks(
+def test_provider_insertion_and_validator_on_non_owned_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Missing insertion functions are reported as failed in output and report artifacts."""
+    """A provider can have both insertions and validators on a project-owned file."""
     _write(
-        tmp_path / 'README.md',
+        tmp_path / 'pyproject.toml',
         """\
-        Mixed insertion blocks
+        [project]
+        name = "myproject"
 
-        <!-- repolish:on:ok display-year -->
-        <!-- repolish:off:ok -->
-
-        <!-- repolish:on:bad missing-function -->
-        <!-- repolish:off:bad -->
+        # repolish:on:deps add_deps
+        # repolish:off:deps
         """,
     )
-    _write(
-        tmp_path / 'p' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'p',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, args):
-                    return '2026'
-
-                return {'README.md': {'display-year': display_year}}
-        """,
+        def add_deps():
+            return 'dependencies = ["requests", "click"]'
+        return {'pyproject.toml': {'add_deps': add_deps}}""",
+        extra_imports='from repolish.providers.models import ValidationResult, ValidationStatus',
+        extra_methods="""\
+        def create_file_validators(self, context):
+            def lint_toml(context, path):
+                return ValidationResult(
+                    status=ValidationStatus.PASS,
+                    message='toml lint ok',
+                    path=str(path),
+                    validator_name='lint_toml',
+                )
+            return {'pyproject.toml': {'lint_toml': lint_toml}}
+""",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'])
-
-    rendered = (tmp_path / 'README.md').read_text(encoding='utf-8')
-    assert '<!-- repolish:on:ok display-year -->\n2026\n<!-- repolish:off:ok -->' in rendered
-    assert '<!-- repolish:on:bad missing-function -->' in rendered
-    assert '<!-- repolish:off:bad -->' in rendered
-    assert 'insertions: ✗ failed (1 ok, 1 failed)' in result.output
-
-    # Check per-provider report (provider alias is 'p')
-    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
-    assert report.exists()
-    data = json.loads(report.read_text(encoding='utf-8'))
-    assert data['file'] == 'README.md'
-    assert data['total_blocks'] == 2
-    assert data['failed_blocks'] == 1
-    assert data['functions'] == ['display-year', 'missing-function']
-    assert data['diagnostics']
-    assert "No renderer registered for function 'missing-function'." in data['diagnostics'][0]['message']
-
-
-def test_provider_insertion_uses_function_args_across_three_blocks(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A single insertion function can render three blocks based on args."""
-    _write(
-        tmp_path / 'README.md',
-        """\
-        Controlled sections
-
-        <!-- repolish:on:one display-mode on -->
-        <!-- repolish:off:one -->
-
-        <!-- repolish:on:two display-mode off -->
-        <!-- repolish:off:two -->
-
-        <!-- repolish:on:three display-mode maybe -->
-        <!-- repolish:off:three -->
-        """,
-    )
-    _write(
-        tmp_path / 'p' / 'repolish.py',
-        """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_mode(*, args):
-                    flag = args[0]
-                    if flag == 'on':
-                        return 'VISIBLE'
-                    if flag == 'off':
-                        return 'HIDDEN'
-                    return f'UNKNOWN:{flag}'
-
-                return {'README.md': {'display-mode': display_mode}}
-        """,
-    )
-
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
-
-    monkeypatch.chdir(tmp_path)
-    init_git_repo(tmp_path)
-    result = run_repolish(['apply'])
+    result = run_repolish(['apply'], exit_code=0)
     expected = dedent(
         """\
-        Controlled sections
+        [project]
+        name = "myproject"
 
-        <!-- repolish:on:one display-mode on -->
-        VISIBLE
-        <!-- repolish:off:one -->
-
-        <!-- repolish:on:two display-mode off -->
-        HIDDEN
-        <!-- repolish:off:two -->
-
-        <!-- repolish:on:three display-mode maybe -->
-        UNKNOWN:maybe
-        <!-- repolish:off:three -->
+        # repolish:on:deps add_deps
+        dependencies = ["requests", "click"]
+        # repolish:off:deps
         """,
     )
-    assert '3 ok, 0 failed' in result.output
-    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-
-
-def test_provider_insertion_resolves_two_functions_for_same_file(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Two different registered functions can target the same file and render from args."""
-    _write(
-        tmp_path / 'README.md',
-        """\
-        Function registry demo
-
-        <!-- repolish:on:first join-parts alpha beta gamma -->
-        <!-- repolish:off:first -->
-
-        <!-- repolish:on:second join-with-dashes one two three -->
-        <!-- repolish:off:second -->
-        """,
-    )
-    _write(
-        tmp_path / 'p' / 'repolish.py',
-        """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def join_parts(a, b, c):
-                    return ':'.join((a, b, c))
-
-                def join_with_dashes(a, b, c):
-                    return ':'.join((a, b, c))
-
-                return {
-                    'README.md': {
-                        'join-parts': join_parts,
-                        'join-with-dashes': join_with_dashes,
-                    }
-                }
-        """,
-    )
-
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
-
-    monkeypatch.chdir(tmp_path)
-    init_git_repo(tmp_path)
-    result = run_repolish(['apply'])
-    expected = dedent(
-        """\
-        Function registry demo
-
-        <!-- repolish:on:first join-parts alpha beta gamma -->
-        alpha:beta:gamma
-        <!-- repolish:off:first -->
-
-        <!-- repolish:on:second join-with-dashes one two three -->
-        one:two:three
-        <!-- repolish:off:second -->
-        """,
-    )
-    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert '2 ok, 0 failed' in result.output
+    assert (tmp_path / 'pyproject.toml').read_text(encoding='utf-8') == expected
+    # Should show both validators and insertions under the provider
+    assert 'validators:' in result.output
+    assert 'lint_toml' in result.output
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
 
 
 def test_provider_insertion_resolves_same_function_name_by_provider(
@@ -499,64 +335,25 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
         <!-- repolish:off:three -->
         """,
     )
-    _write(
-        tmp_path / 'alpha' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'alpha',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, args):
-                    return '2026:alpha'
-
-                return {'README.md': {'display-year': display_year}}
-        """,
+        def display_year(*, args):
+            return '2026:alpha'
+        return {'README.md': {'display-year': display_year}}""",
     )
-    _write(
-        tmp_path / 'beta' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'beta',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, args):
-                    return '2026:beta'
-
-                return {'README.md': {'display-year': display_year}}
-        """,
+        def display_year(*, args):
+            return '2026:beta'
+        return {'README.md': {'display-year': display_year}}""",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'alpha': {
-                        'provider_root': './alpha',
-                    },
-                    'beta': {
-                        'provider_root': './beta',
-                    },
-                },
-                'providers_order': ['alpha', 'beta'],
-            },
-        ),
-        encoding='utf-8',
+    _write_repolish_yaml(
+        tmp_path,
+        {'alpha': './alpha', 'beta': './beta'},
+        providers_order=['alpha', 'beta'],
     )
 
     monkeypatch.chdir(tmp_path)
@@ -598,98 +395,265 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
         <!-- repolish:off:year -->
         """,
     )
-    _write(
-        tmp_path / 'p' / 'repolish.py',
+    _make_insertion_provider(
+        tmp_path / 'p',
         """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, context, tag, args):
-                    return '2026'
-
-                return {'README.md': {'display-year': display_year}}
-        """,
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'README.md': {'display-year': display_year}}""",
     )
 
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
     run_repolish(['apply', '--check'], exit_code=0)
 
 
-def test_provider_insertion_check_fails_when_file_drifted(
+# -----------------------------------------------------------------------------
+# Parametrized tests - common patterns consolidated
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    'case',
+    [
+        TCase(
+            name='html_comment_basic',
+            file_path='README.md',
+            file_content="""\
+            This is the current year
+
+            <!-- repolish:on:year display-year -->
+            <!-- repolish:off:year -->
+            """,
+            insertion_body="""\
+            def display_year(*, context, tag, args):
+                return '2026'
+            return {'README.md': {'display-year': display_year}}""",
+            expected_content="""\
+            This is the current year
+
+            <!-- repolish:on:year display-year -->
+            2026
+            <!-- repolish:off:year -->
+            """,
+            expected_output_checks=('insertions: ✓ ok (1 ok, 0 failed)',),
+        ),
+        TCase(
+            name='hash_comment_toml',
+            file_path='ruff.toml',
+            file_content="""\
+            # Ruff configuration
+            line-length = 88
+
+            # repolish:on:lint add_rules
+            # repolish:off:lint
+            """,
+            insertion_body="""\
+            def add_rules():
+                return 'select = ["E", "W"]'
+            return {'ruff.toml': {'add_rules': add_rules}}""",
+            expected_content="""\
+            # Ruff configuration
+            line-length = 88
+
+            # repolish:on:lint add_rules
+            select = ["E", "W"]
+            # repolish:off:lint
+            """,
+            expected_output_checks=('insertions: ✓ ok (1 ok, 0 failed)',),
+        ),
+        TCase(
+            name='args_three_blocks',
+            file_path='README.md',
+            file_content="""\
+            Controlled sections
+
+            <!-- repolish:on:one display-mode on -->
+            <!-- repolish:off:one -->
+
+            <!-- repolish:on:two display-mode off -->
+            <!-- repolish:off:two -->
+
+            <!-- repolish:on:three display-mode maybe -->
+            <!-- repolish:off:three -->
+            """,
+            insertion_body="""\
+            def display_mode(*, args):
+                flag = args[0]
+                if flag == 'on':
+                    return 'VISIBLE'
+                if flag == 'off':
+                    return 'HIDDEN'
+                return f'UNKNOWN:{flag}'
+            return {'README.md': {'display-mode': display_mode}}""",
+            expected_content="""\
+            Controlled sections
+
+            <!-- repolish:on:one display-mode on -->
+            VISIBLE
+            <!-- repolish:off:one -->
+
+            <!-- repolish:on:two display-mode off -->
+            HIDDEN
+            <!-- repolish:off:two -->
+
+            <!-- repolish:on:three display-mode maybe -->
+            UNKNOWN:maybe
+            <!-- repolish:off:three -->
+            """,
+            expected_output_checks=('3 ok, 0 failed',),
+        ),
+        TCase(
+            name='two_functions_same_file',
+            file_path='README.md',
+            file_content="""\
+            Function registry demo
+
+            <!-- repolish:on:first join-parts alpha beta gamma -->
+            <!-- repolish:off:first -->
+
+            <!-- repolish:on:second join-with-dashes one two three -->
+            <!-- repolish:off:second -->
+            """,
+            insertion_body="""\
+            def join_parts(a, b, c):
+                return ':'.join((a, b, c))
+            def join_with_dashes(a, b, c):
+                return '-'.join((a, b, c))
+            return {
+                'README.md': {
+                    'join-parts': join_parts,
+                    'join-with-dashes': join_with_dashes,
+                }
+            }""",
+            expected_content="""\
+            Function registry demo
+
+            <!-- repolish:on:first join-parts alpha beta gamma -->
+            alpha:beta:gamma
+            <!-- repolish:off:first -->
+
+            <!-- repolish:on:second join-with-dashes one two three -->
+            one-two-three
+            <!-- repolish:off:second -->
+            """,
+            expected_output_checks=('2 ok, 0 failed',),
+        ),
+        TCase(
+            name='report_exists',
+            file_path='README.md',
+            file_content="""\
+            This is the current year
+
+            <!-- repolish:on:year display-year -->
+            <!-- repolish:off:year -->
+            """,
+            insertion_body="""\
+            def display_year(*, context, tag, args):
+                assert tag == 'year'
+                assert args == ()
+                assert context.repolish.workspace.mode in {'standalone', 'root', 'member'}
+                return '2026'
+            return {'README.md': {'display-year': display_year}}""",
+            expected_content="""\
+            This is the current year
+
+            <!-- repolish:on:year display-year -->
+            2026
+            <!-- repolish:off:year -->
+            """,
+            expected_output_checks=(
+                '◌ README.md  no file in stage',
+                'insertions: ✓ ok (1 ok, 0 failed)',
+            ),
+            assert_fn=_assert_report_exists,
+        ),
+        TCase(
+            name='failed_blocks_report',
+            file_path='README.md',
+            file_content="""\
+            Mixed insertion blocks
+
+            <!-- repolish:on:ok display-year -->
+            <!-- repolish:off:ok -->
+
+            <!-- repolish:on:bad missing-function -->
+            <!-- repolish:off:bad -->
+            """,
+            insertion_body="""\
+def display_year(*, args):
+    return '2026'
+return {'README.md': {'display-year': display_year}}""",
+            expected_content="""\
+            Mixed insertion blocks
+
+            <!-- repolish:on:ok display-year -->
+            2026
+            <!-- repolish:off:ok -->
+
+            <!-- repolish:on:bad missing-function -->
+            <!-- repolish:off:bad -->
+            """,
+            expected_output_checks=('insertions: ✗ failed (1 ok, 1 failed)',),
+            assert_fn=_assert_report_failed_blocks,
+        ),
+        TCase(
+            name='check_drift',
+            file_path='README.md',
+            file_content="""\
+            This is the current year
+
+            <!-- repolish:on:year display-year -->
+            1999
+            <!-- repolish:off:year -->
+            """,
+            insertion_body="""\
+            def display_year(*, context, tag, args):
+                return '2026'
+            return {'README.md': {'display-year': display_year}}""",
+            expected_content="""\
+            This is the current year
+
+            <!-- repolish:on:year display-year -->
+            1999
+            <!-- repolish:off:year -->
+            """,
+            exit_code=2,
+            check_mode=True,
+            assert_fn=_assert_check_drift,
+        ),
+    ],
+    ids=lambda c: c.name,
+)
+def test_provider_insertion_parametrized(
+    case: TCase,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`apply --check` reports drift when insertion-managed content is stale."""
-    _write(
-        tmp_path / 'README.md',
-        """\
-        This is the current year
-
-        <!-- repolish:on:year display-year -->
-        1999
-        <!-- repolish:off:year -->
-        """,
+    """Parametrized test for common insertion patterns."""
+    _write(tmp_path / case.file_path, case.file_content)
+    _make_insertion_provider(
+        tmp_path / 'p',
+        case.insertion_body,
+        extra_imports=case.extra_imports,
+        extra_methods=case.extra_methods,
     )
-    _write(
-        tmp_path / 'p' / 'repolish.py',
-        """\
-        from repolish import BaseContext, BaseInputs, Provider
-
-
-        class Ctx(BaseContext):
-            pass
-
-
-        class P(Provider[Ctx, BaseInputs]):
-            def create_context(self):
-                return Ctx()
-
-            def create_file_insertions(self, context):
-                def display_year(*, context, tag, args):
-                    return '2026'
-
-                return {'README.md': {'display-year': display_year}}
-        """,
-    )
-
-    (tmp_path / 'repolish.yaml').write_text(
-        json.dumps(
-            {
-                'providers': {
-                    'p': {
-                        'provider_root': './p',
-                    },
-                },
-            },
-        ),
-        encoding='utf-8',
-    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply', '--check'], exit_code=2)
-    assert 'README.md' in result.output
-    assert 'run `repolish apply` to apply changes' in result.output
+    exit_code = case.exit_code if case.exit_code is not None else 0
+    args = ['apply', '--check'] if case.check_mode else ['apply']
+    result = run_repolish(args, exit_code=exit_code)
+
+    assert (tmp_path / case.file_path).read_text(encoding='utf-8') == dedent(
+        case.expected_content,
+    )
+
+    for check in case.expected_output_checks:
+        assert check in result.output
+
+    if case.assert_fn:
+        case.assert_fn(tmp_path, result)
