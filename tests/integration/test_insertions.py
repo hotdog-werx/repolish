@@ -833,3 +833,87 @@ def test_provider_insertion_with_post_process_formatting(
     assert '     has_spaces' in content_skip
     assert 'insertions:' in result.output
     assert '1 ok, 0 failed' in result.output
+
+
+def test_provider_insertion_empty_tag_syntax(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty tag names work: <!-- repolish:on: func --> ... <!-- repolish:off: -->."""
+    test_dir = tmp_path / 'empty_tag_test'
+    test_dir.mkdir()
+
+    # Create a file with empty-tag syntax (colon but no tag name)
+    _write(
+        test_dir / 'test.md',
+        """\
+        # Header
+
+        <!-- repolish:on: display-year -->
+        <!-- repolish:off: -->
+
+        More content
+        """,
+    )
+
+    # Create provider
+    _make_insertion_provider(
+        test_dir / 'p',
+        """\
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'test.md': {'display-year': display_year}}""",
+    )
+
+    _write_repolish_yaml(test_dir, {'p': './p'})
+
+    monkeypatch.chdir(test_dir)
+    init_git_repo(test_dir)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (test_dir / 'test.md').read_text(encoding='utf-8')
+    assert '2026' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
+
+
+def test_provider_insertion_no_colon_syntax(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No colon syntax works: <!-- repolish:on func --> ... <!-- repolish:off -->."""
+    test_dir = tmp_path / 'no_colon_test'
+    test_dir.mkdir()
+
+    # Create a file with no-colon syntax
+    _write(
+        test_dir / 'test.md',
+        """\
+        # Header
+
+        <!-- repolish:on display-year -->
+        <!-- repolish:off -->
+
+        More content
+        """,
+    )
+
+    # Create provider
+    _make_insertion_provider(
+        test_dir / 'p',
+        """\
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'test.md': {'display-year': display_year}}""",
+    )
+
+    _write_repolish_yaml(test_dir, {'p': './p'})
+
+    monkeypatch.chdir(test_dir)
+    init_git_repo(test_dir)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (test_dir / 'test.md').read_text(encoding='utf-8')
+    assert '2026' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output

@@ -19,25 +19,13 @@ class CommentStyle(StrEnum):
     def pattern(self) -> str:
         """Return a regex pattern for this comment style."""
         if self is CommentStyle.HTML:
-            return (
-                r'<!--\s*repolish:(?P<kind>on|off):(?P<tag>[^\s>]+)'
-                r'(?:\s+(?P<body>[^\n\r]*))?\s*-->'
-            )
+            return r'<!--\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s>]*)(?:\s+(?P<body>[^\n\r]*))?\s*-->'
         if self is CommentStyle.HASH:
-            return (
-                r'(?m)^(?:\s*#\s*repolish:(?P<kind>on|off):(?P<tag>[^\s]+)'
-                r'(?:\s+(?P<body>[^\n\r]*))?\s*)$'
-            )
+            return r'(?m)^(?:\s*#\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)(?:\s+(?P<body>[^\n\r]*))?\s*)$'
         if self is CommentStyle.JS:
-            return (
-                r'(?m)^(?:\s*//\s*repolish:(?P<kind>on|off):(?P<tag>[^\s]+)'
-                r'(?:\s+(?P<body>[^\n\r]*))?\s*)$'
-            )
+            return r'(?m)^(?:\s*//\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)(?:\s+(?P<body>[^\n\r]*))?\s*)$'
         if self is CommentStyle.BLOCK:
-            return (
-                r'(?m)^(?:\s*/\*\s*repolish:(?P<kind>on|off):(?P<tag>[^\s]+)'
-                r'(?:\s+(?P<body>[^\n\r]*))?\s*\*/\s*)$'
-            )
+            return r'(?m)^(?:\s*/\*\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)(?:\s+(?P<body>[^\n\r]*))?\s*\*/\s*)$'
         return CommentStyle.HTML.pattern  # pragma: no cover -- should not reach this
 
     @property

@@ -20,7 +20,8 @@ content is stale, `repolish apply --check` fails just like template drift.
 
 ## Marker format
 
-A reserved block is defined with an `on/off` pair and a tag:
+A reserved block is defined with an `on/off` pair. The tag is optional and
+serves as a visual aid for developers to track matching pairs:
 
 ```html
 <!-- repolish:on:updated last-updated -->
@@ -29,9 +30,27 @@ A reserved block is defined with an `on/off` pair and a tag:
 
 The `on` marker includes:
 
-- tag: `updated`
+- tag: `updated` (optional, for visual matching)
 - function name: `last-updated`
 - optional args after the function name
+
+### Syntax variations
+
+The colon and tag are both optional. All of these are valid:
+
+```html
+<!-- With tag (recommended for clarity) -->
+<!-- repolish:on:updated last-updated -->
+<!-- repolish:off:updated -->
+
+<!-- Empty tag with colon (shorter) -->
+<!-- repolish:on: last-updated -->
+<!-- repolish:off: -->
+
+<!-- No colon at all (shortest) -->
+<!-- repolish:on last-updated -->
+<!-- repolish:off -->
+```
 
 Example with args:
 
@@ -39,6 +58,9 @@ Example with args:
 <!-- repolish:on:env env-info PYTHON_VERSION -->
 <!-- repolish:off:env -->
 ```
+
+When using empty tags, you cannot nest blocks with the same empty tag (just like
+any repeated tag name). Multiple sequential empty-tag blocks work fine.
 
 ## Registering insertion functions
 

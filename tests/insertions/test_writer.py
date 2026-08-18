@@ -102,6 +102,32 @@ class TCase:
             render=lambda block: f'{block.body.strip()}:dup',
         ),
         TCase(
+            name='no_tag_names',
+            text="""
+                intro
+                <!-- repolish:on render -->
+                first
+                <!-- repolish:off -->
+                middle
+                <!-- repolish:on render -->
+                second
+                <!-- repolish:off -->
+                outro
+                """,
+            expected="""
+                intro
+                <!-- repolish:on render -->
+                first:dup
+                <!-- repolish:off -->
+                middle
+                <!-- repolish:on render -->
+                second:dup
+                <!-- repolish:off -->
+                outro
+                """,
+            render=lambda block: f'{block.body.strip()}:dup',
+        ),
+        TCase(
             name='handle_mixed_styles',
             text="""
                 intro
