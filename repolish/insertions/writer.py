@@ -5,11 +5,12 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from repolish.insertions.models import CommentStyle, InsertionBlock
 from repolish.insertions.parser import parse_text
 
-Renderer = Callable[[InsertionBlock], str]
+Renderer = Callable[..., str]
 RenderRegistry = Mapping[str, Callable[..., str]]
 
 
@@ -46,7 +47,14 @@ def _call_registered_renderer(
     registry: RenderRegistry,
     block: InsertionBlock,
 ) -> str:
-    """Resolve and call a function from a registry using the block metadata."""
+    """Resolve and call a function from a registry using the block metadata.
+
+    Function signatures are inspected and called appropriately:
+    - Single InsertionBlock param (positional): pass the full block
+    - Keyword-only `block: InsertionBlock`: inject the block
+    - VAR_POSITIONAL (*args): pass all marker args directly
+    - Positional params: filled from marker args, uses defaults if available
+    """
     function_name = block.function
     fn = registry.get(function_name)
     if fn is None and ':' in function_name:
@@ -55,9 +63,49 @@ def _call_registered_renderer(
         msg = f'No renderer registered for function {function_name!r}.'
         raise KeyError(msg)
 
-    params = tuple(inspect.signature(fn).parameters.values())
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
     has_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
-    positional = [
+    positional_params = _get_positional_params(params)
+
+    # Single InsertionBlock param (positional, used by wrapper functions)
+    if _is_single_block_param(positional_params, has_varargs=has_varargs):
+        return fn(block)
+
+    # Varargs - pass all marker args directly
+    if has_varargs:
+        return fn(*block.args)
+
+    # Check for keyword-only context injection
+    call_kwargs = _build_call_kwargs(params, block)
+    if call_kwargs is not None:
+        return fn(**call_kwargs)
+
+    # Build positional args from marker args, use defaults if missing
+    call_args = _build_call_args(positional_params, block.args, function_name)
+    return fn(*call_args)
+
+
+def _build_call_kwargs(
+    params: list[inspect.Parameter],
+    block: InsertionBlock,
+) -> dict[str, object] | None:
+    """Build kwargs for keyword-only context params. Returns None if no kwargs needed."""
+    call_kwargs: dict[str, object] = {}
+    for p in params:
+        if p.kind != inspect.Parameter.KEYWORD_ONLY:
+            continue
+        if _is_insertion_block_annotation(p.annotation):
+            call_kwargs['block'] = block
+
+    return call_kwargs if call_kwargs else None
+
+
+def _get_positional_params(
+    params: list[inspect.Parameter],
+) -> list[inspect.Parameter]:
+    """Extract positional-only and positional-or-keyword parameters."""
+    return [
         p
         for p in params
         if p.kind
@@ -67,11 +115,49 @@ def _call_registered_renderer(
         )
     ]
 
-    if positional and len(positional) == 1 and not has_varargs:
-        return fn(block)
-    if block.args:
-        return fn(*block.args)
-    return fn()
+
+def _is_single_block_param(
+    positional_params: list[inspect.Parameter],
+    *,
+    has_varargs: bool,
+) -> bool:
+    """Check if signature has a single InsertionBlock parameter."""
+    return (
+        len(positional_params) == 1
+        and not has_varargs
+        and _is_insertion_block_annotation(
+            positional_params[0].annotation,
+        )
+    )
+
+
+def _build_call_args(
+    positional_params: list[inspect.Parameter],
+    marker_args: tuple[str, ...],
+    function_name: str,
+) -> list[Any]:
+    """Build call args from marker args, using defaults for missing values."""
+    call_args: list[Any] = []
+    for i, param in enumerate(positional_params):
+        if i < len(marker_args):
+            call_args.append(marker_args[i])
+        elif param.default is not inspect.Parameter.empty:
+            call_args.append(param.default)
+        else:
+            msg = (
+                f'Function {function_name!r} requires {len(positional_params)} positional args, '
+                f'but marker provided only {len(marker_args)}. '
+                f'Missing: {param.name!r}'
+            )
+            raise TypeError(msg)
+    return call_args
+
+
+def _is_insertion_block_annotation(annotation: object) -> bool:
+    """Check if an annotation refers to InsertionBlock."""
+    if annotation is InsertionBlock:
+        return True
+    return bool(isinstance(annotation, str) and annotation == 'InsertionBlock')
 
 
 def _render_block(

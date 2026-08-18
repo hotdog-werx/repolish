@@ -257,6 +257,130 @@ def test_provider_insertion_with_hash_comment_style(
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
+def test_provider_insertion_function_signature_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test all insertion function signature variants in a single file."""
+    # Create a file with 5 insertion blocks, each using a different signature style
+    _write(
+        tmp_path / 'config.txt',
+        """\
+        # Configuration file with multiple insertion styles
+
+        # repolish:on zero_arg_func
+        PLACEHOLDER_ZERO
+        # repolish:off
+
+        # repolish:on positional_func hello world
+        PLACEHOLDER_POSITIONAL
+        # repolish:off
+
+        # repolish:on varargs_func a b c d
+        PLACEHOLDER_VARARGS
+        # repolish:off
+
+        # repolish:on block_func
+        PLACEHOLDER_BLOCK
+        # repolish:off
+
+        # repolish:on:ctx context_func
+        PLACEHOLDER_CONTEXT
+        # repolish:off:ctx
+
+        # repolish:on:block block_param_func
+        PLACEHOLDER_BLOCK_PARAM
+        # repolish:off:block
+
+        # repolish:on empty_tag_func
+        PLACEHOLDER_EMPTY_TAG
+        # repolish:off
+        """,
+    )
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        from repolish.insertions import InsertionBlock, BlockContext
+
+        def zero_arg_func():
+            return 'zero-arg-result'
+
+        def positional_func(arg1: str, arg2: str):
+            return f'positional:{arg1}:{arg2}'
+
+        def varargs_func(*args):
+            return 'varargs:' + '-'.join(args)
+
+        def block_func(block: InsertionBlock):
+            return f'block-func:{block.function}:{",".join(block.args)}'
+
+        def context_func(*, context: BlockContext):
+            return f'context-func:tag={context.tag}:repo={context.repolish.repo.name}'
+
+        def block_param_func(*, block: InsertionBlock):
+            return f'block-param-func:fn={block.function}:args={",".join(block.args)}'
+
+        def empty_tag_func():
+            return 'empty-tag-works'
+
+        return {
+            'config.txt': {
+                'zero_arg_func': zero_arg_func,
+                'positional_func': positional_func,
+                'varargs_func': varargs_func,
+                'block_func': block_func,
+                'context_func': context_func,
+                'block_param_func': block_param_func,
+                'empty_tag_func': empty_tag_func,
+            }
+        }""",
+        extra_imports='from repolish import InsertionBlock, BlockContext',
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        # Configuration file with multiple insertion styles
+
+        # repolish:on zero_arg_func
+        zero-arg-result
+        # repolish:off
+
+        # repolish:on positional_func hello world
+        positional:hello:world
+        # repolish:off
+
+        # repolish:on varargs_func a b c d
+        varargs:a-b-c-d
+        # repolish:off
+
+        # repolish:on block_func
+        block-func:block_func:
+        # repolish:off
+
+        # repolish:on:ctx context_func
+        context-func:tag=ctx:repo=test-repo
+        # repolish:off:ctx
+
+        # repolish:on:block block_param_func
+        block-param-func:fn=block_param_func:args=
+        # repolish:off:block
+
+        # repolish:on empty_tag_func
+        empty-tag-works
+        # repolish:off
+        """,
+    )
+    assert (tmp_path / 'config.txt').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (7 ok, 0 failed)' in result.output
+
+
 def test_provider_insertion_and_validator_on_non_owned_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -765,5 +889,155 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     content = readme.read_text(encoding='utf-8')
     assert '1.0.0' in content
     assert '<!-- repolish:on:version insert-version -->' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
+
+
+def test_provider_insertion_with_post_process_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insertions are formatted by post_process commands after being applied."""
+    # Create a file with an insertion marker
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:spaces insert-spaces -->
+        <!-- repolish:off:spaces -->
+        """,
+    )
+
+    # Create provider that inserts content with leading spaces
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def insert_spaces(*, context, tag, args):
+            return '     has_spaces'
+        return {'test.txt': {'insert-spaces': insert_spaces}}""",
+    )
+
+    # Create a post_process script that strips leading whitespace
+    (tmp_path / 'strip_spaces.py').write_text(
+        'import sys\n'
+        'for f in sys.argv[1:]:\n'
+        '    lines = open(f).readlines()\n'
+        "    open(f, 'w').write(''.join(line.lstrip() for line in lines))\n",
+        encoding='utf-8',
+    )
+    # Create repolish.yaml with post_process that runs the script
+    (tmp_path / 'repolish.yaml').write_text(
+        '{"providers": {"p": {"provider_root": "./p"}}, "post_process": ["python strip_spaces.py test.txt"]}',
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    # Run WITHOUT --skip-post-process: spaces should be stripped
+    result = run_repolish(['apply'], exit_code=0)
+    content = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    assert 'has_spaces' in content
+    assert '     has_spaces' not in content
+
+    # Reset the file to have leading spaces again
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:spaces insert-spaces -->
+        <!-- repolish:off:spaces -->
+        """,
+    )
+
+    # Run WITH --skip-post-process: spaces should NOT be stripped
+    run_repolish(['apply', '--skip-post-process'], exit_code=0)
+    content_skip = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    # The insertion content should still have leading spaces
+    assert '     has_spaces' in content_skip
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
+
+
+def test_provider_insertion_empty_tag_syntax(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty tag names work: <!-- repolish:on: func --> ... <!-- repolish:off: -->."""
+    test_dir = tmp_path / 'empty_tag_test'
+    test_dir.mkdir()
+
+    # Create a file with empty-tag syntax (colon but no tag name)
+    _write(
+        test_dir / 'test.md',
+        """\
+        # Header
+
+        <!-- repolish:on: display-year -->
+        <!-- repolish:off: -->
+
+        More content
+        """,
+    )
+
+    # Create provider
+    _make_insertion_provider(
+        test_dir / 'p',
+        """\
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'test.md': {'display-year': display_year}}""",
+    )
+
+    _write_repolish_yaml(test_dir, {'p': './p'})
+
+    monkeypatch.chdir(test_dir)
+    init_git_repo(test_dir)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (test_dir / 'test.md').read_text(encoding='utf-8')
+    assert '2026' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
+
+
+def test_provider_insertion_no_colon_syntax(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No colon syntax works: <!-- repolish:on func --> ... <!-- repolish:off -->."""
+    test_dir = tmp_path / 'no_colon_test'
+    test_dir.mkdir()
+
+    # Create a file with no-colon syntax
+    _write(
+        test_dir / 'test.md',
+        """\
+        # Header
+
+        <!-- repolish:on display-year -->
+        <!-- repolish:off -->
+
+        More content
+        """,
+    )
+
+    # Create provider
+    _make_insertion_provider(
+        test_dir / 'p',
+        """\
+        def display_year(*, context, tag, args):
+            return '2026'
+        return {'test.md': {'display-year': display_year}}""",
+    )
+
+    _write_repolish_yaml(test_dir, {'p': './p'})
+
+    monkeypatch.chdir(test_dir)
+    init_git_repo(test_dir)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (test_dir / 'test.md').read_text(encoding='utf-8')
+    assert '2026' in content
     assert 'insertions:' in result.output
     assert '1 ok, 0 failed' in result.output

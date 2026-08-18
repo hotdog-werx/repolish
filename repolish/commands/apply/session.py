@@ -97,6 +97,18 @@ def _run_post_process_if_needed(
             run_post_process(config.post_process, post_cwd)
 
 
+def _run_post_process_on_base_dir(
+    config: RepolishConfig,
+    base_dir: Path,
+    *,
+    skip_post_process: bool,
+) -> None:
+    """Run post-process on the project root (base_dir) for insertion files."""
+    if skip_post_process:
+        return
+    run_post_process(config.post_process, base_dir)
+
+
 def _validation_has_errors(session: ResolvedSession) -> bool:
     """Return whether any validator reported an actual error."""
     return any(
@@ -175,14 +187,10 @@ def apply_session(
     if render_templates(setup_input, providers, setup_output) != 0:
         return 1
 
-    _run_post_process_if_needed(
-        config,
-        setup_output,
-        skip_post_process=skip_post_process,
-    )
-
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
+        # In check mode, we compare staged output against base_dir without modifying files.
+        # Do NOT apply_generated_output here - that would overwrite local changes!
         rc, check_result = finish_check(
             CheckContext(
                 setup_output=setup_output,
@@ -196,6 +204,7 @@ def apply_session(
         session.apply_result = check_result
         return rc
 
+    # Apply insertions before post-process so formatter runs on insertion files
     session.apply_result = apply_generated_output(
         setup_output,
         providers,
@@ -209,6 +218,20 @@ def apply_session(
     )
     session.insertion_results = file_results
     session.provider_insertion_results = provider_results
+
+    # Run post-process on staged templates
+    _run_post_process_if_needed(
+        config,
+        setup_output,
+        skip_post_process=skip_post_process,
+    )
+    # Run post-process on base_dir only if insertions were applied (so insertion files get formatted)
+    if file_results and config.post_process:
+        _run_post_process_on_base_dir(
+            config,
+            base_dir,
+            skip_post_process=skip_post_process,
+        )
     apply_symlinks(resolved_symlinks, config.providers)
     apply_copies(session.resolved_copies, config.providers)
 
