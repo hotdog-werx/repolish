@@ -767,3 +767,69 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     assert '<!-- repolish:on:version insert-version -->' in content
     assert 'insertions:' in result.output
     assert '1 ok, 0 failed' in result.output
+
+
+def test_provider_insertion_with_post_process_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insertions are formatted by post_process commands after being applied."""
+    # Create a file with an insertion marker
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:spaces insert-spaces -->
+        <!-- repolish:off:spaces -->
+        """,
+    )
+
+    # Create provider that inserts content with leading spaces
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def insert_spaces(*, context, tag, args):
+            return '     has_spaces'
+        return {'test.txt': {'insert-spaces': insert_spaces}}""",
+    )
+
+    # Create a post_process script that strips leading whitespace
+    (tmp_path / 'strip_spaces.py').write_text(
+        'import sys\n'
+        'for f in sys.argv[1:]:\n'
+        '    lines = open(f).readlines()\n'
+        "    open(f, 'w').write(''.join(line.lstrip() for line in lines))\n",
+        encoding='utf-8',
+    )
+    # Create repolish.yaml with post_process that runs the script
+    (tmp_path / 'repolish.yaml').write_text(
+        '{"providers": {"p": {"provider_root": "./p"}}, "post_process": ["python strip_spaces.py test.txt"]}',
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    # Run WITHOUT --skip-post-process: spaces should be stripped
+    result = run_repolish(['apply'], exit_code=0)
+    content = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    assert 'has_spaces' in content
+    assert '     has_spaces' not in content
+
+    # Reset the file to have leading spaces again
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:spaces insert-spaces -->
+        <!-- repolish:off:spaces -->
+        """,
+    )
+
+    # Run WITH --skip-post-process: spaces should NOT be stripped
+    run_repolish(['apply', '--skip-post-process'], exit_code=0)
+    content_skip = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    # The insertion content should still have leading spaces
+    assert '     has_spaces' in content_skip
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
