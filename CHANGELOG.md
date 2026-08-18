@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.9.1] <a name="1.9.1" href="#1.9.1">-</a> August 18, 2026
+
+### 🐛 Bug Fixes
+
+- Insertion function argument injection and post-processing (#78) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#78](https://github.com/hotdog-werx/repolish/pull/78)
+
+[1.9.1]: https://github.com/hotdog-werx/repolish/compare/1.9.0...1.9.1
+
 ## [1.9.0] <a name="1.9.0" href="#1.9.0">-</a> August 17, 2026
 
 ### 🚀 Features
