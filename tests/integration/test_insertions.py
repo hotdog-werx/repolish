@@ -257,6 +257,130 @@ def test_provider_insertion_with_hash_comment_style(
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
+def test_provider_insertion_function_signature_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test all insertion function signature variants in a single file."""
+    # Create a file with 5 insertion blocks, each using a different signature style
+    _write(
+        tmp_path / 'config.txt',
+        """\
+        # Configuration file with multiple insertion styles
+
+        # repolish:on zero_arg_func
+        PLACEHOLDER_ZERO
+        # repolish:off
+
+        # repolish:on positional_func hello world
+        PLACEHOLDER_POSITIONAL
+        # repolish:off
+
+        # repolish:on varargs_func a b c d
+        PLACEHOLDER_VARARGS
+        # repolish:off
+
+        # repolish:on block_func
+        PLACEHOLDER_BLOCK
+        # repolish:off
+
+        # repolish:on:ctx context_func
+        PLACEHOLDER_CONTEXT
+        # repolish:off:ctx
+
+        # repolish:on:block block_param_func
+        PLACEHOLDER_BLOCK_PARAM
+        # repolish:off:block
+
+        # repolish:on empty_tag_func
+        PLACEHOLDER_EMPTY_TAG
+        # repolish:off
+        """,
+    )
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        from repolish.insertions import InsertionBlock, BlockContext
+
+        def zero_arg_func():
+            return 'zero-arg-result'
+
+        def positional_func(arg1: str, arg2: str):
+            return f'positional:{arg1}:{arg2}'
+
+        def varargs_func(*args):
+            return 'varargs:' + '-'.join(args)
+
+        def block_func(block: InsertionBlock):
+            return f'block-func:{block.function}:{",".join(block.args)}'
+
+        def context_func(*, context: BlockContext):
+            return f'context-func:tag={context.tag}:repo={context.repolish.repo.name}'
+
+        def block_param_func(*, block: InsertionBlock):
+            return f'block-param-func:fn={block.function}:args={",".join(block.args)}'
+
+        def empty_tag_func():
+            return 'empty-tag-works'
+
+        return {
+            'config.txt': {
+                'zero_arg_func': zero_arg_func,
+                'positional_func': positional_func,
+                'varargs_func': varargs_func,
+                'block_func': block_func,
+                'context_func': context_func,
+                'block_param_func': block_param_func,
+                'empty_tag_func': empty_tag_func,
+            }
+        }""",
+        extra_imports='from repolish import InsertionBlock, BlockContext',
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        # Configuration file with multiple insertion styles
+
+        # repolish:on zero_arg_func
+        zero-arg-result
+        # repolish:off
+
+        # repolish:on positional_func hello world
+        positional:hello:world
+        # repolish:off
+
+        # repolish:on varargs_func a b c d
+        varargs:a-b-c-d
+        # repolish:off
+
+        # repolish:on block_func
+        block-func:block_func:
+        # repolish:off
+
+        # repolish:on:ctx context_func
+        context-func:tag=ctx:repo=test-repo
+        # repolish:off:ctx
+
+        # repolish:on:block block_param_func
+        block-param-func:fn=block_param_func:args=
+        # repolish:off:block
+
+        # repolish:on empty_tag_func
+        empty-tag-works
+        # repolish:off
+        """,
+    )
+    assert (tmp_path / 'config.txt').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (7 ok, 0 failed)' in result.output
+
+
 def test_provider_insertion_and_validator_on_non_owned_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

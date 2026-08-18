@@ -1,3 +1,5 @@
+from .insertions.models import BlockContext
+from .insertions.parser import InsertionBlock
 from .pkginfo import get_package_version
 from .providers.models import (
     BaseContext,
@@ -27,10 +29,12 @@ from .providers.models import (
 __all__ = [
     'BaseContext',
     'BaseInputs',
+    'BlockContext',
     'FileMode',
     'FileValidatorOptions',
     'FileValidatorSpec',
     'FinalizeContextOptions',
+    'InsertionBlock',
     'InsertionRegistry',
     'InsertionRenderer',
     'ModeHandler',

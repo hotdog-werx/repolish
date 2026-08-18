@@ -67,8 +67,19 @@ any repeated tag name). Multiple sequential empty-tag blocks work fine.
 `create_file_insertions()` is keyed by explicit destination path and function
 name.
 
+### Function signature patterns
+
+Insertion functions are called based on their signature. The system uses
+**strict typing** - you must declare your parameters explicitly. Do not use
+`*args` unless you genuinely need variadic arguments.
+
+**Recommended: keyword-only `context` parameter**
+
+Use `BlockContext` to access insertion metadata and repolish context:
+
 ```python
 from repolish import BaseContext, BaseInputs, Provider
+from repolish.insertions import BlockContext
 from datetime import datetime
 
 
@@ -81,38 +92,77 @@ class MyProvider(Provider[Ctx, BaseInputs]):
         return Ctx()
 
     def create_file_insertions(self, context: Ctx):
-        def last_updated(*, context, tag, args):
-            """Return the current date in ISO format."""
-            return datetime.now().strftime('%Y-%m-%d')
+        def render_year(*, context: BlockContext) -> str:
+            """Access repolish context via BlockContext."""
+            return str(context.repolish.year)
 
-        def package_version(*, context, tag, args):
-            """Read version from pyproject.toml or package metadata."""
-            import importlib.metadata
-            try:
-                return importlib.metadata.version('my-package')
-            except importlib.metadata.PackageNotFoundError:
-                return 'unreleased'
-
-        def env_info(*, args):
-            """Display environment info based on args."""
-            key = args[0] if args else 'unknown'
-            import os
-            return os.environ.get(key, 'not set')
+        def render_with_args(*, context: BlockContext) -> str:
+            """Access marker args via BlockContext."""
+            # context.tag -> the tag name from the marker
+            # context.args -> tuple of positional args from the marker
+            # context.repolish -> full repolish context (workspace, repo, provider)
+            if context.args:
+                return f"Called with: {', '.join(context.args)}"
+            return "No args provided"
 
         return {
             'README.md': {
-                'last-updated': last_updated,
-                'package-version': package_version,
-                'env-info': env_info,
+                'render-year': render_year,
+                'render-with-args': render_with_args,
             },
         }
 ```
 
-Function signatures are flexible. Insertions support patterns like:
+**Positional arguments**
 
-- keyword metadata (`context`, `tag`, `args`, `block`, etc.)
-- positional arg functions (`fn(a, b, c)`)
-- zero-arg functions (`fn()`)
+For simple cases, use positional parameters with clear names:
+
+```python
+def env_info(env_var: str, default: str = "unknown") -> str:
+    """Get environment variable with a default."""
+    import os
+    return os.environ.get(env_var, default)
+```
+
+Marker: `<!-- repolish:on:env env-info PYTHON_VERSION 3.11 -->`
+
+**Variadic arguments (`*args`)**
+
+Only use `*args` when you need truly flexible arity:
+
+```python
+def join_items(*args: str) -> str:
+    """Join arbitrary number of items."""
+    return ", ".join(args)
+```
+
+Marker: `<!-- repolish:on:items join-items apple banana cherry -->`
+
+**Zero-argument functions**
+
+For static content:
+
+```python
+def static_header() -> str:
+    """Return a fixed header."""
+    return "## Generated Section\n"
+```
+
+### Key points about strong typing
+
+- **Always annotate parameter types** - the system inspects your signature
+- **Use `BlockContext` for context access** - annotate with
+  `*, context: BlockContext`
+- **Avoid `*args` unless necessary** - prefer explicit positional parameters
+- **Use default values for optional params** - `default: str = "unknown"`
+- **Return type should be `str`** - the rendered content
+
+The signature inspection follows this order:
+
+1. Single `InsertionBlock` param → passes full block (internal wrapper pattern)
+2. `*args` → passes all marker args positionally
+3. Positional params → filled from marker args, uses defaults if available
+4. Keyword-only `context: BlockContext` → auto-injected with full context
 
 ## Dynamic explicit file mapping (recommended)
 

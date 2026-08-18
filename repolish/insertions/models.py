@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from repolish.providers.models.context import RepolishContext
 
 
 class CommentStyle(StrEnum):
@@ -18,14 +22,24 @@ class CommentStyle(StrEnum):
     @property
     def pattern(self) -> str:
         """Return a regex pattern for this comment style."""
+        # Use [^\S\n\r]+ to match whitespace without crossing newlines
         if self is CommentStyle.HTML:
             return r'<!--\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s>]*)(?:\s+(?P<body>[^\n\r]*))?\s*-->'
         if self is CommentStyle.HASH:
-            return r'(?m)^(?:\s*#\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)(?:\s+(?P<body>[^\n\r]*))?\s*)$'
+            return (
+                r'(?m)^(?:\s*#\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
+                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*)$'
+            )
         if self is CommentStyle.JS:
-            return r'(?m)^(?:\s*//\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)(?:\s+(?P<body>[^\n\r]*))?\s*)$'
+            return (
+                r'(?m)^(?:\s*//\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
+                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*)$'
+            )
         if self is CommentStyle.BLOCK:
-            return r'(?m)^(?:\s*/\*\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)(?:\s+(?P<body>[^\n\r]*))?\s*\*/\s*)$'
+            return (
+                r'(?m)^(?:\s*/\*\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
+                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*\*/\s*)$'
+            )
         return CommentStyle.HTML.pattern  # pragma: no cover -- should not reach this
 
     @property
@@ -40,6 +54,26 @@ DEFAULT_COMMENT_STYLES: tuple[CommentStyle, ...] = (
     CommentStyle.JS,
     CommentStyle.BLOCK,
 )
+
+
+@dataclass(frozen=True)
+class BlockContext:
+    """Context passed to insertion functions when requested via signature.
+
+    This is injected automatically if the function signature includes a
+    keyword-only parameter annotated with `BlockContext`.
+
+    Attributes:
+        tag: The insertion block's tag name (e.g., 'year', 'env').
+        args: Positional arguments from the marker as strings.
+        repolish: The full repolish context (workspace, repo, year, provider info).
+        provider_context: Optional provider-specific context (set by provider).
+    """
+
+    tag: str
+    args: tuple[str, ...]
+    repolish: RepolishContext
+    provider_context: Any | None = None
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
+from repolish.insertions.models import BlockContext, InsertionBlock
 from repolish.providers._log import logger
 from repolish.providers.models import (
     Accumulators,
@@ -29,21 +30,24 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from repolish.config.models.provider import ProviderOverrides
-    from repolish.insertions.models import InsertionBlock
 
 
 def _build_insertion_attempts(
     *,
     params: tuple[inspect.Parameter, ...],
-    has_var_keywords: bool,
     accepts_single_positional: bool,
     base_kwargs: dict[str, object],
     block: InsertionBlock,
+    own_ctx: BaseContext,
 ) -> list[tuple[tuple[object, ...], dict[str, object]]]:
     """Return invocation attempts in order of preference for an insertion renderer."""
     allowed = {p.name for p in params}
-    keyword_args = (
-        base_kwargs if has_var_keywords else {key: value for key, value in base_kwargs.items() if key in allowed}
+    keyword_args = _build_keyword_args(
+        base_kwargs,
+        allowed,
+        params,
+        block,
+        own_ctx,
     )
 
     attempts: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -59,6 +63,58 @@ def _build_insertion_attempts(
     return attempts
 
 
+def _build_keyword_args(
+    base_kwargs: dict[str, object],
+    allowed: set[str],
+    params: tuple[inspect.Parameter, ...],
+    block: InsertionBlock,
+    own_ctx: BaseContext,
+) -> dict[str, object]:
+    """Build keyword args, injecting BlockContext/InsertionBlock if requested."""
+    has_var_keywords = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params)
+    if has_var_keywords:
+        return base_kwargs
+
+    keyword_args = {k: v for k, v in base_kwargs.items() if k in allowed}
+    _inject_context_if_requested(keyword_args, params, block, own_ctx)
+    return keyword_args
+
+
+def _inject_context_if_requested(
+    keyword_args: dict[str, object],
+    params: tuple[inspect.Parameter, ...],
+    block: InsertionBlock,
+    own_ctx: BaseContext,
+) -> None:
+    """Inject BlockContext/InsertionBlock into keyword_args if params request them."""
+    for p in params:
+        if p.kind != inspect.Parameter.KEYWORD_ONLY:
+            continue
+        if _is_block_context_annotation(p.annotation):
+            keyword_args['context'] = BlockContext(
+                tag=block.tag,
+                args=block.args,
+                repolish=own_ctx.repolish,
+                provider_context=None,
+            )
+        elif _is_insertion_block_annotation(p.annotation):
+            keyword_args['block'] = block
+
+
+def _is_block_context_annotation(annotation: object) -> bool:
+    """Check if an annotation refers to BlockContext."""
+    if annotation is BlockContext:
+        return True
+    return bool(isinstance(annotation, str) and annotation == 'BlockContext')
+
+
+def _is_insertion_block_annotation(annotation: object) -> bool:
+    """Check if an annotation refers to InsertionBlock."""
+    if annotation is InsertionBlock:
+        return True
+    return bool(isinstance(annotation, str) and annotation == 'InsertionBlock')
+
+
 def _build_insertion_wrapper(
     fn: Callable[..., str],
     own_ctx: BaseContext,
@@ -66,7 +122,6 @@ def _build_insertion_wrapper(
     """Adapt provider insertion functions to the writer's block renderer contract."""
     sig = inspect.signature(fn)
     params = tuple(sig.parameters.values())
-    has_var_keywords = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params)
     accepts_single_positional = len(params) == 1 and params[0].kind in {
         inspect.Parameter.POSITIONAL_ONLY,
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -95,10 +150,10 @@ def _build_insertion_wrapper(
 
         attempts = _build_insertion_attempts(
             params=params,
-            has_var_keywords=has_var_keywords,
             accepts_single_positional=accepts_single_positional,
             base_kwargs=base_kwargs,
             block=block,
+            own_ctx=own_ctx,
         )
 
         for args, kwargs in attempts:

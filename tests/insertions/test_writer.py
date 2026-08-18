@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from textwrap import dedent
+from typing import cast
 
 import pytest
 
@@ -414,5 +415,131 @@ def test_write_back_registry_preserves_quoted_args_with_spaces() -> None:
     )
 
     result = write_back(text, registry)
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_injects_keyword_only_insertion_block() -> None:
+    """Test that keyword-only InsertionBlock params are injected."""
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs kw-block-func -->
+        ignored-body
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    def kw_block_func(*, block: InsertionBlock) -> str:
+        return f'tag={block.tag}:args={",".join(block.args)}'
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs kw-block-func -->
+        tag=docs:args=
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, {'kw-block-func': kw_block_func})
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_with_string_block_annotation() -> None:
+    """Test that string 'InsertionBlock' annotation path is covered."""
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs string-annotated-func hello world -->
+        ignored-body
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    # Use string annotation to cover that code path
+    ns: dict[str, object] = {}
+    exec(  # noqa: S102
+        'def string_annotated_func(*, block: "InsertionBlock") -> str:\n'
+        '    return f"str-annotated:{block.tag}:{":".join(block.args)}"',
+        ns,
+    )
+    string_annotated_func = ns['string_annotated_func']
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs string-annotated-func hello world -->
+        str-annotated:docs:hello:world
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(
+        text,
+        cast(
+            'dict[str, Renderer]',
+            {'string-annotated-func': string_annotated_func},
+        ),
+    )
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_two_positional_params() -> None:
+    """Test function with two positional params to cover continue path in _build_call_kwargs."""
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs two-pos-func arg1 arg2 -->
+        ignored-body
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    def two_pos_func(arg1: str, arg2: str) -> str:
+        return f'{arg1}:{arg2}'
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs two-pos-func arg1 arg2 -->
+        arg1:arg2
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, {'two-pos-func': two_pos_func})
     assert isinstance(result, WriteBackResult)
     assert result.text.rstrip('\n') == expected

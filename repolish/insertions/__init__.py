@@ -1,6 +1,7 @@
 """Insertion block parsing and application for repolish-managed file slots."""
 
 from repolish.insertions.models import (
+    BlockContext,
     CommentStyle,
     InsertionBlock,
     ParsedInsertions,
@@ -14,6 +15,7 @@ from repolish.insertions.writer import (
 )
 
 __all__ = [
+    'BlockContext',
     'CommentStyle',
     'InsertionBlock',
     'ParsedInsertions',
