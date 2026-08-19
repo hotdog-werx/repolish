@@ -216,22 +216,23 @@ def _process_provider_insertions(
     return aggregated, provider_results
 
 
-def _diagnostic_report_entry(diag: object) -> dict[str, str | None]:
+def _diagnostic_report_entry(diag: object) -> dict[str, str | list[str] | None]:
     """Build a JSON-safe diagnostics payload including traceback when available."""
     exception = getattr(diag, 'exception', None)
-    trace = None
+    trace_lines = None
     if exception is not None:
-        trace = ''.join(
+        trace_text = ''.join(
             traceback.format_exception(
                 type(exception),
                 exception,
                 exception.__traceback__,
             ),
         )
+        trace_lines = trace_text.splitlines()
     return {
         'tag': getattr(diag, 'tag', '<unknown>'),
         'message': getattr(diag, 'message', ''),
-        'traceback': trace,
+        'traceback': trace_lines,
     }
 
 

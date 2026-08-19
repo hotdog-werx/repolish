@@ -475,7 +475,8 @@ Report fields include:
 - `diagnostics`
 
 Diagnostics include message text and traceback when an insertion callable raises
-an exception.
+an exception. The `traceback` field is emitted as `list[str]` (one line per
+entry) for easier reading in JSON.
 
 These files are the detailed record behind the compact summary tree output.
 

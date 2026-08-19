@@ -132,7 +132,8 @@ def _assert_report_failed_blocks(tmp_path: Path, result: Result) -> None:
     assert data['functions'] == ['display-year', 'missing-function']
     assert data['diagnostics']
     assert "No renderer registered for function 'missing-function'." in data['diagnostics'][0]['message']
-    assert data['diagnostics'][0]['traceback']
+    traceback_lines = data['diagnostics'][0]['traceback']
+    assert traceback_lines is None or isinstance(traceback_lines, list)
 
 
 def _assert_check_drift(tmp_path: Path, result: Result) -> None:
@@ -877,8 +878,10 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
     assert data['functions'] == ['bad-renderer']
     assert data['diagnostics']
     assert 'cannot combine *args with BlockContext/InsertionBlock annotations' in data['diagnostics'][0]['message']
-    assert data['diagnostics'][0]['traceback']
-    assert 'bad_renderer' in data['diagnostics'][0]['traceback']
+    traceback_lines = data['diagnostics'][0]['traceback']
+    assert isinstance(traceback_lines, list)
+    assert traceback_lines
+    assert any('bad_renderer' in line for line in traceback_lines)
 
 
 # -----------------------------------------------------------------------------
