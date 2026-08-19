@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.10.0] <a name="1.10.0" href="#1.10.0">-</a> August 19, 2026
+
+### 🚀 Features
+
+- Add keyword-arg insertions, disable tracking, and check-mode summaries (#82)
+  by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#82](https://github.com/hotdog-werx/repolish/pull/82)
+
+[1.10.0]: https://github.com/hotdog-werx/repolish/compare/1.9.2...1.10.0
+
 ## [1.9.2] <a name="1.9.2" href="#1.9.2">-</a> August 19, 2026
 
 ### 🐛 Bug Fixes
