@@ -278,7 +278,12 @@ def test_provider_insertion_can_be_disabled_via_provider_overrides(
     assert 'KEEP_A' in content
     assert 'A_NEW' not in content
     assert 'B_NEW' in content
-    assert 'insertions: ✓ ok (2 ok, 0 failed)' in result.output
+    assert 'insertions: ✓ ok (1 ok, 0 failed, 1 disabled)' in result.output
+
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['disabled_blocks'] == 1
+    assert any(d.get('kind') == 'disabled' for d in data['diagnostics'])
 
 
 def test_provider_insertion_file_can_be_disabled_via_provider_overrides(
@@ -435,12 +440,82 @@ def test_provider_insertion_can_disable_single_block_tag(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    run_repolish(['apply'], exit_code=0)
+    result = run_repolish(['apply'], exit_code=0)
 
     content = (tmp_path / 'README.md').read_text(encoding='utf-8')
     assert 'VALUE_ON' in content
     assert 'KEEP_TWO' in content
     assert 'VALUE_OFF' not in content
+    assert 'insertions: ✓ ok (1 ok, 0 failed, 1 disabled)' in result.output
+
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['disabled_blocks'] == 1
+    disabled_entries = [d for d in data['diagnostics'] if d.get('kind') == 'disabled']
+    assert disabled_entries
+    assert disabled_entries[0]['tag'] == 'two'
+    assert disabled_entries[0]['function'] == 'render-mode'
+
+
+def test_provider_insertion_function_disable_applies_to_all_matching_blocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Function-level disable pauses all blocks that call that function in a file."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Same function twice
+
+        <!-- repolish:on:one render-mode on -->
+        KEEP_ONE
+        <!-- repolish:off:one -->
+
+        <!-- repolish:on:two render-mode off -->
+        KEEP_TWO
+        <!-- repolish:off:two -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_mode(mode: str):
+            return f'VALUE_{mode.upper()}'
+
+        return {'README.md': {'render-mode': render_mode}}""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'insertions': {
+                                'README.md': {
+                                    'render_mode': False,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'KEEP_ONE' in content
+    assert 'KEEP_TWO' in content
+    assert 'VALUE_ON' not in content
+    assert 'VALUE_OFF' not in content
+    assert 'insertions: ✓ ok (0 ok, 0 failed, 2 disabled)' in result.output
 
 
 def test_provider_insertion_with_hash_comment_style(
@@ -812,6 +887,47 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
     )
     assert 'developer owned' in result.output
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+
+
+def test_provider_insertion_provider_qualified_marker_falls_back_to_unqualified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider-qualified marker falls back to unqualified function lookup when needed."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Qualified fallback
+
+        <!-- repolish:on:one unknown:display-year -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def display_year():
+            return '2026'
+        return {'README.md': {'display-year': display_year}}""",
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        Qualified fallback
+
+        <!-- repolish:on:one unknown:display-year -->
+        2026
+        <!-- repolish:off:one -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'README.md' in result.output
 
 
 def test_provider_insertion_check_passes_when_file_is_in_sync(

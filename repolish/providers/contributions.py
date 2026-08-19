@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from pathlib import Path, PurePosixPath
 from types import UnionType
-from typing import TYPE_CHECKING, Union, cast, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
 from repolish.insertions.models import BlockContext, InsertionBlock
 from repolish.providers._log import logger
@@ -644,9 +644,17 @@ def _apply_validator_overrides(
                 accum.file_validators.pop(dest, None)
 
 
-def _disabled_insertion_renderer(block: InsertionBlock) -> str:
-    """Keep current block content when an insertion function is disabled."""
-    return block.body
+def _disabled_insertion_renderer_for_function(
+    function_name: str,
+) -> Callable[[InsertionBlock], str]:
+    """Return a disabled renderer tagged with function override metadata."""
+
+    def _render(block: InsertionBlock) -> str:
+        return block.body
+
+    cast('Any', _render).__repolish_disabled_functions__ = frozenset({function_name})
+    cast('Any', _render).__repolish_disabled_tags__ = frozenset()
+    return _render
 
 
 def _disable_insertions_for_file(
@@ -706,7 +714,7 @@ def _disable_insertion_by_name(
 ) -> None:
     """Disable both unqualified and provider-qualified insertion keys."""
     for key in _matching_insertion_keys(insertions, name):
-        insertions[key] = _disabled_insertion_renderer
+        insertions[key] = _disabled_insertion_renderer_for_function(name)
 
 
 def _disable_insertions_by_tag(
@@ -723,12 +731,19 @@ def _wrap_disabled_tag_renderer(
     disabled_tag: str,
 ) -> Callable[[InsertionBlock], str]:
     """Wrap a renderer to preserve content for one disabled block tag."""
+    inherited_tags = set(
+        getattr(renderer, '__repolish_disabled_tags__', frozenset()),
+    )
+    inherited_tags.add(disabled_tag)
+    inherited_functions = frozenset(
+        getattr(renderer, '__repolish_disabled_functions__', frozenset()),
+    )
 
     def _render(block: InsertionBlock) -> str:
-        if block.tag == disabled_tag:
-            return block.body
-        return renderer(block)
+        return block.body if block.tag == disabled_tag else renderer(block)
 
+    cast('Any', _render).__repolish_disabled_tags__ = frozenset(inherited_tags)
+    cast('Any', _render).__repolish_disabled_functions__ = inherited_functions
     return _render
 
 
@@ -737,7 +752,24 @@ def _matching_insertion_keys(
     name: str,
 ) -> list[str]:
     """Return registry keys that target an insertion function name."""
-    return [key for key in insertions if key == name or key.endswith(f':{name}')]
+    return [key for key in insertions if _matches_insertion_name(key, name)]
+
+
+def _matches_insertion_name(
+    key: str,
+    name: str,
+) -> bool:
+    """Return True when an insertion key matches an override name.
+
+    Accepts either hyphenated or underscored names for convenience.
+    """
+    if key == name:
+        return True
+
+    key_tail = key.rsplit(':', 1)[1] if ':' in key else key
+    normalized_key = key_tail.replace('-', '_')
+    normalized_name = name.replace('-', '_')
+    return normalized_key == normalized_name
 
 
 def _apply_insertion_overrides(

@@ -332,6 +332,11 @@ providers:
 When a specific insertion function is disabled this way, repolish preserves the
 block's current body content instead of rewriting it.
 
+Function-level disable applies to all blocks in that file that call the
+function.
+
+Function override keys accept either `render-name` or `render_name`.
+
 Disable one block by tag (useful when multiple blocks share one function):
 
 ```yaml
@@ -486,12 +491,16 @@ Report fields include:
 - `source_provider`
 - `total_blocks`
 - `failed_blocks`
+- `disabled_blocks`
 - `functions`
 - `diagnostics`
 
 Diagnostics include message text and traceback when an insertion callable raises
 an exception. The `traceback` field is emitted as `list[str]` (one line per
 entry) for easier reading in JSON.
+
+Disabled blocks are also included in diagnostics with `kind: disabled` and
+include the related tag/function details.
 
 These files are the detailed record behind the compact summary tree output.
 
