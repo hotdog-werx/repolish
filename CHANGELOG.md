@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.9.2] <a name="1.9.2" href="#1.9.2">-</a> August 19, 2026
+
+### 🐛 Bug Fixes
+
+- Post-process not applied in check mode and issues with insertion function
+  arguments (#80) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#80](https://github.com/hotdog-werx/repolish/pull/80)
+
+[1.9.2]: https://github.com/hotdog-werx/repolish/compare/1.9.1...1.9.2
+
 ## [1.9.1] <a name="1.9.1" href="#1.9.1">-</a> August 18, 2026
 
 ### 🐛 Bug Fixes
