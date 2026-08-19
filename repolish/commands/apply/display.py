@@ -365,7 +365,7 @@ def _validator_summary_node(
     if other_owner:
         node.append(f'  owned by {other_owner}', style='dim yellow')
     elif _is_validator_only_not_staged(record, session):
-        node.append('  no file in stage', style='dim yellow')
+        node.append('  developer owned', style='dim yellow')
     node.append('\n  validators:', style='dim green')
     for validator_name in sorted(file_validators):
         entry = file_validators[validator_name]
@@ -468,7 +468,7 @@ def _file_status_node(
     if other_owner:
         node.append(f'  owned by {other_owner}', style='dim yellow')
     elif _is_insertion_only_not_staged(record, session):
-        node.append('  no file in stage', style='dim yellow')
+        node.append('  developer owned', style='dim yellow')
 
     _append_insertion_summary_line(node, record, session)
     return node

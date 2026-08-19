@@ -35,7 +35,6 @@ if TYPE_CHECKING:
 def _build_insertion_attempts(
     *,
     params: tuple[inspect.Parameter, ...],
-    accepts_single_positional: bool,
     base_kwargs: dict[str, object],
     block: InsertionBlock,
     own_ctx: BaseContext,
@@ -51,16 +50,32 @@ def _build_insertion_attempts(
     )
 
     attempts: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    if accepts_single_positional:
-        attempts.append(((block,), {}))
-    attempts.extend(
-        [
-            ((), keyword_args),
-            (tuple(block.args), {}),
-            ((), {}),
-        ],
-    )
+    # Prefer the natural call form: marker args as positional args plus injected
+    # typed context kwargs, as long as this doesn't double-bind positional names.
+    if not _has_positional_keyword_conflict(
+        params,
+        keyword_args,
+        len(block.args),
+    ):
+        attempts.append((tuple(block.args), keyword_args))
+    attempts.append(((), keyword_args))
+    attempts.append((tuple(block.args), {}))
+    attempts.append(((), {}))
     return attempts
+
+
+def _has_positional_keyword_conflict(
+    params: tuple[inspect.Parameter, ...],
+    kwargs: dict[str, object],
+    positional_count: int,
+) -> bool:
+    """Return True when positional args would collide with provided kwargs."""
+    if not kwargs or positional_count <= 0:
+        return False
+
+    positional_or_keyword_names = [p.name for p in params if p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD]
+    consumed = set(positional_or_keyword_names[:positional_count])
+    return bool(consumed.intersection(kwargs))
 
 
 def _build_keyword_args(
@@ -86,19 +101,19 @@ def _inject_context_if_requested(
     block: InsertionBlock,
     own_ctx: BaseContext,
 ) -> None:
-    """Inject BlockContext/InsertionBlock into keyword_args if params request them."""
+    """Inject BlockContext/InsertionBlock into keyword args when requested by annotation."""
     for p in params:
-        if p.kind != inspect.Parameter.KEYWORD_ONLY:
+        if p.kind is not inspect.Parameter.KEYWORD_ONLY:
             continue
         if _is_block_context_annotation(p.annotation):
-            keyword_args['context'] = BlockContext(
+            keyword_args[p.name] = BlockContext(
                 tag=block.tag,
                 args=block.args,
                 repolish=own_ctx.repolish,
                 provider_context=None,
             )
         elif _is_insertion_block_annotation(p.annotation):
-            keyword_args['block'] = block
+            keyword_args[p.name] = block
 
 
 def _is_block_context_annotation(annotation: object) -> bool:
@@ -112,7 +127,68 @@ def _is_insertion_block_annotation(annotation: object) -> bool:
     """Check if an annotation refers to InsertionBlock."""
     if annotation is InsertionBlock:
         return True
-    return bool(isinstance(annotation, str) and annotation == 'InsertionBlock')
+    if isinstance(annotation, str):
+        return annotation == 'InsertionBlock' or annotation.endswith(
+            '.InsertionBlock',
+        )
+    forward_arg = getattr(annotation, '__forward_arg__', None)
+    if isinstance(forward_arg, str):
+        return forward_arg == 'InsertionBlock' or forward_arg.endswith(
+            '.InsertionBlock',
+        )
+    return False
+
+
+def _insertion_fn_name(fn: Callable[..., str]) -> str:
+    """Return a display-friendly insertion function name."""
+    return cast('str', fn.__name__) if hasattr(fn, '__name__') else repr(fn)
+
+
+def _ensure_supported_insertion_signature(
+    fn_name: str,
+    *,
+    has_varargs: bool,
+    has_typed_injected_context: bool,
+) -> None:
+    """Fail fast for unsupported insertion signatures."""
+    if has_varargs and has_typed_injected_context:
+        msg = (
+            f'Insertion function {fn_name!r} cannot combine *args with '
+            'BlockContext/InsertionBlock annotations. Use explicit positional '
+            'arguments and keyword-only annotated context parameters.'
+        )
+        raise TypeError(msg)
+
+
+def _invoke_insertion_attempt(
+    fn: Callable[..., str],
+    sig: inspect.Signature,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> str | None:
+    """Invoke one signature-checked insertion attempt."""
+    try:
+        sig.bind(*args, **kwargs)
+    except TypeError:
+        return None
+    return fn(*args, **kwargs)
+
+
+def _render_from_attempts(
+    fn: Callable[..., str],
+    sig: inspect.Signature,
+    attempts: list[tuple[tuple[object, ...], dict[str, object]]],
+    *,
+    fn_name: str,
+) -> str:
+    """Return the first successful rendering from attempted call patterns."""
+    for args, kwargs in attempts:
+        rendered = _invoke_insertion_attempt(fn, sig, args, kwargs)
+        if rendered is not None:
+            return rendered
+
+    msg = f'Cannot call insertion function {fn_name!r} with supported arguments.'
+    raise TypeError(msg)
 
 
 def _build_insertion_wrapper(
@@ -122,22 +198,19 @@ def _build_insertion_wrapper(
     """Adapt provider insertion functions to the writer's block renderer contract."""
     sig = inspect.signature(fn)
     params = tuple(sig.parameters.values())
-    accepts_single_positional = len(params) == 1 and params[0].kind in {
-        inspect.Parameter.POSITIONAL_ONLY,
-        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-    }
-
-    def _invoke(
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
-    ) -> str | None:
-        try:
-            sig.bind(*args, **kwargs)
-        except TypeError:
-            return None
-        return fn(*args, **kwargs)
+    fn_name = _insertion_fn_name(fn)
+    has_varargs = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params)
+    has_typed_injected_context = any(
+        _is_block_context_annotation(p.annotation) or _is_insertion_block_annotation(p.annotation) for p in params
+    )
 
     def _render(block: InsertionBlock) -> str:
+        _ensure_supported_insertion_signature(
+            fn_name,
+            has_varargs=has_varargs,
+            has_typed_injected_context=has_typed_injected_context,
+        )
+
         base_kwargs: dict[str, object] = {
             'context': own_ctx,
             'block': block,
@@ -150,20 +223,11 @@ def _build_insertion_wrapper(
 
         attempts = _build_insertion_attempts(
             params=params,
-            accepts_single_positional=accepts_single_positional,
             base_kwargs=base_kwargs,
             block=block,
             own_ctx=own_ctx,
         )
-
-        for args, kwargs in attempts:
-            rendered = _invoke(args, kwargs)
-            if rendered is not None:
-                return rendered
-
-        fn_name = fn.__name__ if hasattr(fn, '__name__') else repr(fn)
-        msg = f'Cannot call insertion function {fn_name!r} with supported arguments.'
-        raise TypeError(msg)
+        return _render_from_attempts(fn, sig, attempts, fn_name=fn_name)
 
     return _render
 

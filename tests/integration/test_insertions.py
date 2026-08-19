@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -188,7 +190,7 @@ def test_provider_insertion_missing_file_is_skipped(
     result = run_repolish(['apply'], exit_code=0)
     # File should not appear since it doesn't exist
     assert 'missing.md' not in result.output
-    assert 'no file in stage' not in result.output
+    assert 'developer owned' not in result.output
 
 
 def test_provider_insertion_check_missing_file_is_skipped(
@@ -262,7 +264,7 @@ def test_provider_insertion_function_signature_variants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test all insertion function signature variants in a single file."""
-    # Create a file with 5 insertion blocks, each using a different signature style
+    # Create a file with insertion blocks covering signature dispatch variants
     _write(
         tmp_path / 'config.txt',
         """\
@@ -276,12 +278,12 @@ def test_provider_insertion_function_signature_variants(
         PLACEHOLDER_POSITIONAL
         # repolish:off
 
-        # repolish:on varargs_func a b c d
-        PLACEHOLDER_VARARGS
+        # repolish:on single_arg_positional_func hello_single
+        PLACEHOLDER_SINGLE_ARG_POSITIONAL
         # repolish:off
 
-        # repolish:on block_func
-        PLACEHOLDER_BLOCK
+        # repolish:on varargs_func a b c d
+        PLACEHOLDER_VARARGS
         # repolish:off
 
         # repolish:on:ctx context_func
@@ -291,6 +293,10 @@ def test_provider_insertion_function_signature_variants(
         # repolish:on:block block_param_func
         PLACEHOLDER_BLOCK_PARAM
         # repolish:off:block
+
+        # repolish:on:combo combo_func value_one value_two
+        PLACEHOLDER_COMBO
+        # repolish:off:combo
 
         # repolish:on empty_tag_func
         PLACEHOLDER_EMPTY_TAG
@@ -309,17 +315,30 @@ def test_provider_insertion_function_signature_variants(
         def positional_func(arg1: str, arg2: str):
             return f'positional:{arg1}:{arg2}'
 
+        def single_arg_positional_func(arg1: str):
+            return f'single-positional:{arg1}'
+
         def varargs_func(*args):
             return 'varargs:' + '-'.join(args)
 
-        def block_func(block: InsertionBlock):
-            return f'block-func:{block.function}:{",".join(block.args)}'
+        def context_func(*, block_context: BlockContext):
+            return f'context-func:tag={block_context.tag}:repo={block_context.repolish.repo.name}'
 
-        def context_func(*, context: BlockContext):
-            return f'context-func:tag={context.tag}:repo={context.repolish.repo.name}'
+        def block_param_func(*, insertion_block: InsertionBlock):
+            return f'block-param-func:fn={insertion_block.function}:args={",".join(insertion_block.args)}'
 
-        def block_param_func(*, block: InsertionBlock):
-            return f'block-param-func:fn={block.function}:args={",".join(block.args)}'
+        def combo_func(
+            arg1: str,
+            arg2: str,
+            *,
+            block_context: BlockContext,
+            insertion_block: InsertionBlock,
+        ):
+            return (
+                f'combo:{arg1}:{arg2}:'
+                f'tag={block_context.tag}:'
+                f'fn={insertion_block.function}'
+            )
 
         def empty_tag_func():
             return 'empty-tag-works'
@@ -328,10 +347,11 @@ def test_provider_insertion_function_signature_variants(
             'config.txt': {
                 'zero_arg_func': zero_arg_func,
                 'positional_func': positional_func,
+                'single_arg_positional_func': single_arg_positional_func,
                 'varargs_func': varargs_func,
-                'block_func': block_func,
                 'context_func': context_func,
                 'block_param_func': block_param_func,
+                'combo_func': combo_func,
                 'empty_tag_func': empty_tag_func,
             }
         }""",
@@ -356,12 +376,12 @@ def test_provider_insertion_function_signature_variants(
         positional:hello:world
         # repolish:off
 
-        # repolish:on varargs_func a b c d
-        varargs:a-b-c-d
+        # repolish:on single_arg_positional_func hello_single
+        single-positional:hello_single
         # repolish:off
 
-        # repolish:on block_func
-        block-func:block_func:
+        # repolish:on varargs_func a b c d
+        varargs:a-b-c-d
         # repolish:off
 
         # repolish:on:ctx context_func
@@ -372,13 +392,17 @@ def test_provider_insertion_function_signature_variants(
         block-param-func:fn=block_param_func:args=
         # repolish:off:block
 
+        # repolish:on:combo combo_func value_one value_two
+        combo:value_one:value_two:tag=combo:fn=combo_func
+        # repolish:off:combo
+
         # repolish:on empty_tag_func
         empty-tag-works
         # repolish:off
         """,
     )
     assert (tmp_path / 'config.txt').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (7 ok, 0 failed)' in result.output
+    assert 'insertions: ✓ ok (8 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_and_validator_on_non_owned_file(
@@ -500,7 +524,7 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
         <!-- repolish:off:three -->
         """,
     )
-    assert 'no file in stage' in result.output
+    assert 'developer owned' in result.output
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
 
 
@@ -532,6 +556,101 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
     run_repolish(['apply', '--check'], exit_code=0)
+
+
+def test_provider_insertion_forwardref_annotation_injection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ForwardRef InsertionBlock annotations are recognized for injection."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        ForwardRef insertion
+
+        <!-- repolish:on:one render-forward -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        from typing import ForwardRef
+
+        def render_forward(*, injected):
+            return f'forward:{injected.function}'
+
+        render_forward.__annotations__['injected'] = ForwardRef('InsertionBlock')
+
+        return {'README.md': {'render-forward': render_forward}}""",
+    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        ForwardRef insertion
+
+        <!-- repolish:on:one render-forward -->
+        forward:render-forward
+        <!-- repolish:off:one -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_rejects_varargs_with_typed_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Varargs cannot be combined with typed BlockContext/InsertionBlock injection."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Invalid insertion signature
+
+        <!-- repolish:on:one bad-renderer x y -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def bad_renderer(*args, insertion_block: 'InsertionBlock'):
+            return f'should-not-render:{insertion_block.function}:{"|".join(args)}'
+
+        return {'README.md': {'bad-renderer': bad_renderer}}""",
+        extra_imports='from repolish import InsertionBlock',
+    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    # Content remains unchanged because insertion rendering failed.
+    expected = dedent(
+        """\
+        Invalid insertion signature
+
+        <!-- repolish:on:one bad-renderer x y -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✗ failed (0 ok, 1 failed)' in result.output
+
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    assert report.exists()
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['failed_blocks'] == 1
+    assert data['functions'] == ['bad-renderer']
+    assert data['diagnostics']
+    assert 'cannot combine *args with BlockContext/InsertionBlock annotations' in data['diagnostics'][0]['message']
 
 
 # -----------------------------------------------------------------------------
@@ -689,7 +808,7 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
             <!-- repolish:off:year -->
             """,
             expected_output_checks=(
-                '◌ README.md  no file in stage',
+                '◌ README.md  developer owned',
                 'insertions: ✓ ok (1 ok, 0 failed)',
             ),
             assert_fn=_assert_report_exists,
@@ -1041,3 +1160,95 @@ def test_provider_insertion_no_colon_syntax(
     assert '2026' in content
     assert 'insertions:' in result.output
     assert '1 ok, 0 failed' in result.output
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Simulates Unix-style installed CLI execution from PATH.',
+)
+def test_post_process_applies_in_both_apply_and_check_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies post_process runs on both apply and check mode.
+
+    When running `repolish apply`, post_process commands are executed and files
+    are formatted. When running `repolish apply --check`, post_process must also
+    run on staged files before comparison, otherwise false drift is detected.
+
+    This test verifies the fix: after a successful apply (with post_process),
+    running check mode passes because both apply and check run post_process.
+    """
+    # Create a file with an insertion marker
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:spaces insert-spaces -->
+        <!-- repolish:off:spaces -->
+        """,
+    )
+
+    # Create provider with insertion + a regular mapped template file
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def insert_spaces(*, context, tag, args):
+            return '     has_spaces'
+        return {'test.txt': {'insert-spaces': insert_spaces}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'mapped.txt': TemplateMapping(source_template='mapped.txt.jinja'),
+    }
+""",
+    )
+
+    # Create a regular template source that also needs post-processing
+    _write(
+        tmp_path / 'p' / 'repolish' / 'mapped.txt.jinja',
+        """\
+             mapped_from_template
+        """,
+    )
+
+    # Create a post_process script that strips leading whitespace from all txt files in cwd
+    strip_script = tmp_path / 'strip_spaces.py'
+    strip_script.write_text(
+        '#!/usr/bin/env python3\n'
+        'import glob\n'
+        'for f in glob.glob("*.txt"):\n'
+        '    lines = open(f).readlines()\n'
+        "    open(f, 'w').write(''.join(line.lstrip() for line in lines))\n",
+        encoding='utf-8',
+    )
+    strip_script.chmod(0o755)
+
+    # Simulate an installed formatter binary discoverable via PATH.
+    old_path = os.environ.get('PATH', '')
+    monkeypatch.setenv('PATH', f'{tmp_path}{os.pathsep}{old_path}')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        '{"providers": {"p": {"provider_root": "./p"}}, "post_process": ["strip_spaces.py"]}',
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    # Run apply: insertion should be applied AND post-processed
+    run_repolish(['apply'], exit_code=0)
+
+    # Verify insertion file has been post-processed (no leading spaces)
+    content = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    assert 'has_spaces' in content
+    assert '     has_spaces' not in content
+
+    # Verify mapped template file is also post-processed (no leading spaces)
+    mapped_content = (tmp_path / 'mapped.txt').read_text(encoding='utf-8')
+    assert 'mapped_from_template' in mapped_content
+    assert '     mapped_from_template' not in mapped_content
+
+    # FIXED: Running check mode now passes because post_process IS applied during check
+    run_repolish(['apply', '--check', '-vv'], exit_code=0)

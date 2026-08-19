@@ -439,7 +439,7 @@ def test_summary_tree_insertion_only_file_shows_hollow_marker(
     }
 
     output = _capture(mocker, [session])
-    assert '◌ README.md  no file in stage' in output
+    assert '◌ README.md  developer owned' in output
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in output
 
 

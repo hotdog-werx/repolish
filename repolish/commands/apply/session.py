@@ -14,7 +14,10 @@ from repolish.commands.apply.debug import (
 from repolish.commands.apply.display import (
     print_summary_tree,
 )
-from repolish.commands.apply.insertions import apply_registered_insertions
+from repolish.commands.apply.insertions import (
+    apply_registered_insertions,
+    stage_registered_insertions,
+)
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
@@ -191,6 +194,12 @@ def apply_session(
     if check_only:
         # In check mode, we compare staged output against base_dir without modifying files.
         # Do NOT apply_generated_output here - that would overwrite local changes!
+        stage_registered_insertions(providers, base_dir, setup_output)
+        _run_post_process_if_needed(
+            config,
+            setup_output,
+            skip_post_process=skip_post_process,
+        )
         rc, check_result = finish_check(
             CheckContext(
                 setup_output=setup_output,

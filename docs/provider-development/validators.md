@@ -122,7 +122,7 @@ The summary still shows the file, but it is marked as a non-write state such as:
 ```text
 Standalone
 └── p@
-    └── ◌ README.md  no file in stage
+    └── ◌ README.md  developer owned
         validators:
           - ✓ lint
 ```

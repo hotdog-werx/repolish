@@ -70,8 +70,7 @@ name.
 ### Function signature patterns
 
 Insertion functions are called based on their signature. The system uses
-**strict typing** - you must declare your parameters explicitly. Do not use
-`*args` unless you genuinely need variadic arguments.
+**strict typing** - you must declare your parameters explicitly.
 
 **Recommended: keyword-only `context` parameter**
 
@@ -128,7 +127,7 @@ Marker: `<!-- repolish:on:env env-info PYTHON_VERSION 3.11 -->`
 
 **Variadic arguments (`*args`)**
 
-Only use `*args` when you need truly flexible arity:
+Only use `*args` when you need truly flexible arity for marker arguments:
 
 ```python
 def join_items(*args: str) -> str:
@@ -137,6 +136,10 @@ def join_items(*args: str) -> str:
 ```
 
 Marker: `<!-- repolish:on:items join-items apple banana cherry -->`
+
+`*args` cannot be combined with `BlockContext` or `InsertionBlock` typed
+injection. If you need typed context injection, use explicit positional
+parameters for marker args and keyword-only annotated context parameters.
 
 **Zero-argument functions**
 
@@ -151,18 +154,24 @@ def static_header() -> str:
 ### Key points about strong typing
 
 - **Always annotate parameter types** - the system inspects your signature
-- **Use `BlockContext` for context access** - annotate with
-  `*, context: BlockContext`
+- **Use `BlockContext` for context access** - annotate a keyword-only parameter
+  with `BlockContext`
 - **Avoid `*args` unless necessary** - prefer explicit positional parameters
+- **Do not combine `*args` with typed context injection** - this is unsupported
 - **Use default values for optional params** - `default: str = "unknown"`
 - **Return type should be `str`** - the rendered content
 
-The signature inspection follows this order:
+Signature behavior:
 
-1. Single `InsertionBlock` param → passes full block (internal wrapper pattern)
-2. `*args` → passes all marker args positionally
-3. Positional params → filled from marker args, uses defaults if available
-4. Keyword-only `context: BlockContext` → auto-injected with full context
+1. Marker args are always passed as positional string args.
+2. Parameters annotated as `BlockContext` or `InsertionBlock` are auto-injected
+   when declared as keyword-only parameters.
+3. If invocation fails with `TypeError`, repolish retries with no marker args
+   (while still injecting requested annotated context objects) for compatibility
+   with no-arg renderers.
+
+Injection is annotation-driven, not name-driven. Parameter names can be
+arbitrary as long as the annotation is correct.
 
 ## Dynamic explicit file mapping (recommended)
 
