@@ -661,6 +661,9 @@ def _disable_insertions_for_file(
     for name in _disabled_insertion_names(insertion_overrides):
         _disable_insertion_by_name(insertions, name)
 
+    for tag in _disabled_insertion_tags(insertion_overrides):
+        _disable_insertions_by_tag(insertions, tag)
+
 
 def _is_insertion_file_disabled(insertion_overrides: dict[str, bool]) -> bool:
     """Return True when a file-level insertion disable is configured."""
@@ -671,7 +674,30 @@ def _disabled_insertion_names(
     insertion_overrides: dict[str, bool],
 ) -> list[str]:
     """Return insertion function names explicitly disabled by config."""
-    return [name for name, enabled in insertion_overrides.items() if name != 'enabled' and not enabled]
+    return [
+        name
+        for name, enabled in insertion_overrides.items()
+        if name != 'enabled' and not _is_insertion_tag_override(name) and not enabled
+    ]
+
+
+def _disabled_insertion_tags(
+    insertion_overrides: dict[str, bool],
+) -> list[str]:
+    """Return insertion block tags explicitly disabled by config."""
+    tags: list[str] = []
+    for name, enabled in insertion_overrides.items():
+        if enabled or not _is_insertion_tag_override(name):
+            continue
+        tag = name.removeprefix('tag:')
+        if tag:
+            tags.append(tag)
+    return tags
+
+
+def _is_insertion_tag_override(name: str) -> bool:
+    """Return True when an insertion override key targets a block tag."""
+    return name.startswith('tag:')
 
 
 def _disable_insertion_by_name(
@@ -681,6 +707,29 @@ def _disable_insertion_by_name(
     """Disable both unqualified and provider-qualified insertion keys."""
     for key in _matching_insertion_keys(insertions, name):
         insertions[key] = _disabled_insertion_renderer
+
+
+def _disable_insertions_by_tag(
+    insertions: InsertionRegistry,
+    tag: str,
+) -> None:
+    """Disable insertions only for blocks that match a specific tag."""
+    for key, renderer in list(insertions.items()):
+        insertions[key] = _wrap_disabled_tag_renderer(renderer, tag)
+
+
+def _wrap_disabled_tag_renderer(
+    renderer: Callable[[InsertionBlock], str],
+    disabled_tag: str,
+) -> Callable[[InsertionBlock], str]:
+    """Wrap a renderer to preserve content for one disabled block tag."""
+
+    def _render(block: InsertionBlock) -> str:
+        if block.tag == disabled_tag:
+            return block.body
+        return renderer(block)
+
+    return _render
 
 
 def _matching_insertion_keys(

@@ -384,6 +384,65 @@ def test_provider_insertion_paused_file_skips_apply_and_check(
     run_repolish(['apply', '--check'], exit_code=0)
 
 
+def test_provider_insertion_can_disable_single_block_tag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tag override can disable one block while keeping another block on the same function active."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Same function, two tags
+
+        <!-- repolish:on:one render-mode on -->
+        KEEP_ONE
+        <!-- repolish:off:one -->
+
+        <!-- repolish:on:two render-mode off -->
+        KEEP_TWO
+        <!-- repolish:off:two -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_mode(mode: str):
+            return f'VALUE_{mode.upper()}'
+
+        return {'README.md': {'render-mode': render_mode}}""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'insertions': {
+                                'README.md': {
+                                    'tag:two': False,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'VALUE_ON' in content
+    assert 'KEEP_TWO' in content
+    assert 'VALUE_OFF' not in content
+
+
 def test_provider_insertion_with_hash_comment_style(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

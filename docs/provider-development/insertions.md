@@ -332,6 +332,21 @@ providers:
 When a specific insertion function is disabled this way, repolish preserves the
 block's current body content instead of rewriting it.
 
+Disable one block by tag (useful when multiple blocks share one function):
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./providers/my-provider
+    overrides:
+      insertions:
+        README.md:
+          tag:two: false
+```
+
+Tag overrides are evaluated against the marker tag (`repolish:on:<tag> ...`).
+Only matching blocks are paused; other blocks using the same function still run.
+
 Disable all insertions for one file:
 
 ```yaml
