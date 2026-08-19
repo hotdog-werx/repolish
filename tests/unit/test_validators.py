@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from repolish.commands.apply.validators import run_validators
-from repolish.config.models.provider import ProviderOverrides
 from repolish.providers.contributions import _apply_validator_overrides
 from repolish.providers.models import BaseContext, SessionBundle
 from repolish.providers.models.files import (
@@ -259,7 +258,7 @@ class TestRunValidators:
         }
 
         _apply_validator_overrides(
-            ProviderOverrides(validators={'config.toml': {'lint': False}}),
+            {'config.toml': {'lint': False}},
             accum,
         )
 
@@ -295,7 +294,7 @@ class TestRunValidators:
         }
 
         _apply_validator_overrides(
-            ProviderOverrides(validators={'config.toml': {'lint': True}}),
+            {'config.toml': {'lint': True}},
             accum,
         )
 

@@ -629,19 +629,82 @@ def _disable_validators_for_file(
 
 
 def _apply_validator_overrides(
-    overrides: ProviderOverrides | None,
+    overrides_validators: dict[str, dict[str, bool] | bool],
     accum: Accumulators,
 ) -> None:
     """Disable any validators explicitly turned off by config overrides."""
-    if not overrides or not overrides.validators:
+    for dest, validator_overrides in overrides_validators.items():
+        if (
+            isinstance(validator_overrides, dict)
+            and validator_overrides
+            and (validators := accum.file_validators.get(dest)) is not None
+        ):
+            _disable_validators_for_file(validators, validator_overrides)
+            if not validators:
+                accum.file_validators.pop(dest, None)
+
+
+def _disabled_insertion_renderer(block: InsertionBlock) -> str:
+    """Keep current block content when an insertion function is disabled."""
+    return block.body
+
+
+def _disable_insertions_for_file(
+    insertions: InsertionRegistry,
+    insertion_overrides: dict[str, bool],
+) -> None:
+    """Apply config-based insertion enabled flags to a single file registry."""
+    if _is_insertion_file_disabled(insertion_overrides):
+        insertions.clear()
         return
-    for dest, validator_overrides in overrides.validators.items():
-        validators = accum.file_validators.get(dest)
-        if validators is None or not validator_overrides:
-            continue
-        _disable_validators_for_file(validators, validator_overrides)
-        if not validators:
-            accum.file_validators.pop(dest, None)
+
+    for name in _disabled_insertion_names(insertion_overrides):
+        _disable_insertion_by_name(insertions, name)
+
+
+def _is_insertion_file_disabled(insertion_overrides: dict[str, bool]) -> bool:
+    """Return True when a file-level insertion disable is configured."""
+    return insertion_overrides.get('enabled') is False
+
+
+def _disabled_insertion_names(
+    insertion_overrides: dict[str, bool],
+) -> list[str]:
+    """Return insertion function names explicitly disabled by config."""
+    return [name for name, enabled in insertion_overrides.items() if name != 'enabled' and not enabled]
+
+
+def _disable_insertion_by_name(
+    insertions: InsertionRegistry,
+    name: str,
+) -> None:
+    """Disable both unqualified and provider-qualified insertion keys."""
+    for key in _matching_insertion_keys(insertions, name):
+        insertions[key] = _disabled_insertion_renderer
+
+
+def _matching_insertion_keys(
+    insertions: InsertionRegistry,
+    name: str,
+) -> list[str]:
+    """Return registry keys that target an insertion function name."""
+    return [key for key in insertions if key == name or key.endswith(f':{name}')]
+
+
+def _apply_insertion_overrides(
+    overrides_insertions: dict[str, dict[str, bool] | bool],
+    accum: Accumulators,
+) -> None:
+    """Disable insertion functions/files explicitly turned off by config overrides."""
+    for dest, insertion_overrides in overrides_insertions.items():
+        if (
+            isinstance(insertion_overrides, dict)
+            and insertion_overrides
+            and (insertions := accum.file_insertions.get(dest)) is not None
+        ):
+            _disable_insertions_for_file(insertions, insertion_overrides)
+            if not insertions:
+                accum.file_insertions.pop(dest, None)
 
 
 def _collect_provider_contribution(
@@ -677,7 +740,9 @@ def _collect_provider_contribution(
     )
     _handle_provider_validators(inst, own_ctx, provider_id, accum)
     _handle_provider_insertions(inst, own_ctx, provider_id, accum)
-    _apply_validator_overrides(provider_overrides, accum)
+    if provider_overrides:
+        _apply_validator_overrides(provider_overrides.validators or {}, accum)
+        _apply_insertion_overrides(provider_overrides.insertions or {}, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 

@@ -299,10 +299,12 @@ def test_provider_symlink_json_serializes_paths_as_posix():
 
 def test_provider_overrides_validator_shorthand_normalizes_to_enabled_flags() -> None:
     """Validator overrides accept both per-name toggles and file-level shortcut syntax."""
-    overrides = ProviderOverrides(
-        validators={
-            'config.toml': {'lint': False, 'schema': True},
-            'pyproject.toml': False,
+    overrides = ProviderOverrides.model_validate(
+        {
+            'validators': {
+                'config.toml': {'lint': False, 'schema': True},
+                'pyproject.toml': False,
+            },
         },
     )
 
@@ -324,6 +326,38 @@ def test_provider_overrides_validator_full_form_is_preserved() -> None:
     assert overrides.validators == {
         'config.toml': {'lint': False},
         'settings.toml': {'schema': True},
+    }
+
+
+def test_provider_overrides_insertions_shorthand_normalizes_to_enabled_flags() -> None:
+    """Insertion overrides accept both per-function toggles and file-level shortcut syntax."""
+    overrides = ProviderOverrides.model_validate(
+        {
+            'insertions': {
+                'README.md': {'render-year': False, 'render-date': True},
+                'CHANGELOG.md': False,
+            },
+        },
+    )
+
+    assert overrides.insertions == {
+        'README.md': {'render-year': False, 'render-date': True},
+        'CHANGELOG.md': {'enabled': False},
+    }
+
+
+def test_provider_overrides_insertions_full_form_is_preserved() -> None:
+    """Insertion override dict entries are preserved with boolean normalization."""
+    overrides = ProviderOverrides(
+        insertions={
+            'README.md': {'render-year': False},
+            'docs.md': {'render-api': True},
+        },
+    )
+
+    assert overrides.insertions == {
+        'README.md': {'render-year': False},
+        'docs.md': {'render-api': True},
     }
 
 

@@ -277,8 +277,11 @@ def _apply_file_insertions(
 def _should_skip_file(
     rel_path: str,
     base_dir: Path,
+    paused_files: frozenset[str] | None = None,
 ) -> bool:
     """Check if a file should be skipped for insertion processing."""
+    if paused_files and rel_path in paused_files:
+        return True
     target = base_dir / rel_path
     return not target.exists() or target.is_dir()
 
@@ -310,10 +313,11 @@ def apply_registered_insertions(
     provider_results: dict[str, dict[str, InsertionFileResult]] = {}
     reports_dir = base_dir / '.repolish' / '_' / 'insertions'
     reports_dir.mkdir(parents=True, exist_ok=True)
+    paused_files = providers.paused_files
 
     for rel_path, registry in providers.file_insertions.items():
         provider_ids = providers.insertion_sources.get(rel_path, [])
-        if not _should_skip_file(rel_path, base_dir):
+        if not _should_skip_file(rel_path, base_dir, paused_files):
             ctx = _ProviderInsertionContext(
                 rel_path=rel_path,
                 registry=registry,
@@ -351,10 +355,11 @@ def stage_registered_insertions(
     and materialize the result in staged output.
     """
     staged_root = setup_output / 'repolish'
+    paused_files = providers.paused_files
 
     for rel_path, registry in providers.file_insertions.items():
         target = base_dir / rel_path
-        if not target.exists() or target.is_dir():
+        if _should_skip_file(rel_path, base_dir, paused_files):
             continue
 
         staged_file = staged_root / rel_path
@@ -376,9 +381,10 @@ def check_registered_insertions(
 ) -> list[tuple[str, str]]:
     """Return insertion drift diffs for check mode without mutating files."""
     diffs: list[tuple[str, str]] = []
+    paused_files = providers.paused_files
 
     for rel_path, registry in providers.file_insertions.items():
-        if not _should_skip_file(rel_path, base_dir):
+        if not _should_skip_file(rel_path, base_dir, paused_files):
             target = base_dir / rel_path
             staged_result = _staged_check_result(
                 rel_path=rel_path,

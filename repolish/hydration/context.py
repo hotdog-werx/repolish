@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
@@ -9,6 +10,42 @@ from repolish.misc import ctx_to_dict
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
 from repolish.providers.models.pipeline import ProviderContributions
+
+
+@dataclass
+class _ProviderModelOverrides:
+    """Config-sourced provider override maps keyed by provider id."""
+
+    file_mappings: dict[str, object]
+    validators: dict[str, object]
+    insertions: dict[str, object]
+
+
+def _collect_provider_model_overrides(
+    config: RepolishConfig,
+    alias_to_pid: dict[str, str],
+) -> _ProviderModelOverrides:
+    """Collect provider model override maps for file mappings, validators, and insertions."""
+    file_mappings: dict[str, object] = {}
+    validators: dict[str, object] = {}
+    insertions: dict[str, object] = {}
+
+    for alias, info in config.providers.items():
+        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+        if not info.overrides:
+            continue
+        if info.overrides.file_mappings:
+            file_mappings[pid] = info.overrides.file_mappings
+        if info.overrides.validators:
+            validators[pid] = info.overrides.validators
+        if info.overrides.insertions:
+            insertions[pid] = info.overrides.insertions
+
+    return _ProviderModelOverrides(
+        file_mappings=file_mappings,
+        validators=validators,
+        insertions=insertions,
+    )
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
@@ -111,25 +148,14 @@ def build_final_providers(
         config,
         alias_to_pid,
     )
-
-    # Extract file_mappings overrides from config (not handled by _build_override_maps)
-    file_mapping_overrides: dict[str, object] = {}
-    for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        if info.overrides and info.overrides.file_mappings:
-            file_mapping_overrides[pid] = info.overrides.file_mappings
-
-    # Build ProviderContributions from the override maps.
-    # Iterate over the union of keys so providers that only override validators
-    # are not dropped before the contribution pass runs.
-    validator_overrides: dict[str, object] = {}
-    for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        if info.overrides and info.overrides.validators:
-            validator_overrides[pid] = info.overrides.validators
+    model_overrides = _collect_provider_model_overrides(config, alias_to_pid)
 
     all_override_pids = (
-        set(provider_overrides) | set(anchor_overrides) | set(file_mapping_overrides) | set(validator_overrides)
+        set(provider_overrides)
+        | set(anchor_overrides)
+        | set(model_overrides.file_mappings)
+        | set(model_overrides.validators)
+        | set(model_overrides.insertions)
     )
 
     contributions = ProviderContributions(
@@ -137,8 +163,9 @@ def build_final_providers(
             pid: ProviderOverrides(
                 context_merge=provider_overrides.get(pid),
                 anchors=anchor_overrides.get(pid),
-                file_mappings=file_mapping_overrides.get(pid),  # type: ignore[arg-type]
-                validators=validator_overrides.get(pid),  # type: ignore[arg-type]
+                file_mappings=model_overrides.file_mappings.get(pid),  # type: ignore[arg-type]
+                validators=model_overrides.validators.get(pid),  # type: ignore[arg-type]
+                insertions=model_overrides.insertions.get(pid),  # type: ignore[arg-type]
             )
             for pid in all_override_pids
         },

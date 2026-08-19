@@ -217,6 +217,172 @@ def test_provider_insertion_check_missing_file_is_skipped(
     assert 'missing.md' not in result.output
 
 
+def test_provider_insertion_can_be_disabled_via_provider_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider can disable one insertion function through overrides."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Mixed blocks
+
+        <!-- repolish:on:one render-a -->
+        KEEP_A
+        <!-- repolish:off:one -->
+
+        <!-- repolish:on:two render-b -->
+        KEEP_B
+        <!-- repolish:off:two -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_a():
+            return 'A_NEW'
+
+        def render_b():
+            return 'B_NEW'
+
+        return {'README.md': {'render-a': render_a, 'render-b': render_b}}""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'insertions': {
+                                'README.md': {
+                                    'render-a': False,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'KEEP_A' in content
+    assert 'A_NEW' not in content
+    assert 'B_NEW' in content
+    assert 'insertions: ✓ ok (2 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_file_can_be_disabled_via_provider_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider can disable all insertions for a file through overrides."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        File-level disable
+
+        <!-- repolish:on:one render-a -->
+        KEEP_A
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_a():
+            return 'A_NEW'
+
+        return {'README.md': {'render-a': render_a}}""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'insertions': {
+                                'README.md': False,
+                            },
+                        },
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'KEEP_A' in content
+    assert 'A_NEW' not in content
+    assert 'insertions:' not in result.output
+
+
+def test_provider_insertion_paused_file_skips_apply_and_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """paused_files prevents insertion apply and insertion drift checks for that file."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Paused insertion
+
+        <!-- repolish:on:one render-a -->
+        KEEP_A
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_a():
+            return 'A_NEW'
+
+        return {'README.md': {'render-a': render_a}}""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+                'paused_files': ['README.md'],
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'KEEP_A' in content
+    assert 'A_NEW' not in content
+
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
 def test_provider_insertion_with_hash_comment_style(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

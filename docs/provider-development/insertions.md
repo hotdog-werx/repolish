@@ -10,6 +10,14 @@ while the rest of the file stays hand-edited.
 - `create_file_validators()` checks final files
 - `create_file_insertions()` fills explicit blocks in existing files
 
+Quick checklist:
+
+- Use explicit destination paths in `create_file_insertions()`.
+- Prefer explicit parameters over `*args` when possible.
+- Use keyword-only typed context injection (`BlockContext` or `InsertionBlock`).
+- Use `key=value` marker args when argument order should not matter.
+- Use `paused_files` or `overrides.insertions` to temporarily pause ownership.
+
 ## Where insertions fit in apply
 
 Insertions run in the apply pipeline after generated files are written, then
@@ -66,8 +74,7 @@ Named args are also supported with `key=value` pairs (including quoted values):
 <!-- repolish:off:cfg -->
 ```
 
-When using empty tags, you cannot nest blocks with the same empty tag (just like
-any repeated tag name). Multiple sequential empty-tag blocks work fine.
+Nested insertion tags are not supported. Multiple sequential blocks are fine.
 
 ## Registering insertion functions
 
@@ -82,13 +89,19 @@ Insertion functions are called based on their signature. The system uses
 As of `v1.10.0`, repolish no longer auto-injects legacy untyped kwargs like
 `context`, `tag`, `args`, `function`, `body`, or `comment_style`.
 
+This is technically a breaking change, but it aligns behavior with the original
+insertion API intent. Supporting many implicit untyped kwargs was not intended
+as a long-term contract. Requiring providers to declare each of those values as
+separate typed keyword parameters is noisy and hard to maintain, which is why
+the insertion metadata was deliberately bundled into `BlockContext` and
+`InsertionBlock`.
+
 **Recommended: keyword-only `context` parameter**
 
 Use `BlockContext` to access insertion metadata and repolish context:
 
 ```python
-from repolish import BaseContext, BaseInputs, Provider
-from repolish.insertions import BlockContext
+from repolish import BaseContext, BaseInputs, BlockContext, Provider
 from datetime import datetime
 
 
@@ -159,6 +172,10 @@ Rules:
   `None` (for example `str | None` or `Optional[str]`).
 - Unknown keys or missing non-optional args produce insertion diagnostics.
 
+Named syntax is only activated when all marker tokens are `key=value` and at
+least one key matches a callable parameter name. Otherwise marker args are
+treated as positional tokens for compatibility.
+
 This avoids placeholder markers like `null null value` and lets callers provide
 only meaningful keys.
 
@@ -222,7 +239,7 @@ clear and makes the final insertion target set fully visible in provider output.
 ```python
 from pathlib import Path
 
-from repolish import BaseContext, BaseInputs, Provider
+from repolish import BaseContext, BaseInputs, BlockContext, Provider
 
 
 class Ctx(BaseContext):
@@ -234,8 +251,8 @@ class DocsProvider(Provider[Ctx, BaseInputs]):
         return Ctx()
 
     def create_file_insertions(self, context: Ctx):
-        def render_last_updated(*, context, args):
-            return context.repolish.provider.version
+        def render_last_updated(*, block: BlockContext) -> str:
+            return block.repolish.provider.version
 
         root = context.repolish.workspace.root_dir
         docs_dir = Path(root) / 'docs'
@@ -279,6 +296,55 @@ insertions: ✗ failed (1 ok, 1 failed)
 ```
 
 This makes partial success explicit for files with multiple insertion blocks.
+
+## Pausing insertion ownership
+
+When an insertion function is temporarily broken, projects can pause insertion
+ownership without deleting markers or generated content.
+
+### Pause by file (`paused_files`)
+
+Top-level `paused_files` skips insertion apply and insertion drift checks for
+those files:
+
+```yaml
+paused_files:
+  - README.md
+```
+
+This keeps current file content unchanged and prevents `apply --check` drift
+from paused insertion files.
+
+### Disable by provider override (`overrides.insertions`)
+
+Providers can be selectively disabled by file and function:
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./providers/my-provider
+    overrides:
+      insertions:
+        README.md:
+          render-year: false
+```
+
+When a specific insertion function is disabled this way, repolish preserves the
+block's current body content instead of rewriting it.
+
+Disable all insertions for one file:
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./providers/my-provider
+    overrides:
+      insertions:
+        README.md: false
+```
+
+This lets teams keep existing inserted content while temporarily handing full
+ownership back to the project until provider fixes are available.
 
 ## Real-world examples
 
@@ -393,10 +459,10 @@ information. Run `repolish apply` in CI to keep it fresh.
 
 ## Insertion reports
 
-For each file with insertion blocks, repolish writes a report artifact:
+For each file with insertion blocks, repolish writes report artifacts:
 
 ```text
-.repolish/_/insertions/insertions.<path-slug>.json
+.repolish/_/insertions/insertions.<path-slug>.<provider-alias>.json
 ```
 
 Report fields include:
@@ -407,6 +473,9 @@ Report fields include:
 - `failed_blocks`
 - `functions`
 - `diagnostics`
+
+Diagnostics include message text and traceback when an insertion callable raises
+an exception.
 
 These files are the detailed record behind the compact summary tree output.
 

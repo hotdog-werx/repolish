@@ -76,11 +76,19 @@ class ProviderOverrides(BaseModel):
             'Full form: dict with ``enabled``, ``priority``, ``skip_render`` fields.'
         ),
     )
-    validators: dict[str, dict[str, bool]] | None = Field(
+    validators: dict[str, dict[str, bool] | bool] | None = Field(
         default=None,
         description=(
             'Per-file validator toggles keyed by destination path. '
             'Example: {"config.toml": {"lint": false, "schema": true}}.'
+        ),
+    )
+    insertions: dict[str, dict[str, bool] | bool] | None = Field(
+        default=None,
+        description=(
+            'Per-file insertion toggles keyed by destination path. '
+            'Example: {"README.md": {"render-year": false}}. '
+            'Use {"README.md": false} to disable all insertions for a file.'
         ),
     )
 
@@ -119,6 +127,23 @@ class ProviderOverrides(BaseModel):
         value: dict[str, dict[str, bool] | bool] | None,
     ) -> dict[str, dict[str, bool]] | None:
         """Normalize validator overrides to a dict of enabled flags."""
+        if value is None:
+            return value
+        normalized: dict[str, dict[str, bool]] = {}
+        for path, val in value.items():
+            if isinstance(val, bool):
+                normalized[path] = {'enabled': val}
+            elif isinstance(val, dict):
+                normalized[path] = {name: bool(enabled) for name, enabled in val.items()}
+        return normalized
+
+    @field_validator('insertions', mode='before')
+    @classmethod
+    def normalize_insertions(
+        cls,
+        value: dict[str, dict[str, bool] | bool] | None,
+    ) -> dict[str, dict[str, bool]] | None:
+        """Normalize insertion overrides to a dict of enabled flags."""
         if value is None:
             return value
         normalized: dict[str, dict[str, bool]] = {}
