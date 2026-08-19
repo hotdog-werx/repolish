@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 def _build_insertion_attempts(
     *,
     params: tuple[inspect.Parameter, ...],
-    accepts_single_positional: bool,
+    accepts_block_single_positional: bool,
     base_kwargs: dict[str, object],
     block: InsertionBlock,
     own_ctx: BaseContext,
@@ -51,15 +51,11 @@ def _build_insertion_attempts(
     )
 
     attempts: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    if accepts_single_positional:
+    attempts.append(((), keyword_args))
+    attempts.append((tuple(block.args), {}))
+    if accepts_block_single_positional:
         attempts.append(((block,), {}))
-    attempts.extend(
-        [
-            ((), keyword_args),
-            (tuple(block.args), {}),
-            ((), {}),
-        ],
-    )
+    attempts.append(((), {}))
     return attempts
 
 
@@ -112,7 +108,27 @@ def _is_insertion_block_annotation(annotation: object) -> bool:
     """Check if an annotation refers to InsertionBlock."""
     if annotation is InsertionBlock:
         return True
-    return bool(isinstance(annotation, str) and annotation == 'InsertionBlock')
+    if isinstance(annotation, str):
+        return annotation == 'InsertionBlock' or annotation.endswith('.InsertionBlock')
+    forward_arg = getattr(annotation, '__forward_arg__', None)
+    if isinstance(forward_arg, str):
+        return forward_arg == 'InsertionBlock' or forward_arg.endswith('.InsertionBlock')
+    return False
+
+
+def _accepts_block_single_positional(
+    params: tuple[inspect.Parameter, ...],
+) -> bool:
+    """Return True when a callable's only positional param is explicitly block-like."""
+    if len(params) != 1:
+        return False
+    param = params[0]
+    if param.kind not in {
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    }:
+        return False
+    return param.name == 'block' or _is_insertion_block_annotation(param.annotation)
 
 
 def _build_insertion_wrapper(
@@ -122,10 +138,7 @@ def _build_insertion_wrapper(
     """Adapt provider insertion functions to the writer's block renderer contract."""
     sig = inspect.signature(fn)
     params = tuple(sig.parameters.values())
-    accepts_single_positional = len(params) == 1 and params[0].kind in {
-        inspect.Parameter.POSITIONAL_ONLY,
-        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-    }
+    accepts_block_single_positional = _accepts_block_single_positional(params)
 
     def _invoke(
         args: tuple[object, ...],
@@ -150,7 +163,7 @@ def _build_insertion_wrapper(
 
         attempts = _build_insertion_attempts(
             params=params,
-            accepts_single_positional=accepts_single_positional,
+            accepts_block_single_positional=accepts_block_single_positional,
             base_kwargs=base_kwargs,
             block=block,
             own_ctx=own_ctx,

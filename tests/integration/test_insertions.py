@@ -263,7 +263,7 @@ def test_provider_insertion_function_signature_variants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test all insertion function signature variants in a single file."""
-    # Create a file with 5 insertion blocks, each using a different signature style
+    # Create a file with insertion blocks covering signature dispatch variants
     _write(
         tmp_path / 'config.txt',
         """\
@@ -275,6 +275,10 @@ def test_provider_insertion_function_signature_variants(
 
         # repolish:on positional_func hello world
         PLACEHOLDER_POSITIONAL
+        # repolish:off
+
+        # repolish:on single_arg_positional_func hello_single
+        PLACEHOLDER_SINGLE_ARG_POSITIONAL
         # repolish:off
 
         # repolish:on varargs_func a b c d
@@ -310,6 +314,9 @@ def test_provider_insertion_function_signature_variants(
         def positional_func(arg1: str, arg2: str):
             return f'positional:{arg1}:{arg2}'
 
+        def single_arg_positional_func(arg1: str):
+            return f'single-positional:{arg1}'
+
         def varargs_func(*args):
             return 'varargs:' + '-'.join(args)
 
@@ -329,6 +336,7 @@ def test_provider_insertion_function_signature_variants(
             'config.txt': {
                 'zero_arg_func': zero_arg_func,
                 'positional_func': positional_func,
+                'single_arg_positional_func': single_arg_positional_func,
                 'varargs_func': varargs_func,
                 'block_func': block_func,
                 'context_func': context_func,
@@ -357,6 +365,10 @@ def test_provider_insertion_function_signature_variants(
         positional:hello:world
         # repolish:off
 
+        # repolish:on single_arg_positional_func hello_single
+        single-positional:hello_single
+        # repolish:off
+
         # repolish:on varargs_func a b c d
         varargs:a-b-c-d
         # repolish:off
@@ -379,7 +391,7 @@ def test_provider_insertion_function_signature_variants(
         """,
     )
     assert (tmp_path / 'config.txt').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (7 ok, 0 failed)' in result.output
+    assert 'insertions: ✓ ok (8 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_and_validator_on_non_owned_file(
