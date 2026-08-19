@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import traceback
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,7 @@ from repolish.insertions import write_back
 from repolish.insertions.parser import InsertionBlock, parse_text
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from repolish.insertions.writer import WriteBackResult
@@ -45,6 +47,15 @@ class _StagedCheckResult:
 
     handled: bool
     diff: tuple[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class _DisabledInsertionEntry:
+    """One insertion block that was intentionally disabled by overrides."""
+
+    tag: str
+    function: str
+    message: str
 
 
 def _classify_block_for_provider(
@@ -134,7 +145,8 @@ def _filter_provider_diagnostics(
     failed = 0
     filtered = []
     for d in diagnostics:
-        func_name = tag_to_func.get(d.tag, d.tag)
+        tag = d.tag if isinstance(d.tag, str) else ''
+        func_name = tag_to_func.get(tag, tag)
         if _classify_block_for_provider(
             func_name,
             provider_alias,
@@ -150,6 +162,7 @@ def _process_provider_insertions(
     original_text: str,
     result: WriteBackResult,
     tag_to_func: dict[str, str],
+    disabled_entries: list[_DisabledInsertionEntry],
 ) -> tuple[InsertionFileResult, dict[str, InsertionFileResult]]:
     """Process insertions for each provider and write reports."""
     provider_results: dict[str, InsertionFileResult] = {}
@@ -175,6 +188,15 @@ def _process_provider_insertions(
             provider_alias,
             is_first_provider=is_first_provider,
         )
+        provider_disabled = [
+            entry
+            for entry in disabled_entries
+            if _classify_block_for_provider(
+                entry.function,
+                provider_alias,
+                is_first_provider=is_first_provider,
+            )
+        ]
 
         report_file = ctx.reports_dir / f'insertions.{_report_slug(ctx.rel_path)}.{provider_alias}.json'
         report_file.write_text(
@@ -185,8 +207,12 @@ def _process_provider_insertions(
                     'provider_alias': provider_alias,
                     'total_blocks': len(provider_blocks),
                     'failed_blocks': provider_failed,
+                    'disabled_blocks': len(provider_disabled),
                     'functions': provider_functions,
-                    'diagnostics': [{'tag': diag.tag, 'message': diag.message} for diag in provider_diagnostics],
+                    'diagnostics': [
+                        *[_diagnostic_report_entry(diag) for diag in provider_diagnostics],
+                        *[_disabled_report_entry(entry) for entry in provider_disabled],
+                    ],
                 },
                 indent=2,
             ),
@@ -198,30 +224,126 @@ def _process_provider_insertions(
         provider_results[provider_alias] = InsertionFileResult(
             total_blocks=len(provider_blocks),
             failed_blocks=provider_failed,
+            disabled_blocks=len(provider_disabled),
             functions=tuple(provider_functions),
             diagnostics=tuple(d.message for d in provider_diagnostics),
+            disabled_messages=tuple(entry.message for entry in provider_disabled),
             report_path=report_file.as_posix(),
         )
 
     aggregated = InsertionFileResult(
         total_blocks=result.total_blocks,
         failed_blocks=result.failed_blocks,
+        disabled_blocks=len(disabled_entries),
         functions=result.functions,
         diagnostics=tuple(diag.message for diag in result.diagnostics),
+        disabled_messages=tuple(entry.message for entry in disabled_entries),
         report_path=report_paths[0] if report_paths else None,
     )
 
     return aggregated, provider_results
 
 
+def _diagnostic_report_entry(diag: object) -> dict[str, str | list[str] | None]:
+    """Build a JSON-safe diagnostics payload including traceback when available."""
+    exception = getattr(diag, 'exception', None)
+    trace_lines = None
+    if exception is not None:
+        trace_text = ''.join(
+            traceback.format_exception(
+                type(exception),
+                exception,
+                exception.__traceback__,
+            ),
+        )
+        trace_lines = trace_text.splitlines()
+    return {
+        'kind': 'error',
+        'tag': getattr(diag, 'tag', '<unknown>'),
+        'message': getattr(diag, 'message', ''),
+        'traceback': trace_lines,
+    }
+
+
+def _disabled_report_entry(
+    entry: _DisabledInsertionEntry,
+) -> dict[str, str | list[str] | None]:
+    """Build a report diagnostics payload for a block disabled by config overrides."""
+    return {
+        'kind': 'disabled',
+        'tag': entry.tag,
+        'function': entry.function,
+        'message': entry.message,
+        'traceback': None,
+    }
+
+
+def _resolve_renderer_for_function(
+    registry: dict,
+    function_name: str,
+) -> Callable[[InsertionBlock], str] | None:
+    """Resolve a renderer the same way insertion writing resolves function lookups."""
+    renderer = registry.get(function_name)
+    if renderer is None and ':' in function_name:
+        renderer = registry.get(function_name.rsplit(':', 1)[1])
+    return renderer
+
+
+def _disabled_reason_for_block(
+    block: InsertionBlock,
+    registry: dict,
+) -> str | None:
+    """Return a human-readable disable reason for one block, when configured."""
+    renderer = _resolve_renderer_for_function(registry, block.function)
+    if renderer is None:
+        return None
+
+    disabled_tags = getattr(renderer, '__repolish_disabled_tags__', frozenset())
+    if block.tag in disabled_tags:
+        return f'Insertion block disabled by tag override: tag={block.tag!r}, function={block.function!r}.'
+
+    disabled_functions = getattr(
+        renderer,
+        '__repolish_disabled_functions__',
+        frozenset(),
+    )
+    if disabled_functions:
+        return f'Insertion block disabled by function override: tag={block.tag!r}, function={block.function!r}.'
+    return None
+
+
+def _collect_disabled_entries(
+    blocks: list[InsertionBlock],
+    registry: dict,
+) -> list[_DisabledInsertionEntry]:
+    """Collect disabled insertion metadata for summary/report output."""
+    entries: list[_DisabledInsertionEntry] = []
+    for block in blocks:
+        reason = _disabled_reason_for_block(block, registry)
+        if reason is not None:
+            entries.append(
+                _DisabledInsertionEntry(
+                    tag=block.tag,
+                    function=block.function,
+                    message=reason,
+                ),
+            )
+    return entries
+
+
 def _apply_file_insertions(
     ctx: _ProviderInsertionContext,
+    *,
+    persist_changes: bool,
 ) -> tuple[InsertionFileResult, dict[str, dict[str, InsertionFileResult]]]:
     """Apply insertions for a single file and return results."""
     target = ctx.base_dir / ctx.rel_path
     original_text = target.read_text(encoding='utf-8')
+    parsed = parse_text(original_text)
+    disabled_entries = _collect_disabled_entries(parsed.blocks, ctx.registry)
     result = write_back(original_text, ctx.registry)
-    target.write_text(result.text, encoding='utf-8')
+    if persist_changes:
+        target.write_text(result.text, encoding='utf-8')
 
     if result.total_blocks == 0:
         return (
@@ -234,12 +356,13 @@ def _apply_file_insertions(
             {ctx.rel_path: {}},
         )
 
-    tag_to_func = _build_tag_to_func_map(parse_text(original_text).blocks)
+    tag_to_func = _build_tag_to_func_map(parsed.blocks)
     aggregated, per_provider = _process_provider_insertions(
         ctx,
         original_text,
         result,
         tag_to_func,
+        disabled_entries,
     )
 
     if aggregated.diagnostics:
@@ -256,8 +379,11 @@ def _apply_file_insertions(
 def _should_skip_file(
     rel_path: str,
     base_dir: Path,
+    paused_files: frozenset[str] | None = None,
 ) -> bool:
     """Check if a file should be skipped for insertion processing."""
+    if paused_files and rel_path in paused_files:
+        return True
     target = base_dir / rel_path
     return not target.exists() or target.is_dir()
 
@@ -289,10 +415,11 @@ def apply_registered_insertions(
     provider_results: dict[str, dict[str, InsertionFileResult]] = {}
     reports_dir = base_dir / '.repolish' / '_' / 'insertions'
     reports_dir.mkdir(parents=True, exist_ok=True)
+    paused_files = providers.paused_files
 
     for rel_path, registry in providers.file_insertions.items():
         provider_ids = providers.insertion_sources.get(rel_path, [])
-        if not _should_skip_file(rel_path, base_dir):
+        if not _should_skip_file(rel_path, base_dir, paused_files):
             ctx = _ProviderInsertionContext(
                 rel_path=rel_path,
                 registry=registry,
@@ -302,7 +429,51 @@ def apply_registered_insertions(
                 reports_dir=reports_dir,
             )
 
-            aggregated, file_provider_results = _apply_file_insertions(ctx)
+            aggregated, file_provider_results = _apply_file_insertions(
+                ctx,
+                persist_changes=True,
+            )
+            results[rel_path] = aggregated
+            _merge_provider_results(
+                provider_results,
+                rel_path,
+                file_provider_results[ctx.rel_path],
+            )
+
+    return results, provider_results
+
+
+def summarize_registered_insertions(
+    providers: SessionBundle,
+    base_dir: Path,
+    pid_to_alias: dict[str, str] | None = None,
+) -> tuple[
+    dict[str, InsertionFileResult],
+    dict[str, dict[str, InsertionFileResult]],
+]:
+    """Collect insertion summaries without mutating project files."""
+    results: dict[str, InsertionFileResult] = {}
+    provider_results: dict[str, dict[str, InsertionFileResult]] = {}
+    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    paused_files = providers.paused_files
+
+    for rel_path, registry in providers.file_insertions.items():
+        provider_ids = providers.insertion_sources.get(rel_path, [])
+        if not _should_skip_file(rel_path, base_dir, paused_files):
+            ctx = _ProviderInsertionContext(
+                rel_path=rel_path,
+                registry=registry,
+                base_dir=base_dir,
+                provider_ids=provider_ids,
+                pid_to_alias=pid_to_alias,
+                reports_dir=reports_dir,
+            )
+
+            aggregated, file_provider_results = _apply_file_insertions(
+                ctx,
+                persist_changes=False,
+            )
             results[rel_path] = aggregated
             _merge_provider_results(
                 provider_results,
@@ -330,10 +501,11 @@ def stage_registered_insertions(
     and materialize the result in staged output.
     """
     staged_root = setup_output / 'repolish'
+    paused_files = providers.paused_files
 
     for rel_path, registry in providers.file_insertions.items():
         target = base_dir / rel_path
-        if not target.exists() or target.is_dir():
+        if _should_skip_file(rel_path, base_dir, paused_files):
             continue
 
         staged_file = staged_root / rel_path
@@ -355,9 +527,10 @@ def check_registered_insertions(
 ) -> list[tuple[str, str]]:
     """Return insertion drift diffs for check mode without mutating files."""
     diffs: list[tuple[str, str]] = []
+    paused_files = providers.paused_files
 
     for rel_path, registry in providers.file_insertions.items():
-        if not _should_skip_file(rel_path, base_dir):
+        if not _should_skip_file(rel_path, base_dir, paused_files):
             target = base_dir / rel_path
             staged_result = _staged_check_result(
                 rel_path=rel_path,

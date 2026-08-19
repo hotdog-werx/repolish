@@ -18,8 +18,10 @@ class InsertionFileResult:
 
     total_blocks: int
     failed_blocks: int
+    disabled_blocks: int = 0
     functions: tuple[str, ...] = field(default_factory=tuple)
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    disabled_messages: tuple[str, ...] = field(default_factory=tuple)
     report_path: str | None = None
 
 

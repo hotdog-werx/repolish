@@ -27,6 +27,7 @@ def test_check_registered_insertions_without_staged_output_uses_rendered_diff(
                 'render': lambda: 'generated',
             },
         },
+        paused_files=set(),
     )
 
     diffs = check_registered_insertions(
@@ -52,6 +53,7 @@ def test_check_registered_insertions_missing_staged_file_falls_back_and_detects_
                 'render': lambda: 'generated',
             },
         },
+        paused_files=set(),
     )
 
     setup_output = tmp_path / '.staging'

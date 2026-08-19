@@ -17,6 +17,7 @@ from repolish.commands.apply.display import (
 from repolish.commands.apply.insertions import (
     apply_registered_insertions,
     stage_registered_insertions,
+    summarize_registered_insertions,
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
@@ -210,6 +211,13 @@ def apply_session(
                 disable_auto_staging=is_root_pass,
             ),
         )
+        file_results, provider_results = summarize_registered_insertions(
+            providers,
+            base_dir,
+            pid_to_alias,
+        )
+        session.insertion_results = file_results
+        session.provider_insertion_results = provider_results
         session.apply_result = check_result
         return rc
 

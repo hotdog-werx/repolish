@@ -387,12 +387,13 @@ def _format_insertion_status(
     ok = result.failed_blocks == 0
     marker = '✓' if ok else '✗'
     style = 'dim green' if ok else 'yellow'
-    succeeded = result.total_blocks - result.failed_blocks
+    succeeded = result.total_blocks - result.failed_blocks - result.disabled_blocks
     status_label = 'ok' if ok else 'failed'
+    disabled_segment = f', {result.disabled_blocks} disabled' if result.disabled_blocks else ''
     return (
         marker,
         style,
-        f'{status_label} ({succeeded} ok, {result.failed_blocks} failed)',
+        f'{status_label} ({succeeded} ok, {result.failed_blocks} failed{disabled_segment})',
     )
 
 

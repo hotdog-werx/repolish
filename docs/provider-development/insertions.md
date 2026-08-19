@@ -10,6 +10,14 @@ while the rest of the file stays hand-edited.
 - `create_file_validators()` checks final files
 - `create_file_insertions()` fills explicit blocks in existing files
 
+Quick checklist:
+
+- Use explicit destination paths in `create_file_insertions()`.
+- Prefer explicit parameters over `*args` when possible.
+- Use keyword-only typed context injection (`BlockContext` or `InsertionBlock`).
+- Use `key=value` marker args when argument order should not matter.
+- Use `paused_files` or `overrides.insertions` to temporarily pause ownership.
+
 ## Where insertions fit in apply
 
 Insertions run in the apply pipeline after generated files are written, then
@@ -59,8 +67,14 @@ Example with args:
 <!-- repolish:off:env -->
 ```
 
-When using empty tags, you cannot nest blocks with the same empty tag (just like
-any repeated tag name). Multiple sequential empty-tag blocks work fine.
+Named args are also supported with `key=value` pairs (including quoted values):
+
+```html
+<!-- repolish:on:cfg render-config arg1='this is value1' third-arg=value3 -->
+<!-- repolish:off:cfg -->
+```
+
+Nested insertion tags are not supported. Multiple sequential blocks are fine.
 
 ## Registering insertion functions
 
@@ -72,13 +86,22 @@ name.
 Insertion functions are called based on their signature. The system uses
 **strict typing** - you must declare your parameters explicitly.
 
+As of `v1.10.0`, repolish no longer auto-injects legacy untyped kwargs like
+`context`, `tag`, `args`, `function`, `body`, or `comment_style`.
+
+This is technically a breaking change, but it aligns behavior with the original
+insertion API intent. Supporting many implicit untyped kwargs was not intended
+as a long-term contract. Requiring providers to declare each of those values as
+separate typed keyword parameters is noisy and hard to maintain, which is why
+the insertion metadata was deliberately bundled into `BlockContext` and
+`InsertionBlock`.
+
 **Recommended: keyword-only `context` parameter**
 
 Use `BlockContext` to access insertion metadata and repolish context:
 
 ```python
-from repolish import BaseContext, BaseInputs, Provider
-from repolish.insertions import BlockContext
+from repolish import BaseContext, BaseInputs, BlockContext, Provider
 from datetime import datetime
 
 
@@ -125,6 +148,37 @@ def env_info(env_var: str, default: str = "unknown") -> str:
 
 Marker: `<!-- repolish:on:env env-info PYTHON_VERSION 3.11 -->`
 
+**Named marker arguments (`key=value`)**
+
+Use named marker args when you want order-independent arguments and optional
+omissions without placeholder values.
+
+```python
+def render_config(arg1: str | None, arg2: str | None, third_arg: str) -> str:
+        return f"{arg1=} {arg2=} {third_arg=}"
+```
+
+Marker examples:
+
+- `<!-- repolish:on:cfg render-config third-arg=value3 arg1='this is value1' -->`
+- `<!-- repolish:on:cfg render-config third-arg=value3 -->`
+
+Rules:
+
+- Named keys must match function parameter names.
+- Marker keys may use `-` and are normalized to `_` for Python names.
+- Named args can be provided in any order.
+- Omitted named args are filled with `None` only when the parameter accepts
+  `None` (for example `str | None` or `Optional[str]`).
+- Unknown keys or missing non-optional args produce insertion diagnostics.
+
+Named syntax is only activated when all marker tokens are `key=value` and at
+least one key matches a callable parameter name. Otherwise marker args are
+treated as positional tokens for compatibility.
+
+This avoids placeholder markers like `null null value` and lets callers provide
+only meaningful keys.
+
 **Variadic arguments (`*args`)**
 
 Only use `*args` when you need truly flexible arity for marker arguments:
@@ -163,7 +217,8 @@ def static_header() -> str:
 
 Signature behavior:
 
-1. Marker args are always passed as positional string args.
+1. Marker args are passed as positional strings, or as named `key=value` args
+   when the marker uses named syntax.
 2. Parameters annotated as `BlockContext` or `InsertionBlock` are auto-injected
    when declared as keyword-only parameters.
 3. If invocation fails with `TypeError`, repolish retries with no marker args
@@ -184,7 +239,7 @@ clear and makes the final insertion target set fully visible in provider output.
 ```python
 from pathlib import Path
 
-from repolish import BaseContext, BaseInputs, Provider
+from repolish import BaseContext, BaseInputs, BlockContext, Provider
 
 
 class Ctx(BaseContext):
@@ -196,8 +251,8 @@ class DocsProvider(Provider[Ctx, BaseInputs]):
         return Ctx()
 
     def create_file_insertions(self, context: Ctx):
-        def render_last_updated(*, context, args):
-            return context.repolish.provider.version
+        def render_last_updated(*, block: BlockContext) -> str:
+            return block.repolish.provider.version
 
         root = context.repolish.workspace.root_dir
         docs_dir = Path(root) / 'docs'
@@ -241,6 +296,75 @@ insertions: ✗ failed (1 ok, 1 failed)
 ```
 
 This makes partial success explicit for files with multiple insertion blocks.
+
+## Pausing insertion ownership
+
+When an insertion function is temporarily broken, projects can pause insertion
+ownership without deleting markers or generated content.
+
+### Pause by file (`paused_files`)
+
+Top-level `paused_files` skips insertion apply and insertion drift checks for
+those files:
+
+```yaml
+paused_files:
+  - README.md
+```
+
+This keeps current file content unchanged and prevents `apply --check` drift
+from paused insertion files.
+
+### Disable by provider override (`overrides.insertions`)
+
+Providers can be selectively disabled by file and function:
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./providers/my-provider
+    overrides:
+      insertions:
+        README.md:
+          render-year: false
+```
+
+When a specific insertion function is disabled this way, repolish preserves the
+block's current body content instead of rewriting it.
+
+Function-level disable applies to all blocks in that file that call the
+function.
+
+Function override keys accept either `render-name` or `render_name`.
+
+Disable one block by tag (useful when multiple blocks share one function):
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./providers/my-provider
+    overrides:
+      insertions:
+        README.md:
+          tag:two: false
+```
+
+Tag overrides are evaluated against the marker tag (`repolish:on:<tag> ...`).
+Only matching blocks are paused; other blocks using the same function still run.
+
+Disable all insertions for one file:
+
+```yaml
+providers:
+  my-provider:
+    provider_root: ./providers/my-provider
+    overrides:
+      insertions:
+        README.md: false
+```
+
+This lets teams keep existing inserted content while temporarily handing full
+ownership back to the project until provider fixes are available.
 
 ## Real-world examples
 
@@ -355,10 +479,10 @@ information. Run `repolish apply` in CI to keep it fresh.
 
 ## Insertion reports
 
-For each file with insertion blocks, repolish writes a report artifact:
+For each file with insertion blocks, repolish writes report artifacts:
 
 ```text
-.repolish/_/insertions/insertions.<path-slug>.json
+.repolish/_/insertions/insertions.<path-slug>.<provider-alias>.json
 ```
 
 Report fields include:
@@ -367,8 +491,16 @@ Report fields include:
 - `source_provider`
 - `total_blocks`
 - `failed_blocks`
+- `disabled_blocks`
 - `functions`
 - `diagnostics`
+
+Diagnostics include message text and traceback when an insertion callable raises
+an exception. The `traceback` field is emitted as `list[str]` (one line per
+entry) for easier reading in JSON.
+
+Disabled blocks are also included in diagnostics with `kind: disabled` and
+include the related tag/function details.
 
 These files are the detailed record behind the compact summary tree output.
 

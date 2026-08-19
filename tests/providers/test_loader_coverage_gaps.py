@@ -1,3 +1,4 @@
+import inspect
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -25,10 +26,12 @@ from repolish.providers.context import (
     _apply_overrides_to_provider_contexts,
 )
 from repolish.providers.contributions import (
+    _annotation_accepts_none,
     _apply_annotated_tm,
     _collect_promoted_fm,
     _collect_provider_contribution,
     _handle_promote_file_mappings,
+    _parameter_accepts_none,
     _process_provider_fm,
     collect_provider_contributions,
 )
@@ -111,6 +114,29 @@ def test_collect_provider_contributions_skips_missing_instance():
     # nothing should have changed
     assert acc.merged_anchors == {}
     assert acc.merged_file_mappings == {}
+
+
+def test_parameter_accepts_none_when_default_is_none() -> None:
+    """Parameters with default None are considered None-compatible."""
+
+    def f(required: str, optional: str | None = None) -> tuple[str, str | None]:
+        return required, optional
+
+    param = inspect.signature(f).parameters['optional']
+    assert _parameter_accepts_none(param) is True
+
+
+def test_annotation_accepts_none_for_string_optional_forms() -> None:
+    """String annotations with Optional/None forms are detected as None-compatible."""
+    assert _annotation_accepts_none('None') is True
+    assert _annotation_accepts_none('Optional[str]') is True
+    assert _annotation_accepts_none('str | None') is True
+
+
+def test_annotation_accepts_none_for_none_literal_annotations() -> None:
+    """Literal None annotations are treated as None-compatible."""
+    assert _annotation_accepts_none(None) is True
+    assert _annotation_accepts_none(type(None)) is True
 
 
 def test_apply_overrides_to_model_noop_returns_original() -> None:
