@@ -132,6 +132,7 @@ def _assert_report_failed_blocks(tmp_path: Path, result: Result) -> None:
     assert data['functions'] == ['display-year', 'missing-function']
     assert data['diagnostics']
     assert "No renderer registered for function 'missing-function'." in data['diagnostics'][0]['message']
+    assert data['diagnostics'][0]['traceback']
 
 
 def _assert_check_drift(tmp_path: Path, result: Result) -> None:
@@ -178,7 +179,7 @@ def test_provider_insertion_missing_file_is_skipped(
     _make_insertion_provider(
         tmp_path / 'p',
         """\
-        def display_year(*, context, tag, args):
+        def display_year():
             return '2026'
         return {'missing.md': {'display-year': display_year}}""",
     )
@@ -202,7 +203,7 @@ def test_provider_insertion_check_missing_file_is_skipped(
     _make_insertion_provider(
         tmp_path / 'p',
         """\
-        def display_year(*, context, tag, args):
+        def display_year():
             return '2026'
         return {'missing.md': {'display-year': display_year}}""",
     )
@@ -298,6 +299,10 @@ def test_provider_insertion_function_signature_variants(
         PLACEHOLDER_COMBO
         # repolish:off:combo
 
+        # repolish:on:named named_args_func third-arg=value3 arg-one='this is value1'
+        PLACEHOLDER_NAMED_ARGS
+        # repolish:off:named
+
         # repolish:on empty_tag_func
         PLACEHOLDER_EMPTY_TAG
         # repolish:off
@@ -340,6 +345,13 @@ def test_provider_insertion_function_signature_variants(
                 f'fn={insertion_block.function}'
             )
 
+        def named_args_func(
+            arg_one: str | None,
+            arg_two: str | None,
+            third_arg: str,
+        ):
+            return f'named:{arg_one}:{arg_two}:{third_arg}'
+
         def empty_tag_func():
             return 'empty-tag-works'
 
@@ -352,6 +364,7 @@ def test_provider_insertion_function_signature_variants(
                 'context_func': context_func,
                 'block_param_func': block_param_func,
                 'combo_func': combo_func,
+                'named_args_func': named_args_func,
                 'empty_tag_func': empty_tag_func,
             }
         }""",
@@ -396,13 +409,60 @@ def test_provider_insertion_function_signature_variants(
         combo:value_one:value_two:tag=combo:fn=combo_func
         # repolish:off:combo
 
+        # repolish:on:named named_args_func third-arg=value3 arg-one='this is value1'
+        named:this is value1:None:value3
+        # repolish:off:named
+
         # repolish:on empty_tag_func
         empty-tag-works
         # repolish:off
         """,
     )
     assert (tmp_path / 'config.txt').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (8 ok, 0 failed)' in result.output
+    assert 'insertions: ✓ ok (9 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_named_args_validation_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Named insertion args validate keys and omitted required parameters."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Named-arg validation
+
+        <!-- repolish:on:one render-config bad-key=oops required-arg=ok -->
+        <!-- repolish:off:one -->
+
+        <!-- repolish:on:two render-config optional-arg=only -->
+        <!-- repolish:off:two -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_config(required_arg: str, optional_arg: str | None):
+            return f'rendered:{required_arg}:{optional_arg}'
+
+        return {'README.md': {'render-config': render_config}}""",
+    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    assert 'insertions: ✗ failed (0 ok, 2 failed)' in result.output
+
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    assert report.exists()
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['failed_blocks'] == 2
+    assert len(data['diagnostics']) == 2
+    messages = [d['message'] for d in data['diagnostics']]
+    assert any('Unknown named insertion args' in msg for msg in messages)
+    assert any("Missing named insertion arg 'required_arg'" in msg for msg in messages)
 
 
 def test_provider_insertion_and_validator_on_non_owned_file(
@@ -486,14 +546,14 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
     _make_insertion_provider(
         tmp_path / 'alpha',
         """\
-        def display_year(*, args):
+        def display_year():
             return '2026:alpha'
         return {'README.md': {'display-year': display_year}}""",
     )
     _make_insertion_provider(
         tmp_path / 'beta',
         """\
-        def display_year(*, args):
+        def display_year():
             return '2026:beta'
         return {'README.md': {'display-year': display_year}}""",
     )
@@ -546,7 +606,7 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
     _make_insertion_provider(
         tmp_path / 'p',
         """\
-        def display_year(*, context, tag, args):
+        def display_year():
             return '2026'
         return {'README.md': {'display-year': display_year}}""",
     )
@@ -651,6 +711,8 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
     assert data['functions'] == ['bad-renderer']
     assert data['diagnostics']
     assert 'cannot combine *args with BlockContext/InsertionBlock annotations' in data['diagnostics'][0]['message']
+    assert data['diagnostics'][0]['traceback']
+    assert 'bad_renderer' in data['diagnostics'][0]['traceback']
 
 
 # -----------------------------------------------------------------------------
@@ -671,7 +733,7 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             <!-- repolish:off:year -->
             """,
             insertion_body="""\
-            def display_year(*, context, tag, args):
+            def display_year():
                 return '2026'
             return {'README.md': {'display-year': display_year}}""",
             expected_content="""\
@@ -723,8 +785,7 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             <!-- repolish:off:three -->
             """,
             insertion_body="""\
-            def display_mode(*, args):
-                flag = args[0]
+            def display_mode(flag: str):
                 if flag == 'on':
                     return 'VISIBLE'
                 if flag == 'off':
@@ -794,12 +855,13 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             <!-- repolish:off:year -->
             """,
             insertion_body="""\
-            def display_year(*, context, tag, args):
-                assert tag == 'year'
-                assert args == ()
-                assert context.repolish.workspace.mode in {'standalone', 'root', 'member'}
+            def display_year(*, block_context: BlockContext):
+                assert block_context.tag == 'year'
+                assert block_context.args == ()
+                assert block_context.repolish.workspace.mode in {'standalone', 'root', 'member'}
                 return '2026'
             return {'README.md': {'display-year': display_year}}""",
+            extra_imports='from repolish import BlockContext',
             expected_content="""\
             This is the current year
 
@@ -826,7 +888,7 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             <!-- repolish:off:bad -->
             """,
             insertion_body="""\
-def display_year(*, args):
+def display_year():
     return '2026'
 return {'README.md': {'display-year': display_year}}""",
             expected_content="""\
@@ -853,7 +915,7 @@ return {'README.md': {'display-year': display_year}}""",
             <!-- repolish:off:year -->
             """,
             insertion_body="""\
-            def display_year(*, context, tag, args):
+            def display_year():
                 return '2026'
             return {'README.md': {'display-year': display_year}}""",
             expected_content="""\
@@ -964,7 +1026,7 @@ class Ctx(BaseContext):
 
 class RootHandler(ModeHandler[Ctx, BaseInputs]):
     def create_file_insertions(self, ctx):
-        def insert_version(*, context, tag, args):
+        def insert_version():
             return '1.0.0'
 
         return {'README.workspace.md': {'insert-version': insert_version}}
@@ -1031,7 +1093,7 @@ def test_provider_insertion_with_post_process_formatting(
     _make_insertion_provider(
         tmp_path / 'p',
         """\
-        def insert_spaces(*, context, tag, args):
+        def insert_spaces():
             return '     has_spaces'
         return {'test.txt': {'insert-spaces': insert_spaces}}""",
     )
@@ -1103,7 +1165,7 @@ def test_provider_insertion_empty_tag_syntax(
     _make_insertion_provider(
         test_dir / 'p',
         """\
-        def display_year(*, context, tag, args):
+        def display_year():
             return '2026'
         return {'test.md': {'display-year': display_year}}""",
     )
@@ -1145,7 +1207,7 @@ def test_provider_insertion_no_colon_syntax(
     _make_insertion_provider(
         test_dir / 'p',
         """\
-        def display_year(*, context, tag, args):
+        def display_year():
             return '2026'
         return {'test.md': {'display-year': display_year}}""",
     )
@@ -1193,7 +1255,7 @@ def test_post_process_applies_in_both_apply_and_check_mode(
     _make_insertion_provider(
         tmp_path / 'p',
         """\
-        def insert_spaces(*, context, tag, args):
+        def insert_spaces():
             return '     has_spaces'
         return {'test.txt': {'insert-spaces': insert_spaces}}""",
         extra_imports='from repolish.providers.models import TemplateMapping',

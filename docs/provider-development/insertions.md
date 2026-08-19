@@ -59,6 +59,13 @@ Example with args:
 <!-- repolish:off:env -->
 ```
 
+Named args are also supported with `key=value` pairs (including quoted values):
+
+```html
+<!-- repolish:on:cfg render-config arg1='this is value1' third-arg=value3 -->
+<!-- repolish:off:cfg -->
+```
+
 When using empty tags, you cannot nest blocks with the same empty tag (just like
 any repeated tag name). Multiple sequential empty-tag blocks work fine.
 
@@ -71,6 +78,9 @@ name.
 
 Insertion functions are called based on their signature. The system uses
 **strict typing** - you must declare your parameters explicitly.
+
+As of `v1.10.0`, repolish no longer auto-injects legacy untyped kwargs like
+`context`, `tag`, `args`, `function`, `body`, or `comment_style`.
 
 **Recommended: keyword-only `context` parameter**
 
@@ -125,6 +135,33 @@ def env_info(env_var: str, default: str = "unknown") -> str:
 
 Marker: `<!-- repolish:on:env env-info PYTHON_VERSION 3.11 -->`
 
+**Named marker arguments (`key=value`)**
+
+Use named marker args when you want order-independent arguments and optional
+omissions without placeholder values.
+
+```python
+def render_config(arg1: str | None, arg2: str | None, third_arg: str) -> str:
+        return f"{arg1=} {arg2=} {third_arg=}"
+```
+
+Marker examples:
+
+- `<!-- repolish:on:cfg render-config third-arg=value3 arg1='this is value1' -->`
+- `<!-- repolish:on:cfg render-config third-arg=value3 -->`
+
+Rules:
+
+- Named keys must match function parameter names.
+- Marker keys may use `-` and are normalized to `_` for Python names.
+- Named args can be provided in any order.
+- Omitted named args are filled with `None` only when the parameter accepts
+  `None` (for example `str | None` or `Optional[str]`).
+- Unknown keys or missing non-optional args produce insertion diagnostics.
+
+This avoids placeholder markers like `null null value` and lets callers provide
+only meaningful keys.
+
 **Variadic arguments (`*args`)**
 
 Only use `*args` when you need truly flexible arity for marker arguments:
@@ -163,7 +200,8 @@ def static_header() -> str:
 
 Signature behavior:
 
-1. Marker args are always passed as positional string args.
+1. Marker args are passed as positional strings, or as named `key=value` args
+   when the marker uses named syntax.
 2. Parameters annotated as `BlockContext` or `InsertionBlock` are auto-injected
    when declared as keyword-only parameters.
 3. If invocation fails with `TypeError`, repolish retries with no marker args

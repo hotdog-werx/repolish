@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import traceback
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -134,7 +135,8 @@ def _filter_provider_diagnostics(
     failed = 0
     filtered = []
     for d in diagnostics:
-        func_name = tag_to_func.get(d.tag, d.tag)
+        tag = d.tag if isinstance(d.tag, str) else ''
+        func_name = tag_to_func.get(tag, tag)
         if _classify_block_for_provider(
             func_name,
             provider_alias,
@@ -186,7 +188,7 @@ def _process_provider_insertions(
                     'total_blocks': len(provider_blocks),
                     'failed_blocks': provider_failed,
                     'functions': provider_functions,
-                    'diagnostics': [{'tag': diag.tag, 'message': diag.message} for diag in provider_diagnostics],
+                    'diagnostics': [_diagnostic_report_entry(diag) for diag in provider_diagnostics],
                 },
                 indent=2,
             ),
@@ -212,6 +214,25 @@ def _process_provider_insertions(
     )
 
     return aggregated, provider_results
+
+
+def _diagnostic_report_entry(diag: object) -> dict[str, str | None]:
+    """Build a JSON-safe diagnostics payload including traceback when available."""
+    exception = getattr(diag, 'exception', None)
+    trace = None
+    if exception is not None:
+        trace = ''.join(
+            traceback.format_exception(
+                type(exception),
+                exception,
+                exception.__traceback__,
+            ),
+        )
+    return {
+        'tag': getattr(diag, 'tag', '<unknown>'),
+        'message': getattr(diag, 'message', ''),
+        'traceback': trace,
+    }
 
 
 def _apply_file_insertions(

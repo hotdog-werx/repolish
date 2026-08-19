@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, cast
+from types import UnionType
+from typing import TYPE_CHECKING, Union, cast, get_args, get_origin
 
 from repolish.insertions.models import BlockContext, InsertionBlock
 from repolish.providers._log import logger
@@ -35,62 +36,160 @@ if TYPE_CHECKING:
 def _build_insertion_attempts(
     *,
     params: tuple[inspect.Parameter, ...],
-    base_kwargs: dict[str, object],
     block: InsertionBlock,
     own_ctx: BaseContext,
 ) -> list[tuple[tuple[object, ...], dict[str, object]]]:
     """Return invocation attempts in order of preference for an insertion renderer."""
-    allowed = {p.name for p in params}
-    keyword_args = _build_keyword_args(
-        base_kwargs,
-        allowed,
+    keyword_args = _build_typed_injection_kwargs(
         params,
         block,
         own_ctx,
     )
+    named_call = _build_named_marker_call(params=params, marker_args=block.args)
 
     attempts: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    # Prefer the natural call form: marker args as positional args plus injected
-    # typed context kwargs, as long as this doesn't double-bind positional names.
-    if not _has_positional_keyword_conflict(
-        params,
-        keyword_args,
-        len(block.args),
-    ):
-        attempts.append((tuple(block.args), keyword_args))
+    if named_call is not None:
+        named_positional, named_kwargs = named_call
+        merged_named_kwargs = dict(keyword_args)
+        merged_named_kwargs.update(named_kwargs)
+        attempts.append((named_positional, merged_named_kwargs))
+        attempts.append((named_positional, named_kwargs))
+        attempts.append(((), merged_named_kwargs))
+
+    attempts.append((tuple(block.args), keyword_args))
     attempts.append(((), keyword_args))
     attempts.append((tuple(block.args), {}))
     attempts.append(((), {}))
     return attempts
 
 
-def _has_positional_keyword_conflict(
+def _build_named_marker_call(
+    *,
     params: tuple[inspect.Parameter, ...],
-    kwargs: dict[str, object],
-    positional_count: int,
-) -> bool:
-    """Return True when positional args would collide with provided kwargs."""
-    if not kwargs or positional_count <= 0:
-        return False
+    marker_args: tuple[str, ...],
+) -> tuple[tuple[object, ...], dict[str, object]] | None:
+    """Build a call tuple for key=value marker args, if that style is used."""
+    named_values = _parse_named_marker_args(marker_args, params)
+    if named_values is None:
+        return None
 
-    positional_or_keyword_names = [p.name for p in params if p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD]
-    consumed = set(positional_or_keyword_names[:positional_count])
-    return bool(consumed.intersection(kwargs))
+    positional_args: list[object] = []
+    keyword_args: dict[str, object] = {}
+    marker_params = _marker_value_params(params)
+    allowed = {p.name for p in marker_params}
+
+    unknown = sorted(name for name in named_values if name not in allowed)
+    if unknown:
+        allowed_list = ', '.join(sorted(allowed)) if allowed else '<none>'
+        msg = f'Unknown named insertion args: {unknown}. Allowed: {allowed_list}.'
+        raise TypeError(msg)
+
+    for param in marker_params:
+        value = _marker_value_for_param(param, named_values)
+        if param.kind in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        }:
+            positional_args.append(value)
+        else:
+            keyword_args[param.name] = value
+
+    return tuple(positional_args), keyword_args
 
 
-def _build_keyword_args(
-    base_kwargs: dict[str, object],
-    allowed: set[str],
+def _parse_named_marker_args(
+    marker_args: tuple[str, ...],
+    params: tuple[inspect.Parameter, ...],
+) -> dict[str, str] | None:
+    """Parse key=value marker args using normalized keys, or return None."""
+    if not marker_args or not all('=' in arg for arg in marker_args):
+        return None
+
+    parsed: dict[str, str] = {}
+    for token in marker_args:
+        key_raw, value = token.split('=', 1)
+        key = key_raw.strip().replace('-', '_')
+        if not key:
+            msg = f'Invalid named insertion arg {token!r}: key cannot be empty.'
+            raise TypeError(msg)
+        if key in parsed:
+            msg = f'Duplicate named insertion arg {key!r}.'
+            raise TypeError(msg)
+        parsed[key] = value
+
+    # Avoid breaking existing positional tokens that happen to contain '='.
+    marker_param_names = {p.name for p in _marker_value_params(params)}
+    if not set(parsed).intersection(marker_param_names):
+        return None
+
+    return parsed
+
+
+def _marker_value_params(
+    params: tuple[inspect.Parameter, ...],
+) -> list[inspect.Parameter]:
+    """Return function params that can consume marker values."""
+    result: list[inspect.Parameter] = []
+    for param in params:
+        if param.kind not in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }:
+            continue
+        if param.kind is inspect.Parameter.KEYWORD_ONLY and (
+            _is_block_context_annotation(param.annotation) or _is_insertion_block_annotation(param.annotation)
+        ):
+            continue
+        result.append(param)
+    return result
+
+
+def _marker_value_for_param(
+    param: inspect.Parameter,
+    named_values: dict[str, str],
+) -> object:
+    """Resolve a marker value for one parameter, allowing omitted None-capable args."""
+    if param.name in named_values:
+        return named_values[param.name]
+    if _parameter_accepts_none(param):
+        return None
+    msg = (
+        f'Missing named insertion arg {param.name!r}. '
+        'Omitted named args are only allowed for parameters that accept None.'
+    )
+    raise TypeError(msg)
+
+
+def _parameter_accepts_none(param: inspect.Parameter) -> bool:
+    """Return True when a parameter can safely receive None."""
+    if param.default is None:
+        return True
+    return _annotation_accepts_none(param.annotation)
+
+
+def _annotation_accepts_none(annotation: object) -> bool:
+    """Return True when an annotation expresses Optional/None compatibility."""
+    if annotation in {None, type(None)}:
+        return True
+
+    if isinstance(annotation, str):
+        compact = annotation.replace(' ', '')
+        return compact == 'None' or compact.startswith('Optional[') or '|None' in compact
+
+    origin = get_origin(annotation)
+    if origin in {UnionType, Union}:  # `X | None` and `typing.Union`
+        return any(arg is type(None) for arg in get_args(annotation))
+    return any(arg is type(None) for arg in get_args(annotation))
+
+
+def _build_typed_injection_kwargs(
     params: tuple[inspect.Parameter, ...],
     block: InsertionBlock,
     own_ctx: BaseContext,
 ) -> dict[str, object]:
-    """Build keyword args, injecting BlockContext/InsertionBlock if requested."""
-    has_var_keywords = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params)
-    if has_var_keywords:
-        return base_kwargs
-
-    keyword_args = {k: v for k, v in base_kwargs.items() if k in allowed}
+    """Build keyword args for typed context injection only."""
+    keyword_args: dict[str, object] = {}
     _inject_context_if_requested(keyword_args, params, block, own_ctx)
     return keyword_args
 
@@ -211,19 +310,8 @@ def _build_insertion_wrapper(
             has_typed_injected_context=has_typed_injected_context,
         )
 
-        base_kwargs: dict[str, object] = {
-            'context': own_ctx,
-            'block': block,
-            'tag': block.tag,
-            'function': block.function,
-            'args': block.args,
-            'body': block.body,
-            'comment_style': block.comment_style,
-        }
-
         attempts = _build_insertion_attempts(
             params=params,
-            base_kwargs=base_kwargs,
             block=block,
             own_ctx=own_ctx,
         )
