@@ -59,6 +59,7 @@ def finish_check(ctx: CheckContext) -> tuple[int, dict[str, str]]:
         check_registered_insertions(
             ctx.providers,
             ctx.base_dir,
+            ctx.setup_output,
         ),
     )
     symlink_issues = check_symlinks(ctx.resolved_symlinks, ctx.provider_infos)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -1041,3 +1042,92 @@ def test_provider_insertion_no_colon_syntax(
     assert '2026' in content
     assert 'insertions:' in result.output
     assert '1 ok, 0 failed' in result.output
+
+
+def test_post_process_applies_in_both_apply_and_check_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies post_process runs on both apply and check mode.
+
+    When running `repolish apply`, post_process commands are executed and files
+    are formatted. When running `repolish apply --check`, post_process must also
+    run on staged files before comparison, otherwise false drift is detected.
+
+    This test verifies the fix: after a successful apply (with post_process),
+    running check mode passes because both apply and check run post_process.
+    """
+    # Create a file with an insertion marker
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:spaces insert-spaces -->
+        <!-- repolish:off:spaces -->
+        """,
+    )
+
+    # Create provider with insertion + a regular mapped template file
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def insert_spaces(*, context, tag, args):
+            return '     has_spaces'
+        return {'test.txt': {'insert-spaces': insert_spaces}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'mapped.txt': TemplateMapping(source_template='mapped.txt.jinja'),
+    }
+""",
+    )
+
+    # Create a regular template source that also needs post-processing
+    _write(
+        tmp_path / 'p' / 'repolish' / 'mapped.txt.jinja',
+        """\
+             mapped_from_template
+        """,
+    )
+
+    # Create a post_process script that strips leading whitespace from all txt files in cwd
+    strip_script = tmp_path / 'strip_spaces.py'
+    strip_script.write_text(
+        '#!/usr/bin/env python3\n'
+        'import glob\n'
+        'for f in glob.glob("*.txt"):\n'
+        '    lines = open(f).readlines()\n'
+        "    open(f, 'w').write(''.join(line.lstrip() for line in lines))\n",
+        encoding='utf-8',
+    )
+    strip_script.chmod(0o755)  # Make executable
+
+    # Add script directory to PATH
+    old_path = os.environ.get('PATH', '')
+    os.environ['PATH'] = f'{tmp_path}:{old_path}'
+
+    # Create repolish.yaml with post_process (script on PATH)
+    (tmp_path / 'repolish.yaml').write_text(
+        '{"providers": {"p": {"provider_root": "./p"}}, "post_process": ["strip_spaces.py"]}',
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    # Run apply: insertion should be applied AND post-processed
+    run_repolish(['apply'], exit_code=0)
+
+    # Verify insertion file has been post-processed (no leading spaces)
+    content = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    assert 'has_spaces' in content
+    assert '     has_spaces' not in content
+
+    # Verify mapped template file is also post-processed (no leading spaces)
+    mapped_content = (tmp_path / 'mapped.txt').read_text(encoding='utf-8')
+    assert 'mapped_from_template' in mapped_content
+    assert '     mapped_from_template' not in mapped_content
+
+    # FIXED: Running check mode now passes because post_process IS applied during check
+    run_repolish(['apply', '--check', '-vv'], exit_code=0)

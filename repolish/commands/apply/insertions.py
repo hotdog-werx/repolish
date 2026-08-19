@@ -310,9 +310,40 @@ def _report_slug(path: str) -> str:
     return path.replace('/', '--')
 
 
+def stage_registered_insertions(
+    providers: SessionBundle,
+    base_dir: Path,
+    setup_output: Path,
+) -> None:
+    """Render insertion targets into staged output for apply/check parity.
+
+    For files that already exist in the staged tree, render insertions on top of
+    staged content. Otherwise render from the developer-owned file in ``base_dir``
+    and materialize the result in staged output.
+    """
+    staged_root = setup_output / 'repolish'
+
+    for rel_path, registry in providers.file_insertions.items():
+        target = base_dir / rel_path
+        if not target.exists() or target.is_dir():
+            continue
+
+        staged_file = staged_root / rel_path
+        source_text = (
+            staged_file.read_text(encoding='utf-8')
+            if staged_file.exists() and staged_file.is_file()
+            else target.read_text(encoding='utf-8')
+        )
+
+        rendered = write_back(source_text, registry).text
+        staged_file.parent.mkdir(parents=True, exist_ok=True)
+        staged_file.write_text(rendered, encoding='utf-8')
+
+
 def check_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
+    setup_output: Path | None = None,
 ) -> list[tuple[str, str]]:
     """Return insertion drift diffs for check mode without mutating files."""
     diffs: list[tuple[str, str]] = []
@@ -321,6 +352,25 @@ def check_registered_insertions(
         target = base_dir / rel_path
         if not target.exists() or target.is_dir():
             continue
+
+        if setup_output is not None:
+            staged_file = setup_output / 'repolish' / rel_path
+            if staged_file.exists() and staged_file.is_file():
+                current = target.read_text(encoding='utf-8')
+                rendered = staged_file.read_text(encoding='utf-8')
+                if current == rendered:
+                    continue
+
+                diff_text = ''.join(
+                    difflib.unified_diff(
+                        current.splitlines(keepends=True),
+                        rendered.splitlines(keepends=True),
+                        fromfile=rel_path,
+                        tofile=rel_path,
+                    ),
+                )
+                diffs.append((rel_path, diff_text))
+                continue
 
         current = target.read_text(encoding='utf-8')
         rendered = write_back(current, registry).text
