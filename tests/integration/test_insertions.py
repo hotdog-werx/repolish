@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -1161,6 +1162,10 @@ def test_provider_insertion_no_colon_syntax(
     assert '1 ok, 0 failed' in result.output
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Simulates Unix-style installed CLI execution from PATH.',
+)
 def test_post_process_applies_in_both_apply_and_check_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1218,13 +1223,12 @@ def create_file_mappings(self, context):
         "    open(f, 'w').write(''.join(line.lstrip() for line in lines))\n",
         encoding='utf-8',
     )
-    strip_script.chmod(0o755)  # Make executable
+    strip_script.chmod(0o755)
 
-    # Add script directory to PATH
+    # Simulate an installed formatter binary discoverable via PATH.
     old_path = os.environ.get('PATH', '')
-    os.environ['PATH'] = f'{tmp_path}:{old_path}'
+    monkeypatch.setenv('PATH', f'{tmp_path}{os.pathsep}{old_path}')
 
-    # Create repolish.yaml with post_process (script on PATH)
     (tmp_path / 'repolish.yaml').write_text(
         '{"providers": {"p": {"provider_root": "./p"}}, "post_process": ["strip_spaces.py"]}',
         encoding='utf-8',
