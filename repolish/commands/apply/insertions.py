@@ -333,6 +333,8 @@ def _collect_disabled_entries(
 
 def _apply_file_insertions(
     ctx: _ProviderInsertionContext,
+    *,
+    persist_changes: bool,
 ) -> tuple[InsertionFileResult, dict[str, dict[str, InsertionFileResult]]]:
     """Apply insertions for a single file and return results."""
     target = ctx.base_dir / ctx.rel_path
@@ -340,7 +342,8 @@ def _apply_file_insertions(
     parsed = parse_text(original_text)
     disabled_entries = _collect_disabled_entries(parsed.blocks, ctx.registry)
     result = write_back(original_text, ctx.registry)
-    target.write_text(result.text, encoding='utf-8')
+    if persist_changes:
+        target.write_text(result.text, encoding='utf-8')
 
     if result.total_blocks == 0:
         return (
@@ -426,7 +429,51 @@ def apply_registered_insertions(
                 reports_dir=reports_dir,
             )
 
-            aggregated, file_provider_results = _apply_file_insertions(ctx)
+            aggregated, file_provider_results = _apply_file_insertions(
+                ctx,
+                persist_changes=True,
+            )
+            results[rel_path] = aggregated
+            _merge_provider_results(
+                provider_results,
+                rel_path,
+                file_provider_results[ctx.rel_path],
+            )
+
+    return results, provider_results
+
+
+def summarize_registered_insertions(
+    providers: SessionBundle,
+    base_dir: Path,
+    pid_to_alias: dict[str, str] | None = None,
+) -> tuple[
+    dict[str, InsertionFileResult],
+    dict[str, dict[str, InsertionFileResult]],
+]:
+    """Collect insertion summaries without mutating project files."""
+    results: dict[str, InsertionFileResult] = {}
+    provider_results: dict[str, dict[str, InsertionFileResult]] = {}
+    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    paused_files = providers.paused_files
+
+    for rel_path, registry in providers.file_insertions.items():
+        provider_ids = providers.insertion_sources.get(rel_path, [])
+        if not _should_skip_file(rel_path, base_dir, paused_files):
+            ctx = _ProviderInsertionContext(
+                rel_path=rel_path,
+                registry=registry,
+                base_dir=base_dir,
+                provider_ids=provider_ids,
+                pid_to_alias=pid_to_alias,
+                reports_dir=reports_dir,
+            )
+
+            aggregated, file_provider_results = _apply_file_insertions(
+                ctx,
+                persist_changes=False,
+            )
             results[rel_path] = aggregated
             _merge_provider_results(
                 provider_results,

@@ -957,7 +957,8 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    run_repolish(['apply', '--check'], exit_code=0)
+    result = run_repolish(['apply', '--check'], exit_code=0)
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_forwardref_annotation_injection(
