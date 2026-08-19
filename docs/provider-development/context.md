@@ -162,7 +162,7 @@ files. The summary uses a distinct marker to communicate this state:
 ```text
 Standalone
 └── p@
-    └── ◌ README.md  no file in stage
+    └── ◌ README.md  developer owned
         validators:
           - ✓ lint
 ```

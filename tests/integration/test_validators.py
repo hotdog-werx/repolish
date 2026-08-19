@@ -418,7 +418,7 @@ def test_validator_can_target_existing_project_file_without_file_mapping(
     assert (tmp_path / 'README.md').exists()
     output = result.output
     assert 'README.md' in output
-    assert 'no file in stage' in output
+    assert 'developer owned' in output
     assert 'lint' in output
     assert '✓ lint' in output
 

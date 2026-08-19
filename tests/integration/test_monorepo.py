@@ -160,7 +160,7 @@ class DemoProvider(Provider[Ctx, BaseInputs]):
         result = run_repolish(['apply', '--root-only'])
         assert (repo / 'README.root-validated.md').exists()
         assert 'README.root-validated.md' in result.output
-        assert 'no file in stage' in result.output
+        assert 'developer owned' in result.output
         assert '✓ lint' in result.output
         assert 'config.toml' in result.output
         assert 'not in create_file_mappings (root mode)' in result.output

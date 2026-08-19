@@ -39,6 +39,14 @@ class _ProviderInsertionContext:
     )
 
 
+@dataclass
+class _StagedCheckResult:
+    """Result of staged check-mode comparison for one file."""
+
+    handled: bool
+    diff: tuple[str, str] | None = None
+
+
 def _classify_block_for_provider(
     block_func: str,
     provider_alias: str,
@@ -349,42 +357,80 @@ def check_registered_insertions(
     diffs: list[tuple[str, str]] = []
 
     for rel_path, registry in providers.file_insertions.items():
-        target = base_dir / rel_path
-        if not target.exists() or target.is_dir():
-            continue
-
-        if setup_output is not None:
-            staged_file = setup_output / 'repolish' / rel_path
-            if staged_file.exists() and staged_file.is_file():
-                current = target.read_text(encoding='utf-8')
-                rendered = staged_file.read_text(encoding='utf-8')
-                if current == rendered:
-                    continue
-
-                diff_text = ''.join(
-                    difflib.unified_diff(
-                        current.splitlines(keepends=True),
-                        rendered.splitlines(keepends=True),
-                        fromfile=rel_path,
-                        tofile=rel_path,
-                    ),
+        if not _should_skip_file(rel_path, base_dir):
+            target = base_dir / rel_path
+            staged_result = _staged_check_result(
+                rel_path=rel_path,
+                target=target,
+                setup_output=setup_output,
+            )
+            if staged_result.handled and staged_result.diff is not None:
+                diffs.append(staged_result.diff)
+            elif (
+                not staged_result.handled
+                and (
+                    rendered_diff := _rendered_diff_if_any(
+                        rel_path=rel_path,
+                        target=target,
+                        registry=registry,
+                    )
                 )
-                diffs.append((rel_path, diff_text))
-                continue
-
-        current = target.read_text(encoding='utf-8')
-        rendered = write_back(current, registry).text
-        if current == rendered:
-            continue
-
-        diff_text = ''.join(
-            difflib.unified_diff(
-                current.splitlines(keepends=True),
-                rendered.splitlines(keepends=True),
-                fromfile=rel_path,
-                tofile=rel_path,
-            ),
-        )
-        diffs.append((rel_path, diff_text))
+                is not None
+            ):
+                diffs.append(rendered_diff)
 
     return diffs
+
+
+def _staged_check_result(
+    *,
+    rel_path: str,
+    target: Path,
+    setup_output: Path | None,
+) -> _StagedCheckResult:
+    """Return whether staged comparison handled this file and any resulting diff."""
+    if setup_output is None:
+        return _StagedCheckResult(handled=False)
+
+    staged_file = setup_output / 'repolish' / rel_path
+    if not staged_file.exists() or not staged_file.is_file():
+        return _StagedCheckResult(handled=False)
+
+    current = target.read_text(encoding='utf-8')
+    rendered = staged_file.read_text(encoding='utf-8')
+    if current == rendered:
+        return _StagedCheckResult(handled=True)
+    return _StagedCheckResult(
+        handled=True,
+        diff=(rel_path, _build_unified_diff(rel_path, current, rendered)),
+    )
+
+
+def _rendered_diff_if_any(
+    *,
+    rel_path: str,
+    target: Path,
+    registry: dict,
+) -> tuple[str, str] | None:
+    """Return a rendered diff tuple when live rendering differs from current file."""
+    current = target.read_text(encoding='utf-8')
+    rendered = write_back(current, registry).text
+    if current == rendered:
+        return None
+    return (rel_path, _build_unified_diff(rel_path, current, rendered))
+
+
+def _build_unified_diff(
+    rel_path: str,
+    current: str,
+    rendered: str,
+) -> str:
+    """Build a unified diff between current and rendered text."""
+    return ''.join(
+        difflib.unified_diff(
+            current.splitlines(keepends=True),
+            rendered.splitlines(keepends=True),
+            fromfile=rel_path,
+            tofile=rel_path,
+        ),
+    )

@@ -189,7 +189,7 @@ def test_provider_insertion_missing_file_is_skipped(
     result = run_repolish(['apply'], exit_code=0)
     # File should not appear since it doesn't exist
     assert 'missing.md' not in result.output
-    assert 'no file in stage' not in result.output
+    assert 'developer owned' not in result.output
 
 
 def test_provider_insertion_check_missing_file_is_skipped(
@@ -285,10 +285,6 @@ def test_provider_insertion_function_signature_variants(
         PLACEHOLDER_VARARGS
         # repolish:off
 
-        # repolish:on block_func
-        PLACEHOLDER_BLOCK
-        # repolish:off
-
         # repolish:on:ctx context_func
         PLACEHOLDER_CONTEXT
         # repolish:off:ctx
@@ -296,6 +292,10 @@ def test_provider_insertion_function_signature_variants(
         # repolish:on:block block_param_func
         PLACEHOLDER_BLOCK_PARAM
         # repolish:off:block
+
+        # repolish:on:combo combo_func value_one value_two
+        PLACEHOLDER_COMBO
+        # repolish:off:combo
 
         # repolish:on empty_tag_func
         PLACEHOLDER_EMPTY_TAG
@@ -320,14 +320,24 @@ def test_provider_insertion_function_signature_variants(
         def varargs_func(*args):
             return 'varargs:' + '-'.join(args)
 
-        def block_func(block: InsertionBlock):
-            return f'block-func:{block.function}:{",".join(block.args)}'
+        def context_func(*, block_context: BlockContext):
+            return f'context-func:tag={block_context.tag}:repo={block_context.repolish.repo.name}'
 
-        def context_func(*, context: BlockContext):
-            return f'context-func:tag={context.tag}:repo={context.repolish.repo.name}'
+        def block_param_func(*, insertion_block: InsertionBlock):
+            return f'block-param-func:fn={insertion_block.function}:args={",".join(insertion_block.args)}'
 
-        def block_param_func(*, block: InsertionBlock):
-            return f'block-param-func:fn={block.function}:args={",".join(block.args)}'
+        def combo_func(
+            arg1: str,
+            arg2: str,
+            *,
+            block_context: BlockContext,
+            insertion_block: InsertionBlock,
+        ):
+            return (
+                f'combo:{arg1}:{arg2}:'
+                f'tag={block_context.tag}:'
+                f'fn={insertion_block.function}'
+            )
 
         def empty_tag_func():
             return 'empty-tag-works'
@@ -338,9 +348,9 @@ def test_provider_insertion_function_signature_variants(
                 'positional_func': positional_func,
                 'single_arg_positional_func': single_arg_positional_func,
                 'varargs_func': varargs_func,
-                'block_func': block_func,
                 'context_func': context_func,
                 'block_param_func': block_param_func,
+                'combo_func': combo_func,
                 'empty_tag_func': empty_tag_func,
             }
         }""",
@@ -373,10 +383,6 @@ def test_provider_insertion_function_signature_variants(
         varargs:a-b-c-d
         # repolish:off
 
-        # repolish:on block_func
-        block-func:block_func:
-        # repolish:off
-
         # repolish:on:ctx context_func
         context-func:tag=ctx:repo=test-repo
         # repolish:off:ctx
@@ -384,6 +390,10 @@ def test_provider_insertion_function_signature_variants(
         # repolish:on:block block_param_func
         block-param-func:fn=block_param_func:args=
         # repolish:off:block
+
+        # repolish:on:combo combo_func value_one value_two
+        combo:value_one:value_two:tag=combo:fn=combo_func
+        # repolish:off:combo
 
         # repolish:on empty_tag_func
         empty-tag-works
@@ -513,7 +523,7 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
         <!-- repolish:off:three -->
         """,
     )
-    assert 'no file in stage' in result.output
+    assert 'developer owned' in result.output
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
 
 
@@ -545,6 +555,101 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
     run_repolish(['apply', '--check'], exit_code=0)
+
+
+def test_provider_insertion_forwardref_annotation_injection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ForwardRef InsertionBlock annotations are recognized for injection."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        ForwardRef insertion
+
+        <!-- repolish:on:one render-forward -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        from typing import ForwardRef
+
+        def render_forward(*, injected):
+            return f'forward:{injected.function}'
+
+        render_forward.__annotations__['injected'] = ForwardRef('InsertionBlock')
+
+        return {'README.md': {'render-forward': render_forward}}""",
+    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        ForwardRef insertion
+
+        <!-- repolish:on:one render-forward -->
+        forward:render-forward
+        <!-- repolish:off:one -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_rejects_varargs_with_typed_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Varargs cannot be combined with typed BlockContext/InsertionBlock injection."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Invalid insertion signature
+
+        <!-- repolish:on:one bad-renderer x y -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def bad_renderer(*args, insertion_block: 'InsertionBlock'):
+            return f'should-not-render:{insertion_block.function}:{"|".join(args)}'
+
+        return {'README.md': {'bad-renderer': bad_renderer}}""",
+        extra_imports='from repolish import InsertionBlock',
+    )
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    # Content remains unchanged because insertion rendering failed.
+    expected = dedent(
+        """\
+        Invalid insertion signature
+
+        <!-- repolish:on:one bad-renderer x y -->
+        <!-- repolish:off:one -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✗ failed (0 ok, 1 failed)' in result.output
+
+    report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
+    assert report.exists()
+    data = json.loads(report.read_text(encoding='utf-8'))
+    assert data['failed_blocks'] == 1
+    assert data['functions'] == ['bad-renderer']
+    assert data['diagnostics']
+    assert 'cannot combine *args with BlockContext/InsertionBlock annotations' in data['diagnostics'][0]['message']
 
 
 # -----------------------------------------------------------------------------
@@ -702,7 +807,7 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
             <!-- repolish:off:year -->
             """,
             expected_output_checks=(
-                '◌ README.md  no file in stage',
+                '◌ README.md  developer owned',
                 'insertions: ✓ ok (1 ok, 0 failed)',
             ),
             assert_fn=_assert_report_exists,
