@@ -7,7 +7,7 @@ from hotlog import get_logger
 from repolish.config import RepolishConfig
 from repolish.preprocessors import replace_text, safe_file_read
 from repolish.providers import SessionBundle, TemplateMapping
-from repolish.utils import ensure_dot_repolish
+from repolish.utils import ensure_dot_repolish, path_slug
 
 logger = get_logger(__name__)
 
@@ -129,7 +129,7 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
     )
 
     if new_text != tpl_text and isinstance(args.source_val, TemplateMapping):
-        dest_safe = args.dest_path.replace('/', '_').replace('\\', '_')
+        dest_safe = path_slug(args.dest_path, sep='_')
         source_name = Path(args.source_template).name
         preproc_name = f'_preproc_{dest_safe}_{source_name}'
         preproc_path = args.ctx.setup_input / 'repolish' / preproc_name

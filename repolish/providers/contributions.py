@@ -6,6 +6,10 @@ from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
 from repolish.insertions.models import BlockContext, InsertionBlock
+from repolish.insertions.type_utils import (
+    is_block_context_annotation,
+    is_insertion_block_annotation,
+)
 from repolish.providers._log import logger
 from repolish.providers.models import (
     Accumulators,
@@ -27,6 +31,7 @@ from repolish.providers.models import (
     Provider as _ProviderBase,
 )
 from repolish.providers.models.template_path import RepolishTemplatePath
+from repolish.utils import merge_dicts_first_wins
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -139,7 +144,7 @@ def _marker_value_params(
         }:
             continue
         if param.kind is inspect.Parameter.KEYWORD_ONLY and (
-            _is_block_context_annotation(param.annotation) or _is_insertion_block_annotation(param.annotation)
+            is_block_context_annotation(param.annotation) or is_insertion_block_annotation(param.annotation)
         ):
             continue
         result.append(param)
@@ -205,7 +210,7 @@ def _inject_context_if_requested(
     for p in params:
         if p.kind is not inspect.Parameter.KEYWORD_ONLY:
             continue
-        if _is_block_context_annotation(p.annotation):
+        if is_block_context_annotation(p.annotation):
             keyword_args[p.name] = BlockContext(
                 tag=block.tag,
                 args=block.args,
@@ -214,31 +219,8 @@ def _inject_context_if_requested(
                 file_path=block.file_path,
                 insertion_block=block,
             )
-        elif _is_insertion_block_annotation(p.annotation):
+        elif is_insertion_block_annotation(p.annotation):
             keyword_args[p.name] = block
-
-
-def _is_block_context_annotation(annotation: object) -> bool:
-    """Check if an annotation refers to BlockContext."""
-    if annotation is BlockContext:
-        return True
-    return bool(isinstance(annotation, str) and annotation == 'BlockContext')
-
-
-def _is_insertion_block_annotation(annotation: object) -> bool:
-    """Check if an annotation refers to InsertionBlock."""
-    if annotation is InsertionBlock:
-        return True
-    if isinstance(annotation, str):
-        return annotation == 'InsertionBlock' or annotation.endswith(
-            '.InsertionBlock',
-        )
-    forward_arg = getattr(annotation, '__forward_arg__', None)
-    if isinstance(forward_arg, str):
-        return forward_arg == 'InsertionBlock' or forward_arg.endswith(
-            '.InsertionBlock',
-        )
-    return False
 
 
 def _insertion_fn_name(fn: Callable[..., str]) -> str:
@@ -303,7 +285,7 @@ def _build_insertion_wrapper(
     fn_name = _insertion_fn_name(fn)
     has_varargs = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params)
     has_typed_injected_context = any(
-        _is_block_context_annotation(p.annotation) or _is_insertion_block_annotation(p.annotation) for p in params
+        is_block_context_annotation(p.annotation) or is_insertion_block_annotation(p.annotation) for p in params
     )
 
     def _render(block: InsertionBlock) -> str:
@@ -627,23 +609,15 @@ def _extend_provider_insertions(
     stay authoritative, while extra paths receive any unqualified function that
     provider already exposes.
     """
-    if not extra_paths:
-        return
-
-    shared_registry: InsertionRegistry = {}
-    for registry in insertions.values():
-        for function_name, fn in registry.items():
-            shared_registry.setdefault(function_name, fn)
-
-    if not shared_registry:
+    if not extra_paths or not (shared_registry := merge_dicts_first_wins(insertions.values())):
         return
 
     for path in extra_paths:
-        if not path:
-            continue
-        target_registry = insertions.setdefault(path, {})
-        for function_name, fn in shared_registry.items():
-            target_registry.setdefault(function_name, fn)
+        if path:
+            # Ensure extra path gets all shared functions, but don't override existing ones
+            target = insertions.setdefault(path, {})
+            for fn_name, fn in shared_registry.items():
+                target.setdefault(fn_name, fn)
 
 
 def _normalize_provider_insertions(
@@ -720,7 +694,9 @@ def _disabled_insertion_renderer_for_function(
     def _render(block: InsertionBlock) -> str:
         return block.body
 
-    cast('Any', _render).__repolish_disabled_functions__ = frozenset({function_name})
+    cast('Any', _render).__repolish_disabled_functions__ = frozenset(
+        {function_name},
+    )
     cast('Any', _render).__repolish_disabled_tags__ = frozenset()
     return _render
 

@@ -8,6 +8,7 @@ from repolish.preprocessors import extract_patterns, replace_text
 from repolish.preprocessors.keep import (
     KeepBlockSpec,
     KeepMarkerSpec,
+    KeepPatterns,
     apply_keep_replacements,
 )
 
@@ -172,9 +173,7 @@ def test_apply_keep_replacements_block_name_not_in_specs() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(blocks={}, rest={}, header={}),
         local_file_content='',
     )
 
@@ -191,9 +190,11 @@ def test_apply_keep_replacements_block_template_region_not_found() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={'block': KeepBlockSpec(start='<<', end='>>')},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={'block': KeepBlockSpec(start='<<', end='>>')},
+            rest={},
+            header={},
+        ),
         local_file_content='',
     )
 
@@ -210,9 +211,7 @@ def test_apply_keep_replacements_rest_name_not_in_specs() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(blocks={}, rest={}, header={}),
         local_file_content='',
     )
 
@@ -228,9 +227,11 @@ def test_apply_keep_replacements_rest_marker_not_found_in_template() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content='## marker\ncustom\n',
     )
 
@@ -248,9 +249,11 @@ def test_apply_keep_replacements_rest_uses_template_tail_when_local_missing_mark
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content='Top\nno marker here\n',
     )
 
@@ -269,9 +272,11 @@ def test_apply_keep_replacements_rest_preserves_template_lines_before_marker() -
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content=dedent("""\
             Header
             ## marker
@@ -295,9 +300,11 @@ def test_apply_keep_replacements_rest_matches_marker_with_crlf_lines() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -314,9 +321,7 @@ def test_apply_keep_replacements_header_name_not_in_specs() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(blocks={}, rest={}, header={}),
         local_file_content='',
     )
 
@@ -332,9 +337,11 @@ def test_apply_keep_replacements_header_marker_not_found_in_template() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        KeepPatterns(
+            blocks={},
+            rest={},
+            header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        ),
         local_file_content='Local intro\n## managed\nLocal tail\n',
     )
 
@@ -351,9 +358,11 @@ def test_apply_keep_replacements_header_uses_template_prefix_when_local_missing_
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        KeepPatterns(
+            blocks={},
+            rest={},
+            header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        ),
         local_file_content='Local intro without marker\n',
     )
 
@@ -371,9 +380,11 @@ def test_apply_keep_replacements_header_must_be_at_file_start() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        KeepPatterns(
+            blocks={},
+            rest={},
+            header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        ),
         local_file_content=dedent("""\
             Local intro
             ## managed
@@ -397,9 +408,11 @@ def test_apply_keep_replacements_block_local_has_start_but_no_end_marker() -> No
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={'block': KeepBlockSpec(start='<<', end='>>')},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={'block': KeepBlockSpec(start='<<', end='>>')},
+            rest={},
+            header={},
+        ),
         local_file_content=dedent("""\
             Top
             <<
@@ -483,22 +496,24 @@ def test_apply_keep_replacements_multiple_sibling_blocks_same_markers() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'custom-1': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-            'custom-2': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-            'custom-3': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'custom-1': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+                'custom-2': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+                'custom-3': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -532,14 +547,16 @@ def test_apply_keep_block_with_indented_markers_in_local_file() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'custom': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'custom': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -578,14 +595,16 @@ def test_apply_keep_block_with_deeply_indented_markers() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'steps': KeepBlockSpec(
-                start='- name: custom',
-                end='# end-custom',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'steps': KeepBlockSpec(
+                    start='- name: custom',
+                    end='# end-custom',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -613,14 +632,16 @@ def test_apply_keep_block_tolerates_trailing_whitespace() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'custom': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'custom': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 

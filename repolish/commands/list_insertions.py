@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.tree import Tree
 
 from repolish.commands.apply import ApplyOptions, resolve_session
 from repolish.console import console
+from repolish.insertions import resolve_provider_function_name
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -30,20 +34,6 @@ class _InsertionFunctionInfo:
     files: set[str] = field(default_factory=set)
 
 
-def _provider_function_name(
-    key: str,
-    provider_alias: str,
-    *,
-    is_first_provider: bool,
-) -> str | None:
-    """Resolve registry key ownership to one provider-visible function name."""
-    if key.startswith(f'{provider_alias}:'):
-        return key.split(':', 1)[1]
-    if ':' in key:
-        return None
-    return key if is_first_provider else None
-
-
 def _doc_parts(fn: object) -> tuple[str, str]:
     """Return (summary, full_doc) for a callable."""
     doc = inspect.getdoc(fn) or ''
@@ -54,7 +44,71 @@ def _doc_parts(fn: object) -> tuple[str, str]:
     return summary, doc
 
 
-def _build_index(options: ListInsertionsOptions) -> list[_InsertionFunctionInfo]:
+def _resolve_function_entry(
+    key: str,
+    fn: object,
+    provider_alias: str,
+    *,
+    is_first_provider: bool,
+    options: ListInsertionsOptions,
+) -> _InsertionFunctionInfo | None:
+    """Resolve a registry entry to _InsertionFunctionInfo or None if filtered."""
+    function_name = resolve_provider_function_name(
+        key,
+        provider_alias,
+        is_first_provider=is_first_provider,
+    )
+    if function_name is None:
+        return None
+    if options.provider and provider_alias != options.provider:
+        return None
+    if options.function and function_name != options.function:
+        return None
+
+    summary, doc = _doc_parts(fn)
+    return _InsertionFunctionInfo(
+        provider_alias=provider_alias,
+        function_name=function_name,
+        summary=summary,
+        doc=doc,
+    )
+
+
+def _index_provider_registry(
+    registry: dict,
+    provider_alias: str,
+    *,
+    is_first_provider: bool,
+    options: ListInsertionsOptions,
+) -> dict[tuple[str, str], _InsertionFunctionInfo]:
+    """Build an index of insertion functions from a single provider's registry.
+
+    Args:
+        registry: The provider's insertion function registry
+        provider_alias: The provider's alias
+        is_first_provider: Whether this is the first provider for the file
+        options: Filter options
+
+    Returns:
+        Dict mapping (provider_alias, function_name) to _InsertionFunctionInfo
+    """
+    by_key: dict[tuple[str, str], _InsertionFunctionInfo] = {}
+    for key, fn in registry.items():
+        if result := _resolve_function_entry(
+            key,
+            fn,
+            provider_alias,
+            is_first_provider=is_first_provider,
+            options=options,
+        ):
+            cache_key = (result.provider_alias, result.function_name)
+            by_key[cache_key] = result
+    return by_key
+
+
+def _build_index(
+    options: ListInsertionsOptions,
+) -> list[_InsertionFunctionInfo]:
     """Collect insertion function metadata from a resolved session."""
     session = resolve_session(ApplyOptions(config_path=options.config_path))
     by_key: dict[tuple[str, str], _InsertionFunctionInfo] = {}
@@ -63,28 +117,15 @@ def _build_index(options: ListInsertionsOptions) -> list[_InsertionFunctionInfo]
         registry = session.providers.file_insertions.get(file_path, {})
         for idx, provider_id in enumerate(provider_ids):
             provider_alias = session.pid_to_alias.get(provider_id, provider_id)
-            for key, fn in registry.items():
-                function_name = _provider_function_name(
-                    key,
-                    provider_alias,
-                    is_first_provider=idx == 0,
-                )
-                if function_name is None:
-                    continue
-                if options.provider and provider_alias != options.provider:
-                    continue
-                if options.function and function_name != options.function:
-                    continue
-
-                cache_key = (provider_alias, function_name)
+            provider_index = _index_provider_registry(
+                registry,
+                provider_alias,
+                is_first_provider=idx == 0,
+                options=options,
+            )
+            for cache_key, info in provider_index.items():
                 if cache_key not in by_key:
-                    summary, doc = _doc_parts(fn)
-                    by_key[cache_key] = _InsertionFunctionInfo(
-                        provider_alias=provider_alias,
-                        function_name=function_name,
-                        summary=summary,
-                        doc=doc,
-                    )
+                    by_key[cache_key] = info
                 by_key[cache_key].files.add(file_path)
 
     return sorted(

@@ -94,7 +94,7 @@ class ProviderOverrides(BaseModel):
     insertions_extend_files: list[str] | None = Field(
         default=None,
         description=(
-            'Additional destination paths that are allowed to use this provider\'s '
+            "Additional destination paths that are allowed to use this provider's "
             'insertion registry. This extends provider-declared insertion targets '
             'without modifying provider code.'
         ),

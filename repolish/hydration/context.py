@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
@@ -12,45 +11,29 @@ from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
 from repolish.providers.models.pipeline import ProviderContributions
 
 
-@dataclass
-class _ProviderModelOverrides:
-    """Config-sourced provider override maps keyed by provider id."""
-
-    file_mappings: dict[str, object]
-    validators: dict[str, object]
-    insertions: dict[str, object]
-    insertions_extend_files: dict[str, object]
-
-
-def _collect_provider_model_overrides(
+def _collect_provider_overrides(
     config: RepolishConfig,
     alias_to_pid: dict[str, str],
-) -> _ProviderModelOverrides:
-    """Collect provider model override maps for file mappings, validators, and insertions."""
-    file_mappings: dict[str, object] = {}
-    validators: dict[str, object] = {}
-    insertions: dict[str, object] = {}
-    insertions_extend_files: dict[str, object] = {}
+) -> dict[str, ProviderOverrides]:
+    """Collect ProviderOverrides objects keyed by provider ID.
+
+    Only includes providers that have overrides defined.
+
+    Args:
+        config: The resolved configuration
+        alias_to_pid: Mapping of provider alias to provider ID (posix path)
+
+    Returns:
+        Dict mapping provider ID to ProviderOverrides (only for providers with overrides)
+    """
+    overrides_by_pid: dict[str, ProviderOverrides] = {}
 
     for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        if not info.overrides:
-            continue
-        if info.overrides.file_mappings:
-            file_mappings[pid] = info.overrides.file_mappings
-        if info.overrides.validators:
-            validators[pid] = info.overrides.validators
-        if info.overrides.insertions:
-            insertions[pid] = info.overrides.insertions
-        if info.overrides.insertions_extend_files:
-            insertions_extend_files[pid] = info.overrides.insertions_extend_files
+        if info.overrides:
+            pid = alias_to_pid.get(alias, info.provider_root.as_posix())
+            overrides_by_pid[pid] = info.overrides
 
-    return _ProviderModelOverrides(
-        file_mappings=file_mappings,
-        validators=validators,
-        insertions=insertions,
-        insertions_extend_files=insertions_extend_files,
-    )
+    return overrides_by_pid
 
 
 def _build_alias_to_pid(config: RepolishConfig) -> dict[str, str]:
@@ -153,15 +136,15 @@ def build_final_providers(
         config,
         alias_to_pid,
     )
-    model_overrides = _collect_provider_model_overrides(config, alias_to_pid)
+    model_overrides = _collect_provider_overrides(config, alias_to_pid)
 
     all_override_pids = (
         set(provider_overrides)
         | set(anchor_overrides)
-        | set(model_overrides.file_mappings)
-        | set(model_overrides.validators)
-        | set(model_overrides.insertions)
-        | set(model_overrides.insertions_extend_files)
+        | {pid for pid, ovr in model_overrides.items() if ovr.file_mappings}
+        | {pid for pid, ovr in model_overrides.items() if ovr.validators}
+        | {pid for pid, ovr in model_overrides.items() if ovr.insertions}
+        | {pid for pid, ovr in model_overrides.items() if ovr.insertions_extend_files}
     )
 
     contributions = ProviderContributions(
@@ -169,12 +152,12 @@ def build_final_providers(
             pid: ProviderOverrides(
                 context_merge=provider_overrides.get(pid),
                 anchors=anchor_overrides.get(pid),
-                file_mappings=model_overrides.file_mappings.get(pid),  # type: ignore[arg-type]
-                validators=model_overrides.validators.get(pid),  # type: ignore[arg-type]
-                insertions=model_overrides.insertions.get(pid),  # type: ignore[arg-type]
-                insertions_extend_files=model_overrides.insertions_extend_files.get(
-                    pid,
-                ),  # type: ignore[arg-type]
+                file_mappings=model_overrides[pid].file_mappings if pid in model_overrides else None,
+                validators=model_overrides[pid].validators if pid in model_overrides else None,
+                insertions=model_overrides[pid].insertions if pid in model_overrides else None,
+                insertions_extend_files=(
+                    model_overrides[pid].insertions_extend_files if pid in model_overrides else None
+                ),
             )
             for pid in all_override_pids
         },

@@ -5,10 +5,13 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from repolish.insertions.models import CommentStyle, InsertionBlock
 from repolish.insertions.parser import parse_text
+from repolish.insertions.type_utils import is_insertion_block_annotation
+
+if TYPE_CHECKING:
+    from repolish.insertions.models import CommentStyle, InsertionBlock
 
 Renderer = Callable[..., str]
 RenderRegistry = Mapping[str, Callable[..., str]]
@@ -97,7 +100,7 @@ def _build_call_kwargs(
     for p in params:
         if p.kind != inspect.Parameter.KEYWORD_ONLY:
             continue
-        if _is_insertion_block_annotation(p.annotation):
+        if is_insertion_block_annotation(p.annotation):
             call_kwargs['block'] = block
 
     return call_kwargs if call_kwargs else None
@@ -127,7 +130,7 @@ def _is_single_block_param(
     return (
         len(positional_params) == 1
         and not has_varargs
-        and _is_insertion_block_annotation(
+        and is_insertion_block_annotation(
             positional_params[0].annotation,
         )
     )
@@ -153,13 +156,6 @@ def _build_call_args(
             )
             raise TypeError(msg)
     return call_args
-
-
-def _is_insertion_block_annotation(annotation: object) -> bool:
-    """Check if an annotation refers to InsertionBlock."""
-    if annotation is InsertionBlock:
-        return True
-    return bool(isinstance(annotation, str) and annotation == 'InsertionBlock')
 
 
 def _render_block(

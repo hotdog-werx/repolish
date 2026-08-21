@@ -950,7 +950,9 @@ def create_insertion_registry(self, context):
         """,
     )
 
-    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected_readme
+    assert (tmp_path / 'README.md').read_text(
+        encoding='utf-8',
+    ) == expected_readme
     assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
     # There should be two insertions applied, one for each file
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
@@ -1102,6 +1104,125 @@ def create_insertion_registry(self, context):
         <!-- repolish:on:uv generate-uv-sources local -->
         sources=local
         <!-- repolish:off:uv -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_list_mode_only_applies_to_declared_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """List-mode insertion targets do not apply to extra files without config extension."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Primary target
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+    _write(
+        tmp_path / 'docs.md',
+        """\
+        Non-target file
+
+        <!-- repolish:on:uv generate-uv-sources github -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_methods="""
+def create_insertion_registry(self, context):
+    def generate_uv_sources(mode: str):
+        return f'sources={mode}'
+
+    return {'generate-uv-sources': generate_uv_sources}
+""",
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected_readme = dedent(
+        """\
+        Primary target
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        sources=local
+        <!-- repolish:off:uv -->
+        """,
+    )
+    expected_docs = dedent(
+        """\
+        Non-target file
+
+        <!-- repolish:on:uv generate-uv-sources github -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected_readme
+    assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_shared_registry_on_rendered_template_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared insertion registry can target a provider-rendered template output file."""
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+
+def create_insertion_registry(self, context):
+    def render_status(state: str):
+        return f'STATUS={state}'
+
+    return {'render-status': render_status}
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Rendered file with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        Rendered file with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        STATUS=ready
+        <!-- repolish:off:status -->
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
@@ -1592,6 +1713,107 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     assert readme.exists()
     content = readme.read_text(encoding='utf-8')
     assert '1.0.0' in content
+    assert '<!-- repolish:on:version insert-version -->' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
+
+
+def test_monorepo_root_mode_insertions_shared_registry_list_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A root-mode handler can register list-mode insertion targets via shared registry."""
+    repo = fixtures.monorepo_basic.stage(tmp_path)
+
+    (repo / 'README.workspace.md').write_text(
+        '# Workspace README\n\n<!-- repolish:on:version insert-version -->\n<!-- repolish:off:version -->\n',
+        encoding='utf-8',
+    )
+
+    (repo / 'workspace-provider').mkdir()
+    (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
+    (repo / 'workspace-provider' / 'repolish' / 'config.toml').write_text(
+        'name = "workspace"\n',
+        encoding='utf-8',
+    )
+    (repo / 'workspace-provider' / 'repolish.py').write_text(
+        """
+from repolish import BaseContext, BaseInputs, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class WorkspaceProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+        encoding='utf-8',
+    )
+
+    (repo / 'insertion-provider').mkdir()
+    (repo / 'insertion-provider' / 'repolish').mkdir(parents=True)
+    (repo / 'insertion-provider' / 'repolish' / 'config.toml').write_text(
+        'name = "insertion-provider"\n',
+        encoding='utf-8',
+    )
+    (repo / 'insertion-provider' / 'repolish.py').write_text(
+        """
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class RootHandler(ModeHandler[Ctx, BaseInputs]):
+    def create_file_insertions(self, ctx):
+        return ['README.workspace.md']
+
+    def create_insertion_registry(self, ctx):
+        def insert_version():
+            return '2.0.0'
+
+        return {'insert-version': insert_version}
+
+
+class InsertionProvider(Provider[Ctx, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+        encoding='utf-8',
+    )
+
+    (repo / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'workspace-provider': {
+                        'provider_root': './workspace-provider',
+                    },
+                    'insertion-provider': {
+                        'provider_root': './insertion-provider',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(repo)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (repo / 'README.workspace.md').read_text(encoding='utf-8')
+    assert '2.0.0' in content
     assert '<!-- repolish:on:version insert-version -->' in content
     assert 'insertions:' in result.output
     assert '1 ok, 0 failed' in result.output

@@ -4,11 +4,28 @@ This module handles regex pattern extraction and replacement in templates,
 including support for capture groups and indentation-aware trimming.
 """
 
+from __future__ import annotations
+
 import re
+from dataclasses import dataclass
 
 from hotlog import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class _MatchedRegion:
+    """Holds the trimmed region and its boundaries for a regex match."""
+
+    content: str
+    start: int
+    end: int
+
+
+_REGEX_DIRECTIVE_RE = re.compile(
+    r'^[^\n]*repolish-regex\[(.+?)\]:\s*(.*?)\s*$',
+)
 
 
 def _select_capture(match: re.Match) -> str:
@@ -62,35 +79,69 @@ def _extend_trimmed_region_to_include_whitespace(
     """Preserve trailing whitespace-only content from the original capture."""
     if trimmed_end < tpl_cap_end:
         between = content[trimmed_end:tpl_cap_end]
-        # only extend if between contains only spaces/tabs (no other
-        # non-whitespace characters) and includes at least one newline
-        # so we don't accidentally swallow inline spaces.
-        # Consider all whitespace (including newlines) when deciding if the
-        # slice is empty of non-whitespace characters.
         if between.strip() == '' and '\n' in between:
             return tpl_cap_end
     return trimmed_end
+
+
+def _find_template_match(
+    pattern: re.Pattern[str],
+    content: str,
+) -> _MatchedRegion | None:
+    """Find and trim a regex match in template content.
+
+    Returns None if no match is found (caller should skip this regex).
+    Otherwise returns the trimmed region with its boundaries.
+    """
+    template_match = pattern.search(content)
+    offset = 0
+
+    if not template_match:
+        fallback = _search_indented_template_match(pattern, content)
+        if fallback is None:
+            return None
+        template_match, offset = fallback
+
+    # Determine which group index we used (1 for capture group, 0 for full match)
+    group_idx = 1 if template_match.lastindex else 0
+    cap_start, cap_end = template_match.span(group_idx)
+    cap_start += offset
+    cap_end += offset
+
+    # Extract and trim the matched content
+    matched_raw = content[cap_start:cap_end]
+    matched = _trim_block_by_indent(matched_raw)
+
+    # Compute the trimmed region boundaries
+    trimmed_start = cap_start
+    trimmed_end = cap_start + len(matched)
+    trimmed_end = _extend_trimmed_region_to_include_whitespace(
+        content,
+        trimmed_end,
+        cap_end,
+    )
+
+    return _MatchedRegion(content=matched, start=trimmed_start, end=trimmed_end)
 
 
 def apply_regex_replacements(
     content: str,
     regexes: dict[str, str],
     local_file_content: str,
+    *,
+    phase: str = 'pre-render',
 ) -> str:
     """Applies regex replacements to the content."""
-    regex_pattern = re.compile(
-        r'^.*## repolish-regex\[(.+?)\]:.*\n?',
-        re.MULTILINE,
-    )
-    content = regex_pattern.sub('', content)
+    content = _strip_regex_directives_for_phase(content, phase)
     logger.debug(
         'applying_regex_replacements',
         regexes=[str(name) for name in regexes],
     )
 
-    # apply regex replacements
     for regex_name, regex_pattern in regexes.items():
         pattern = re.compile(rf'{regex_pattern}', re.MULTILINE)
+
+        # Check local file for a match
         local_match = pattern.search(local_file_content)
         if not local_match:
             logger.debug(
@@ -106,53 +157,58 @@ def apply_regex_replacements(
             matched=_select_capture(local_match),
         )
 
-        # Prefer the author's explicit capture when present (group 1); if no
-        # capture is present fall back to the full match (group 0). This gives
-        # template authors precise control while remaining backwards
-        # compatible for patterns that don't use groups.
+        # Get the trimmed content from local file
         local_matched_raw = _select_capture(local_match)
         local_matched = _trim_block_by_indent(local_matched_raw)
 
-        # Find where the pattern would match in the template content (after
-        # we've removed the declaration line). Trim the template match using
-        # the same indentation-aware heuristic so we only replace the
-        # anchor's block and don't remove following unrelated sections from
-        # the template.
-        template_match = pattern.search(content)
-        if not template_match:
+        # Find the region to replace in the template
+        region = _find_template_match(pattern, content)
+        if region is None:
             # nothing to replace in template
             continue
 
-        # Determine which group index we used (1 when the author provided a
-        # capture group, otherwise 0 for the full match). Compute the absolute
-        # span of that selected region in the template so replacements are
-        # performed at the correct indices even when the declared pattern
-        # includes surrounding context.
-        tpl_group_idx = 1 if template_match.lastindex else 0
-        tpl_cap_start, tpl_cap_end = template_match.span(tpl_group_idx)
+        # Replace the matched region with local content
+        content = content[: region.start] + local_matched + content[region.end :]
 
-        tpl_matched_raw = content[tpl_cap_start:tpl_cap_end]
-        tpl_matched = _trim_block_by_indent(tpl_matched_raw)
-
-        # Replace only the trimmed matched region in the template with the
-        # trimmed local content. The trimmed region starts at the capture
-        # start and extends the length of the trimmed text. However, if the
-        # template contained only whitespace (spaces/newlines) between the
-        # end of the trimmed block and the original capture end (for
-        # example a blank line before the next section marker), preserve
-        # that whitespace so surrounding structure/spacing is unchanged.
-        trimmed_start = tpl_cap_start
-        trimmed_end = tpl_cap_start + len(tpl_matched)
-
-        # Potentially extend the trimmed end to include whitespace-only
-        # padding that was part of the original capture. Delegate to the
-        # helper so the logic is tested and `apply_regex_replacements` is
-        # easier to read.
-        trimmed_end = _extend_trimmed_region_to_include_whitespace(
-            content,
-            trimmed_end,
-            tpl_cap_end,
-        )
-
-        content = content[:trimmed_start] + local_matched + content[trimmed_end:]
     return content
+
+
+def _search_indented_template_match(
+    pattern: re.Pattern[str],
+    content: str,
+) -> tuple[re.Match[str], int] | None:
+    """Match a pattern against an indented single line and return its offset."""
+    offset = 0
+    for line in content.splitlines(keepends=True):
+        stripped = line.lstrip(' \t')
+        if not stripped:
+            offset += len(line)
+            continue
+
+        line_body = stripped.rstrip('\r\n')
+        match = pattern.fullmatch(line_body)
+        if match:
+            return match, offset + (len(line) - len(stripped))
+        offset += len(line)
+    return None
+
+
+def _strip_regex_directives_for_phase(content: str, phase: str) -> str:
+    """Remove only regex directive lines assigned to the selected phase."""
+    result: list[str] = []
+    for line in content.splitlines(keepends=True):
+        stripped = line.rstrip('\r\n')
+        match = _REGEX_DIRECTIVE_RE.match(stripped)
+        if match and _directive_phase(match) == phase:
+            continue
+        result.append(line)
+    return ''.join(result)
+
+
+def _directive_phase(match: re.Match[str]) -> str:
+    """Return directive phase parsed from tag suffix with pre-render default."""
+    raw_tag = match.group(1)
+    if '|' not in raw_tag:
+        return 'pre-render'
+    _, maybe_phase = raw_tag.rsplit('|', 1)
+    return maybe_phase if maybe_phase in {'pre-render', 'after-render'} else 'pre-render'

@@ -158,8 +158,8 @@ the full resolution rules and CLI protocol.
 
 - **`insertions_extend_files`** - list of additional file paths within
   `overrides.insertions_extend_files` that should be allowed to use this
-  provider's insertion functions. This is additive to provider-defined
-  insertion target files and is intended as a conservative extension mechanism.
+  provider's insertion functions. This is additive to provider-defined insertion
+  target files and is intended as a conservative extension mechanism.
 
 Shorthand notation is supported in the YAML. Instead of writing::
 

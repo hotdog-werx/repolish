@@ -363,3 +363,77 @@ def test_replace_text(test_case: ReplaceTextTestCase):
     if test_case.expected_not_contains:
         for s in test_case.expected_not_contains:
             assert s not in result
+
+
+def test_replace_text_after_render_keep_block_runs_only_in_second_pass() -> None:
+    template = dedent(
+        """\
+        Header
+        ## repolish-keep-block[user-note|after-render]: start="<!-- start -->" end="<!-- end -->"
+        <!-- start -->
+        default
+        <!-- end -->
+        Footer
+        """,
+    )
+    local_content = dedent(
+        """\
+        Header
+        <!-- start -->
+        custom
+        <!-- end -->
+        Footer
+        """,
+    )
+
+    pre = replace_text(template, local_content, phase='pre-render')
+    assert 'repolish-keep-block' in pre
+
+    post = replace_text(pre, local_content, phase='after-render')
+    assert 'repolish-keep-block' not in post
+    assert '<!-- start -->\ncustom\n<!-- end -->' in post
+
+
+def test_replace_text_after_render_regex_runs_only_in_second_pass() -> None:
+    template = dedent(
+        r"""\
+        ## repolish-regex[v|after-render]: ^version:\s*(.+)$
+        version: 0.0.0
+        """,
+    )
+    local_content = 'version: 2.1.0\n'
+
+    pre = replace_text(template, local_content, phase='pre-render')
+    assert 'repolish-regex[v|after-render]' in pre
+    assert 'version: 0.0.0' in pre
+
+    post = replace_text(pre, local_content, phase='after-render')
+    assert 'repolish-regex[v|after-render]' not in post
+    assert 'version: 2.1.0' in post
+
+
+def test_replace_text_after_render_multiregex_runs_only_in_second_pass() -> None:
+    template = dedent(
+        r"""\
+        [tools]
+        ## repolish-multiregex-block[tools|after-render]: ^\[tools\](.*?)(?=\n\[|\Z)
+        ## repolish-multiregex[tools|after-render]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+        uv = "0.0.0"
+        dprint = "0.0.0"
+        """,
+    )
+    local_content = dedent(
+        """\
+        [tools]
+        uv = "0.7.20"
+        dprint = "0.50.1"
+        """,
+    )
+
+    pre = replace_text(template, local_content, phase='pre-render')
+    assert 'repolish-multiregex[tools|after-render]' in pre
+
+    post = replace_text(pre, local_content, phase='after-render')
+    assert 'repolish-multiregex[tools|after-render]' not in post
+    assert 'uv = "0.7.20"' in post
+    assert 'dprint = "0.50.1"' in post

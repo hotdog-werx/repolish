@@ -4,7 +4,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from repolish.commands.apply.debug import _file_context_slug, debug_file_slug
+from repolish.commands.apply.debug import debug_file_slug
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console, supports_hyperlinks
@@ -19,6 +19,7 @@ from repolish.providers.models import (
     ValidationStatus,
 )
 from repolish.providers.models.files import ValidationResult
+from repolish.utils import path_slug
 from repolish.version import __version__
 
 
@@ -448,7 +449,7 @@ def _file_status_node(
     node = Text()
     prefix, pfx_style = _insertion_display_prefix(record, session)
     node.append(prefix, style=pfx_style)
-    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(record.path)}.json'
+    file_ctx_file = debug_dir / 'file-ctx' / f'file-context.{path_slug(record.path)}.json'
     link = (
         f'link file://{file_ctx_file.absolute()}'
         if supports_hyperlinks and record.mode in (FileMode.REGULAR, FileMode.CREATE_ONLY)

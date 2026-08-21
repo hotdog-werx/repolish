@@ -1,8 +1,21 @@
 # Preprocessors
 
-Before Jinja2 runs, repolish applies a preprocessing pass to every staged
-template. This pass handles four kinds of directives - all of which are stripped
-from the final output so your project files stay clean.
+Repolish applies preprocessing in two phases:
+
+1. `pre-render` (default): runs before Jinja2 on staged templates.
+2. `after-render` (opt-in): runs after Jinja2 on rendered output files.
+
+This handles cases where directives live inside loop-generated or conditional
+template content and therefore only exist after Jinja rendering.
+
+To place a directive in the second phase, append `|after-render` to the tag
+inside the square brackets, for example
+`repolish-keep-block[notes|after-render]`. The default is `pre-render`, so you
+only need the suffix when a directive must wait until Jinja has produced the
+final file content.
+
+All processed directive lines are stripped from final output so project files
+stay clean.
 
 The most common directives are **regex** and **multiregex**: they live inside
 the template file itself and read values directly from your current project
@@ -27,6 +40,14 @@ captured group replaces the corresponding line in the template. If no match is
 found, the default template line is used unchanged.
 
 The directive line itself is always removed from the output.
+
+To run a regex directive after Jinja rendering, add `|after-render` to the
+directive tag name:
+
+```python
+## repolish-regex[version|after-render]: ^__version__\s*=\s*"(.+?)"$
+__version__ = "0.0.0"
+```
 
 ### Capture group behavior
 
@@ -53,8 +74,8 @@ while keeping versions you have already pinned locally.
 
 ```toml
 [tools]
-## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+## repolish-multiregex-block[tools|after-render]: ^\[tools\](.*?)(?=\n\[|\Z)
+## repolish-multiregex[tools|after-render]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
 uv = "0.0.0"
 dprint = "0.0.0"
 ```
@@ -120,7 +141,7 @@ Use `repolish-keep-block` when the developer-owned content sits between two
 explicit markers.
 
 ```markdown
-## repolish-keep-block[readme-custom-block]: start="<!-- start -->" end="<!-- end -->"
+## repolish-keep-block[readme-custom-block|after-render]: start="<!-- start -->" end="<!-- end -->"
 
 <!-- start -->
 
@@ -233,11 +254,13 @@ continues to come from the template.
 
 ## Processing order
 
-1. Block anchors are applied first (replacement from provider code / config).
-2. Keep directives are applied next (copy developer-owned regions from the
-   current project file when present).
-3. Regex directives are applied next (capture from the current project file).
-4. Multiregex directives are applied last.
+1. `pre-render` phase on templates: block anchors, keep directives, regex
+   directives, multiregex directives.
+2. Jinja2 rendering.
+3. `after-render` phase on rendered files: keep directives, regex directives,
+   multiregex directives tagged with `|after-render` in the directive name.
+4. Insertions are applied to the generated files on disk, after rendering and
+   after-render preprocessing, but before any post-process formatting step.
 
 All directive lines are stripped before Jinja2 sees the file.
 

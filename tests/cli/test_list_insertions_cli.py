@@ -1,5 +1,8 @@
 import json
+from pathlib import Path
 from textwrap import dedent
+
+import pytest
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
@@ -7,7 +10,10 @@ from repolish.cli.testing import CliRunner
 runner = CliRunner()
 
 
-def test_list_insertions_shows_provider_functions(tmp_path, monkeypatch):
+def test_list_insertions_shows_provider_functions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     provider_dir = tmp_path / 'p'
     provider_dir.mkdir()
     (provider_dir / 'repolish.py').write_text(
@@ -59,7 +65,10 @@ def test_list_insertions_shows_provider_functions(tmp_path, monkeypatch):
     assert 'Generate uv source block for one mode.' in result.output
 
 
-def test_list_insertions_filters_by_provider_and_function(tmp_path, monkeypatch):
+def test_list_insertions_filters_by_provider_and_function(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     provider_dir = tmp_path / 'p'
     provider_dir.mkdir()
     (provider_dir / 'repolish.py').write_text(
@@ -95,7 +104,10 @@ def test_list_insertions_filters_by_provider_and_function(tmp_path, monkeypatch)
 
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ['list-insertions', '-p', 'p', '-f', 'render-a'])
+    result = runner.invoke(
+        app,
+        ['list-insertions', '-p', 'p', '-f', 'render-a'],
+    )
 
     assert result.exit_code == 0
     assert 'render-a' in result.output

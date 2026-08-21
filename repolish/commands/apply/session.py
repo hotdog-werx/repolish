@@ -33,6 +33,7 @@ from repolish.hydration import (
     preprocess_templates,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
+from repolish.preprocessors import replace_text, safe_file_read
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
 from repolish.utils import run_post_process
@@ -131,6 +132,49 @@ def _validation_has_warnings(session: ResolvedSession) -> bool:
     )
 
 
+def _run_after_render_preprocessors(
+    setup_output: Path,
+    base_dir: Path,
+) -> None:
+    """Apply directives tagged with phase="after-render" on rendered output files."""
+    rendered_root = setup_output / 'repolish'
+    if not rendered_root.exists():
+        return
+
+    for rendered_file in rendered_root.rglob('*'):
+        if not rendered_file.is_file():
+            continue
+        try:
+            rendered_text = rendered_file.read_text(encoding='utf-8')
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        rel_path = rendered_file.relative_to(rendered_root)
+        local_rel_path = _rendered_rel_path_to_local_rel_path(rel_path)
+        local_text = safe_file_read(base_dir / local_rel_path)
+        updated = replace_text(
+            rendered_text,
+            local_text,
+            anchors_dictionary={},
+            phase='after-render',
+        )
+        if updated != rendered_text:
+            rendered_file.write_text(updated, encoding='utf-8')
+
+
+def _rendered_rel_path_to_local_rel_path(rendered_rel_path: Path) -> Path:
+    """Translate a staged rendered path back to the destination file path."""
+    parts = list(rendered_rel_path.parts)
+    if not parts:
+        return rendered_rel_path
+
+    name = parts[-1]
+    prefix = '_repolish.'
+    if name.startswith(prefix):
+        parts[-1] = name.removeprefix(prefix)
+    return Path(*parts)
+
+
 def apply_session(
     session: ResolvedSession,
     *,
@@ -190,6 +234,10 @@ def apply_session(
     # Render templates using Jinja2
     if render_templates(setup_input, providers, setup_output) != 0:
         return 1
+
+    # Reconcile developer-owned content that is only discoverable after Jinja rendering
+    # (for example, directives inside loop-generated sections).
+    _run_after_render_preprocessors(setup_output, base_dir)
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:

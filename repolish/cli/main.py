@@ -6,9 +6,9 @@ import cyclopts
 from cyclopts import Parameter
 
 from repolish.cli.apply import apply
-from repolish.cli.list_insertions import list_insertions
 from repolish.cli.link import link
 from repolish.cli.lint import lint
+from repolish.cli.list_insertions import list_insertions
 from repolish.cli.preview import preview
 from repolish.cli.scaffold import scaffold
 from repolish.cli.utils import setup_logging

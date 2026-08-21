@@ -4,6 +4,33 @@ This guide shows how to apply preprocessor directives to common real-world
 scenarios. For a full explanation of how each directive works, see
 [Preprocessors](../concepts/preprocessors.md).
 
+## Two-phase directives
+
+Directives run in `pre-render` mode by default. Use `|after-render` in the
+directive tag when the directive appears inside Jinja-generated content (for
+example loops), so repolish evaluates it after rendering.
+
+Example:
+
+```jinja
+{% for item in items %}
+- {{ item }}
+## repolish-keep-block[user-note|after-render]: start="<!-- note-start -->" end="<!-- note-end -->"
+<!-- note-start -->
+default note for {{ item }}
+<!-- note-end -->
+{% endfor %}
+```
+
+The same `|after-render` tag suffix is supported on:
+
+- `repolish-regex[...]`
+- `repolish-multiregex-block[...]`
+- `repolish-multiregex[...]`
+- `repolish-keep-block[...]`
+- `repolish-keep-rest[...]`
+- `repolish-keep-header[...]`
+
 ## Choosing the right directive
 
 | Situation                                                        | Directive    |

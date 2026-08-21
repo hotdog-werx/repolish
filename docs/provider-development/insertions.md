@@ -18,12 +18,14 @@ Quick checklist:
 - Use `key=value` marker args when argument order should not matter.
 - Use `paused_files` or `overrides.insertions` to temporarily pause ownership.
 - Use `overrides.insertions_extend_files` to conservatively extend where a
-    provider's insertion functions are allowed.
+  provider's insertion functions are allowed.
 
 ## Where insertions fit in apply
 
-Insertions run in the apply pipeline after generated files are written, then
-report per-file insertion status in the summary.
+Insertions run after template rendering and after-render preprocessing, once the
+generated files exist on disk. They are applied before post-processing so
+formatters can see the final inserted content, and then the per-file insertion
+status is reported in the summary.
 
 In check mode, insertion output is also checked for drift. If insertion-managed
 content is stale, `repolish apply --check` fails just like template drift.
@@ -273,9 +275,9 @@ This pattern is the intended way to support directory-wide insertion targets.
 
 ## Shared registry + conservative file targeting
 
-For reusable insertion functions across many developer-owned files, providers can
-return a list of destination paths from `create_file_insertions()` and expose
-the function registry via `create_insertion_registry()`.
+For reusable insertion functions across many developer-owned files, providers
+can return a list of destination paths from `create_file_insertions()` and
+expose the function registry via `create_insertion_registry()`.
 
 ```python
 class SourcesProvider(Provider[Ctx, BaseInputs]):

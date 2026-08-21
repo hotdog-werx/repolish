@@ -30,34 +30,42 @@ class KeepMarkerSpec:
 
 
 @dataclass(frozen=True)
+class KeepPatterns:
+    """Container for all keep-related patterns extracted from a template."""
+
+    blocks: dict[str, KeepBlockSpec]
+    rest: dict[str, KeepMarkerSpec]
+    header: dict[str, KeepMarkerSpec]
+
+
+@dataclass(frozen=True)
 class _KeepApplyContext:
     """Shared context used while applying keep directives."""
 
     template_lines: list[str]
     local_lines: list[str]
-    keep_blocks: dict[str, KeepBlockSpec]
-    keep_rest: dict[str, KeepMarkerSpec]
-    keep_header: dict[str, KeepMarkerSpec]
+    patterns: KeepPatterns
     keep_block_occurrence: dict[tuple[str, str], int]
+    phase: str
 
 
 _KEEP_BLOCK_RE = re.compile(
-    r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+end=("(?:\\.|[^"])*")[^\n]*$',
+    r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+end=("(?:\\.|[^"])*")\s*$',
 )
 _KEEP_REST_RE = re.compile(
-    r'^[^\n]*repolish-keep-(?:rest|the-rest|footer)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")[^\n]*$',
+    r'^[^\n]*repolish-keep-(?:rest|the-rest|footer)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
 )
 _KEEP_HEADER_RE = re.compile(
-    r'^[^\n]*repolish-keep-(?:header|the-header)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")[^\n]*$',
+    r'^[^\n]*repolish-keep-(?:header|the-header)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
 )
 
 
 def apply_keep_replacements(
     content: str,
-    keep_blocks: dict[str, KeepBlockSpec],
-    keep_rest: dict[str, KeepMarkerSpec],
-    keep_header: dict[str, KeepMarkerSpec],
+    patterns: KeepPatterns,
     local_file_content: str,
+    *,
+    phase: str = 'pre-render',
 ) -> str:
     """Apply keep directives to template content.
 
@@ -67,19 +75,18 @@ def apply_keep_replacements(
     """
     logger.debug(
         'applying_keep_replacements',
-        keep_blocks=[str(name) for name in keep_blocks],
-        keep_rest=[str(name) for name in keep_rest],
-        keep_header=[str(name) for name in keep_header],
+        keep_blocks=[str(name) for name in patterns.blocks],
+        keep_rest=[str(name) for name in patterns.rest],
+        keep_header=[str(name) for name in patterns.header],
     )
     template_lines = content.splitlines(keepends=True)
     local_lines = local_file_content.splitlines(keepends=True)
     ctx = _KeepApplyContext(
         template_lines=template_lines,
         local_lines=local_lines,
-        keep_blocks=keep_blocks,
-        keep_rest=keep_rest,
-        keep_header=keep_header,
+        patterns=patterns,
         keep_block_occurrence={},
+        phase=phase,
     )
     result: list[str] = []
 
@@ -89,17 +96,17 @@ def apply_keep_replacements(
         stripped = line.rstrip('\r\n')
 
         block_match = _KEEP_BLOCK_RE.match(stripped)
-        if block_match:
+        if block_match and _is_phase_selected(block_match, phase):
             result, index = _apply_keep_block(result, index, block_match, ctx)
             continue
 
         rest_match = _KEEP_REST_RE.match(stripped)
-        if rest_match:
+        if rest_match and _is_phase_selected(rest_match, phase):
             result, index = _apply_keep_rest(result, index, rest_match, ctx)
             continue
 
         header_match = _KEEP_HEADER_RE.match(stripped)
-        if header_match:
+        if header_match and _is_phase_selected(header_match, phase):
             result, index = _apply_keep_header(result, index, header_match, ctx)
             continue
 
@@ -115,8 +122,8 @@ def _apply_keep_block(
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = match.group(1)
-    spec = ctx.keep_blocks.get(name)
+    name = _directive_name(match.group(1))
+    spec = ctx.patterns.blocks.get(name)
     if spec is None:
         logger.debug('keep_block_no_match_in_target', name=name)
         return result, directive_index + 1
@@ -124,6 +131,7 @@ def _apply_keep_block(
     segment_end = _find_next_keep_directive_index(
         ctx.template_lines,
         directive_index + 1,
+        ctx.phase,
     )
     if segment_end is None:
         segment_end = len(ctx.template_lines)
@@ -182,8 +190,8 @@ def _apply_keep_rest(
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = match.group(1)
-    spec = ctx.keep_rest.get(name)
+    name = _directive_name(match.group(1))
+    spec = ctx.patterns.rest.get(name)
     if spec is None:
         logger.debug('keep_rest_no_match_in_target', name=name)
         return result, directive_index + 1
@@ -222,7 +230,7 @@ def _apply_keep_header(
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = match.group(1)
+    name = _directive_name(match.group(1))
 
     if directive_index != 0:
         logger.warning(
@@ -232,7 +240,7 @@ def _apply_keep_header(
         )
         return result, directive_index + 1
 
-    spec = ctx.keep_header.get(name)
+    spec = ctx.patterns.header.get(name)
     if spec is None:
         logger.debug('keep_header_no_match_in_target', name=name)
         return result, directive_index + 1
@@ -356,10 +364,41 @@ def _find_bounded_regions_in_range(
 def _find_next_keep_directive_index(
     lines: list[str],
     start: int,
+    phase: str,
 ) -> int | None:
     """Return the next keep directive line index at or after *start*."""
     for index in range(start, len(lines)):
         stripped = lines[index].rstrip('\r\n')
-        if _KEEP_BLOCK_RE.match(stripped) or _KEEP_REST_RE.match(stripped) or _KEEP_HEADER_RE.match(stripped):
+        block_match = _KEEP_BLOCK_RE.match(stripped)
+        rest_match = _KEEP_REST_RE.match(stripped)
+        header_match = _KEEP_HEADER_RE.match(stripped)
+        if (
+            (block_match and _is_phase_selected(block_match, phase))
+            or (rest_match and _is_phase_selected(rest_match, phase))
+            or (header_match and _is_phase_selected(header_match, phase))
+        ):
             return index
     return None
+
+
+def _is_phase_selected(match: re.Match[str], selected_phase: str) -> bool:
+    """Return True when this keep directive should run in selected_phase."""
+    _, directive_phase = _split_directive_tag(match.group(1))
+    return directive_phase == selected_phase
+
+
+def _directive_name(raw_name: str) -> str:
+    """Return keep directive logical name without optional phase suffix."""
+    name, _ = _split_directive_tag(raw_name)
+    return name
+
+
+def _split_directive_tag(raw_tag: str) -> tuple[str, str]:
+    """Split directive tag into `(name, phase)` using `name|phase` syntax."""
+    if '|' not in raw_tag:
+        return raw_tag, 'pre-render'
+
+    name, maybe_phase = raw_tag.rsplit('|', 1)
+    if maybe_phase in {'pre-render', 'after-render'} and name:
+        return name, maybe_phase
+    return raw_tag, 'pre-render'

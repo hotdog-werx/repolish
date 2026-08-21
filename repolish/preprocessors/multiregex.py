@@ -10,12 +10,21 @@ from hotlog import get_logger
 
 logger = get_logger(__name__)
 
+_MULTIREGEX_BLOCK_DIRECTIVE_RE = re.compile(
+    r'^[^\n]*repolish-multiregex-block\[(.+?)\]:\s*(.*?)\s*$',
+)
+_MULTIREGEX_DIRECTIVE_RE = re.compile(
+    r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
+)
+
 
 def apply_multiregex_replacements(
     content: str,
     multiregex_blocks: dict[str, str],
     multiregexes: dict[str, str],
     local_file_content: str,
+    *,
+    phase: str = 'pre-render',
 ) -> str:
     """Applies multiregex replacements to the content."""
     logger.debug(
@@ -38,7 +47,7 @@ def apply_multiregex_replacements(
             continue
 
         values = _extract_values_from_block(multi_regex, block_content, tag)
-        content = _remove_multiregex_comments(content, tag)
+        content = _remove_multiregex_comments(content, tag, phase)
         content = _replace_values_in_section(content, tag, values)
 
     return content
@@ -98,20 +107,40 @@ def _extract_values_from_block(
     return values
 
 
-def _remove_multiregex_comments(content: str, tag: str) -> str:
-    """Remove multiregex comments from template."""
-    content = re.sub(
-        rf'## repolish-multiregex-block\[{re.escape(tag)}\]:.*\n',
-        '',
-        content,
-        flags=re.MULTILINE,
-    )
-    return re.sub(
-        rf'## repolish-multiregex\[{re.escape(tag)}\]:.*\n',
-        '',
-        content,
-        flags=re.MULTILINE,
-    )
+def _remove_multiregex_comments(content: str, tag: str, phase: str) -> str:
+    """Remove multiregex directive lines for one tag and selected phase."""
+    result: list[str] = []
+    for line in content.splitlines(keepends=True):
+        stripped = line.rstrip('\r\n')
+        block_match = _MULTIREGEX_BLOCK_DIRECTIVE_RE.match(stripped)
+        if block_match and _directive_name(block_match.group(1)) == tag and _directive_phase(block_match) == phase:
+            continue
+
+        item_match = _MULTIREGEX_DIRECTIVE_RE.match(stripped)
+        if item_match and _directive_name(item_match.group(1)) == tag and _directive_phase(item_match) == phase:
+            continue
+
+        result.append(line)
+    return ''.join(result)
+
+
+def _directive_phase(match: re.Match[str]) -> str:
+    """Return directive phase parsed from tag suffix with pre-render default."""
+    raw_tag = match.group(1)
+    if '|' not in raw_tag:
+        return 'pre-render'
+    _, maybe_phase = raw_tag.rsplit('|', 1)
+    return maybe_phase if maybe_phase in {'pre-render', 'after-render'} else 'pre-render'
+
+
+def _directive_name(raw_tag: str) -> str:
+    """Return the logical multiregex tag without an optional phase suffix."""
+    if '|' not in raw_tag:
+        return raw_tag
+    name, maybe_phase = raw_tag.rsplit('|', 1)
+    if maybe_phase in {'pre-render', 'after-render'} and name:
+        return name
+    return raw_tag
 
 
 def _replace_values_in_section(
