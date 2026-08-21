@@ -91,11 +91,12 @@ def _classify_block_for_provider(
 def _get_blocks_for_provider(
     text: str,
     provider_alias: str,
+    rel_path: str = '',
     *,
     is_first_provider: bool = False,
 ) -> list[InsertionBlock]:
     """Get insertion blocks that belong to a specific provider."""
-    parsed = parse_text(text)
+    parsed = parse_text(text, file_path=rel_path)
     return [
         b
         for b in parsed.blocks
@@ -175,6 +176,7 @@ def _process_provider_insertions(
         provider_blocks = _get_blocks_for_provider(
             original_text,
             provider_alias,
+            ctx.rel_path,
             is_first_provider=is_first_provider,
         )
         provider_functions = _filter_provider_functions(
@@ -339,9 +341,9 @@ def _apply_file_insertions(
     """Apply insertions for a single file and return results."""
     target = ctx.base_dir / ctx.rel_path
     original_text = target.read_text(encoding='utf-8')
-    parsed = parse_text(original_text)
+    parsed = parse_text(original_text, file_path=ctx.rel_path)
     disabled_entries = _collect_disabled_entries(parsed.blocks, ctx.registry)
-    result = write_back(original_text, ctx.registry)
+    result = write_back(original_text, ctx.registry, file_path=ctx.rel_path)
     if persist_changes:
         target.write_text(result.text, encoding='utf-8')
 
@@ -515,7 +517,7 @@ def stage_registered_insertions(
             else target.read_text(encoding='utf-8')
         )
 
-        rendered = write_back(source_text, registry).text
+        rendered = write_back(source_text, registry, file_path=rel_path).text
         staged_file.parent.mkdir(parents=True, exist_ok=True)
         staged_file.write_text(rendered, encoding='utf-8')
 
@@ -587,7 +589,7 @@ def _rendered_diff_if_any(
 ) -> tuple[str, str] | None:
     """Return a rendered diff tuple when live rendering differs from current file."""
     current = target.read_text(encoding='utf-8')
-    rendered = write_back(current, registry).text
+    rendered = write_back(current, registry, file_path=rel_path).text
     if current == rendered:
         return None
     return (rel_path, _build_unified_diff(rel_path, current, rendered))

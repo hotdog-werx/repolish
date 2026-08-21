@@ -175,6 +175,7 @@ def write_back(
     render: Renderer | RenderRegistry | None = None,
     *,
     comment_styles: Iterable[CommentStyle | str] | None = None,
+    file_path: str = '',
 ) -> WriteBackResult:
     """Replace each parsed insertion block body while preserving the markers.
 
@@ -183,8 +184,18 @@ def write_back(
 
     Parse diagnostics (malformed markers, unclosed blocks) are passed through
     so callers can see both parse and render issues.
+
+    Args:
+        text: The file content to process.
+        render: Renderer function or registry for rendering block content.
+        comment_styles: The comment styles to recognize.
+        file_path: The path of the file being processed (stored in each InsertionBlock).
     """
-    parsed = parse_text(text, comment_styles=comment_styles)
+    parsed = parse_text(
+        text,
+        comment_styles=comment_styles,
+        file_path=file_path,
+    )
 
     # Convert parse diagnostics to write diagnostics
     diagnostics: list[WriteDiagnostic] = [

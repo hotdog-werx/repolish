@@ -1659,3 +1659,60 @@ def create_file_mappings(self, context):
 
     # FIXED: Running check mode now passes because post_process IS applied during check
     run_repolish(['apply', '--check', '-vv'], exit_code=0)
+
+
+def test_provider_insertion_receives_file_path_in_block_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insertion functions receive file_path via BlockContext and InsertionBlock."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        File path test
+
+        <!-- repolish:on:path-test show-path -->
+        PLACEHOLDER
+        <!-- repolish:off:path-test -->
+
+        <!-- repolish:on:block-path show-block-path -->
+        PLACEHOLDER2
+        <!-- repolish:off:block-path -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        from repolish import BlockContext, InsertionBlock
+
+        def show_path(*, ctx: BlockContext):
+            # Verify file_path is available in BlockContext
+            assert ctx.file_path == 'README.md', f"Expected 'README.md', got {ctx.file_path!r}"
+            assert ctx.insertion_block is not None
+            assert ctx.insertion_block.file_path == 'README.md'
+            return f'file-is:{ctx.file_path}'
+
+        def show_block_path(*, block: InsertionBlock):
+            # Verify file_path is available in InsertionBlock
+            assert block.file_path == 'README.md', f"Expected 'README.md', got {block.file_path!r}"
+            return f'block-file-is:{block.file_path}'
+
+        return {
+            'README.md': {
+                'show-path': show_path,
+                'show-block-path': show_block_path,
+            }
+        }""",
+        extra_imports='from repolish import BlockContext, InsertionBlock',
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'file-is:README.md' in content
+    assert 'block-file-is:README.md' in content
+    assert 'insertions: ✓ ok (2 ok, 0 failed)' in result.output

@@ -210,6 +210,8 @@ def _inject_context_if_requested(
                 args=block.args,
                 repolish=own_ctx.repolish,
                 provider_context=None,
+                file_path=block.file_path,
+                insertion_block=block,
             )
         elif _is_insertion_block_annotation(p.annotation):
             keyword_args[p.name] = block

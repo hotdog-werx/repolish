@@ -203,3 +203,35 @@ def test_parse_insertions(case: TCase) -> None:
             assert any(expected in d.message for d in parsed.diagnostics), (
                 f'Expected diagnostic {expected!r} not found in {parsed.diagnostics}'
             )
+
+
+def test_parse_text_includes_file_path_in_blocks() -> None:
+    """Test that file_path is populated in InsertionBlock when provided."""
+    text = dedent("""
+        <!-- repolish:on:docs render foo -->
+        content
+        <!-- repolish:off:docs -->
+        """).lstrip('\n')
+
+    file_path = 'path/to/myfile.md'
+    parsed = parse_text(text, file_path=file_path)
+
+    assert len(parsed.blocks) == 1
+    block = parsed.blocks[0]
+    assert block.file_path == file_path
+    assert block.tag == 'docs'
+    assert block.function == 'render'
+
+
+def test_parse_text_default_file_path_is_empty() -> None:
+    """Test that file_path defaults to empty string when not provided."""
+    text = dedent("""
+        <!-- repolish:on:year display-year -->
+        2024
+        <!-- repolish:off:year -->
+        """).lstrip('\n')
+
+    parsed = parse_text(text)
+
+    assert len(parsed.blocks) == 1
+    assert parsed.blocks[0].file_path == ''

@@ -68,12 +68,16 @@ class BlockContext:
         args: Positional arguments from the marker as strings.
         repolish: The full repolish context (workspace, repo, year, provider info).
         provider_context: Optional provider-specific context (set by provider).
+        file_path: The path of the file where the insertion block is defined.
+        insertion_block: The full InsertionBlock for convenience access.
     """
 
     tag: str
     args: tuple[str, ...]
     repolish: RepolishContext
-    provider_context: Any | None = None
+    insertion_block: InsertionBlock
+    provider_context: Any
+    file_path: str = ''
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,7 @@ class InsertionBlock:
     body_start: int = 0
     body_end: int = 0
     comment_style: CommentStyle = CommentStyle.HTML
+    file_path: str = ''
 
 
 @dataclass(frozen=True)
