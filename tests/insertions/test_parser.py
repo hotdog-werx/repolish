@@ -152,9 +152,12 @@ class TCase:
             expected_diagnostics=('without a matching opener',),
         ),
         TCase(
-            name='missing_function_name',
+            name='functionless_marker_is_allowed',
             text='<!-- repolish:on:bad -->\ncontent\n<!-- repolish:off:bad -->\n',
-            expected_diagnostics=('missing a function name',),
+            expected_tags=('bad',),
+            expected_functions=('',),
+            expected_args=((),),
+            expected_bodies=('\ncontent\n',),
         ),
         TCase(
             name='nested_same_tag',

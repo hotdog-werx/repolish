@@ -318,6 +318,40 @@ def test_write_back_resolves_qualified_name_to_unqualified_registry() -> None:
     assert result.text.rstrip('\n') == expected
 
 
+def test_write_back_functionless_marker_renders_empty_body() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs -->
+        previous-body
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs -->
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, {'render': lambda: 'ignored'})
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+    assert result.failed_blocks == 0
+
+
 def test_write_back_registry_calls_noarg_renderer() -> None:
     text = (
         dedent(

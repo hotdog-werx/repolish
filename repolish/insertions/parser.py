@@ -99,9 +99,6 @@ def _open_block(
 ) -> InsertionBlock:
     """Create the insertion block state for an opening marker."""
     function, args = _split_function_args(payload)
-    if not function:
-        msg = f'Insertion marker for tag {tag!r} is missing a function name.'
-        raise ValueError(msg)
 
     return InsertionBlock(
         tag=tag,

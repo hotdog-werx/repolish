@@ -91,6 +91,14 @@ class ProviderOverrides(BaseModel):
             'Use {"README.md": false} to disable all insertions for a file.'
         ),
     )
+    insertions_extend_files: list[str] | None = Field(
+        default=None,
+        description=(
+            'Additional destination paths that are allowed to use this provider\'s '
+            'insertion registry. This extends provider-declared insertion targets '
+            'without modifying provider code.'
+        ),
+    )
 
     @field_validator('file_mappings', mode='before')
     @classmethod
@@ -287,6 +295,8 @@ class ProviderConfig(BaseModel):
                 'anchors': raw_overrides.anchors,
                 'file_mappings': raw_overrides.file_mappings,
                 'validators': raw_overrides.validators,
+                'insertions': raw_overrides.insertions,
+                'insertions_extend_files': raw_overrides.insertions_extend_files,
             }
         else:
             overrides_data = dict(raw_overrides) if raw_overrides else {}

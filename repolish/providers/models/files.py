@@ -167,6 +167,12 @@ InsertionRegistry: TypeAlias = dict[str, InsertionRenderer]
 InsertionRegistryByPath: TypeAlias = dict[str, InsertionRegistry]
 """Top-level map keyed by destination path for insertion renderers."""
 
+InsertionTargetPaths: TypeAlias = list[str]
+"""Destination paths that should use a provider's shared insertion registry."""
+
+FileInsertionContribution: TypeAlias = InsertionRegistryByPath | InsertionTargetPaths
+"""Provider insertion contribution (explicit per-file map or shared-target list)."""
+
 
 class Action(str, Enum):
     """Enumeration of possible actions for a path."""

@@ -56,6 +56,8 @@ def _call_registered_renderer(
     - Positional params: filled from marker args, uses defaults if available
     """
     function_name = block.function
+    if not function_name:
+        return ''
     fn = registry.get(function_name)
     if fn is None and ':' in function_name:
         fn = registry.get(function_name.rsplit(':', 1)[1])

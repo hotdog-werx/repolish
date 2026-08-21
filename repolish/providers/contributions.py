@@ -12,6 +12,7 @@ from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,
+    FileInsertionContribution,
     FileMappingOptions,
     FileMode,
     FileValidatorEntry,
@@ -319,6 +320,10 @@ def _build_insertion_wrapper(
         )
         return _render_from_attempts(fn, sig, attempts, fn_name=fn_name)
 
+    # Preserve user-facing metadata for diagnostics and list-insertions output.
+    cast('Any', _render).__name__ = getattr(fn, '__name__', '_render')
+    cast('Any', _render).__doc__ = getattr(fn, '__doc__', None)
+
     return _render
 
 
@@ -573,6 +578,7 @@ def _handle_provider_insertions(
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
+    provider_overrides: ProviderOverrides | None = None,
 ) -> None:
     """Collect insertion-function registrations for one provider.
 
@@ -580,9 +586,21 @@ def _handle_provider_insertions(
     and function name so later resolution can look up the callables by the parsed
     insertion metadata without leaking registration state across monorepo modes.
     """
-    insertions = cast(
-        'dict[str, InsertionRegistry]',
+    contribution = cast(
+        'FileInsertionContribution',
         call_provider_method(inst, 'create_file_insertions', own_ctx),
+    )
+    shared_registry: InsertionRegistry = {}
+    if isinstance(contribution, list):
+        shared_registry = cast(
+            'InsertionRegistry',
+            call_provider_method(inst, 'create_insertion_registry', own_ctx),
+        )
+
+    insertions = _normalize_provider_insertions(contribution, shared_registry)
+    _extend_provider_insertions(
+        insertions,
+        extra_paths=(provider_overrides.insertions_extend_files if provider_overrides else None),
     )
     provider_name = inst.alias or provider_id
     for path, functions in insertions.items():
@@ -596,6 +614,54 @@ def _handle_provider_insertions(
             # Always expose provider-qualified keys for explicit targeting.
             registry[f'{provider_name}:{function_name}'] = bound_fn
         accum.insertion_sources.setdefault(path, []).append(provider_id)
+
+
+def _extend_provider_insertions(
+    insertions: dict[str, InsertionRegistry],
+    *,
+    extra_paths: list[str] | None,
+) -> None:
+    """Extend insertion targets with additional files from config overrides.
+
+    This is intentionally additive: provider-declared file/function mappings
+    stay authoritative, while extra paths receive any unqualified function that
+    provider already exposes.
+    """
+    if not extra_paths:
+        return
+
+    shared_registry: InsertionRegistry = {}
+    for registry in insertions.values():
+        for function_name, fn in registry.items():
+            shared_registry.setdefault(function_name, fn)
+
+    if not shared_registry:
+        return
+
+    for path in extra_paths:
+        if not path:
+            continue
+        target_registry = insertions.setdefault(path, {})
+        for function_name, fn in shared_registry.items():
+            target_registry.setdefault(function_name, fn)
+
+
+def _normalize_provider_insertions(
+    contribution: FileInsertionContribution,
+    shared_registry: InsertionRegistry | None = None,
+) -> dict[str, InsertionRegistry]:
+    """Normalize provider insertion contribution into a path->registry map."""
+    if isinstance(contribution, dict):
+        return contribution
+    if isinstance(contribution, list):
+        if not all(isinstance(path, str) for path in contribution):
+            msg = 'create_file_insertions() list form must contain only destination path strings.'
+            raise TypeError(msg)
+        registry = shared_registry or {}
+        return {path: dict(registry) for path in contribution if path}
+
+    msg = 'create_file_insertions() must return dict[str, InsertionRegistry] or list[str].'
+    raise TypeError(msg)
 
 
 def _override_validator_entry(
@@ -822,7 +888,13 @@ def _collect_provider_contribution(
         provider_overrides,
     )
     _handle_provider_validators(inst, own_ctx, provider_id, accum)
-    _handle_provider_insertions(inst, own_ctx, provider_id, accum)
+    _handle_provider_insertions(
+        inst,
+        own_ctx,
+        provider_id,
+        accum,
+        provider_overrides,
+    )
     if provider_overrides:
         _apply_validator_overrides(provider_overrides.validators or {}, accum)
         _apply_insertion_overrides(provider_overrides.insertions or {}, accum)

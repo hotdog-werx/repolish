@@ -824,6 +824,138 @@ def test_provider_insertion_and_validator_on_non_owned_file(
     assert '1 ok, 0 failed' in result.output
 
 
+def test_provider_template_can_ship_insertion_markers_for_user_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider template can include insertion markers that are rendered after mapping."""
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        return {'README.md': {'render-status': render_status}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+    expected = dedent(
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        STATUS=ready
+        <!-- repolish:off:status -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_targets_can_be_extended_from_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Project config can extend provider insertion target files conservatively."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Primary file
+
+        <!-- repolish:on:src generate-uv-sources local -->
+        <!-- repolish:off:src -->
+        """,
+    )
+    _write(
+        tmp_path / 'docs.md',
+        """\
+        Secondary file
+
+        <!-- repolish:on:src generate-uv-sources github -->
+        <!-- repolish:off:src -->
+        """,
+    )
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_methods="""
+def create_insertion_registry(self, context):
+    def generate_uv_sources(source: str):
+        return f'sources={source}'
+
+    return {'generate-uv-sources': generate_uv_sources}
+""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'insertions_extend_files': ['docs.md'],
+                        },
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected_readme = dedent(
+        """\
+        Primary file
+
+        <!-- repolish:on:src generate-uv-sources local -->
+        sources=local
+        <!-- repolish:off:src -->
+        """,
+    )
+    expected_docs = dedent(
+        """\
+        Secondary file
+
+        <!-- repolish:on:src generate-uv-sources github -->
+        sources=github
+        <!-- repolish:off:src -->
+        """,
+    )
+
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected_readme
+    assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
+    # There should be two insertions applied, one for each file
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
 def test_provider_insertion_resolves_same_function_name_by_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -928,6 +1060,52 @@ def test_provider_insertion_provider_qualified_marker_falls_back_to_unqualified(
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
     assert 'README.md' in result.output
+
+
+def test_provider_insertion_shared_registry_targets_list_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers can register a shared insertion registry and target files via list[str]."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Shared insertion registry
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_methods="""
+def create_insertion_registry(self, context):
+    def generate_uv_sources(mode: str):
+        return f'sources={mode}'
+
+    return {'generate-uv-sources': generate_uv_sources}
+""",
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        Shared insertion registry
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        sources=local
+        <!-- repolish:off:uv -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_check_passes_when_file_is_in_sync(

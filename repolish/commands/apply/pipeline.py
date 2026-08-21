@@ -53,6 +53,8 @@ def _build_provider_overrides(
             anchors=overrides.anchors,
             file_mappings=overrides.file_mappings,
             validators=overrides.validators,
+            insertions=overrides.insertions,
+            insertions_extend_files=overrides.insertions_extend_files,
         )
     return provider_overrides
 

@@ -17,6 +17,8 @@ Quick checklist:
 - Use keyword-only typed context injection (`BlockContext` or `InsertionBlock`).
 - Use `key=value` marker args when argument order should not matter.
 - Use `paused_files` or `overrides.insertions` to temporarily pause ownership.
+- Use `overrides.insertions_extend_files` to conservatively extend where a
+    provider's insertion functions are allowed.
 
 ## Where insertions fit in apply
 
@@ -268,6 +270,73 @@ class DocsProvider(Provider[Ctx, BaseInputs]):
 ```
 
 This pattern is the intended way to support directory-wide insertion targets.
+
+## Shared registry + conservative file targeting
+
+For reusable insertion functions across many developer-owned files, providers can
+return a list of destination paths from `create_file_insertions()` and expose
+the function registry via `create_insertion_registry()`.
+
+```python
+class SourcesProvider(Provider[Ctx, BaseInputs]):
+    def create_file_insertions(self, context: Ctx):
+        # Conservative allow-list owned by provider code.
+        return [
+            'README.md',
+            'pyproject.toml',
+        ]
+
+    def create_insertion_registry(self, context: Ctx):
+        def generate_uv_sources(source: str) -> str:
+            """Generate one uv source line from a marker arg."""
+            if source == 'local':
+                return 'workspace = true'
+            if source == 'github':
+                return 'git = "https://github.com/acme/lib"'
+            return f'# unknown source: {source}'
+
+        return {
+            'generate-uv-sources': generate_uv_sources,
+        }
+```
+
+Then developers switch behavior by editing only marker args:
+
+```toml
+# repolish:on:uv generate-uv-sources github
+# repolish:off:uv
+```
+
+For fast iteration while tuning marker args, run apply with provider filtering:
+
+```bash
+repolish apply -p tooling
+```
+
+This gives "keep-block-like" developer control for dynamic generated snippets,
+but keeps generation centralized and reproducible through provider functions.
+
+### Extending allowed files from project config
+
+If you cannot change provider code (for example, using a shared upstream
+provider), projects can extend the provider's insertion target allow-list via
+provider overrides:
+
+```yaml
+providers:
+  tooling:
+    provider_root: ./providers/tooling
+    overrides:
+      insertions_extend_files:
+        - docs/setup.md
+        - apps/service-a/README.md
+```
+
+Notes:
+
+- This is additive. Provider-declared insertion targets remain enabled.
+- This does not enable every file globally by default.
+- You can still disable specific files/functions with `overrides.insertions`.
 
 ## Provider-qualified function names
 

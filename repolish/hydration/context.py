@@ -19,6 +19,7 @@ class _ProviderModelOverrides:
     file_mappings: dict[str, object]
     validators: dict[str, object]
     insertions: dict[str, object]
+    insertions_extend_files: dict[str, object]
 
 
 def _collect_provider_model_overrides(
@@ -29,6 +30,7 @@ def _collect_provider_model_overrides(
     file_mappings: dict[str, object] = {}
     validators: dict[str, object] = {}
     insertions: dict[str, object] = {}
+    insertions_extend_files: dict[str, object] = {}
 
     for alias, info in config.providers.items():
         pid = alias_to_pid.get(alias, info.provider_root.as_posix())
@@ -40,11 +42,14 @@ def _collect_provider_model_overrides(
             validators[pid] = info.overrides.validators
         if info.overrides.insertions:
             insertions[pid] = info.overrides.insertions
+        if info.overrides.insertions_extend_files:
+            insertions_extend_files[pid] = info.overrides.insertions_extend_files
 
     return _ProviderModelOverrides(
         file_mappings=file_mappings,
         validators=validators,
         insertions=insertions,
+        insertions_extend_files=insertions_extend_files,
     )
 
 
@@ -156,6 +161,7 @@ def build_final_providers(
         | set(model_overrides.file_mappings)
         | set(model_overrides.validators)
         | set(model_overrides.insertions)
+        | set(model_overrides.insertions_extend_files)
     )
 
     contributions = ProviderContributions(
@@ -166,6 +172,9 @@ def build_final_providers(
                 file_mappings=model_overrides.file_mappings.get(pid),  # type: ignore[arg-type]
                 validators=model_overrides.validators.get(pid),  # type: ignore[arg-type]
                 insertions=model_overrides.insertions.get(pid),  # type: ignore[arg-type]
+                insertions_extend_files=model_overrides.insertions_extend_files.get(
+                    pid,
+                ),  # type: ignore[arg-type]
             )
             for pid in all_override_pids
         },

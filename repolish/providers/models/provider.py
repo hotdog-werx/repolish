@@ -31,6 +31,7 @@ from repolish.providers.models.context import (
     Symlink,
 )
 from repolish.providers.models.files import (
+    FileInsertionContribution,
     FileMode,
     InsertionRegistry,
     TemplateMapping,
@@ -160,8 +161,15 @@ class ModeHandler(Generic[ContextT, InputT]):
     def create_file_insertions(
         self,
         context: ContextT,  # noqa: ARG002 - unused in base implementation
-    ) -> dict[str, InsertionRegistry]:
+    ) -> FileInsertionContribution:
         """See :meth:`Provider.create_file_insertions`."""
+        return {}
+
+    def create_insertion_registry(
+        self,
+        context: ContextT,  # noqa: ARG002 - unused in base implementation
+    ) -> InsertionRegistry:
+        """See :meth:`Provider.create_insertion_registry`."""
         return {}
 
     def create_default_symlinks(
@@ -473,7 +481,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
     def create_file_insertions(
         self,
         context: ContextT,  # noqa: ARG002 - parameter may be unused
-    ) -> dict[str, InsertionRegistry]:
+    ) -> FileInsertionContribution:
         """Optional: register insertion handlers for file-local comment blocks.
 
         The mapping looks like:
@@ -487,6 +495,21 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Each callable receives the parsed insertion metadata and returns the string
         to write into the reserved block.  This is intentionally additive and
         mode-aware: only the active workspace context should contribute functions.
+
+        This hook also accepts a list of destination paths. In that form,
+        repolish calls :meth:`create_insertion_registry` and applies the returned
+        shared function registry to each listed path.
+        """
+        return {}
+
+    def create_insertion_registry(
+        self,
+        context: ContextT,  # noqa: ARG002 - parameter may be unused
+    ) -> InsertionRegistry:
+        """Optional: return a shared insertion function registry for list-mode paths.
+
+        Used only when :meth:`create_file_insertions` returns a list of destination
+        paths. Each path in that list receives this registry.
         """
         return {}
 
