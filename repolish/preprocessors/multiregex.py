@@ -11,6 +11,7 @@ from hotlog import get_logger
 from repolish.preprocessors.directive_phase import (
     split_directive_tag,
 )
+from repolish.preprocessors.tag_names import parse_section_name
 
 logger = get_logger(__name__)
 
@@ -192,16 +193,13 @@ def _replace_values_in_section(
 
 def _is_section_start(line: str, tag: str) -> bool:
     """Check if the line starts a new section with the given tag."""
-    section_start_pattern = re.compile(r'^\[(\w+)\]')
-    section_match = section_start_pattern.match(line.strip())
-    return section_match is not None and section_match.group(1) == tag
+    return parse_section_name(line) == tag
 
 
 def _is_section_exit(line: str, tag: str) -> bool:
     """Check if the line starts a new section, indicating exit from current tag section."""
-    section_start_pattern = re.compile(r'^\[(\w+)\]')
-    section_match = section_start_pattern.match(line.strip())
-    return section_match is not None and section_match.group(1) != tag
+    section_name = parse_section_name(line)
+    return section_name is not None and section_name != tag
 
 
 def _is_key_value_line(line: str) -> bool:

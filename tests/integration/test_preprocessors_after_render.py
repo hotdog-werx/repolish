@@ -458,3 +458,99 @@ def test_after_render_keep_block_preserves_only_matching_repeated_regions_in_ord
     assert "provider2:\n  - 'static2'\n  # additional\n  # end-additional\n" in out
     assert "provider4:\n  - 'static4'\n  # additional\n  # end-additional\n" in out
     assert "provider5:\n  - 'static5'\n  # additional\n  # end-additional\n" in out
+
+
+def test_after_render_multiregex_preserves_only_selected_provider_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After-render multiregex with one shared tag preserves edited entries."""
+    block_pattern = r'^\[custom-provider-additions\](.*?)(?=\n\[|\Z)'
+
+    _write(
+        tmp_path / 'CONFIG.ini',
+        """\
+        [custom-provider-additions]
+        provider1 = ""
+        provider2 = ""
+        provider3 = ""
+        provider4 = ""
+        provider5 = ""
+        """,
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+        from repolish.providers.models import TemplateMapping
+
+
+        class Ctx(BaseContext):
+            providers: list[int] = [1, 2, 3, 4, 5]
+
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context):
+                return {
+                    'CONFIG.ini': TemplateMapping(source_template='CONFIG.ini.jinja'),
+                }
+        """,
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'CONFIG.ini.jinja',
+        dedent(
+            f"""\
+            ## repolish-multiregex-block[custom-provider-additions|after-render]: {block_pattern}
+            ## repolish-multiregex[custom-provider-additions|after-render]: ^(")?([^"=\\s]+)(")?\\s*=\\s*"([^"]*)"$
+
+            [custom-provider-additions]
+            {{% for idx in providers %}}
+            provider{{{{ idx }}}} = ""
+            {{% endfor %}}
+            """,
+        ),
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    first_pass = (tmp_path / 'CONFIG.ini').read_text(encoding='utf-8')
+    edited = first_pass.replace(
+        'provider1 = ""\n',
+        'provider1 = "custom1"\n',
+    ).replace(
+        'provider3 = ""\n',
+        'provider3 = "custom3"\n',
+    )
+    (tmp_path / 'CONFIG.ini').write_text(edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+
+    out = (tmp_path / 'CONFIG.ini').read_text(encoding='utf-8')
+
+    assert 'provider1 = "custom1"' in out
+    assert 'provider3 = "custom3"' in out
+    assert 'provider2 = ""' in out
+    assert 'provider4 = ""' in out
+    assert 'provider5 = ""' in out
