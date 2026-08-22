@@ -172,8 +172,11 @@ def _replace_values_in_section(
     tag: str,
     values: dict[str, str],
 ) -> str:
-    """Replace template defaults with extracted values in the specified section."""
+    """Replace template defaults using section mode or whole-file fallback."""
     lines = content.split('\n')
+    if not any(_is_section_start(line, tag) for line in lines):
+        return '\n'.join(_replace_values_in_lines(lines, values))
+
     result_lines = []
     in_section = False
 
@@ -191,6 +194,17 @@ def _replace_values_in_section(
     return '\n'.join(result_lines)
 
 
+def _replace_values_in_lines(lines: list[str], values: dict[str, str]) -> list[str]:
+    """Replace matching key-value lines across the provided lines."""
+    result: list[str] = []
+    for line in lines:
+        if _is_key_value_line(line):
+            result.append(_replace_key_value(line, values))
+            continue
+        result.append(line)
+    return result
+
+
 def _is_section_start(line: str, tag: str) -> bool:
     """Check if the line starts a new section with the given tag."""
     return parse_section_name(line) == tag
@@ -203,15 +217,23 @@ def _is_section_exit(line: str, tag: str) -> bool:
 
 
 def _is_key_value_line(line: str) -> bool:
-    """Check if the line is a key=value assignment."""
-    return bool(re.match(r'^\s*(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line))
+    """Check if the line is a quoted key=value or key:value assignment."""
+    return bool(
+        re.match(
+            r'^\s*(")?([^"=:\s]+)(")?\s*([=:])\s*"([^"]*)"',
+            line,
+        ),
+    )
 
 
 def _replace_key_value(line: str, values: dict[str, str]) -> str:
     """Replace the value in a key=value line if the key exists in values dict."""
-    match = re.match(r'^\s*(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line)
+    match = re.match(
+        r'^\s*(")?([^"=:\s]+)(")?\s*([=:])\s*"([^"]*)"',
+        line,
+    )
     if match:
-        quote1, key, quote2, default_value = match.groups()
+        quote1, key, quote2, separator, default_value = match.groups()
         actual_value = values.get(key, default_value or '')
-        return f'{quote1 or ""}{key}{quote2 or ""} = "{actual_value}"'
+        return f'{quote1 or ""}{key}{quote2 or ""} {separator} "{actual_value}"'
     return line

@@ -465,17 +465,16 @@ def test_after_render_multiregex_preserves_only_selected_provider_sections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After-render multiregex with one shared tag preserves edited entries."""
-    block_pattern = r'^\[custom-provider-additions\](.*?)(?=\n\[|\Z)'
+    block_pattern = r'(?s)^(.*)$'
 
     _write(
-        tmp_path / 'CONFIG.ini',
+        tmp_path / 'CONFIG.yaml',
         """\
-        [custom-provider-additions]
-        provider1 = ""
-        provider2 = ""
-        provider3 = ""
-        provider4 = ""
-        provider5 = ""
+        provider1: ""
+        provider2: ""
+        provider3: ""
+        provider4: ""
+        provider5: ""
         """,
     )
 
@@ -496,21 +495,20 @@ def test_after_render_multiregex_preserves_only_selected_provider_sections(
 
             def create_file_mappings(self, context):
                 return {
-                    'CONFIG.ini': TemplateMapping(source_template='CONFIG.ini.jinja'),
+                    'CONFIG.yaml': TemplateMapping(source_template='CONFIG.yaml.jinja'),
                 }
         """,
     )
 
     _write(
-        tmp_path / 'p' / 'repolish' / 'CONFIG.ini.jinja',
+        tmp_path / 'p' / 'repolish' / 'CONFIG.yaml.jinja',
         dedent(
             f"""\
             ## repolish-multiregex-block[custom-provider-additions|after-render]: {block_pattern}
-            ## repolish-multiregex[custom-provider-additions|after-render]: ^(")?([^"=\\s]+)(")?\\s*=\\s*"([^"]*)"$
+            ## repolish-multiregex[custom-provider-additions|after-render]: ^(")?([^"=:\\s]+)(")?\\s*:\\s*"([^"]*)"$
 
-            [custom-provider-additions]
             {{% for idx in providers %}}
-            provider{{{{ idx }}}} = ""
+            provider{{{{ idx }}}}: ""
             {{% endfor %}}
             """,
         ),
@@ -535,22 +533,22 @@ def test_after_render_multiregex_preserves_only_selected_provider_sections(
 
     run_repolish(['apply'], exit_code=0)
 
-    first_pass = (tmp_path / 'CONFIG.ini').read_text(encoding='utf-8')
+    first_pass = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
     edited = first_pass.replace(
-        'provider1 = ""\n',
-        'provider1 = "custom1"\n',
+        'provider1 : ""\n',
+        'provider1 : "custom1"\n',
     ).replace(
-        'provider3 = ""\n',
-        'provider3 = "custom3"\n',
+        'provider3 : ""\n',
+        'provider3 : "custom3"\n',
     )
-    (tmp_path / 'CONFIG.ini').write_text(edited, encoding='utf-8')
+    (tmp_path / 'CONFIG.yaml').write_text(edited, encoding='utf-8')
 
     run_repolish(['apply'], exit_code=0)
 
-    out = (tmp_path / 'CONFIG.ini').read_text(encoding='utf-8')
+    out = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
 
-    assert 'provider1 = "custom1"' in out
-    assert 'provider3 = "custom3"' in out
-    assert 'provider2 = ""' in out
-    assert 'provider4 = ""' in out
-    assert 'provider5 = ""' in out
+    assert 'provider1 : "custom1"' in out
+    assert 'provider3 : "custom3"' in out
+    assert 'provider2 : ""' in out
+    assert 'provider4 : ""' in out
+    assert 'provider5 : ""' in out
