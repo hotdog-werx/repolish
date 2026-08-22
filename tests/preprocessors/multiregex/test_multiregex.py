@@ -148,6 +148,18 @@ class KeyValueTestCase:
             expected='"uv" = "0.7.20"',
         ),
         KeyValueTestCase(
+            id='colon_separator_preserved',
+            line='provider1:""',
+            values={'provider1': 'custom1'},
+            expected='provider1:"custom1"',
+        ),
+        KeyValueTestCase(
+            id='spacing_and_suffix_preserved',
+            line='  key  :  "default"  # comment',
+            values={'key': 'value'},
+            expected='  key  :  "value"  # comment',
+        ),
+        KeyValueTestCase(
             id='key_not_in_values',
             line='missing = "default"',
             values={'other': 'value'},
@@ -268,10 +280,12 @@ def test_is_key_value_line_valid():
     assert _is_key_value_line('"key" = "value"')
     assert _is_key_value_line('key="value"')
     assert _is_key_value_line('  key  =  "value"  ')
+    assert _is_key_value_line('provider1:"value"')
+    assert _is_key_value_line('provider1: "value"')
 
 
 def test_is_key_value_line_invalid():
-    """Test lines that are not key=value format."""
+    """Test lines that are not quoted key/value formats."""
     assert not _is_key_value_line('[section]')
     assert not _is_key_value_line('# comment')
     assert not _is_key_value_line('key = value')  # no quotes

@@ -22,6 +22,10 @@ _MULTIREGEX_DIRECTIVE_RE = re.compile(
     r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
 )
 
+_KEY_VALUE_RE = re.compile(
+    r'^(\s*)(")?([^"=:\s]+)(")?(\s*)([=:])(\s*)"([^"]*)"(.*)$',
+)
+
 
 def apply_multiregex_replacements(
     content: str,
@@ -218,22 +222,27 @@ def _is_section_exit(line: str, tag: str) -> bool:
 
 def _is_key_value_line(line: str) -> bool:
     """Check if the line is a quoted key=value or key:value assignment."""
-    return bool(
-        re.match(
-            r'^\s*(")?([^"=:\s]+)(")?\s*([=:])\s*"([^"]*)"',
-            line,
-        ),
-    )
+    return bool(_KEY_VALUE_RE.match(line))
 
 
 def _replace_key_value(line: str, values: dict[str, str]) -> str:
     """Replace the value in a key=value line if the key exists in values dict."""
-    match = re.match(
-        r'^\s*(")?([^"=:\s]+)(")?\s*([=:])\s*"([^"]*)"',
-        line,
-    )
+    match = _KEY_VALUE_RE.match(line)
     if match:
-        quote1, key, quote2, separator, default_value = match.groups()
+        (
+            indent,
+            quote1,
+            key,
+            quote2,
+            ws_before_sep,
+            separator,
+            ws_after_sep,
+            default_value,
+            suffix,
+        ) = match.groups()
         actual_value = values.get(key, default_value or '')
-        return f'{quote1 or ""}{key}{quote2 or ""} {separator} "{actual_value}"'
+        return (
+            f'{indent}{quote1 or ""}{key}{quote2 or ""}'
+            f'{ws_before_sep}{separator}{ws_after_sep}"{actual_value}"{suffix}'
+        )
     return line

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -534,12 +535,17 @@ def test_after_render_multiregex_preserves_only_selected_provider_sections(
     run_repolish(['apply'], exit_code=0)
 
     first_pass = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
-    edited = first_pass.replace(
-        'provider1 : ""\n',
-        'provider1 : "custom1"\n',
-    ).replace(
-        'provider3 : ""\n',
-        'provider3 : "custom3"\n',
+    edited = re.sub(
+        r'^(provider1\s*:\s*)""\s*$',
+        r'\1"custom1"',
+        first_pass,
+        flags=re.MULTILINE,
+    )
+    edited = re.sub(
+        r'^(provider3\s*:\s*)""\s*$',
+        r'\1"custom3"',
+        edited,
+        flags=re.MULTILINE,
     )
     (tmp_path / 'CONFIG.yaml').write_text(edited, encoding='utf-8')
 
@@ -547,8 +553,8 @@ def test_after_render_multiregex_preserves_only_selected_provider_sections(
 
     out = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
 
-    assert 'provider1 : "custom1"' in out
-    assert 'provider3 : "custom3"' in out
-    assert 'provider2 : ""' in out
-    assert 'provider4 : ""' in out
-    assert 'provider5 : ""' in out
+    assert re.search(r'^provider1\s*:\s*"custom1"\s*$', out, re.MULTILINE)
+    assert re.search(r'^provider3\s*:\s*"custom3"\s*$', out, re.MULTILINE)
+    assert re.search(r'^provider2\s*:\s*""\s*$', out, re.MULTILINE)
+    assert re.search(r'^provider4\s*:\s*""\s*$', out, re.MULTILINE)
+    assert re.search(r'^provider5\s*:\s*""\s*$', out, re.MULTILINE)
