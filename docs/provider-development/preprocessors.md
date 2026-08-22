@@ -157,6 +157,23 @@ Default content for new projects
 If the project file already contains the marker pair, repolish keeps the block
 between them. Otherwise the default block stays in place.
 
+When a fixed end marker is not practical, use `end-regex` to close each kept
+region dynamically:
+
+```yaml
+## repolish-keep-block[provider-additional|after-render]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+{% for idx in providers %}
+provider{{ idx }}:
+  - static{{ idx }}
+  # additional-paths
+  - default{{ idx }}
+{% endfor %}
+```
+
+This searches forward from each `start` marker to the first line matching
+`end-regex`. If no match appears before the next keep directive (or end of
+file), repolish closes the region at that boundary.
+
 If multiple sibling `keep-block` directives in one file reuse the same marker
 pair, repolish matches local blocks by encounter order and puts them back in
 that same order. One directive is all you need:

@@ -39,7 +39,7 @@ class Patterns:
     """Container for extracted patterns from content."""
 
     tag_blocks: dict[str, str]
-    keep_blocks: dict[str, tuple[str, str]]
+    keep_blocks: dict[str, tuple[str, str | None, str | None]]
     keep_rest: dict[str, str]
     keep_header: dict[str, str]
     regexes: dict[str, str]
@@ -69,14 +69,15 @@ _REGEX_PATTERN_DEF = _PatternDefinition[str](
     parse_value=lambda pattern: pattern,
 )
 
-_KEEP_BLOCK_PATTERN_DEF = _PatternDefinition[tuple[str, str]](
+_KEEP_BLOCK_PATTERN_DEF = _PatternDefinition[tuple[str, str | None, str | None]](
     pattern=re.compile(
-        r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+end=("(?:\\.|[^"])*")\s*$',
+        r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+(end|end-regex)=("(?:\\.|[^"])*")\s*$',
         re.MULTILINE,
     ),
-    parse_value=lambda start_raw, end_raw: (
-        _parse_keep_literal(start_raw),
-        _parse_keep_literal(end_raw),
+    parse_value=lambda start_raw, end_mode, end_raw: _parse_keep_block_bounds(
+        start_raw,
+        end_mode,
+        end_raw,
     ),
 )
 
@@ -128,6 +129,19 @@ def _parse_keep_literal(raw: str) -> str:
         msg = 'keep directive values must be quoted strings'
         raise TypeError(msg)
     return value
+
+
+def _parse_keep_block_bounds(
+    start_raw: str,
+    end_mode: str,
+    end_raw: str,
+) -> tuple[str, str | None, str | None]:
+    """Parse keep-block bounds supporting literal `end` and `end-regex`."""
+    start = _parse_keep_literal(start_raw)
+    end_value = _parse_keep_literal(end_raw)
+    if end_mode == 'end':
+        return (start, end_value, None)
+    return (start, None, end_value)
 
 
 def _extract_tag_blocks(content: str) -> dict[str, str]:
@@ -302,7 +316,18 @@ def replace_text(
     content = apply_keep_replacements(
         content,
         KeepPatterns(
-            blocks={name: KeepBlockSpec(start=start, end=end) for name, (start, end) in patterns.keep_blocks.items()},
+            blocks={
+                name: KeepBlockSpec(
+                    start=start,
+                    end=end,
+                    end_regex=end_regex,
+                )
+                for name, (
+                    start,
+                    end,
+                    end_regex,
+                ) in patterns.keep_blocks.items()
+            },
             rest={name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_rest.items()},
             header={name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_header.items()},
         ),

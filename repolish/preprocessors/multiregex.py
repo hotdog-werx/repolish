@@ -198,7 +198,10 @@ def _replace_values_in_section(
     return '\n'.join(result_lines)
 
 
-def _replace_values_in_lines(lines: list[str], values: dict[str, str]) -> list[str]:
+def _replace_values_in_lines(
+    lines: list[str],
+    values: dict[str, str],
+) -> list[str]:
     """Replace matching key-value lines across the provided lines."""
     result: list[str] = []
     for line in lines:
@@ -241,8 +244,10 @@ def _replace_key_value(line: str, values: dict[str, str]) -> str:
             suffix,
         ) = match.groups()
         actual_value = values.get(key, default_value or '')
-        return (
-            f'{indent}{quote1 or ""}{key}{quote2 or ""}'
-            f'{ws_before_sep}{separator}{ws_after_sep}"{actual_value}"{suffix}'
+        return ''.join(
+            [
+                f'{indent}{quote1 or ""}{key}{quote2 or ""}',
+                f'{ws_before_sep}{separator}{ws_after_sep}"{actual_value}"{suffix}',
+            ],
         )
     return line

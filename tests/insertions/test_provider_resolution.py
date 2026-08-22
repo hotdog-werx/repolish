@@ -1,4 +1,6 @@
-from repolish.insertions.provider_resolution import resolve_provider_function_name
+from repolish.insertions.provider_resolution import (
+    resolve_provider_function_name,
+)
 
 
 def test_resolve_provider_function_name_returns_none_for_non_owner_qualified_key() -> None:

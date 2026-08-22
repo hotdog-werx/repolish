@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from textwrap import dedent
 from unittest import mock
@@ -138,9 +139,30 @@ def test_extract_patterns_includes_keep_directives() -> None:
     assert patterns.keep_blocks['readme-custom-block'] == (
         '<!-- start -->',
         '<!-- end -->',
+        None,
     )
     assert patterns.keep_rest['repo-overrides'] == '## repo-overrides'
     assert patterns.keep_header['repo-header'] == '## managed'
+
+
+def test_extract_patterns_supports_keep_block_end_regex() -> None:
+    template = dedent("""\
+                ## repolish-keep-block[paths]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+                provider1:
+                    # additional-paths
+                    - 'default1'
+                provider2:
+                    # additional-paths
+                    - 'default2'
+        """)
+
+    patterns = extract_patterns(template)
+
+    assert patterns.keep_blocks['paths'] == (
+        '# additional-paths',
+        None,
+        '^provider[0-9]+:$',
+    )
 
 
 def test_extract_patterns_keep_literals_must_be_strings() -> None:
@@ -668,3 +690,100 @@ def test_apply_keep_block_tolerates_trailing_whitespace() -> None:
 
     # Should preserve local content including its trailing whitespace
     assert result == local_content
+
+
+def test_apply_keep_block_with_end_regex_uses_next_item_boundary() -> None:
+    template = dedent("""\
+                ## repolish-keep-block[paths]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+                provider1:
+                    - 'static1'
+                    # additional-paths
+                    - 'default1'
+                provider2:
+                    - 'static2'
+                    # additional-paths
+                    - 'default2'
+                provider3:
+                    - 'static3'
+                    # additional-paths
+                    - 'default3'
+        """)
+
+    local_content = dedent("""\
+                provider1:
+                    - 'static1'
+                    # additional-paths
+                    - 'custom1'
+                provider2:
+                    - 'static2'
+                    # additional-paths
+                    - 'default2'
+                provider3:
+                    - 'static3'
+                    # additional-paths
+                    - 'custom3'
+        """)
+
+    result = replace_text(template, local_content)
+
+    assert re.search(
+        r"provider1:\n\s+- 'static1'\n\s+# additional-paths\n\s+- 'custom1'\n",
+        result,
+    )
+    assert re.search(
+        r"provider3:\n\s+- 'static3'\n\s+# additional-paths\n\s+- 'custom3'\n",
+        result,
+    )
+
+
+def test_apply_keep_block_end_regex_with_no_room_for_end_falls_back_to_template() -> None:
+    """If a start marker is the last line before next directive, no region is extracted."""
+    template = dedent("""\
+        Top
+        ## repolish-keep-block[paths]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+        # additional-paths
+        ## repolish-keep-rest[tail]: marker="## tail"
+        ## tail
+        default tail
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        KeepPatterns(
+            blocks={
+                'paths': KeepBlockSpec(
+                    start='# additional-paths',
+                    end_regex='^provider[0-9]+:$',
+                ),
+            },
+            rest={'tail': KeepMarkerSpec(marker='## tail')},
+            header={},
+        ),
+        local_file_content='Top\n## tail\ncustom tail\n',
+    )
+
+    assert result == 'Top\n# additional-paths\n## tail\ncustom tail\n'
+
+
+def test_apply_keep_block_with_malformed_bounds_keeps_template_region() -> None:
+    """Malformed spec with no end and no end_regex keeps template bounded content."""
+    template = dedent("""\
+        Top
+        ## repolish-keep-block[block]: start="<<" end=">>"
+        <<
+        Default
+        >>
+        Bottom
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        KeepPatterns(
+            blocks={'block': KeepBlockSpec(start='<<')},
+            rest={},
+            header={},
+        ),
+        local_file_content='Top\n<<\nCustom\n>>\nBottom\n',
+    )
+
+    assert result == 'Top\n<<\nDefault\n>>\nBottom\n'

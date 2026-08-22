@@ -23,7 +23,8 @@ class KeepBlockSpec:
     """A bounded keep region defined by explicit start and end markers."""
 
     start: str
-    end: str
+    end: str | None = None
+    end_regex: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,13 +50,13 @@ class _KeepApplyContext:
     template_lines: list[str]
     local_lines: list[str]
     patterns: KeepPatterns
-    keep_block_occurrence: dict[tuple[str, str], int]
+    keep_block_occurrence: dict[tuple[str, str, str], int]
     phase: str
     source_path: str | None
 
 
 _KEEP_BLOCK_RE = re.compile(
-    r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+end=("(?:\\.|[^"])*")\s*$',
+    r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+(?:end|end-regex)=("(?:\\.|[^"])*")\s*$',
 )
 _KEEP_REST_RE = re.compile(
     r'^[^\n]*repolish-keep-(?:rest|the-rest|footer)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
@@ -160,19 +161,17 @@ def _apply_keep_block(
         ctx.template_lines,
         directive_index + 1,
         segment_end,
-        spec.start,
-        spec.end,
+        spec,
     )
     if not template_regions:
         logger.warning('keep_block_template_region_not_found', name=name)
         return result, directive_index + 1
 
-    marker_key = (spec.start, spec.end)
+    marker_key = _keep_block_occurrence_key(spec)
     occurrence_start = ctx.keep_block_occurrence.get(marker_key, 0)
     local_regions = _find_all_bounded_regions(
         ctx.local_lines,
-        spec.start,
-        spec.end,
+        spec,
     )
 
     cursor = directive_index + 1
@@ -314,21 +313,25 @@ def _find_first_line_index(
 def _find_bounded_region(
     lines: list[str],
     start_index: int,
-    start_marker: str,
-    end_marker: str,
+    spec: KeepBlockSpec,
+    *,
+    end_limit_exclusive: int | None = None,
 ) -> tuple[int, int] | None:
     """Return the inclusive line span for a bounded keep block."""
     bounded_start_index = _find_first_line_index(
         lines,
-        start_marker,
+        spec.start,
         start=start_index,
     )
     if bounded_start_index is None:
         return None
-    end_index = _find_first_line_index(
+    if end_limit_exclusive is not None and bounded_start_index >= end_limit_exclusive:
+        return None
+    end_index = _find_end_line_index(
         lines,
-        end_marker,
         start=bounded_start_index + 1,
+        spec=spec,
+        end_limit_exclusive=end_limit_exclusive,
     )
     if end_index is None:
         return None
@@ -337,8 +340,7 @@ def _find_bounded_region(
 
 def _find_all_bounded_regions(
     lines: list[str],
-    start_marker: str,
-    end_marker: str,
+    spec: KeepBlockSpec,
 ) -> list[tuple[int, int]]:
     """Return all bounded regions for a repeated marker pair."""
     regions: list[tuple[int, int]] = []
@@ -347,8 +349,7 @@ def _find_all_bounded_regions(
         region = _find_bounded_region(
             lines,
             search_start,
-            start_marker,
-            end_marker,
+            spec,
         )
         if region is None:
             break
@@ -361,8 +362,7 @@ def _find_bounded_regions_in_range(
     lines: list[str],
     start_index: int,
     end_index: int,
-    start_marker: str,
-    end_marker: str,
+    spec: KeepBlockSpec,
 ) -> list[tuple[int, int]]:
     """Return bounded regions fully contained between start_index and end_index."""
     regions: list[tuple[int, int]] = []
@@ -371,8 +371,8 @@ def _find_bounded_regions_in_range(
         region = _find_bounded_region(
             lines,
             search_start,
-            start_marker,
-            end_marker,
+            spec,
+            end_limit_exclusive=end_index,
         )
         if region is None or region[0] >= end_index or region[1] >= end_index:
             break
@@ -421,6 +421,63 @@ def _find_next_keep_directive_index(
         ):
             return index
     return None
+
+
+def _find_end_line_index(
+    lines: list[str],
+    *,
+    start: int,
+    spec: KeepBlockSpec,
+    end_limit_exclusive: int | None = None,
+) -> int | None:
+    """Return the end boundary index using literal `end` or `end_regex`."""
+    limit = len(lines) if end_limit_exclusive is None else end_limit_exclusive
+    if start >= limit:
+        return None
+
+    if spec.end is not None:
+        return _find_end_index_by_marker(lines, start, limit, spec.end)
+
+    if spec.end_regex is None:
+        return None
+
+    return _find_end_index_by_regex(lines, start, limit, spec.end_regex)
+
+
+def _find_end_index_by_marker(
+    lines: list[str],
+    start: int,
+    limit: int,
+    marker: str,
+) -> int | None:
+    """Find the first line matching a literal marker between start and limit."""
+    for index in range(start, limit):
+        if lines[index].strip() == marker:
+            return index
+    return None
+
+
+def _find_end_index_by_regex(
+    lines: list[str],
+    start: int,
+    limit: int,
+    end_regex: str,
+) -> int:
+    """Find the first regex end boundary, or close at the range end."""
+    end_re = re.compile(end_regex)
+    for index in range(start, limit):
+        if end_re.search(lines[index].strip()):
+            return index
+    return limit - 1
+
+
+def _keep_block_occurrence_key(spec: KeepBlockSpec) -> tuple[str, str, str]:
+    """Build a stable occurrence key for repeated keep-block lookups."""
+    return (
+        spec.start,
+        spec.end or '',
+        spec.end_regex or '',
+    )
 
 
 def _is_phase_selected(

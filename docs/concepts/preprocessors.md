@@ -153,6 +153,23 @@ Default block content
 If the current project file already has a matching marker pair, repolish keeps
 that content. Otherwise the template default remains.
 
+You can also use a dynamic closing boundary with `end-regex` when a literal end
+marker is awkward or unavailable (for example, stop at the next loop item):
+
+```yaml
+## repolish-keep-block[provider-additional|after-render]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+{% for idx in providers %}
+provider{{ idx }}:
+   - static{{ idx }}
+   # additional-paths
+   - default{{ idx }}
+{% endfor %}
+```
+
+With `end-regex`, repolish searches forward from each `start` marker for the
+first matching line. If no match is found before the directive segment ends, the
+region closes at the segment end.
+
 When several sibling `keep-block` directives use the same `start`/`end` markers
 in one file, repolish matches them in encounter order and restores local blocks
 in that same order.

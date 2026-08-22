@@ -461,6 +461,91 @@ def test_after_render_keep_block_preserves_only_matching_repeated_regions_in_ord
     assert "provider5:\n  - 'static5'\n  # additional\n  # end-additional\n" in out
 
 
+def test_after_render_keep_block_supports_dynamic_end_regex_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After-render keep-block can end at the next loop item using end-regex."""
+    _write(
+        tmp_path / 'CONFIG.yaml',
+        """\
+        provider1:
+          - 'static1'
+          # additional-paths
+          - 'custom1'
+        provider2:
+          - 'static2'
+          # additional-paths
+          - 'default2'
+        provider3:
+          - 'static3'
+          # additional-paths
+          - 'custom3'
+        """,
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+        from repolish.providers.models import TemplateMapping
+
+
+        class Ctx(BaseContext):
+            providers: list[int] = [1, 2, 3]
+
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context):
+                return {
+                    'CONFIG.yaml': TemplateMapping(source_template='CONFIG.yaml.jinja'),
+                }
+        """,
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'CONFIG.yaml.jinja',
+        (
+            '## repolish-keep-block[provider-additional|after-render]: '
+            'start="# additional-paths" end-regex="^provider[0-9]+:$"\n'
+            '{% for idx in providers %}\n'
+            'provider{{ idx }}:\n'
+            "  - 'static{{ idx }}'\n"
+            '  # additional-paths\n'
+            "  - 'default{{ idx }}'\n"
+            '{% endfor %}\n'
+        ),
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    out = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
+
+    assert "provider1:\n  - 'static1'\n  # additional-paths\n  - 'custom1'\n" in out
+    assert "provider3:\n  - 'static3'\n  # additional-paths\n  - 'custom3'\n" in out
+    assert "provider2:\n  - 'static2'\n  # additional-paths\n  - 'default2'\n" in out
+
+
 def test_after_render_multiregex_preserves_only_selected_provider_sections(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
