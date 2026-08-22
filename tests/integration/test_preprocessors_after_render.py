@@ -351,3 +351,110 @@ def test_apply_invalid_multiregex_phase_suffix_logs_warning_and_falls_back_to_pr
     ]
     assert warning_calls
     assert any(call.kwargs.get('tag') == 'tools|oops-render' for call in warning_calls)
+
+
+def test_after_render_keep_block_preserves_only_matching_repeated_regions_in_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated keep blocks preserve only edited local regions in occurrence order."""
+    _write(
+        tmp_path / 'CONFIG.yaml',
+        """\
+        provider1:
+          - 'static1'
+          # additional
+          # end-additional
+        provider2:
+          - 'static2'
+          # additional
+          # end-additional
+        provider3:
+          - 'static3'
+          # additional
+          # end-additional
+        provider4:
+          - 'static4'
+          # additional
+          # end-additional
+        provider5:
+          - 'static5'
+          # additional
+          # end-additional
+        """,
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+        from repolish.providers.models import TemplateMapping
+
+
+        class Ctx(BaseContext):
+            providers: list[int] = [1, 2, 3, 4, 5]
+
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, context):
+                return {
+                    'CONFIG.yaml': TemplateMapping(source_template='CONFIG.yaml.jinja'),
+                }
+        """,
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'CONFIG.yaml.jinja',
+        """\
+        ## repolish-keep-block[provider-additional|after-render]: start="# additional" end="# end-additional"
+        {% for idx in providers %}
+        provider{{ idx }}:
+          - 'static{{ idx }}'
+          # additional
+          # end-additional
+        {% endfor %}
+        """,
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    first_pass = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
+    edited = first_pass.replace(
+        "provider1:\n  - 'static1'\n  # additional\n  # end-additional\n",
+        "provider1:\n  - 'static1'\n  # additional\n  - 'custom1'\n  # end-additional\n",
+    ).replace(
+        "provider3:\n  - 'static3'\n  # additional\n  # end-additional\n",
+        "provider3:\n  - 'static3'\n  # additional\n  - 'custom3'\n  # end-additional\n",
+    )
+    (tmp_path / 'CONFIG.yaml').write_text(edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+
+    out = (tmp_path / 'CONFIG.yaml').read_text(encoding='utf-8')
+
+    assert "provider1:\n  - 'static1'\n  # additional\n  - 'custom1'\n  # end-additional\n" in out
+    assert "provider3:\n  - 'static3'\n  # additional\n  - 'custom3'\n  # end-additional\n" in out
+
+    assert "provider2:\n  - 'static2'\n  # additional\n  # end-additional\n" in out
+    assert "provider4:\n  - 'static4'\n  # additional\n  # end-additional\n" in out
+    assert "provider5:\n  - 'static5'\n  # additional\n  # end-additional\n" in out
