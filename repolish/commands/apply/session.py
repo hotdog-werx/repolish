@@ -34,6 +34,7 @@ from repolish.hydration import (
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.preprocessors import replace_text, safe_file_read
+from repolish.preprocessors.directive_phase import PreprocessPhase
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
 from repolish.utils import run_post_process
@@ -146,7 +147,8 @@ def _run_after_render_preprocessors(
             continue
         try:
             rendered_text = rendered_file.read_text(encoding='utf-8')
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError):  # pragma: no cover
+            # Binary files or I/O errors are not expected in rendered output
             continue
 
         rel_path = rendered_file.relative_to(rendered_root)
@@ -156,7 +158,8 @@ def _run_after_render_preprocessors(
             rendered_text,
             local_text,
             anchors_dictionary={},
-            phase='after-render',
+            phase=PreprocessPhase.AFTER_RENDER,
+            source_path=str(rendered_file),
         )
         if updated != rendered_text:
             rendered_file.write_text(updated, encoding='utf-8')
@@ -165,9 +168,9 @@ def _run_after_render_preprocessors(
 def _rendered_rel_path_to_local_rel_path(rendered_rel_path: Path) -> Path:
     """Translate a staged rendered path back to the destination file path."""
     parts = list(rendered_rel_path.parts)
-    if not parts:
-        return rendered_rel_path
-
+    # Note: empty parts would mean an empty/relative Path() was passed.
+    # This should never happen from rglob, but if it does, let it raise
+    # IndexError here so we know the assumption changed.
     name = parts[-1]
     prefix = '_repolish.'
     if name.startswith(prefix):

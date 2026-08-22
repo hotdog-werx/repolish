@@ -14,9 +14,7 @@ from repolish.insertions.models import (
 )
 from repolish.insertions.parser import parse_text
 from repolish.insertions.provider_resolution import (
-    filter_by_provider,
     is_provider_owner,
-    partition_by_provider,
     resolve_provider_function_name,
 )
 from repolish.insertions.reports import (
@@ -49,12 +47,10 @@ __all__ = [
     'WriteDiagnostic',
     'collect_disabled_entries',
     'disabled_reason_for_block',
-    'filter_by_provider',
     'is_block_context_annotation',
     'is_insertion_block_annotation',
     'is_provider_owner',
     'parse_text',
-    'partition_by_provider',
     'resolve_provider_function_name',
     'resolve_renderer_for_function',
     'write_back',

@@ -236,6 +236,7 @@ def _build_promoted_write_context(
             source_text,
             safe_file_read(dest_file),
             anchors_dictionary={},
+            source_path=str(winner.source_file),
         )
         source_mode = winner.source_file.stat().st_mode
     except (OSError, UnicodeDecodeError):

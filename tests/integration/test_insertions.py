@@ -1171,7 +1171,9 @@ def create_insertion_registry(self, context):
         """,
     )
 
-    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected_readme
+    assert (tmp_path / 'README.md').read_text(
+        encoding='utf-8',
+    ) == expected_readme
     assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 

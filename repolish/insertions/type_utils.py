@@ -46,9 +46,7 @@ def is_insertion_block_annotation(annotation: object) -> bool:
     # Handle Optional[T] / T | None
     if _is_optional(annotation):
         non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
-        if len(non_none) == 1:
-            return is_insertion_block_annotation(non_none[0])
-        return False
+        return is_insertion_block_annotation(non_none[0]) if len(non_none) == 1 else False
 
     # Direct type reference
     if annotation is InsertionBlock:
@@ -90,9 +88,7 @@ def is_block_context_annotation(annotation: object) -> bool:
     # Handle Optional[T] / T | None
     if _is_optional(annotation):
         non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
-        if len(non_none) == 1:
-            return is_block_context_annotation(non_none[0])
-        return False
+        return is_block_context_annotation(non_none[0]) if len(non_none) == 1 else False
 
     # Direct type reference
     if annotation is BlockContext:

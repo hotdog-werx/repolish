@@ -75,7 +75,12 @@ def _preprocess_single_file(
         return
 
     local_text = safe_file_read(local_path)
-    new_text = replace_text(tpl_text, local_text, anchors_dictionary=anchors)
+    new_text = replace_text(
+        tpl_text,
+        local_text,
+        anchors_dictionary=anchors,
+        source_path=str(tpl_path),
+    )
 
     if new_text != tpl_text:
         tpl_path.write_text(new_text, encoding='utf-8')
@@ -126,6 +131,7 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
         tpl_text,
         local_text,
         anchors_dictionary=args.ctx.anchors,
+        source_path=str(args.tpl_path),
     )
 
     if new_text != tpl_text and isinstance(args.source_val, TemplateMapping):

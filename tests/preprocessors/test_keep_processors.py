@@ -161,6 +161,27 @@ def test_extract_patterns_keep_literals_must_be_strings() -> None:
         extract_patterns(template)
 
 
+def test_extract_patterns_warns_on_invalid_phase_suffix() -> None:
+    template = dedent("""\
+        ## repolish-regex[version|oops-render]: ^version:\\s*(.+)$
+        version: 0.0.0
+    """)
+
+    with mock.patch(
+        'repolish.preprocessors.directive_phase.logger.warning',
+    ) as warning_mock:
+        patterns = extract_patterns(
+            template,
+            source_path='templates/example.md',
+        )
+
+    assert patterns.regexes['version'] == '^version:\\s*(.+)$'
+    warning_mock.assert_called_once()
+    event_name = warning_mock.call_args.args[0]
+    assert event_name == 'directive_invalid_phase_suffix'
+    assert warning_mock.call_args.kwargs['source_path'] == 'templates/example.md'
+
+
 def test_apply_keep_replacements_block_name_not_in_specs() -> None:
     template = dedent("""\
         Top

@@ -12,10 +12,7 @@ consistent behavior.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+from typing import TypeVar
 
 T = TypeVar('T')
 
@@ -73,64 +70,3 @@ def resolve_provider_function_name(
             return key.split(':', 1)[1]
         return key
     return None
-
-
-def filter_by_provider(
-    items: Iterable[T],
-    provider_alias: str,
-    *,
-    is_first_provider: bool,
-    key_func: Callable[[T], str],
-) -> Iterator[T]:
-    """Filter items by provider ownership.
-
-    Args:
-        items: Items to filter (blocks, functions, diagnostics, etc.)
-        provider_alias: The provider's alias (e.g., 'alpha')
-        is_first_provider: Whether this provider is the first for the file
-        key_func: Function to extract the identifier (function name, tag) from an item
-
-    Yields:
-        Items that belong to this provider
-    """
-    for item in items:
-        if is_provider_owner(
-            key_func(item),
-            provider_alias,
-            is_first_provider=is_first_provider,
-        ):
-            yield item
-
-
-def partition_by_provider(
-    items: Iterable[T],
-    provider_alias: str,
-    *,
-    is_first_provider: bool,
-    key_func: Callable[[T], str],
-) -> tuple[list[T], list[T]]:
-    """Partition items into provider-owned and non-provider-owned.
-
-    Args:
-        items: Items to partition
-        provider_alias: The provider's alias (e.g., 'alpha')
-        is_first_provider: Whether this provider is the first for the file
-        key_func: Function to extract the identifier from an item
-
-    Returns:
-        Tuple of (provider_items, other_items)
-    """
-    provider_items: list[T] = []
-    other_items: list[T] = []
-
-    for item in items:
-        if is_provider_owner(
-            key_func(item),
-            provider_alias,
-            is_first_provider=is_first_provider,
-        ):
-            provider_items.append(item)
-        else:
-            other_items.append(item)
-
-    return provider_items, other_items

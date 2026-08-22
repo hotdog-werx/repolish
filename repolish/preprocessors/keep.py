@@ -11,6 +11,10 @@ from dataclasses import dataclass
 
 from hotlog import get_logger
 
+from repolish.preprocessors.directive_phase import (
+    split_directive_tag,
+)
+
 logger = get_logger(__name__)
 
 
@@ -47,6 +51,7 @@ class _KeepApplyContext:
     patterns: KeepPatterns
     keep_block_occurrence: dict[tuple[str, str], int]
     phase: str
+    source_path: str | None
 
 
 _KEEP_BLOCK_RE = re.compile(
@@ -66,6 +71,7 @@ def apply_keep_replacements(
     local_file_content: str,
     *,
     phase: str = 'pre-render',
+    source_path: str | None = None,
 ) -> str:
     """Apply keep directives to template content.
 
@@ -87,6 +93,7 @@ def apply_keep_replacements(
         patterns=patterns,
         keep_block_occurrence={},
         phase=phase,
+        source_path=source_path,
     )
     result: list[str] = []
 
@@ -96,17 +103,29 @@ def apply_keep_replacements(
         stripped = line.rstrip('\r\n')
 
         block_match = _KEEP_BLOCK_RE.match(stripped)
-        if block_match and _is_phase_selected(block_match, phase):
+        if block_match and _is_phase_selected(
+            block_match,
+            phase,
+            source_path=source_path,
+        ):
             result, index = _apply_keep_block(result, index, block_match, ctx)
             continue
 
         rest_match = _KEEP_REST_RE.match(stripped)
-        if rest_match and _is_phase_selected(rest_match, phase):
+        if rest_match and _is_phase_selected(
+            rest_match,
+            phase,
+            source_path=source_path,
+        ):
             result, index = _apply_keep_rest(result, index, rest_match, ctx)
             continue
 
         header_match = _KEEP_HEADER_RE.match(stripped)
-        if header_match and _is_phase_selected(header_match, phase):
+        if header_match and _is_phase_selected(
+            header_match,
+            phase,
+            source_path=source_path,
+        ):
             result, index = _apply_keep_header(result, index, header_match, ctx)
             continue
 
@@ -122,7 +141,7 @@ def _apply_keep_block(
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = _directive_name(match.group(1))
+    name = _directive_name(match.group(1), source_path=ctx.source_path)
     spec = ctx.patterns.blocks.get(name)
     if spec is None:
         logger.debug('keep_block_no_match_in_target', name=name)
@@ -132,6 +151,7 @@ def _apply_keep_block(
         ctx.template_lines,
         directive_index + 1,
         ctx.phase,
+        source_path=ctx.source_path,
     )
     if segment_end is None:
         segment_end = len(ctx.template_lines)
@@ -190,7 +210,7 @@ def _apply_keep_rest(
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = _directive_name(match.group(1))
+    name = _directive_name(match.group(1), source_path=ctx.source_path)
     spec = ctx.patterns.rest.get(name)
     if spec is None:
         logger.debug('keep_rest_no_match_in_target', name=name)
@@ -230,7 +250,7 @@ def _apply_keep_header(
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = _directive_name(match.group(1))
+    name = _directive_name(match.group(1), source_path=ctx.source_path)
 
     if directive_index != 0:
         logger.warning(
@@ -365,6 +385,7 @@ def _find_next_keep_directive_index(
     lines: list[str],
     start: int,
     phase: str,
+    source_path: str | None = None,
 ) -> int | None:
     """Return the next keep directive line index at or after *start*."""
     for index in range(start, len(lines)):
@@ -373,32 +394,50 @@ def _find_next_keep_directive_index(
         rest_match = _KEEP_REST_RE.match(stripped)
         header_match = _KEEP_HEADER_RE.match(stripped)
         if (
-            (block_match and _is_phase_selected(block_match, phase))
-            or (rest_match and _is_phase_selected(rest_match, phase))
-            or (header_match and _is_phase_selected(header_match, phase))
+            (
+                block_match
+                and _is_phase_selected(
+                    block_match,
+                    phase,
+                    source_path=source_path,
+                )
+            )
+            or (
+                rest_match
+                and _is_phase_selected(
+                    rest_match,
+                    phase,
+                    source_path=source_path,
+                )
+            )
+            or (
+                header_match
+                and _is_phase_selected(
+                    header_match,
+                    phase,
+                    source_path=source_path,
+                )
+            )
         ):
             return index
     return None
 
 
-def _is_phase_selected(match: re.Match[str], selected_phase: str) -> bool:
+def _is_phase_selected(
+    match: re.Match[str],
+    selected_phase: str,
+    *,
+    source_path: str | None = None,
+) -> bool:
     """Return True when this keep directive should run in selected_phase."""
-    _, directive_phase = _split_directive_tag(match.group(1))
+    _, directive_phase = split_directive_tag(
+        match.group(1),
+        source_path=source_path,
+    )
     return directive_phase == selected_phase
 
 
-def _directive_name(raw_name: str) -> str:
+def _directive_name(raw_name: str, *, source_path: str | None = None) -> str:
     """Return keep directive logical name without optional phase suffix."""
-    name, _ = _split_directive_tag(raw_name)
+    name, _ = split_directive_tag(raw_name, source_path=source_path)
     return name
-
-
-def _split_directive_tag(raw_tag: str) -> tuple[str, str]:
-    """Split directive tag into `(name, phase)` using `name|phase` syntax."""
-    if '|' not in raw_tag:
-        return raw_tag, 'pre-render'
-
-    name, maybe_phase = raw_tag.rsplit('|', 1)
-    if maybe_phase in {'pre-render', 'after-render'} and name:
-        return name, maybe_phase
-    return raw_tag, 'pre-render'

@@ -8,6 +8,10 @@ import re
 
 from hotlog import get_logger
 
+from repolish.preprocessors.directive_phase import (
+    split_directive_tag,
+)
+
 logger = get_logger(__name__)
 
 _MULTIREGEX_BLOCK_DIRECTIVE_RE = re.compile(
@@ -47,7 +51,11 @@ def apply_multiregex_replacements(
             continue
 
         values = _extract_values_from_block(multi_regex, block_content, tag)
-        content = _remove_multiregex_comments(content, tag, phase)
+        content = _remove_multiregex_comments(
+            content,
+            tag,
+            phase,
+        )
         content = _replace_values_in_section(content, tag, values)
 
     return content
@@ -107,40 +115,55 @@ def _extract_values_from_block(
     return values
 
 
-def _remove_multiregex_comments(content: str, tag: str, phase: str) -> str:
+def _remove_multiregex_comments(
+    content: str,
+    tag: str,
+    phase: str,
+    *,
+    source_path: str | None = None,
+) -> str:
     """Remove multiregex directive lines for one tag and selected phase."""
     result: list[str] = []
     for line in content.splitlines(keepends=True):
         stripped = line.rstrip('\r\n')
-        block_match = _MULTIREGEX_BLOCK_DIRECTIVE_RE.match(stripped)
-        if block_match and _directive_name(block_match.group(1)) == tag and _directive_phase(block_match) == phase:
-            continue
-
-        item_match = _MULTIREGEX_DIRECTIVE_RE.match(stripped)
-        if item_match and _directive_name(item_match.group(1)) == tag and _directive_phase(item_match) == phase:
+        if _should_strip_directive_line(
+            stripped,
+            tag,
+            phase,
+            source_path=source_path,
+        ):
             continue
 
         result.append(line)
     return ''.join(result)
 
 
-def _directive_phase(match: re.Match[str]) -> str:
-    """Return directive phase parsed from tag suffix with pre-render default."""
-    raw_tag = match.group(1)
-    if '|' not in raw_tag:
-        return 'pre-render'
-    _, maybe_phase = raw_tag.rsplit('|', 1)
-    return maybe_phase if maybe_phase in {'pre-render', 'after-render'} else 'pre-render'
+def _should_strip_directive_line(
+    stripped_line: str,
+    tag: str,
+    phase: str,
+    *,
+    source_path: str | None = None,
+) -> bool:
+    """Return whether a directive line matches the requested tag and phase."""
+    for directive_pattern in (
+        _MULTIREGEX_BLOCK_DIRECTIVE_RE,
+        _MULTIREGEX_DIRECTIVE_RE,
+    ):
+        match = directive_pattern.match(stripped_line)
+        if not match:
+            continue
 
+        raw_tag = match.group(1)
+        directive_name, directive_phase = split_directive_tag(
+            raw_tag,
+            source_path=source_path,
+        )
 
-def _directive_name(raw_tag: str) -> str:
-    """Return the logical multiregex tag without an optional phase suffix."""
-    if '|' not in raw_tag:
-        return raw_tag
-    name, maybe_phase = raw_tag.rsplit('|', 1)
-    if maybe_phase in {'pre-render', 'after-render'} and name:
-        return name
-    return raw_tag
+        if directive_name == tag and directive_phase == phase:
+            return True
+
+    return False
 
 
 def _replace_values_in_section(

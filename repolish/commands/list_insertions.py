@@ -58,11 +58,11 @@ def _resolve_function_entry(
         provider_alias,
         is_first_provider=is_first_provider,
     )
-    if function_name is None:
-        return None
-    if options.provider and provider_alias != options.provider:
-        return None
-    if options.function and function_name != options.function:
+    if (
+        function_name is None
+        or (options.provider and provider_alias != options.provider)
+        or (options.function and function_name != options.function)
+    ):
         return None
 
     summary, doc = _doc_parts(fn)

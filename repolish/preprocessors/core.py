@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """Core preprocessing utilities for templates.
 
 This module provides the main functions for extracting patterns from templates,
@@ -14,11 +15,15 @@ from typing import Generic, TypeVar
 from hotlog import get_logger
 
 from repolish.preprocessors.anchors import replace_tags_in_content
+from repolish.preprocessors.directive_phase import (
+    PreprocessPhase,
+    split_directive_tag as _split_directive_tag,
+)
 from repolish.preprocessors.keep import (
+    apply_keep_replacements,
     KeepBlockSpec,
     KeepMarkerSpec,
     KeepPatterns,
-    apply_keep_replacements,
 )
 from repolish.preprocessors.multiregex import apply_multiregex_replacements
 from repolish.preprocessors.regex import apply_regex_replacements
@@ -108,17 +113,6 @@ _MULTIREGEX_PATTERN_DEF = _PatternDefinition[str](
 )
 
 
-def _split_directive_tag(raw_tag: str) -> tuple[str, str]:
-    """Split directive tag into `(name, phase)` with `pre-render` default."""
-    if '|' not in raw_tag:
-        return raw_tag, 'pre-render'
-
-    name, maybe_phase = raw_tag.rsplit('|', 1)
-    if maybe_phase in {'pre-render', 'after-render'} and name:
-        return name, maybe_phase
-    return raw_tag, 'pre-render'
-
-
 def _is_phase_selected(
     directive_phase: str,
     selected_phase: str = 'pre-render',
@@ -147,58 +141,76 @@ def _extract_directive_map(
     definition: _PatternDefinition[T],
     *,
     phase: str,
+    source_path: str | None = None,
 ) -> dict[str, T]:
     """Extract a phase-filtered directive map keyed by logical directive name."""
     result: dict[str, T] = {}
     for match in definition.pattern.findall(content):
         raw_name, *values = match
-        name, directive_phase = _split_directive_tag(raw_name)
+        name, directive_phase = _split_directive_tag(
+            raw_name,
+            source_path=source_path,
+        )
         if not _is_phase_selected(directive_phase, phase):
             continue
         result[name] = definition.parse_value(*values)
     return result
 
 
-def extract_patterns(content: str, *, phase: str = 'pre-render') -> Patterns:
+def extract_patterns(
+    content: str,
+    *,
+    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    source_path: str | None = None,
+) -> Patterns:
     """Extracts text blocks and regex patterns from the given content.
 
     Args:
         content: The input string containing text blocks and regex patterns.
         phase: Directive phase to extract (`pre-render` or `after-render`).
+        source_path: Optional template path used for contextual warning logs.
 
     Returns:
         A Patterns object containing extracted tag blocks and regexes.
     """
+    selected_phase = phase.value
+
     tag_blocks = _extract_tag_blocks(content)
     keep_blocks = _extract_directive_map(
         content,
         _KEEP_BLOCK_PATTERN_DEF,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
     keep_rest = _extract_directive_map(
         content,
         _KEEP_REST_PATTERN_DEF,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
     keep_header = _extract_directive_map(
         content,
         _KEEP_HEADER_PATTERN_DEF,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
     regexes = _extract_directive_map(
         content,
         _REGEX_PATTERN_DEF,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
     multiregex_blocks = _extract_directive_map(
         content,
         _MULTIREGEX_BLOCK_PATTERN_DEF,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
     multiregexes = _extract_directive_map(
         content,
         _MULTIREGEX_PATTERN_DEF,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
 
     logger.debug(
@@ -241,7 +253,8 @@ def replace_text(
     local_content: str,
     anchors_dictionary: dict[str, str] | None = None,
     *,
-    phase: str = 'pre-render',
+    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    source_path: str | None = None,
 ) -> str:
     """Replaces tag blocks and regex patterns in the template content.
 
@@ -254,27 +267,31 @@ def replace_text(
             in the template. If not provided, the template's own block contents are
             preserved.
         phase: Directive phase to apply (`pre-render` or `after-render`).
+        source_path: Optional template path used for contextual warning logs.
 
     Returns:
         The modified template content with replaced tag blocks and regex patterns.
     """
+    selected_phase = phase.value
+
     logger.debug(
         'starting_text_replacement',
         has_anchors=anchors_dictionary is not None,
-        phase=phase,
+        phase=selected_phase,
     )
-    if phase not in {'pre-render', 'after-render'}:
-        msg = f'Unsupported preprocessing phase: {phase!r}'
-        raise ValueError(msg)
 
-    patterns = extract_patterns(template_content, phase=phase)
+    patterns = extract_patterns(
+        template_content,
+        phase=phase,
+        source_path=source_path,
+    )
 
     # Build the replacement mapping for tag blocks. If an anchors dictionary is
     # provided, use its values to replace the corresponding tag blocks. Otherwise
     # fall back to the template's own block content (i.e. leave defaults).
     content = template_content
     tags_to_replace: dict[str, str] = {}
-    if phase == 'pre-render':
+    if selected_phase == PreprocessPhase.PRE_RENDER.value:
         for tag, default_value in patterns.tag_blocks.items():
             if anchors_dictionary and tag in anchors_dictionary:
                 tags_to_replace[tag] = anchors_dictionary[tag]
@@ -290,20 +307,21 @@ def replace_text(
             header={name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_header.items()},
         ),
         local_content,
-        phase=phase,
+        phase=selected_phase,
+        source_path=source_path,
     )
     content = apply_regex_replacements(
         content,
         patterns.regexes,
         local_content,
-        phase=phase,
+        phase=selected_phase,
     )
     content = apply_multiregex_replacements(
         content,
         patterns.multiregex_blocks,
         patterns.multiregexes,
         local_content,
-        phase=phase,
+        phase=selected_phase,
     )
     result = content
     logger.debug(

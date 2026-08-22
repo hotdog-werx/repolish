@@ -627,15 +627,9 @@ def _normalize_provider_insertions(
     """Normalize provider insertion contribution into a path->registry map."""
     if isinstance(contribution, dict):
         return contribution
-    if isinstance(contribution, list):
-        if not all(isinstance(path, str) for path in contribution):
-            msg = 'create_file_insertions() list form must contain only destination path strings.'
-            raise TypeError(msg)
-        registry = shared_registry or {}
-        return {path: dict(registry) for path in contribution if path}
-
-    msg = 'create_file_insertions() must return dict[str, InsertionRegistry] or list[str].'
-    raise TypeError(msg)
+    # Provider returned a list of paths
+    registry = shared_registry or {}
+    return {path: dict(registry) for path in contribution if path}
 
 
 def _override_validator_entry(
