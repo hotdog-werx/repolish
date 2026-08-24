@@ -318,6 +318,40 @@ def test_write_back_resolves_qualified_name_to_unqualified_registry() -> None:
     assert result.text.rstrip('\n') == expected
 
 
+def test_write_back_functionless_marker_renders_empty_body() -> None:
+    text = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs -->
+        previous-body
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    expected = (
+        dedent(
+            """
+        before
+        <!-- repolish:on:docs -->
+        <!-- repolish:off:docs -->
+        after
+        """,
+        )
+        .lstrip('\n')
+        .rstrip('\n')
+    )
+
+    result = write_back(text, {'render': lambda: 'ignored'})
+    assert isinstance(result, WriteBackResult)
+    assert result.text.rstrip('\n') == expected
+    assert result.failed_blocks == 0
+
+
 def test_write_back_registry_calls_noarg_renderer() -> None:
     text = (
         dedent(
@@ -543,3 +577,47 @@ def test_write_back_two_positional_params() -> None:
     result = write_back(text, {'two-pos-func': two_pos_func})
     assert isinstance(result, WriteBackResult)
     assert result.text.rstrip('\n') == expected
+
+
+def test_write_back_populates_file_path_in_blocks() -> None:
+    """Test that file_path is populated through write_back."""
+    text = dedent("""
+        <!-- repolish:on:docs render foo -->
+        content
+        <!-- repolish:off:docs -->
+        """).lstrip('\n')
+
+    file_path = 'src/file.txt'
+    captured_block = None
+
+    def renderer(block: InsertionBlock) -> str:
+        nonlocal captured_block
+        captured_block = block
+        return f'file:{block.file_path}'
+
+    result = write_back(text, renderer, file_path=file_path)
+
+    assert captured_block is not None
+    assert captured_block.file_path == file_path
+    assert 'file:src/file.txt' in result.text
+
+
+def test_write_back_default_file_path_is_empty() -> None:
+    """Test that file_path defaults to empty string in write_back."""
+    text = dedent("""
+        <!-- repolish:on:tag func -->
+        body
+        <!-- repolish:off:tag -->
+        """).lstrip('\n')
+
+    captured_block = None
+
+    def renderer(block: InsertionBlock) -> str:
+        nonlocal captured_block
+        captured_block = block
+        return 'x'
+
+    write_back(text, renderer)
+
+    assert captured_block is not None
+    assert captured_block.file_path == ''

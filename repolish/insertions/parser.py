@@ -95,12 +95,10 @@ def _open_block(
     *,
     style: CommentStyle,
     match: re.Match[str],
+    file_path: str = '',
 ) -> InsertionBlock:
     """Create the insertion block state for an opening marker."""
     function, args = _split_function_args(payload)
-    if not function:
-        msg = f'Insertion marker for tag {tag!r} is missing a function name.'
-        raise ValueError(msg)
 
     return InsertionBlock(
         tag=tag,
@@ -111,6 +109,7 @@ def _open_block(
         body_start=match.end(),
         body_end=match.start(),
         comment_style=style,
+        file_path=file_path,
     )
 
 
@@ -133,15 +132,17 @@ def _close_block(
         body_start=body_start,
         body_end=body_end,
         comment_style=opener.comment_style,
+        file_path=opener.file_path,
     )
 
 
-def _process_marker(
+def _process_marker(  # noqa: PLR0913 - helper function, only used in module
     style: CommentStyle,
     match: re.Match[str],
     open_stack: dict[str, InsertionBlock],
     diagnostics: list[ParseDiagnostic],
     text: str,
+    file_path: str = '',
 ) -> InsertionBlock | None:
     """Process a single marker match and return a completed block if closing."""
     tag = match.group('tag')
@@ -149,7 +150,15 @@ def _process_marker(
     payload = match.group('body')
 
     if kind == 'on':
-        _handle_open_marker(tag, payload, style, match, open_stack, diagnostics)
+        _handle_open_marker(
+            tag,
+            payload,
+            style,
+            match,
+            open_stack,
+            diagnostics,
+            file_path,
+        )
         return None
 
     return _handle_close_marker(tag, match, open_stack, diagnostics, text)
@@ -162,6 +171,7 @@ def _handle_open_marker(  # noqa: PLR0913 - helper function, refactor later
     match: re.Match[str],
     open_stack: dict[str, InsertionBlock],
     diagnostics: list[ParseDiagnostic],
+    file_path: str = '',
 ) -> None:
     """Handle an opening marker, detecting duplicates and invalid syntax."""
     if tag in open_stack:
@@ -174,7 +184,13 @@ def _handle_open_marker(  # noqa: PLR0913 - helper function, refactor later
         return
 
     try:
-        open_stack[tag] = _open_block(tag, payload, style=style, match=match)
+        open_stack[tag] = _open_block(
+            tag,
+            payload,
+            style=style,
+            match=match,
+            file_path=file_path,
+        )
     except ValueError as exc:
         diagnostics.append(
             ParseDiagnostic(message=str(exc), position=match.start()),
@@ -220,12 +236,18 @@ def parse_text(
     text: str,
     *,
     comment_styles: Iterable[CommentStyle | str] | None = DEFAULT_COMMENT_STYLES,
+    file_path: str = '',
 ) -> ParsedInsertions:
     """Parse insertion markers from a string and return the structured blocks.
 
     Parse errors (unclosed markers, mismatched pairs, invalid syntax) are collected
     as diagnostics rather than raising, allowing callers to partially process files
     with malformed regions while still reporting what went wrong.
+
+    Args:
+        text: The file content to parse.
+        comment_styles: The comment styles to recognize.
+        file_path: The path of the file being parsed (stored in each InsertionBlock).
     """
     styles = _normalize_comment_styles(comment_styles)
     matches = _iter_marker_matches(text, styles)
@@ -234,7 +256,14 @@ def parse_text(
     open_stack: dict[str, InsertionBlock] = {}
 
     for style, match in matches:
-        block = _process_marker(style, match, open_stack, diagnostics, text)
+        block = _process_marker(
+            style,
+            match,
+            open_stack,
+            diagnostics,
+            text,
+            file_path,
+        )
         if block is not None:
             blocks.append(block)
 

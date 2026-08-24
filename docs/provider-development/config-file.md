@@ -127,6 +127,12 @@ the full resolution rules and CLI protocol.
   `file_mappings` in one place. This is the canonical API for project-side
   configuration overrides and is the location to use for new work.
 
+  For insertion workflows, `overrides` also supports:
+
+  - `insertions`: enable/disable insertion ownership per file/function.
+  - `insertions_extend_files`: add extra destination files that may use this
+    provider's insertion registry, without changing provider code.
+
 - **`context`** - optional mapping merged into this provider's context after
   `create_context()` runs. Each top-level key replaces the provider's value
   wholesale. Deprecated in favor of `overrides.context_merge`. See
@@ -149,6 +155,11 @@ the full resolution rules and CLI protocol.
   destination path may be enabled or disabled independently, and can also carry
   `skip_render` and `priority` settings. This is the project-level mechanism for
   opting files in or out without modifying provider code.
+
+- **`insertions_extend_files`** - list of additional file paths within
+  `overrides.insertions_extend_files` that should be allowed to use this
+  provider's insertion functions. This is additive to provider-defined insertion
+  target files and is intended as a conservative extension mechanism.
 
 Shorthand notation is supported in the YAML. Instead of writing::
 

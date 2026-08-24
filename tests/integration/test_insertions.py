@@ -824,6 +824,327 @@ def test_provider_insertion_and_validator_on_non_owned_file(
     assert '1 ok, 0 failed' in result.output
 
 
+def test_provider_template_can_ship_insertion_markers_for_user_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider template can include insertion markers that are rendered after mapping."""
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        return {'README.md': {'render-status': render_status}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+    expected = dedent(
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        STATUS=ready
+        <!-- repolish:off:status -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_user_can_edit_insertion_args_in_template_shipped_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User edits insertion marker args in a template-rendered file; verify re-apply behavior.
+
+    The template is strict about the block's presence, but the user should be
+    able to edit the marker parameters (and/or function) and have those edits
+    respected on the next apply.
+    """
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        def render_mode(value: str):
+            return f'MODE={value}'
+
+        return {'README.md': {'render-status': render_status, 'render-mode': render_mode}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    readme = tmp_path / 'README.md'
+    assert 'STATUS=ready' in readme.read_text(encoding='utf-8')
+
+    # Simulate the user editing the marker args: ready -> beta.
+    user_edited = readme.read_text(encoding='utf-8').replace(
+        '<!-- repolish:on:status render-status ready -->',
+        '<!-- repolish:on:status render-status beta -->',
+    )
+    readme.write_text(user_edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+    final = readme.read_text(encoding='utf-8')
+    assert '<!-- repolish:on:status render-status beta -->' in final
+    assert 'STATUS=beta' in final
+
+    # Adopted args make the insertion output stable: check mode reports no drift.
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+def test_user_can_change_insertion_function_in_template_shipped_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User swaps the insertion function in a template-rendered file; verify re-apply behavior."""
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        def render_mode(value: str):
+            return f'MODE={value}'
+
+        return {'README.md': {'render-status': render_status, 'render-mode': render_mode}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    readme = tmp_path / 'README.md'
+    assert 'STATUS=ready' in readme.read_text(encoding='utf-8')
+
+    # Simulate the user changing both the function and the args.
+    user_edited = readme.read_text(encoding='utf-8').replace(
+        '<!-- repolish:on:status render-status ready -->',
+        '<!-- repolish:on:status render-mode dark -->',
+    )
+    readme.write_text(user_edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+    final = readme.read_text(encoding='utf-8')
+    assert '<!-- repolish:on:status render-mode dark -->' in final
+    assert 'MODE=dark' in final
+
+
+def test_user_can_switch_to_local_provider_function_in_template_shipped_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User swaps a template-shipped marker to a function from their own provider.
+
+    Per-file insertion registries are merged across providers, so a project
+    provider can declare the same target file and its functions become
+    available to markers in files rendered by other providers.
+    """
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        return {'README.md': {'render-status': render_status}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+    _make_insertion_provider(
+        tmp_path / 'local',
+        """\
+        def my_status(value: str):
+            return f'LOCAL={value}'
+
+        return {'README.md': {'my-status': my_status}}""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p', 'local': './local'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    readme = tmp_path / 'README.md'
+    assert 'STATUS=ready' in readme.read_text(encoding='utf-8')
+
+    # Switch the block to the local provider's function (provider-qualified).
+    user_edited = readme.read_text(encoding='utf-8').replace(
+        '<!-- repolish:on:status render-status ready -->',
+        '<!-- repolish:on:status local:my-status v2 -->',
+    )
+    readme.write_text(user_edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+    final = readme.read_text(encoding='utf-8')
+    assert '<!-- repolish:on:status local:my-status v2 -->' in final
+    assert 'LOCAL=v2' in final
+    assert 'STATUS=ready' not in final
+
+
+def test_provider_insertion_targets_can_be_extended_from_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Project config can extend provider insertion target files conservatively."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Primary file
+
+        <!-- repolish:on:src generate-uv-sources local -->
+        <!-- repolish:off:src -->
+        """,
+    )
+    _write(
+        tmp_path / 'docs.md',
+        """\
+        Secondary file
+
+        <!-- repolish:on:src generate-uv-sources github -->
+        <!-- repolish:off:src -->
+        """,
+    )
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_methods="""
+def create_insertion_registry(self, context):
+    def generate_uv_sources(source: str):
+        return f'sources={source}'
+
+    return {'generate-uv-sources': generate_uv_sources}
+""",
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'insertions_extend_files': ['docs.md'],
+                        },
+                    },
+                },
+            },
+            indent=4,
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected_readme = dedent(
+        """\
+        Primary file
+
+        <!-- repolish:on:src generate-uv-sources local -->
+        sources=local
+        <!-- repolish:off:src -->
+        """,
+    )
+    expected_docs = dedent(
+        """\
+        Secondary file
+
+        <!-- repolish:on:src generate-uv-sources github -->
+        sources=github
+        <!-- repolish:off:src -->
+        """,
+    )
+
+    assert (tmp_path / 'README.md').read_text(
+        encoding='utf-8',
+    ) == expected_readme
+    assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
+    # There should be two insertions applied, one for each file
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
 def test_provider_insertion_resolves_same_function_name_by_provider(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -928,6 +1249,173 @@ def test_provider_insertion_provider_qualified_marker_falls_back_to_unqualified(
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
     assert 'README.md' in result.output
+
+
+def test_provider_insertion_shared_registry_targets_list_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers can register a shared insertion registry and target files via list[str]."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Shared insertion registry
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_methods="""
+def create_insertion_registry(self, context):
+    def generate_uv_sources(mode: str):
+        return f'sources={mode}'
+
+    return {'generate-uv-sources': generate_uv_sources}
+""",
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        Shared insertion registry
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        sources=local
+        <!-- repolish:off:uv -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_list_mode_only_applies_to_declared_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """List-mode insertion targets do not apply to extra files without config extension."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Primary target
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+    _write(
+        tmp_path / 'docs.md',
+        """\
+        Non-target file
+
+        <!-- repolish:on:uv generate-uv-sources github -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_methods="""
+def create_insertion_registry(self, context):
+    def generate_uv_sources(mode: str):
+        return f'sources={mode}'
+
+    return {'generate-uv-sources': generate_uv_sources}
+""",
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected_readme = dedent(
+        """\
+        Primary target
+
+        <!-- repolish:on:uv generate-uv-sources local -->
+        sources=local
+        <!-- repolish:off:uv -->
+        """,
+    )
+    expected_docs = dedent(
+        """\
+        Non-target file
+
+        <!-- repolish:on:uv generate-uv-sources github -->
+        <!-- repolish:off:uv -->
+        """,
+    )
+
+    assert (tmp_path / 'README.md').read_text(
+        encoding='utf-8',
+    ) == expected_readme
+    assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+
+
+def test_provider_insertion_shared_registry_on_rendered_template_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared insertion registry can target a provider-rendered template output file."""
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        return ['README.md']""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+
+def create_insertion_registry(self, context):
+    def render_status(state: str):
+        return f'STATUS={state}'
+
+    return {'render-status': render_status}
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Rendered file with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    expected = dedent(
+        """\
+        Rendered file with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        STATUS=ready
+        <!-- repolish:off:status -->
+        """,
+    )
+    assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_check_passes_when_file_is_in_sync(
@@ -1419,6 +1907,107 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     assert '1 ok, 0 failed' in result.output
 
 
+def test_monorepo_root_mode_insertions_shared_registry_list_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A root-mode handler can register list-mode insertion targets via shared registry."""
+    repo = fixtures.monorepo_basic.stage(tmp_path)
+
+    (repo / 'README.workspace.md').write_text(
+        '# Workspace README\n\n<!-- repolish:on:version insert-version -->\n<!-- repolish:off:version -->\n',
+        encoding='utf-8',
+    )
+
+    (repo / 'workspace-provider').mkdir()
+    (repo / 'workspace-provider' / 'repolish').mkdir(parents=True)
+    (repo / 'workspace-provider' / 'repolish' / 'config.toml').write_text(
+        'name = "workspace"\n',
+        encoding='utf-8',
+    )
+    (repo / 'workspace-provider' / 'repolish.py').write_text(
+        """
+from repolish import BaseContext, BaseInputs, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class WorkspaceProvider(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+        encoding='utf-8',
+    )
+
+    (repo / 'insertion-provider').mkdir()
+    (repo / 'insertion-provider' / 'repolish').mkdir(parents=True)
+    (repo / 'insertion-provider' / 'repolish' / 'config.toml').write_text(
+        'name = "insertion-provider"\n',
+        encoding='utf-8',
+    )
+    (repo / 'insertion-provider' / 'repolish.py').write_text(
+        """
+from repolish import BaseContext, BaseInputs, ModeHandler, Provider
+
+
+class Ctx(BaseContext):
+    pass
+
+
+class RootHandler(ModeHandler[Ctx, BaseInputs]):
+    def create_file_insertions(self, ctx):
+        return ['README.workspace.md']
+
+    def create_insertion_registry(self, ctx):
+        def insert_version():
+            return '2.0.0'
+
+        return {'insert-version': insert_version}
+
+
+class InsertionProvider(Provider[Ctx, BaseInputs]):
+    root_mode = RootHandler
+
+    def create_context(self):
+        return Ctx()
+
+    def create_file_mappings(self, ctx):
+        return {}
+""",
+        encoding='utf-8',
+    )
+
+    (repo / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'workspace-provider': {
+                        'provider_root': './workspace-provider',
+                    },
+                    'insertion-provider': {
+                        'provider_root': './insertion-provider',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(repo)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (repo / 'README.workspace.md').read_text(encoding='utf-8')
+    assert '2.0.0' in content
+    assert '<!-- repolish:on:version insert-version -->' in content
+    assert 'insertions:' in result.output
+    assert '1 ok, 0 failed' in result.output
+
+
 def test_provider_insertion_with_post_process_formatting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1659,3 +2248,60 @@ def create_file_mappings(self, context):
 
     # FIXED: Running check mode now passes because post_process IS applied during check
     run_repolish(['apply', '--check', '-vv'], exit_code=0)
+
+
+def test_provider_insertion_receives_file_path_in_block_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insertion functions receive file_path via BlockContext and InsertionBlock."""
+    _write(
+        tmp_path / 'README.md',
+        """\
+        File path test
+
+        <!-- repolish:on:path-test show-path -->
+        PLACEHOLDER
+        <!-- repolish:off:path-test -->
+
+        <!-- repolish:on:block-path show-block-path -->
+        PLACEHOLDER2
+        <!-- repolish:off:block-path -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        from repolish import BlockContext, InsertionBlock
+
+        def show_path(*, ctx: BlockContext):
+            # Verify file_path is available in BlockContext
+            assert ctx.file_path == 'README.md', f"Expected 'README.md', got {ctx.file_path!r}"
+            assert ctx.insertion_block is not None
+            assert ctx.insertion_block.file_path == 'README.md'
+            return f'file-is:{ctx.file_path}'
+
+        def show_block_path(*, block: InsertionBlock):
+            # Verify file_path is available in InsertionBlock
+            assert block.file_path == 'README.md', f"Expected 'README.md', got {block.file_path!r}"
+            return f'block-file-is:{block.file_path}'
+
+        return {
+            'README.md': {
+                'show-path': show_path,
+                'show-block-path': show_block_path,
+            }
+        }""",
+        extra_imports='from repolish import BlockContext, InsertionBlock',
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'file-is:README.md' in content
+    assert 'block-file-is:README.md' in content
+    assert 'insertions: ✓ ok (2 ok, 0 failed)' in result.output

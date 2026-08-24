@@ -8,7 +8,23 @@ import re
 
 from hotlog import get_logger
 
+from repolish.preprocessors.directive_phase import (
+    split_directive_tag,
+)
+from repolish.preprocessors.tag_names import parse_section_name
+
 logger = get_logger(__name__)
+
+_MULTIREGEX_BLOCK_DIRECTIVE_RE = re.compile(
+    r'^[^\n]*repolish-multiregex-block\[(.+?)\]:\s*(.*?)\s*$',
+)
+_MULTIREGEX_DIRECTIVE_RE = re.compile(
+    r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
+)
+
+_KEY_VALUE_RE = re.compile(
+    r'^(\s*)(")?([^"=:\s]+)(")?(\s*)([=:])(\s*)"([^"]*)"(.*)$',
+)
 
 
 def apply_multiregex_replacements(
@@ -16,6 +32,8 @@ def apply_multiregex_replacements(
     multiregex_blocks: dict[str, str],
     multiregexes: dict[str, str],
     local_file_content: str,
+    *,
+    phase: str = 'pre-render',
 ) -> str:
     """Applies multiregex replacements to the content."""
     logger.debug(
@@ -38,7 +56,11 @@ def apply_multiregex_replacements(
             continue
 
         values = _extract_values_from_block(multi_regex, block_content, tag)
-        content = _remove_multiregex_comments(content, tag)
+        content = _remove_multiregex_comments(
+            content,
+            tag,
+            phase,
+        )
         content = _replace_values_in_section(content, tag, values)
 
     return content
@@ -98,20 +120,55 @@ def _extract_values_from_block(
     return values
 
 
-def _remove_multiregex_comments(content: str, tag: str) -> str:
-    """Remove multiregex comments from template."""
-    content = re.sub(
-        rf'## repolish-multiregex-block\[{re.escape(tag)}\]:.*\n',
-        '',
-        content,
-        flags=re.MULTILINE,
-    )
-    return re.sub(
-        rf'## repolish-multiregex\[{re.escape(tag)}\]:.*\n',
-        '',
-        content,
-        flags=re.MULTILINE,
-    )
+def _remove_multiregex_comments(
+    content: str,
+    tag: str,
+    phase: str,
+    *,
+    source_path: str | None = None,
+) -> str:
+    """Remove multiregex directive lines for one tag and selected phase."""
+    result: list[str] = []
+    for line in content.splitlines(keepends=True):
+        stripped = line.rstrip('\r\n')
+        if _should_strip_directive_line(
+            stripped,
+            tag,
+            phase,
+            source_path=source_path,
+        ):
+            continue
+
+        result.append(line)
+    return ''.join(result)
+
+
+def _should_strip_directive_line(
+    stripped_line: str,
+    tag: str,
+    phase: str,
+    *,
+    source_path: str | None = None,
+) -> bool:
+    """Return whether a directive line matches the requested tag and phase."""
+    for directive_pattern in (
+        _MULTIREGEX_BLOCK_DIRECTIVE_RE,
+        _MULTIREGEX_DIRECTIVE_RE,
+    ):
+        match = directive_pattern.match(stripped_line)
+        if not match:
+            continue
+
+        raw_tag = match.group(1)
+        directive_name, directive_phase = split_directive_tag(
+            raw_tag,
+            source_path=source_path,
+        )
+
+        if directive_name == tag and directive_phase == phase:
+            return True
+
+    return False
 
 
 def _replace_values_in_section(
@@ -119,8 +176,11 @@ def _replace_values_in_section(
     tag: str,
     values: dict[str, str],
 ) -> str:
-    """Replace template defaults with extracted values in the specified section."""
+    """Replace template defaults using section mode or whole-file fallback."""
     lines = content.split('\n')
+    if not any(_is_section_start(line, tag) for line in lines):
+        return '\n'.join(_replace_values_in_lines(lines, values))
+
     result_lines = []
     in_section = False
 
@@ -138,30 +198,56 @@ def _replace_values_in_section(
     return '\n'.join(result_lines)
 
 
+def _replace_values_in_lines(
+    lines: list[str],
+    values: dict[str, str],
+) -> list[str]:
+    """Replace matching key-value lines across the provided lines."""
+    result: list[str] = []
+    for line in lines:
+        if _is_key_value_line(line):
+            result.append(_replace_key_value(line, values))
+            continue
+        result.append(line)
+    return result
+
+
 def _is_section_start(line: str, tag: str) -> bool:
     """Check if the line starts a new section with the given tag."""
-    section_start_pattern = re.compile(r'^\[(\w+)\]')
-    section_match = section_start_pattern.match(line.strip())
-    return section_match is not None and section_match.group(1) == tag
+    return parse_section_name(line) == tag
 
 
 def _is_section_exit(line: str, tag: str) -> bool:
     """Check if the line starts a new section, indicating exit from current tag section."""
-    section_start_pattern = re.compile(r'^\[(\w+)\]')
-    section_match = section_start_pattern.match(line.strip())
-    return section_match is not None and section_match.group(1) != tag
+    section_name = parse_section_name(line)
+    return section_name is not None and section_name != tag
 
 
 def _is_key_value_line(line: str) -> bool:
-    """Check if the line is a key=value assignment."""
-    return bool(re.match(r'^\s*(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line))
+    """Check if the line is a quoted key=value or key:value assignment."""
+    return bool(_KEY_VALUE_RE.match(line))
 
 
 def _replace_key_value(line: str, values: dict[str, str]) -> str:
     """Replace the value in a key=value line if the key exists in values dict."""
-    match = re.match(r'^\s*(")?([^"=\s]+)(")?\s*=\s*"([^"]*)"', line)
+    match = _KEY_VALUE_RE.match(line)
     if match:
-        quote1, key, quote2, default_value = match.groups()
+        (
+            indent,
+            quote1,
+            key,
+            quote2,
+            ws_before_sep,
+            separator,
+            ws_after_sep,
+            default_value,
+            suffix,
+        ) = match.groups()
         actual_value = values.get(key, default_value or '')
-        return f'{quote1 or ""}{key}{quote2 or ""} = "{actual_value}"'
+        return ''.join(
+            [
+                f'{indent}{quote1 or ""}{key}{quote2 or ""}',
+                f'{ws_before_sep}{separator}{ws_after_sep}"{actual_value}"{suffix}',
+            ],
+        )
     return line

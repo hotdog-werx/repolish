@@ -459,6 +459,12 @@ def test_create_file_insertions_no_handler_returns_empty() -> None:
     assert call_provider_method(provider, 'create_file_insertions', ctx) == {}
 
 
+def test_create_insertion_registry_no_handler_returns_empty() -> None:
+    provider = _HandledProvider()
+    ctx = MyCtx(repolish=_make_ctx('standalone').repolish)
+    assert call_provider_method(provider, 'create_insertion_registry', ctx) == {}
+
+
 # ---------------------------------------------------------------------------
 # Tests: create_anchors dispatch
 # ---------------------------------------------------------------------------
@@ -653,6 +659,7 @@ def test_mode_handler_base_defaults() -> None:
     assert handler.create_file_mappings(ctx) == {}
     assert handler.create_file_validators(ctx) == {}
     assert handler.create_file_insertions(ctx) == {}
+    assert handler.create_insertion_registry(ctx) == {}
     assert handler.create_anchors(ctx) == {}
     assert handler.promote_file_mappings(ctx) == {}
     assert handler.create_default_symlinks() == []

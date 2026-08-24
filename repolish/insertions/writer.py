@@ -5,10 +5,13 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from repolish.insertions.models import CommentStyle, InsertionBlock
 from repolish.insertions.parser import parse_text
+from repolish.insertions.type_utils import is_insertion_block_annotation
+
+if TYPE_CHECKING:
+    from repolish.insertions.models import CommentStyle, InsertionBlock
 
 Renderer = Callable[..., str]
 RenderRegistry = Mapping[str, Callable[..., str]]
@@ -56,6 +59,8 @@ def _call_registered_renderer(
     - Positional params: filled from marker args, uses defaults if available
     """
     function_name = block.function
+    if not function_name:
+        return ''
     fn = registry.get(function_name)
     if fn is None and ':' in function_name:
         fn = registry.get(function_name.rsplit(':', 1)[1])
@@ -95,7 +100,7 @@ def _build_call_kwargs(
     for p in params:
         if p.kind != inspect.Parameter.KEYWORD_ONLY:
             continue
-        if _is_insertion_block_annotation(p.annotation):
+        if is_insertion_block_annotation(p.annotation):
             call_kwargs['block'] = block
 
     return call_kwargs if call_kwargs else None
@@ -125,7 +130,7 @@ def _is_single_block_param(
     return (
         len(positional_params) == 1
         and not has_varargs
-        and _is_insertion_block_annotation(
+        and is_insertion_block_annotation(
             positional_params[0].annotation,
         )
     )
@@ -153,13 +158,6 @@ def _build_call_args(
     return call_args
 
 
-def _is_insertion_block_annotation(annotation: object) -> bool:
-    """Check if an annotation refers to InsertionBlock."""
-    if annotation is InsertionBlock:
-        return True
-    return bool(isinstance(annotation, str) and annotation == 'InsertionBlock')
-
-
 def _render_block(
     render: Renderer | RenderRegistry | None,
     block: InsertionBlock,
@@ -175,6 +173,7 @@ def write_back(
     render: Renderer | RenderRegistry | None = None,
     *,
     comment_styles: Iterable[CommentStyle | str] | None = None,
+    file_path: str = '',
 ) -> WriteBackResult:
     """Replace each parsed insertion block body while preserving the markers.
 
@@ -183,8 +182,18 @@ def write_back(
 
     Parse diagnostics (malformed markers, unclosed blocks) are passed through
     so callers can see both parse and render issues.
+
+    Args:
+        text: The file content to process.
+        render: Renderer function or registry for rendering block content.
+        comment_styles: The comment styles to recognize.
+        file_path: The path of the file being processed (stored in each InsertionBlock).
     """
-    parsed = parse_text(text, comment_styles=comment_styles)
+    parsed = parse_text(
+        text,
+        comment_styles=comment_styles,
+        file_path=file_path,
+    )
 
     # Convert parse diagnostics to write diagnostics
     diagnostics: list[WriteDiagnostic] = [

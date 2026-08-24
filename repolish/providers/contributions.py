@@ -6,12 +6,17 @@ from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
 from repolish.insertions.models import BlockContext, InsertionBlock
+from repolish.insertions.type_utils import (
+    is_block_context_annotation,
+    is_insertion_block_annotation,
+)
 from repolish.providers._log import logger
 from repolish.providers.models import (
     Accumulators,
     Action,
     BaseContext,
     Decision,
+    FileInsertionContribution,
     FileMappingOptions,
     FileMode,
     FileValidatorEntry,
@@ -26,6 +31,7 @@ from repolish.providers.models import (
     Provider as _ProviderBase,
 )
 from repolish.providers.models.template_path import RepolishTemplatePath
+from repolish.utils import merge_dicts_first_wins
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -138,7 +144,7 @@ def _marker_value_params(
         }:
             continue
         if param.kind is inspect.Parameter.KEYWORD_ONLY and (
-            _is_block_context_annotation(param.annotation) or _is_insertion_block_annotation(param.annotation)
+            is_block_context_annotation(param.annotation) or is_insertion_block_annotation(param.annotation)
         ):
             continue
         result.append(param)
@@ -204,38 +210,17 @@ def _inject_context_if_requested(
     for p in params:
         if p.kind is not inspect.Parameter.KEYWORD_ONLY:
             continue
-        if _is_block_context_annotation(p.annotation):
+        if is_block_context_annotation(p.annotation):
             keyword_args[p.name] = BlockContext(
                 tag=block.tag,
                 args=block.args,
                 repolish=own_ctx.repolish,
                 provider_context=None,
+                file_path=block.file_path,
+                insertion_block=block,
             )
-        elif _is_insertion_block_annotation(p.annotation):
+        elif is_insertion_block_annotation(p.annotation):
             keyword_args[p.name] = block
-
-
-def _is_block_context_annotation(annotation: object) -> bool:
-    """Check if an annotation refers to BlockContext."""
-    if annotation is BlockContext:
-        return True
-    return bool(isinstance(annotation, str) and annotation == 'BlockContext')
-
-
-def _is_insertion_block_annotation(annotation: object) -> bool:
-    """Check if an annotation refers to InsertionBlock."""
-    if annotation is InsertionBlock:
-        return True
-    if isinstance(annotation, str):
-        return annotation == 'InsertionBlock' or annotation.endswith(
-            '.InsertionBlock',
-        )
-    forward_arg = getattr(annotation, '__forward_arg__', None)
-    if isinstance(forward_arg, str):
-        return forward_arg == 'InsertionBlock' or forward_arg.endswith(
-            '.InsertionBlock',
-        )
-    return False
 
 
 def _insertion_fn_name(fn: Callable[..., str]) -> str:
@@ -300,7 +285,7 @@ def _build_insertion_wrapper(
     fn_name = _insertion_fn_name(fn)
     has_varargs = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in params)
     has_typed_injected_context = any(
-        _is_block_context_annotation(p.annotation) or _is_insertion_block_annotation(p.annotation) for p in params
+        is_block_context_annotation(p.annotation) or is_insertion_block_annotation(p.annotation) for p in params
     )
 
     def _render(block: InsertionBlock) -> str:
@@ -316,6 +301,10 @@ def _build_insertion_wrapper(
             own_ctx=own_ctx,
         )
         return _render_from_attempts(fn, sig, attempts, fn_name=fn_name)
+
+    # Preserve user-facing metadata for diagnostics and list-insertions output.
+    cast('Any', _render).__name__ = getattr(fn, '__name__', '_render')
+    cast('Any', _render).__doc__ = getattr(fn, '__doc__', None)
 
     return _render
 
@@ -571,6 +560,7 @@ def _handle_provider_insertions(
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
+    provider_overrides: ProviderOverrides | None = None,
 ) -> None:
     """Collect insertion-function registrations for one provider.
 
@@ -578,9 +568,21 @@ def _handle_provider_insertions(
     and function name so later resolution can look up the callables by the parsed
     insertion metadata without leaking registration state across monorepo modes.
     """
-    insertions = cast(
-        'dict[str, InsertionRegistry]',
+    contribution = cast(
+        'FileInsertionContribution',
         call_provider_method(inst, 'create_file_insertions', own_ctx),
+    )
+    shared_registry: InsertionRegistry = {}
+    if isinstance(contribution, list):
+        shared_registry = cast(
+            'InsertionRegistry',
+            call_provider_method(inst, 'create_insertion_registry', own_ctx),
+        )
+
+    insertions = _normalize_provider_insertions(contribution, shared_registry)
+    _extend_provider_insertions(
+        insertions,
+        extra_paths=(provider_overrides.insertions_extend_files if provider_overrides else None),
     )
     provider_name = inst.alias or provider_id
     for path, functions in insertions.items():
@@ -594,6 +596,40 @@ def _handle_provider_insertions(
             # Always expose provider-qualified keys for explicit targeting.
             registry[f'{provider_name}:{function_name}'] = bound_fn
         accum.insertion_sources.setdefault(path, []).append(provider_id)
+
+
+def _extend_provider_insertions(
+    insertions: dict[str, InsertionRegistry],
+    *,
+    extra_paths: list[str] | None,
+) -> None:
+    """Extend insertion targets with additional files from config overrides.
+
+    This is intentionally additive: provider-declared file/function mappings
+    stay authoritative, while extra paths receive any unqualified function that
+    provider already exposes.
+    """
+    if not extra_paths or not (shared_registry := merge_dicts_first_wins(insertions.values())):
+        return
+
+    for path in extra_paths:
+        if path:
+            # Ensure extra path gets all shared functions, but don't override existing ones
+            target = insertions.setdefault(path, {})
+            for fn_name, fn in shared_registry.items():
+                target.setdefault(fn_name, fn)
+
+
+def _normalize_provider_insertions(
+    contribution: FileInsertionContribution,
+    shared_registry: InsertionRegistry | None = None,
+) -> dict[str, InsertionRegistry]:
+    """Normalize provider insertion contribution into a path->registry map."""
+    if isinstance(contribution, dict):
+        return contribution
+    # Provider returned a list of paths
+    registry = shared_registry or {}
+    return {path: dict(registry) for path in contribution if path}
 
 
 def _override_validator_entry(
@@ -652,7 +688,9 @@ def _disabled_insertion_renderer_for_function(
     def _render(block: InsertionBlock) -> str:
         return block.body
 
-    cast('Any', _render).__repolish_disabled_functions__ = frozenset({function_name})
+    cast('Any', _render).__repolish_disabled_functions__ = frozenset(
+        {function_name},
+    )
     cast('Any', _render).__repolish_disabled_tags__ = frozenset()
     return _render
 
@@ -820,7 +858,13 @@ def _collect_provider_contribution(
         provider_overrides,
     )
     _handle_provider_validators(inst, own_ctx, provider_id, accum)
-    _handle_provider_insertions(inst, own_ctx, provider_id, accum)
+    _handle_provider_insertions(
+        inst,
+        own_ctx,
+        provider_id,
+        accum,
+        provider_overrides,
+    )
     if provider_overrides:
         _apply_validator_overrides(provider_overrides.validators or {}, accum)
         _apply_insertion_overrides(provider_overrides.insertions or {}, accum)

@@ -4,6 +4,33 @@ This guide shows how to apply preprocessor directives to common real-world
 scenarios. For a full explanation of how each directive works, see
 [Preprocessors](../concepts/preprocessors.md).
 
+## Two-phase directives
+
+Directives run in `pre-render` mode by default. Use `|after-render` in the
+directive tag when the directive appears inside Jinja-generated content (for
+example loops), so repolish evaluates it after rendering.
+
+Example:
+
+```jinja
+{% for item in items %}
+- {{ item }}
+## repolish-keep-block[user-note|after-render]: start="<!-- note-start -->" end="<!-- note-end -->"
+<!-- note-start -->
+default note for {{ item }}
+<!-- note-end -->
+{% endfor %}
+```
+
+The same `|after-render` tag suffix is supported on:
+
+- `repolish-regex[...]`
+- `repolish-multiregex-block[...]`
+- `repolish-multiregex[...]`
+- `repolish-keep-block[...]`
+- `repolish-keep-rest[...]`
+- `repolish-keep-header[...]`
+
 ## Choosing the right directive
 
 | Situation                                                        | Directive    |
@@ -129,6 +156,23 @@ Default content for new projects
 
 If the project file already contains the marker pair, repolish keeps the block
 between them. Otherwise the default block stays in place.
+
+When a fixed end marker is not practical, use `end-regex` to close each kept
+region dynamically:
+
+```yaml
+## repolish-keep-block[provider-additional|after-render]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+{% for idx in providers %}
+provider{{ idx }}:
+  - static{{ idx }}
+  # additional-paths
+  - default{{ idx }}
+{% endfor %}
+```
+
+This searches forward from each `start` marker to the first line matching
+`end-regex`. If no match appears before the next keep directive (or end of
+file), repolish closes the region at that boundary.
 
 If multiple sibling `keep-block` directives in one file reuse the same marker
 pair, repolish matches local blocks by encounter order and puts them back in

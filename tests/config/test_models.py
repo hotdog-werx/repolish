@@ -361,6 +361,21 @@ def test_provider_overrides_insertions_full_form_is_preserved() -> None:
     }
 
 
+def test_provider_overrides_insertions_extend_files_is_preserved() -> None:
+    """insertions_extend_files keeps explicit project paths as provided."""
+    overrides = ProviderOverrides(
+        insertions_extend_files=[
+            'README.md',
+            'docs/reference.md',
+        ],
+    )
+
+    assert overrides.insertions_extend_files == [
+        'README.md',
+        'docs/reference.md',
+    ]
+
+
 # Remove in V2.0: legacy top-level fields context, context_overrides, anchors are deprecated
 class TestLegacyOverridesMigration:
     """Tests for migration of legacy top-level override fields to overrides container."""

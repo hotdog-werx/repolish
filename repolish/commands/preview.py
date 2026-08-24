@@ -55,7 +55,7 @@ def command(
     console.print()
 
     if show_patterns:
-        patterns = extract_patterns(template)
+        patterns = extract_patterns(template, source_path=str(debug_file))
         console.rule('[bold]Extracted Patterns')
         logger.info(
             'extracted_patterns',
@@ -69,7 +69,12 @@ def command(
         )
         console.print()
 
-    result = replace_text(template, target, anchors_dictionary=anchors)
+    result = replace_text(
+        template,
+        target,
+        anchors_dictionary=anchors,
+        source_path=str(debug_file),
+    )
     if show_steps:
         console.rule('[bold]Processing Steps')
         # We could add more detailed step-by-step output here

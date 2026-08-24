@@ -12,12 +12,18 @@ from repolish.preprocessors.core import (
     replace_text,
     safe_file_read,
 )
+from repolish.preprocessors.directive_phase import (
+    PreprocessPhase,
+    split_directive_tag,
+    warn_invalid_phase_suffix,
+)
 from repolish.preprocessors.keep import apply_keep_replacements
 from repolish.preprocessors.multiregex import apply_multiregex_replacements
 from repolish.preprocessors.regex import apply_regex_replacements
 
 __all__ = [
     'Patterns',
+    'PreprocessPhase',
     'apply_keep_replacements',
     'apply_multiregex_replacements',
     'apply_regex_replacements',
@@ -25,4 +31,6 @@ __all__ = [
     'replace_tags_in_content',
     'replace_text',
     'safe_file_read',
+    'split_directive_tag',
+    'warn_invalid_phase_suffix',
 ]

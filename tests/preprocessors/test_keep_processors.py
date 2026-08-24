@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from textwrap import dedent
 from unittest import mock
@@ -8,6 +9,7 @@ from repolish.preprocessors import extract_patterns, replace_text
 from repolish.preprocessors.keep import (
     KeepBlockSpec,
     KeepMarkerSpec,
+    KeepPatterns,
     apply_keep_replacements,
 )
 
@@ -137,9 +139,30 @@ def test_extract_patterns_includes_keep_directives() -> None:
     assert patterns.keep_blocks['readme-custom-block'] == (
         '<!-- start -->',
         '<!-- end -->',
+        None,
     )
     assert patterns.keep_rest['repo-overrides'] == '## repo-overrides'
     assert patterns.keep_header['repo-header'] == '## managed'
+
+
+def test_extract_patterns_supports_keep_block_end_regex() -> None:
+    template = dedent("""\
+                ## repolish-keep-block[paths]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+                provider1:
+                    # additional-paths
+                    - 'default1'
+                provider2:
+                    # additional-paths
+                    - 'default2'
+        """)
+
+    patterns = extract_patterns(template)
+
+    assert patterns.keep_blocks['paths'] == (
+        '# additional-paths',
+        None,
+        '^provider[0-9]+:$',
+    )
 
 
 def test_extract_patterns_keep_literals_must_be_strings() -> None:
@@ -160,6 +183,27 @@ def test_extract_patterns_keep_literals_must_be_strings() -> None:
         extract_patterns(template)
 
 
+def test_extract_patterns_warns_on_invalid_phase_suffix() -> None:
+    template = dedent("""\
+        ## repolish-regex[version|oops-render]: ^version:\\s*(.+)$
+        version: 0.0.0
+    """)
+
+    with mock.patch(
+        'repolish.preprocessors.directive_phase.logger.warning',
+    ) as warning_mock:
+        patterns = extract_patterns(
+            template,
+            source_path='templates/example.md',
+        )
+
+    assert patterns.regexes['version'] == '^version:\\s*(.+)$'
+    warning_mock.assert_called_once()
+    event_name = warning_mock.call_args.args[0]
+    assert event_name == 'directive_invalid_phase_suffix'
+    assert warning_mock.call_args.kwargs['source_path'] == 'templates/example.md'
+
+
 def test_apply_keep_replacements_block_name_not_in_specs() -> None:
     template = dedent("""\
         Top
@@ -172,9 +216,7 @@ def test_apply_keep_replacements_block_name_not_in_specs() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(blocks={}, rest={}, header={}),
         local_file_content='',
     )
 
@@ -191,9 +233,11 @@ def test_apply_keep_replacements_block_template_region_not_found() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={'block': KeepBlockSpec(start='<<', end='>>')},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={'block': KeepBlockSpec(start='<<', end='>>')},
+            rest={},
+            header={},
+        ),
         local_file_content='',
     )
 
@@ -210,9 +254,7 @@ def test_apply_keep_replacements_rest_name_not_in_specs() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(blocks={}, rest={}, header={}),
         local_file_content='',
     )
 
@@ -228,9 +270,11 @@ def test_apply_keep_replacements_rest_marker_not_found_in_template() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content='## marker\ncustom\n',
     )
 
@@ -248,9 +292,11 @@ def test_apply_keep_replacements_rest_uses_template_tail_when_local_missing_mark
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content='Top\nno marker here\n',
     )
 
@@ -269,9 +315,11 @@ def test_apply_keep_replacements_rest_preserves_template_lines_before_marker() -
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content=dedent("""\
             Header
             ## marker
@@ -295,9 +343,11 @@ def test_apply_keep_replacements_rest_matches_marker_with_crlf_lines() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
-        keep_header={},
+        KeepPatterns(
+            blocks={},
+            rest={'repo-overrides': KeepMarkerSpec(marker='## marker')},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -314,9 +364,7 @@ def test_apply_keep_replacements_header_name_not_in_specs() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(blocks={}, rest={}, header={}),
         local_file_content='',
     )
 
@@ -332,9 +380,11 @@ def test_apply_keep_replacements_header_marker_not_found_in_template() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        KeepPatterns(
+            blocks={},
+            rest={},
+            header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        ),
         local_file_content='Local intro\n## managed\nLocal tail\n',
     )
 
@@ -351,9 +401,11 @@ def test_apply_keep_replacements_header_uses_template_prefix_when_local_missing_
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        KeepPatterns(
+            blocks={},
+            rest={},
+            header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        ),
         local_file_content='Local intro without marker\n',
     )
 
@@ -371,9 +423,11 @@ def test_apply_keep_replacements_header_must_be_at_file_start() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={},
-        keep_rest={},
-        keep_header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        KeepPatterns(
+            blocks={},
+            rest={},
+            header={'repo-header': KeepMarkerSpec(marker='## managed')},
+        ),
         local_file_content=dedent("""\
             Local intro
             ## managed
@@ -397,9 +451,11 @@ def test_apply_keep_replacements_block_local_has_start_but_no_end_marker() -> No
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={'block': KeepBlockSpec(start='<<', end='>>')},
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={'block': KeepBlockSpec(start='<<', end='>>')},
+            rest={},
+            header={},
+        ),
         local_file_content=dedent("""\
             Top
             <<
@@ -483,22 +539,24 @@ def test_apply_keep_replacements_multiple_sibling_blocks_same_markers() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'custom-1': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-            'custom-2': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-            'custom-3': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'custom-1': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+                'custom-2': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+                'custom-3': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -532,14 +590,16 @@ def test_apply_keep_block_with_indented_markers_in_local_file() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'custom': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'custom': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -578,14 +638,16 @@ def test_apply_keep_block_with_deeply_indented_markers() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'steps': KeepBlockSpec(
-                start='- name: custom',
-                end='# end-custom',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'steps': KeepBlockSpec(
+                    start='- name: custom',
+                    end='# end-custom',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
@@ -613,16 +675,115 @@ def test_apply_keep_block_tolerates_trailing_whitespace() -> None:
 
     result = apply_keep_replacements(
         template,
-        keep_blocks={
-            'custom': KeepBlockSpec(
-                start='<!-- start -->',
-                end='<!-- end -->',
-            ),
-        },
-        keep_rest={},
-        keep_header={},
+        KeepPatterns(
+            blocks={
+                'custom': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
         local_file_content=local_content,
     )
 
     # Should preserve local content including its trailing whitespace
     assert result == local_content
+
+
+def test_apply_keep_block_with_end_regex_uses_next_item_boundary() -> None:
+    template = dedent("""\
+                ## repolish-keep-block[paths]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+                provider1:
+                    - 'static1'
+                    # additional-paths
+                    - 'default1'
+                provider2:
+                    - 'static2'
+                    # additional-paths
+                    - 'default2'
+                provider3:
+                    - 'static3'
+                    # additional-paths
+                    - 'default3'
+        """)
+
+    local_content = dedent("""\
+                provider1:
+                    - 'static1'
+                    # additional-paths
+                    - 'custom1'
+                provider2:
+                    - 'static2'
+                    # additional-paths
+                    - 'default2'
+                provider3:
+                    - 'static3'
+                    # additional-paths
+                    - 'custom3'
+        """)
+
+    result = replace_text(template, local_content)
+
+    assert re.search(
+        r"provider1:\n\s+- 'static1'\n\s+# additional-paths\n\s+- 'custom1'\n",
+        result,
+    )
+    assert re.search(
+        r"provider3:\n\s+- 'static3'\n\s+# additional-paths\n\s+- 'custom3'\n",
+        result,
+    )
+
+
+def test_apply_keep_block_end_regex_with_no_room_for_end_falls_back_to_template() -> None:
+    """If a start marker is the last line before next directive, no region is extracted."""
+    template = dedent("""\
+        Top
+        ## repolish-keep-block[paths]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+        # additional-paths
+        ## repolish-keep-rest[tail]: marker="## tail"
+        ## tail
+        default tail
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        KeepPatterns(
+            blocks={
+                'paths': KeepBlockSpec(
+                    start='# additional-paths',
+                    end_regex='^provider[0-9]+:$',
+                ),
+            },
+            rest={'tail': KeepMarkerSpec(marker='## tail')},
+            header={},
+        ),
+        local_file_content='Top\n## tail\ncustom tail\n',
+    )
+
+    assert result == 'Top\n# additional-paths\n## tail\ncustom tail\n'
+
+
+def test_apply_keep_block_with_malformed_bounds_keeps_template_region() -> None:
+    """Malformed spec with no end and no end_regex keeps template bounded content."""
+    template = dedent("""\
+        Top
+        ## repolish-keep-block[block]: start="<<" end=">>"
+        <<
+        Default
+        >>
+        Bottom
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        KeepPatterns(
+            blocks={'block': KeepBlockSpec(start='<<')},
+            rest={},
+            header={},
+        ),
+        local_file_content='Top\n<<\nCustom\n>>\nBottom\n',
+    )
+
+    assert result == 'Top\n<<\nDefault\n>>\nBottom\n'

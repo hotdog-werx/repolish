@@ -17,11 +17,15 @@ Quick checklist:
 - Use keyword-only typed context injection (`BlockContext` or `InsertionBlock`).
 - Use `key=value` marker args when argument order should not matter.
 - Use `paused_files` or `overrides.insertions` to temporarily pause ownership.
+- Use `overrides.insertions_extend_files` to conservatively extend where a
+  provider's insertion functions are allowed.
 
 ## Where insertions fit in apply
 
-Insertions run in the apply pipeline after generated files are written, then
-report per-file insertion status in the summary.
+Insertions run after template rendering and after-render preprocessing, once the
+generated files exist on disk. They are applied before post-processing so
+formatters can see the final inserted content, and then the per-file insertion
+status is reported in the summary.
 
 In check mode, insertion output is also checked for drift. If insertion-managed
 content is stale, `repolish apply --check` fails just like template drift.
@@ -75,6 +79,36 @@ Named args are also supported with `key=value` pairs (including quoted values):
 ```
 
 Nested insertion tags are not supported. Multiple sequential blocks are fine.
+
+### Markers shipped by templates
+
+Templates can embed insertion markers directly, so a provider-owned file (for
+example a rendered `README.md`) can carry a reserved block. The template decides
+where the block lives and which function/args it uses by default.
+
+The developer still controls the marker: edits to the function name or args in
+the rendered file survive re-apply. On each apply, repolish adopts the local
+file's opening marker into the rendered output (matched by tag, in occurrence
+order) before the insertion phase fills the body:
+
+```html
+<!-- template ships this marker -->
+<!-- repolish:on:status render-status ready -->
+
+<!-- developer edits it to -->
+<!-- repolish:on:status render-status beta -->
+```
+
+After the next `repolish apply`, the body is filled with `render-status beta`
+and the developer's marker stays in place. Notes:
+
+- The template remains strict about the block's _presence and position_; the
+  developer controls _how it is filled_.
+- The block body is always regenerated; developer edits inside the body are not
+  preserved.
+- Adopted markers keep drift checks coherent: `apply --check` passes after a
+  re-apply with edited args, and reports drift when the args changed since the
+  last apply.
 
 ## Registering insertion functions
 
@@ -268,6 +302,73 @@ class DocsProvider(Provider[Ctx, BaseInputs]):
 ```
 
 This pattern is the intended way to support directory-wide insertion targets.
+
+## Shared registry + conservative file targeting
+
+For reusable insertion functions across many developer-owned files, providers
+can return a list of destination paths from `create_file_insertions()` and
+expose the function registry via `create_insertion_registry()`.
+
+```python
+class SourcesProvider(Provider[Ctx, BaseInputs]):
+    def create_file_insertions(self, context: Ctx):
+        # Conservative allow-list owned by provider code.
+        return [
+            'README.md',
+            'pyproject.toml',
+        ]
+
+    def create_insertion_registry(self, context: Ctx):
+        def generate_uv_sources(source: str) -> str:
+            """Generate one uv source line from a marker arg."""
+            if source == 'local':
+                return 'workspace = true'
+            if source == 'github':
+                return 'git = "https://github.com/acme/lib"'
+            return f'# unknown source: {source}'
+
+        return {
+            'generate-uv-sources': generate_uv_sources,
+        }
+```
+
+Then developers switch behavior by editing only marker args:
+
+```toml
+# repolish:on:uv generate-uv-sources github
+# repolish:off:uv
+```
+
+For fast iteration while tuning marker args, run apply with provider filtering:
+
+```bash
+repolish apply -p tooling
+```
+
+This gives "keep-block-like" developer control for dynamic generated snippets,
+but keeps generation centralized and reproducible through provider functions.
+
+### Extending allowed files from project config
+
+If you cannot change provider code (for example, using a shared upstream
+provider), projects can extend the provider's insertion target allow-list via
+provider overrides:
+
+```yaml
+providers:
+  tooling:
+    provider_root: ./providers/tooling
+    overrides:
+      insertions_extend_files:
+        - docs/setup.md
+        - apps/service-a/README.md
+```
+
+Notes:
+
+- This is additive. Provider-declared insertion targets remain enabled.
+- This does not enable every file globally by default.
+- You can still disable specific files/functions with `overrides.insertions`.
 
 ## Provider-qualified function names
 

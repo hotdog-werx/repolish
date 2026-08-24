@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
-import difflib
 import json
-import traceback
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.options import InsertionFileResult
-from repolish.insertions import write_back
+from repolish.insertions import (
+    DisabledDiagnosticEntry,
+    DisabledInsertionEntry,
+    ErrorDiagnosticEntry,
+    InsertionReport,
+    collect_disabled_entries,
+    is_provider_owner,
+    write_back,
+)
 from repolish.insertions.parser import InsertionBlock, parse_text
+from repolish.utils import build_unified_diff, path_slug
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from repolish.insertions.writer import WriteBackResult
@@ -49,57 +55,19 @@ class _StagedCheckResult:
     diff: tuple[str, str] | None = None
 
 
-@dataclass(frozen=True)
-class _DisabledInsertionEntry:
-    """One insertion block that was intentionally disabled by overrides."""
-
-    tag: str
-    function: str
-    message: str
-
-
-def _classify_block_for_provider(
-    block_func: str,
-    provider_alias: str,
-    *,
-    is_first_provider: bool = False,
-) -> bool:
-    """Check if a block function belongs to a specific provider.
-
-    A block belongs to a provider if:
-    - It's provider-qualified with this provider's alias (e.g., 'alpha:display-year')
-    - It's unqualified and this provider is the first one (owns the fallback)
-
-    For unqualified functions, the first provider owns ALL unqualified blocks,
-    even if the function isn't registered (the failure is still that provider's).
-
-    Args:
-        block_func: The function name from the insertion block
-        provider_alias: The provider's alias (e.g., 'alpha')
-        provider_id: The provider's ID (filesystem path)
-        registry: The full insertion registry
-        is_first_provider: Whether this is the first provider for this file
-    """
-    if ':' in block_func:
-        return block_func.startswith(f'{provider_alias}:')
-    # Unqualified function - belongs to first provider only
-    # Include ALL unqualified blocks for the first provider, even missing functions
-    # (the failure is still that provider's responsibility)
-    return bool(is_first_provider)
-
-
 def _get_blocks_for_provider(
     text: str,
     provider_alias: str,
+    rel_path: str = '',
     *,
     is_first_provider: bool = False,
 ) -> list[InsertionBlock]:
     """Get insertion blocks that belong to a specific provider."""
-    parsed = parse_text(text)
+    parsed = parse_text(text, file_path=rel_path)
     return [
         b
         for b in parsed.blocks
-        if _classify_block_for_provider(
+        if is_provider_owner(
             b.function,
             provider_alias,
             is_first_provider=is_first_provider,
@@ -122,7 +90,7 @@ def _filter_provider_functions(
     return [
         f
         for f in functions
-        if _classify_block_for_provider(
+        if is_provider_owner(
             f,
             provider_alias,
             is_first_provider=is_first_provider,
@@ -147,7 +115,7 @@ def _filter_provider_diagnostics(
     for d in diagnostics:
         tag = d.tag if isinstance(d.tag, str) else ''
         func_name = tag_to_func.get(tag, tag)
-        if _classify_block_for_provider(
+        if is_provider_owner(
             func_name,
             provider_alias,
             is_first_provider=is_first_provider,
@@ -162,7 +130,7 @@ def _process_provider_insertions(
     original_text: str,
     result: WriteBackResult,
     tag_to_func: dict[str, str],
-    disabled_entries: list[_DisabledInsertionEntry],
+    disabled_entries: list[DisabledInsertionEntry],
 ) -> tuple[InsertionFileResult, dict[str, InsertionFileResult]]:
     """Process insertions for each provider and write reports."""
     provider_results: dict[str, InsertionFileResult] = {}
@@ -175,6 +143,7 @@ def _process_provider_insertions(
         provider_blocks = _get_blocks_for_provider(
             original_text,
             provider_alias,
+            ctx.rel_path,
             is_first_provider=is_first_provider,
         )
         provider_functions = _filter_provider_functions(
@@ -191,31 +160,29 @@ def _process_provider_insertions(
         provider_disabled = [
             entry
             for entry in disabled_entries
-            if _classify_block_for_provider(
+            if is_provider_owner(
                 entry.function,
                 provider_alias,
                 is_first_provider=is_first_provider,
             )
         ]
 
-        report_file = ctx.reports_dir / f'insertions.{_report_slug(ctx.rel_path)}.{provider_alias}.json'
+        report_file = ctx.reports_dir / f'insertions.{path_slug(ctx.rel_path)}.{provider_alias}.json'
+        report = InsertionReport(
+            file=ctx.rel_path,
+            source_provider=provider_id,
+            provider_alias=provider_alias,
+            total_blocks=len(provider_blocks),
+            failed_blocks=provider_failed,
+            disabled_blocks=len(provider_disabled),
+            functions=provider_functions,
+            diagnostics=[
+                *[ErrorDiagnosticEntry.from_diagnostic(d) for d in provider_diagnostics],
+                *[DisabledDiagnosticEntry.from_entry(e) for e in provider_disabled],
+            ],
+        )
         report_file.write_text(
-            json.dumps(
-                {
-                    'file': ctx.rel_path,
-                    'source_provider': provider_id,
-                    'provider_alias': provider_alias,
-                    'total_blocks': len(provider_blocks),
-                    'failed_blocks': provider_failed,
-                    'disabled_blocks': len(provider_disabled),
-                    'functions': provider_functions,
-                    'diagnostics': [
-                        *[_diagnostic_report_entry(diag) for diag in provider_diagnostics],
-                        *[_disabled_report_entry(entry) for entry in provider_disabled],
-                    ],
-                },
-                indent=2,
-            ),
+            json.dumps(report.model_dump(), indent=2),
             encoding='utf-8',
         )
 
@@ -244,93 +211,6 @@ def _process_provider_insertions(
     return aggregated, provider_results
 
 
-def _diagnostic_report_entry(diag: object) -> dict[str, str | list[str] | None]:
-    """Build a JSON-safe diagnostics payload including traceback when available."""
-    exception = getattr(diag, 'exception', None)
-    trace_lines = None
-    if exception is not None:
-        trace_text = ''.join(
-            traceback.format_exception(
-                type(exception),
-                exception,
-                exception.__traceback__,
-            ),
-        )
-        trace_lines = trace_text.splitlines()
-    return {
-        'kind': 'error',
-        'tag': getattr(diag, 'tag', '<unknown>'),
-        'message': getattr(diag, 'message', ''),
-        'traceback': trace_lines,
-    }
-
-
-def _disabled_report_entry(
-    entry: _DisabledInsertionEntry,
-) -> dict[str, str | list[str] | None]:
-    """Build a report diagnostics payload for a block disabled by config overrides."""
-    return {
-        'kind': 'disabled',
-        'tag': entry.tag,
-        'function': entry.function,
-        'message': entry.message,
-        'traceback': None,
-    }
-
-
-def _resolve_renderer_for_function(
-    registry: dict,
-    function_name: str,
-) -> Callable[[InsertionBlock], str] | None:
-    """Resolve a renderer the same way insertion writing resolves function lookups."""
-    renderer = registry.get(function_name)
-    if renderer is None and ':' in function_name:
-        renderer = registry.get(function_name.rsplit(':', 1)[1])
-    return renderer
-
-
-def _disabled_reason_for_block(
-    block: InsertionBlock,
-    registry: dict,
-) -> str | None:
-    """Return a human-readable disable reason for one block, when configured."""
-    renderer = _resolve_renderer_for_function(registry, block.function)
-    if renderer is None:
-        return None
-
-    disabled_tags = getattr(renderer, '__repolish_disabled_tags__', frozenset())
-    if block.tag in disabled_tags:
-        return f'Insertion block disabled by tag override: tag={block.tag!r}, function={block.function!r}.'
-
-    disabled_functions = getattr(
-        renderer,
-        '__repolish_disabled_functions__',
-        frozenset(),
-    )
-    if disabled_functions:
-        return f'Insertion block disabled by function override: tag={block.tag!r}, function={block.function!r}.'
-    return None
-
-
-def _collect_disabled_entries(
-    blocks: list[InsertionBlock],
-    registry: dict,
-) -> list[_DisabledInsertionEntry]:
-    """Collect disabled insertion metadata for summary/report output."""
-    entries: list[_DisabledInsertionEntry] = []
-    for block in blocks:
-        reason = _disabled_reason_for_block(block, registry)
-        if reason is not None:
-            entries.append(
-                _DisabledInsertionEntry(
-                    tag=block.tag,
-                    function=block.function,
-                    message=reason,
-                ),
-            )
-    return entries
-
-
 def _apply_file_insertions(
     ctx: _ProviderInsertionContext,
     *,
@@ -339,9 +219,9 @@ def _apply_file_insertions(
     """Apply insertions for a single file and return results."""
     target = ctx.base_dir / ctx.rel_path
     original_text = target.read_text(encoding='utf-8')
-    parsed = parse_text(original_text)
-    disabled_entries = _collect_disabled_entries(parsed.blocks, ctx.registry)
-    result = write_back(original_text, ctx.registry)
+    parsed = parse_text(original_text, file_path=ctx.rel_path)
+    disabled_entries = collect_disabled_entries(parsed.blocks, ctx.registry)
+    result = write_back(original_text, ctx.registry, file_path=ctx.rel_path)
     if persist_changes:
         target.write_text(result.text, encoding='utf-8')
 
@@ -484,11 +364,6 @@ def summarize_registered_insertions(
     return results, provider_results
 
 
-def _report_slug(path: str) -> str:
-    """Convert a destination path to a stable report filename slug."""
-    return path.replace('/', '--')
-
-
 def stage_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
@@ -515,7 +390,7 @@ def stage_registered_insertions(
             else target.read_text(encoding='utf-8')
         )
 
-        rendered = write_back(source_text, registry).text
+        rendered = write_back(source_text, registry, file_path=rel_path).text
         staged_file.parent.mkdir(parents=True, exist_ok=True)
         staged_file.write_text(rendered, encoding='utf-8')
 
@@ -575,7 +450,7 @@ def _staged_check_result(
         return _StagedCheckResult(handled=True)
     return _StagedCheckResult(
         handled=True,
-        diff=(rel_path, _build_unified_diff(rel_path, current, rendered)),
+        diff=(rel_path, build_unified_diff(rel_path, current, rendered)),
     )
 
 
@@ -587,23 +462,7 @@ def _rendered_diff_if_any(
 ) -> tuple[str, str] | None:
     """Return a rendered diff tuple when live rendering differs from current file."""
     current = target.read_text(encoding='utf-8')
-    rendered = write_back(current, registry).text
+    rendered = write_back(current, registry, file_path=rel_path).text
     if current == rendered:
         return None
-    return (rel_path, _build_unified_diff(rel_path, current, rendered))
-
-
-def _build_unified_diff(
-    rel_path: str,
-    current: str,
-    rendered: str,
-) -> str:
-    """Build a unified diff between current and rendered text."""
-    return ''.join(
-        difflib.unified_diff(
-            current.splitlines(keepends=True),
-            rendered.splitlines(keepends=True),
-            fromfile=rel_path,
-            tofile=rel_path,
-        ),
-    )
+    return (rel_path, build_unified_diff(rel_path, current, rendered))

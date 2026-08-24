@@ -226,7 +226,7 @@ def _lint_template(
     raw = tpl_path.read_text(encoding='utf-8')
     # Strip preprocessor directives so Jinja2 can parse clean source.
     # Pass empty local content — anchors keep their template defaults.
-    cleaned = replace_text(raw, '')
+    cleaned = replace_text(raw, '', source_path=str(tpl_path))
 
     result = TemplateResult(path=rel)
 

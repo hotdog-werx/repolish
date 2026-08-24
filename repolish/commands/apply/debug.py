@@ -8,6 +8,7 @@ from repolish.config import RepolishConfig
 from repolish.misc import ctx_to_dict
 from repolish.providers._log import logger
 from repolish.providers.models import SessionBundle, TemplateMapping
+from repolish.utils import path_slug
 
 
 def _to_jsonable(value: object) -> object:
@@ -108,17 +109,6 @@ def write_provider_debug_files(
         )
 
 
-def _file_context_slug(dest_path: str) -> str:
-    """Convert a destination path to a debug filename slug.
-
-    Replaces ``/`` with ``--`` so nested paths remain readable as filenames::
-
-        'root_file.md'        → 'root_file.md'
-        'some/nested/file.md' → 'some--nested--file.md'
-    """
-    return dest_path.replace('/', '--')
-
-
 def write_file_context_debug_files(
     base_dir: Path,
     providers: SessionBundle,
@@ -167,7 +157,7 @@ def write_file_context_debug_files(
             'provider_context_file': provider_ctx_file,
             'extra_context': _to_jsonable(extra) if extra is not None else {},
         }
-        out_path = debug_dir / 'file-ctx' / f'file-context.{_file_context_slug(dest)}.json'
+        out_path = debug_dir / 'file-ctx' / f'file-context.{path_slug(dest)}.json'
         out_path.write_text(
             json.dumps(_to_jsonable(data), indent=2),
             encoding='utf-8',
