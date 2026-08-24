@@ -80,6 +80,36 @@ Named args are also supported with `key=value` pairs (including quoted values):
 
 Nested insertion tags are not supported. Multiple sequential blocks are fine.
 
+### Markers shipped by templates
+
+Templates can embed insertion markers directly, so a provider-owned file (for
+example a rendered `README.md`) can carry a reserved block. The template decides
+where the block lives and which function/args it uses by default.
+
+The developer still controls the marker: edits to the function name or args in
+the rendered file survive re-apply. On each apply, repolish adopts the local
+file's opening marker into the rendered output (matched by tag, in occurrence
+order) before the insertion phase fills the body:
+
+```html
+<!-- template ships this marker -->
+<!-- repolish:on:status render-status ready -->
+
+<!-- developer edits it to -->
+<!-- repolish:on:status render-status beta -->
+```
+
+After the next `repolish apply`, the body is filled with `render-status beta`
+and the developer's marker stays in place. Notes:
+
+- The template remains strict about the block's _presence and position_; the
+  developer controls _how it is filled_.
+- The block body is always regenerated; developer edits inside the body are not
+  preserved.
+- Adopted markers keep drift checks coherent: `apply --check` passes after a
+  re-apply with edited args, and reports drift when the args changed since the
+  last apply.
+
 ## Registering insertion functions
 
 `create_file_insertions()` is keyed by explicit destination path and function

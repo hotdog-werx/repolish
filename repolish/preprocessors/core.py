@@ -14,6 +14,7 @@ from typing import Generic, TypeVar
 
 from hotlog import get_logger
 
+from repolish.insertions.adoption import adopt_local_insertion_markers
 from repolish.preprocessors.anchors import replace_tags_in_content
 from repolish.preprocessors.directive_phase import (
     PreprocessPhase,
@@ -348,6 +349,14 @@ def replace_text(
         local_content,
         phase=selected_phase,
     )
+    if selected_phase == PreprocessPhase.AFTER_RENDER.value:
+        # Preserve developer-chosen insertion function/args from the local file.
+        # Runs only after render so loop-generated markers are fully concrete.
+        content = adopt_local_insertion_markers(
+            content,
+            local_content,
+            source_path=source_path,
+        )
     result = content
     logger.debug(
         'text_replacement_completed',

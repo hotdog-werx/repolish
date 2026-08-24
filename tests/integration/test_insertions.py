@@ -873,6 +873,193 @@ def create_file_mappings(self, context):
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
+def test_user_can_edit_insertion_args_in_template_shipped_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User edits insertion marker args in a template-rendered file; verify re-apply behavior.
+
+    The template is strict about the block's presence, but the user should be
+    able to edit the marker parameters (and/or function) and have those edits
+    respected on the next apply.
+    """
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        def render_mode(value: str):
+            return f'MODE={value}'
+
+        return {'README.md': {'render-status': render_status, 'render-mode': render_mode}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    readme = tmp_path / 'README.md'
+    assert 'STATUS=ready' in readme.read_text(encoding='utf-8')
+
+    # Simulate the user editing the marker args: ready -> beta.
+    user_edited = readme.read_text(encoding='utf-8').replace(
+        '<!-- repolish:on:status render-status ready -->',
+        '<!-- repolish:on:status render-status beta -->',
+    )
+    readme.write_text(user_edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+    final = readme.read_text(encoding='utf-8')
+    assert '<!-- repolish:on:status render-status beta -->' in final
+    assert 'STATUS=beta' in final
+
+    # Adopted args make the insertion output stable: check mode reports no drift.
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+def test_user_can_change_insertion_function_in_template_shipped_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User swaps the insertion function in a template-rendered file; verify re-apply behavior."""
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        def render_mode(value: str):
+            return f'MODE={value}'
+
+        return {'README.md': {'render-status': render_status, 'render-mode': render_mode}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    readme = tmp_path / 'README.md'
+    assert 'STATUS=ready' in readme.read_text(encoding='utf-8')
+
+    # Simulate the user changing both the function and the args.
+    user_edited = readme.read_text(encoding='utf-8').replace(
+        '<!-- repolish:on:status render-status ready -->',
+        '<!-- repolish:on:status render-mode dark -->',
+    )
+    readme.write_text(user_edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+    final = readme.read_text(encoding='utf-8')
+    assert '<!-- repolish:on:status render-mode dark -->' in final
+    assert 'MODE=dark' in final
+
+
+def test_user_can_switch_to_local_provider_function_in_template_shipped_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User swaps a template-shipped marker to a function from their own provider.
+
+    Per-file insertion registries are merged across providers, so a project
+    provider can declare the same target file and its functions become
+    available to markers in files rendered by other providers.
+    """
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render_status(value: str):
+            return f'STATUS={value}'
+
+        return {'README.md': {'render-status': render_status}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'README.md': TemplateMapping(source_template='README.md.jinja'),
+    }
+""",
+    )
+    _make_insertion_provider(
+        tmp_path / 'local',
+        """\
+        def my_status(value: str):
+            return f'LOCAL={value}'
+
+        return {'README.md': {'my-status': my_status}}""",
+    )
+
+    _write(
+        tmp_path / 'p' / 'repolish' / 'README.md.jinja',
+        """\
+        Provider-owned template with insertion marker
+
+        <!-- repolish:on:status render-status ready -->
+        <!-- repolish:off:status -->
+        """,
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p', 'local': './local'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    readme = tmp_path / 'README.md'
+    assert 'STATUS=ready' in readme.read_text(encoding='utf-8')
+
+    # Switch the block to the local provider's function (provider-qualified).
+    user_edited = readme.read_text(encoding='utf-8').replace(
+        '<!-- repolish:on:status render-status ready -->',
+        '<!-- repolish:on:status local:my-status v2 -->',
+    )
+    readme.write_text(user_edited, encoding='utf-8')
+
+    run_repolish(['apply'], exit_code=0)
+    final = readme.read_text(encoding='utf-8')
+    assert '<!-- repolish:on:status local:my-status v2 -->' in final
+    assert 'LOCAL=v2' in final
+    assert 'STATUS=ready' not in final
+
+
 def test_provider_insertion_targets_can_be_extended_from_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
