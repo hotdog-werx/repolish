@@ -1,3 +1,3 @@
-from .generator import generate
+from .generator import generate, generate_local
 
-__all__ = ['generate']
+__all__ = ['generate', 'generate_local']

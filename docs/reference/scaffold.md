@@ -14,11 +14,12 @@ repolish scaffold [OPTIONS] DIRECTORY
 
 ## Options
 
-| Option                      | Required | Default                     | Description                                                                                                                                                                 |
-| --------------------------- | -------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--package NAME`, `-p NAME` | yes      | -                           | Python package name. Use simple names for flat packages (e.g. `devkit_workspace`) or dot-notation for namespace packages (e.g. `devkit.workspace`).                         |
-| `--prefix PREFIX`           | no       | last segment of `--package` | Class-name prefix for generated provider classes (e.g. `Devkit` produces `DevkitProvider`, `DevkitContext`).                                                                |
-| `--monorepo`                | no       | off                         | Generate the full monorepo layout with `RootModeHandler`, `MemberModeHandler`, and `StandaloneModeHandler` classes. By default a simpler single-file provider is generated. |
+| Option                      | Required           | Default                     | Description                                                                                                                                                                 |
+| --------------------------- | ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--package NAME`, `-p NAME` | with `--local`: no | -                           | Python package name. Use simple names for flat packages (e.g. `devkit_workspace`) or dot-notation for namespace packages (e.g. `devkit.workspace`).                         |
+| `--prefix PREFIX`           | no                 | last segment of `--package` | Class-name prefix for generated provider classes (e.g. `Devkit` produces `DevkitProvider`, `DevkitContext`). With `--local` the alias, camel-cased, is the default.         |
+| `--monorepo`                | no                 | off                         | Generate the full monorepo layout with `RootModeHandler`, `MemberModeHandler`, and `StandaloneModeHandler` classes. By default a simpler single-file provider is generated. |
+| `--local`                   | no                 | off                         | Generate an in-repo local provider instead of an installable package. No `--package` needed; cannot be combined with `--monorepo`.                                          |
 
 ## What it does
 
@@ -54,6 +55,35 @@ With `--monorepo` it also generates `RootModeHandler`, `MemberModeHandler`, and
 `StandaloneModeHandler` classes attached via `root_mode`, `member_mode`, and
 `standalone_mode` - each with stub implementations of `provide_inputs()`,
 `finalize_context()`, and `create_file_mappings()` for the relevant mode.
+
+## Local provider layout
+
+With `--local` the command generates an in-repo provider — a templates directory
+that lives inside your project, not an installable package:
+
+```
+DIRECTORY/
+  templates/
+    repolish.py                    # Provider class entry point
+    repolish/some-template.md.jinja  # sample template
+```
+
+Class names are derived from the directory name (`local_provider` produces
+`LocalProvider` / `LocalProviderContext`); the alias used in `repolish.yaml` is
+the directory name with dashes normalised to underscores, and the connect
+snippet is printed on completion:
+
+```yaml
+providers:
+  local_provider:
+    provider_root: local_provider/templates
+```
+
+Local providers are meant to be quick: they ship templates under `repolish/` and
+can define insertion functions for use throughout the project, without a CLI,
+packaging, or publishing. See
+[Local Providers](../project-controls/local-providers.md) for the full
+mechanism.
 
 ## Examples
 

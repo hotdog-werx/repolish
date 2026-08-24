@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from repolish.scaffold.generator import generate
+from repolish.scaffold.generator import generate, generate_local
 
 
 @dataclass
@@ -256,3 +256,84 @@ def test_generate_normalizes_underscores_to_dashes_in_repo_name(
     # script key must use dashes, not underscores
     assert 'devkit-zensical-link' in pyproject
     assert 'devkit_zensical-link' not in pyproject
+
+
+# ---------------------------------------------------------------------------
+# local provider scaffold (in-repo provider, not an installable package)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_local_creates_expected_structure(tmp_path: Path) -> None:
+    """A local provider is just templates/repolish.py and a repolish/ template dir."""
+    written = generate_local('local_provider', tmp_path)
+
+    relative = {p.relative_to(tmp_path).as_posix() for p in written}
+    assert relative == {
+        'templates/repolish.py',
+        'templates/repolish/some-template.md.jinja',
+    }
+    # a local provider is not a package: only the templates directory exists
+    assert (tmp_path / 'templates').is_dir()
+    assert len(list(tmp_path.iterdir())) == 1
+
+
+def test_generate_local_derives_class_names_from_alias(tmp_path: Path) -> None:
+    """Class names are camel-cased from the alias and suffixed with Provider."""
+    generate_local('local_provider', tmp_path)
+
+    content = (tmp_path / 'templates' / 'repolish.py').read_text()
+    assert 'class LocalProviderContext(BaseContext):' in content
+    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
+
+
+def test_generate_local_suffixes_class_name_with_provider(
+    tmp_path: Path,
+) -> None:
+    """An alias without a 'provider' word still yields a *Provider class name."""
+    generate_local('toolkit', tmp_path)
+
+    content = (tmp_path / 'templates' / 'repolish.py').read_text()
+    assert 'class ToolkitProviderContext(BaseContext):' in content
+    assert 'class ToolkitProvider(Provider[ToolkitProviderContext, BaseInputs]):' in content
+
+
+def test_generate_local_prefix_overrides_class_names(tmp_path: Path) -> None:
+    """The prefix option overrides alias-derived class names."""
+    generate_local('local', tmp_path, prefix='company_kit')
+
+    content = (tmp_path / 'templates' / 'repolish.py').read_text()
+    assert 'class CompanyKitProvider(Provider[CompanyKitProviderContext, BaseInputs]):' in content
+
+
+def test_generate_local_includes_repolish_yaml_hint(tmp_path: Path) -> None:
+    """The generated repolish.py documents how to wire the provider in repolish.yaml."""
+    generate_local('local_provider', tmp_path)
+
+    content = (tmp_path / 'templates' / 'repolish.py').read_text()
+    assert 'provider_root: local_provider/templates' in content
+
+
+def test_generate_local_keeps_jinja_suffix_on_sample_template(
+    tmp_path: Path,
+) -> None:
+    """The sample template keeps .jinja so repolish renders it as some-template.md."""
+    generate_local('local_provider', tmp_path)
+
+    sample = tmp_path / 'templates' / 'repolish' / 'some-template.md.jinja'
+    assert sample.exists()
+    assert '{{' not in sample.read_text()
+
+
+def test_generate_local_is_idempotent(tmp_path: Path) -> None:
+    """Running generate_local() twice returns an empty list on the second run."""
+    generate_local('local_provider', tmp_path)
+    second_run = generate_local('local_provider', tmp_path)
+    assert second_run == []
+
+
+def test_generate_local_repolish_py_is_valid_python(tmp_path: Path) -> None:
+    """The scaffolded repolish.py compiles."""
+    generate_local('local_provider', tmp_path)
+
+    source = (tmp_path / 'templates' / 'repolish.py').read_text()
+    compile(source, 'repolish.py', 'exec')

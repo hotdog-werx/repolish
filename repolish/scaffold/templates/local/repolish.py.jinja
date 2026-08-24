@@ -1,0 +1,41 @@
+"""Local repolish provider.
+
+This provider lives inside the project — there is nothing to install or
+publish.  Wire it up in repolish.yaml:
+
+    providers:
+      {{ alias }}:
+        provider_root: {{ provider_root }}
+
+Templates in the repolish/ directory are applied to the project on every
+`repolish apply`.  Add functions below to generate dynamic content anywhere
+in the project via repolish:on/off insertion markers.
+"""
+
+from repolish import BaseContext, BaseInputs, Provider
+
+
+class {{ context_class }}(BaseContext):
+    """Context shared across this provider's contributions."""
+
+
+class {{ class_name }}(Provider[{{ context_class }}, BaseInputs]):
+    """Project-local provider: quick templates and insertion functions."""
+
+    def create_context(self) -> {{ context_class }}:
+        return {{ context_class }}()
+
+    # Templates under repolish/ are applied automatically.  Return explicit
+    # mappings when a destination needs special options (create-only, delete):
+    #
+    # def create_file_mappings(self, context: {{ context_class }}):
+    #     return {'docs/guide.md': 'repolish/guide.md'}
+
+    # Expose insertion functions that files (including rendered templates)
+    # can call via repolish:on/off markers:
+    #
+    # def create_file_insertions(self, context: {{ context_class }}):
+    #     def render_badges(repo: str) -> str:
+    #         return f'![ci](https://img.shields.io/badge/{repo}-blue)'
+    #
+    #     return {'README.md': {'render-badges': render_badges}}

@@ -106,3 +106,25 @@ provider_root/
 
 Without `repolish.py` the provider supplies templates only — context will be
 empty and no anchors will be defined. That is enough to override specific files.
+
+## Scaffolding a local provider
+
+`repolish scaffold --local` generates this structure for you — a `repolish.py`
+entry point with a ready `Provider` subclass and a sample template under
+`repolish/`:
+
+```bash
+repolish scaffold local_provider --local
+```
+
+```
+local_provider/
+  templates/
+    repolish.py                     ← LocalProvider entry point
+    repolish/some-template.md.jinja ← sample template
+```
+
+The command prints the `providers:` snippet to paste into `repolish.yaml`. Class
+names are derived from the directory name (`local_provider` → `LocalProvider`)
+and can be overridden with `--prefix`. See
+[repolish scaffold](../reference/scaffold.md#local-provider-layout) for details.

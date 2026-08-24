@@ -92,3 +92,48 @@ def test_scaffold_idempotent(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert 'nothing to write' in result.output
+
+
+def test_scaffold_local_creates_in_repo_provider(tmp_path: Path) -> None:
+    """--local scaffolds templates/repolish.py + repolish/ dir without --package."""
+    dest = tmp_path / 'local_provider'
+    result = runner.invoke(app, ['scaffold', str(dest), '--local'])
+    assert result.exit_code == 0
+    assert (dest / 'templates' / 'repolish.py').exists()
+    assert (dest / 'templates' / 'repolish' / 'some-template.md.jinja').exists()
+    # no package artifacts
+    assert not list(dest.glob('*.toml'))
+    assert not list(dest.glob('*.md'))
+
+    content = (dest / 'templates' / 'repolish.py').read_text()
+    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
+
+
+def test_scaffold_local_rejects_package_option(tmp_path: Path) -> None:
+    """--package and --local are mutually exclusive."""
+    result = runner.invoke(
+        app,
+        [
+            'scaffold',
+            str(tmp_path / 'local_provider'),
+            '--local',
+            '--package',
+            'x',
+        ],
+    )
+    assert result.exit_code == 1
+
+
+def test_scaffold_local_rejects_monorepo(tmp_path: Path) -> None:
+    """--monorepo cannot be combined with --local."""
+    result = runner.invoke(
+        app,
+        ['scaffold', str(tmp_path / 'local_provider'), '--local', '--monorepo'],
+    )
+    assert result.exit_code == 1
+
+
+def test_scaffold_package_requires_package_option(tmp_path: Path) -> None:
+    """Without --local, --package is still required."""
+    result = runner.invoke(app, ['scaffold', str(tmp_path / 'dest')])
+    assert result.exit_code == 1
