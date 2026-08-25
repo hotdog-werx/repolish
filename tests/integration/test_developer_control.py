@@ -357,3 +357,45 @@ def test_paused_file_with_keepblocks_and_repolish_context_no_render_error(
     assert 'test-org/test-repo' in active_text
     assert 'active_env' in active_text
     assert 'active_specific:' in active_text
+
+
+def test_scaffolded_local_provider_applies_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`repolish scaffold --local` output wires into repolish.yaml and applies cleanly.
+
+    This also pins the layout the scaffold and the loader agree on: the
+    provider entry point is ``templates/repolish.py`` (relative to the
+    provider_root) and templates ship under ``templates/repolish/``.
+    """
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['scaffold', '--local'])
+    provider_root = tmp_path / 'internal' / 'templates'
+    assert (provider_root / 'repolish.py').exists()
+    assert (provider_root / 'repolish' / 'some-template.md.jinja').exists()
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'local': {
+                        'provider_root': 'internal/templates',
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    run_repolish(['link'])
+    run_repolish(['apply'])
+
+    rendered = tmp_path / 'some-template.md'
+    assert rendered.exists()
+    assert 'Sample template' in rendered.read_text(encoding='utf-8')
+
+    # the scaffolded provider registers cleanly and stays in sync
+    run_repolish(['apply', '--check'], exit_code=0)

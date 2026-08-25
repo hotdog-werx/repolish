@@ -8,6 +8,7 @@ command is safe to run multiple times without clobbering work in progress.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -154,14 +155,126 @@ def _collect_templates(*, simple: bool) -> list[Path]:
     When *simple* is ``True`` the monorepo mode-handler files are excluded and
     the flat ``provider.py.jinja`` is included instead.  When *simple* is
     ``False`` the flat provider template is excluded and the full monorepo set
-    is included.
+    is included.  Local-provider templates (``local/``) are never part of a
+    package scaffold — see :func:`generate_local`.
     """
     exclude = _SIMPLE_ONLY if not simple else _MONOREPO_ONLY
     return [
         p.relative_to(_TEMPLATES_DIR)
         for p in _TEMPLATES_DIR.rglob('*.jinja')
         if p.relative_to(_TEMPLATES_DIR).as_posix() not in exclude
+        and p.relative_to(_TEMPLATES_DIR).parts[0] != 'local'
     ]
+
+
+# Explicit template → output mappings for local-provider scaffolds.  Unlike
+# the package scaffold these paths are fixed (the provider is not a Python
+# package in the flat tier) and the sample template keeps its ``.jinja``
+# suffix so repolish renders it as ``some-template.md`` on apply.
+_LOCAL_FLAT_OUTPUTS: dict[str, str] = {
+    'local/repolish.py.jinja': 'templates/repolish.py',
+    'local/some-template.md.jinja': 'templates/repolish/some-template.md.jinja',
+}
+_LOCAL_INSTALLABLE_OUTPUTS: dict[str, str] = {
+    'local/shim.py.jinja': 'templates/repolish.py',
+    'local/some-template.md.jinja': 'templates/repolish/some-template.md.jinja',
+    'local/pyproject.toml.jinja': 'pyproject.toml',
+    'local/package/__init__.py.jinja': '{pkg}/__init__.py',
+    'local/package/provider.py.jinja': '{pkg}/provider.py',
+}
+
+# A project gets at most one local provider by convention: it lives under
+# ``internal/`` (sibling to ``src/``, never inside it — repo-maintenance code,
+# not shipped product code) and is referenced from repolish.yaml as ``local``.
+# The installable tier hosts the real code in an editable-installed package of
+# the same name, with templates/repolish.py reduced to a re-exporting shim.
+LOCAL_PROVIDER_ALIAS = 'local'
+LOCAL_PROVIDER_DIR = 'internal'
+LOCAL_PROVIDER_PACKAGE = 'internal'
+
+
+def _local_class_names(name: str) -> tuple[str, str]:
+    """Derive ``(class_name, context_class)`` from a provider name.
+
+    ``local`` and ``toolkit`` become ``LocalProvider`` and ``ToolkitProvider``;
+    a name that already ends in ``provider`` is not suffixed twice.
+    """
+    parts = [p for p in re.split(r'[_\-\s]+', name) if p]
+    class_name = ''.join(p.capitalize() for p in parts) or 'LocalProvider'
+    if not class_name.lower().endswith('provider'):
+        class_name += 'Provider'
+    return class_name, f'{class_name}Context'
+
+
+def _render_env() -> Environment:
+    return Environment(
+        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+        keep_trailing_newline=True,
+        autoescape=False,  # noqa: S701 — code templates, not HTML; XSS irrelevant
+    )
+
+
+def generate_local(
+    alias: str = LOCAL_PROVIDER_ALIAS,
+    output_dir: Path = Path(LOCAL_PROVIDER_DIR),
+    *,
+    provider_root: str | None = None,
+    prefix: str | None = None,
+    installable: bool = False,
+) -> list[Path]:
+    """Render an in-repo local provider scaffold into *output_dir*.
+
+    A local provider is not an installable package — it is a ``templates``
+    directory inside the project with a ``repolish.py`` entry point and a
+    ``repolish/`` template directory, wired up in ``repolish.yaml`` with only
+    ``provider_root``.  Use :func:`generate` for publishable provider
+    packages instead.
+
+    By convention a project has a single local provider, living under
+    ``internal/`` (sibling to ``src/`` — repo-maintenance code, not shipped
+    product code) and aliased ``local`` in ``repolish.yaml``.  The defaults
+    reflect that; pass explicit values to deviate.
+
+    Args:
+        alias: Provider name as used under ``providers:`` in ``repolish.yaml``.
+        output_dir: Directory to write files into.  Created automatically.
+        provider_root: Path to put in the ``provider_root:`` hint inside the
+            generated ``repolish.py`` (defaults to
+            ``{LOCAL_PROVIDER_DIR}/templates``, i.e. ``internal/templates``).
+        prefix: Optional class-name prefix override.  Defaults to the alias,
+            camel-cased and suffixed with ``Provider`` as needed.
+        installable: When ``True``, scaffold the *installable* tier:
+            ``templates/repolish.py`` becomes a re-exporting shim and the real
+            implementation lives in an editable-installed package with its own
+            ``pyproject.toml`` (needed once the provider wants sibling-module
+            imports).  Default ``False`` is the *flat* tier.
+
+    Returns:
+        List of paths that were written (skipped files are not included).
+    """
+    class_name, context_class = _local_class_names(prefix or alias)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    env = _render_env()
+    context_dict = {
+        'alias': alias,
+        'package': LOCAL_PROVIDER_PACKAGE,
+        'provider_root': provider_root or f'{LOCAL_PROVIDER_DIR}/templates',
+        'class_name': class_name,
+        'context_class': context_class,
+    }
+
+    outputs = _LOCAL_INSTALLABLE_OUTPUTS if installable else _LOCAL_FLAT_OUTPUTS
+    written: list[Path] = []
+    for template_rel, out_rel in outputs.items():
+        dest = output_dir / out_rel.replace('{pkg}', LOCAL_PROVIDER_PACKAGE)
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        rendered = env.get_template(template_rel).render(context_dict)
+        dest.write_text(rendered, encoding='utf-8')
+        written.append(dest)
+
+    return written
 
 
 def generate(
@@ -188,11 +301,7 @@ def generate(
     """
     ctx = _derive_context(package_name, prefix)
     output_dir.mkdir(parents=True, exist_ok=True)
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-        keep_trailing_newline=True,
-        autoescape=False,  # noqa: S701 — code templates, not HTML; XSS irrelevant
-    )
+    env = _render_env()
     context_dict = {
         'repo_name': ctx.repo_name,
         'package_name': ctx.package_name,

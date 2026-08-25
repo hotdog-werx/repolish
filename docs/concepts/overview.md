@@ -207,7 +207,7 @@ Here is a minimal `repolish.yaml` that uses a local provider and a formatter:
 ```yaml
 providers:
   standards:
-    provider_root: .local-providers/standards
+    provider_root: internal/standards
 
 post_process:
   - ruff --fix .

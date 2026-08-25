@@ -319,7 +319,7 @@ def test_run_with_directory_provider(
     monkeypatch.chdir(tmp_path)
 
     # Create provider directory with templates
-    provider_dir = tmp_path / 'local_provider'
+    provider_dir = tmp_path / 'internal'
     provider_dir.mkdir()
     # provider resources exist at the root of the directory now
     (provider_dir / 'repolish.py').write_text('# local provider')
