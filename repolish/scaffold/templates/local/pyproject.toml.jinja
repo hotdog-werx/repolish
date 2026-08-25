@@ -1,0 +1,14 @@
+[project]
+name = "{{ package }}"
+version = "0.0.0"
+description = "Project-local repolish provider and repo helper code"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv.build-backend]
+module-name = "{{ package }}"
+module-root = "."
+
+[build-system]
+requires = ["uv_build>=0.1,<2"]
+build-backend = "uv_build"

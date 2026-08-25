@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
 
@@ -94,19 +96,82 @@ def test_scaffold_idempotent(tmp_path: Path) -> None:
     assert 'nothing to write' in result.output
 
 
-def test_scaffold_local_creates_in_repo_provider(tmp_path: Path) -> None:
-    """--local scaffolds templates/repolish.py + repolish/ dir without --package."""
-    dest = tmp_path / 'local_provider'
-    result = runner.invoke(app, ['scaffold', str(dest), '--local'])
+def test_scaffold_local_defaults_to_internal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--local with no DIRECTORY scaffolds internal/: alias local, class LocalProvider."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ['scaffold', '--local'])
+    assert result.exit_code == 0
+    templates = tmp_path / 'internal' / 'templates'
+    assert (templates / 'repolish.py').exists()
+    assert (templates / 'repolish' / 'some-template.md.jinja').exists()
+
+    content = (templates / 'repolish.py').read_text()
+    assert 'class LocalProviderContext(BaseContext):' in content
+    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
+    assert 'local:' in content
+    assert 'provider_root: internal/templates' in content
+
+    # the printed repolish.yaml snippet matches the convention
+    assert 'provider_root: internal/templates' in result.output
+
+
+def test_scaffold_local_explicit_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A given DIRECTORY only relocates the provider; identity stays local/LocalProvider."""
+    monkeypatch.chdir(tmp_path)
+    dest = tmp_path / 'ops'
+    result = runner.invoke(app, ['scaffold', 'ops', '--local'])
     assert result.exit_code == 0
     assert (dest / 'templates' / 'repolish.py').exists()
-    assert (dest / 'templates' / 'repolish' / 'some-template.md.jinja').exists()
     # no package artifacts
     assert not list(dest.glob('*.toml'))
-    assert not list(dest.glob('*.md'))
 
     content = (dest / 'templates' / 'repolish.py').read_text()
     assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
+    assert 'provider_root: ops/templates' in content
+
+
+def test_scaffold_local_installable_tier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--local --installable adds pyproject.toml + internal package and shims repolish.py."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(
+        app,
+        ['scaffold', 'internal', '--local', '--installable'],
+    )
+    assert result.exit_code == 0
+    base = tmp_path / 'internal'
+    assert (base / 'pyproject.toml').exists()
+    assert (base / 'internal' / '__init__.py').exists()
+    provider = base / 'internal' / 'provider.py'
+    assert provider.exists()
+    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in provider.read_text()
+
+    shim = (base / 'templates' / 'repolish.py').read_text()
+    assert 'from internal import __version__' in shim
+    assert 'from internal.provider import LocalProvider' in shim
+    assert 'class LocalProvider' not in shim
+
+    # installable tier needs the editable-install hint (output is line-wrapped)
+    assert 'editable-install' in result.output
+    assert '-e' in result.output
+    assert './internal' in result.output
+
+
+def test_scaffold_installable_requires_local(tmp_path: Path) -> None:
+    """--installable without --local is rejected."""
+    result = runner.invoke(
+        app,
+        ['scaffold', str(tmp_path / 'internal'), '--installable'],
+    )
+    assert result.exit_code == 1
 
 
 def test_scaffold_local_rejects_package_option(tmp_path: Path) -> None:
@@ -115,7 +180,7 @@ def test_scaffold_local_rejects_package_option(tmp_path: Path) -> None:
         app,
         [
             'scaffold',
-            str(tmp_path / 'local_provider'),
+            str(tmp_path / 'internal'),
             '--local',
             '--package',
             'x',
@@ -128,8 +193,14 @@ def test_scaffold_local_rejects_monorepo(tmp_path: Path) -> None:
     """--monorepo cannot be combined with --local."""
     result = runner.invoke(
         app,
-        ['scaffold', str(tmp_path / 'local_provider'), '--local', '--monorepo'],
+        ['scaffold', str(tmp_path / 'internal'), '--local', '--monorepo'],
     )
+    assert result.exit_code == 1
+
+
+def test_scaffold_without_local_requires_directory() -> None:
+    """Without --local, DIRECTORY is required."""
+    result = runner.invoke(app, ['scaffold', '--package', 'my_provider'])
     assert result.exit_code == 1
 
 

@@ -1,4 +1,4 @@
-"""Local repolish provider.
+"""Project-local repolish provider.
 
 This provider lives inside the project — there is nothing to install or
 publish.  Wire it up in repolish.yaml:
@@ -7,9 +7,24 @@ publish.  Wire it up in repolish.yaml:
       {{ alias }}:
         provider_root: {{ provider_root }}
 
-Templates in the repolish/ directory are applied to the project on every
-`repolish apply`.  Add functions below to generate dynamic content anywhere
-in the project via repolish:on/off insertion markers.
+Templates in the repolish/ directory next to this file are applied to the
+project on every `repolish apply`.  Add functions below to generate dynamic
+content anywhere in the project via repolish:on/off insertion markers.
+
+IMPORTANT: repolish loads this module directly by file path, so keep it
+self-contained — absolute imports of sibling modules (e.g. `from helpers
+import x` next to this file) will crash `repolish apply`.  When the provider
+grows to want multiple files, upgrade to the installable tier: give this
+directory a pyproject.toml and a real package holding `{{ class_name }}`,
+editable-install it into the environment that runs repolish, and reduce this
+file to a re-exporting shim:
+
+    from <pkg> import __version__
+    from <pkg>.provider import {{ class_name }}
+
+    __all__ = ['__version__', '{{ class_name }}']
+
+The repolish.yaml entry stays identical either way.
 """
 
 from repolish import BaseContext, BaseInputs, Provider

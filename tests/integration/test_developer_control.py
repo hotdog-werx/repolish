@@ -372,8 +372,8 @@ def test_scaffolded_local_provider_applies_end_to_end(
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
 
-    run_repolish(['scaffold', 'local_provider', '--local'])
-    provider_root = tmp_path / 'local_provider' / 'templates'
+    run_repolish(['scaffold', '--local'])
+    provider_root = tmp_path / 'internal' / 'templates'
     assert (provider_root / 'repolish.py').exists()
     assert (provider_root / 'repolish' / 'some-template.md.jinja').exists()
 
@@ -381,8 +381,8 @@ def test_scaffolded_local_provider_applies_end_to_end(
         json.dumps(
             {
                 'providers': {
-                    'local_provider': {
-                        'provider_root': 'local_provider/templates',
+                    'local': {
+                        'provider_root': 'internal/templates',
                     },
                 },
             },

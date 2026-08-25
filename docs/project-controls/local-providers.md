@@ -19,11 +19,14 @@ completely different implementation.
 
 Set `provider_root` on a provider entry to point at a local directory that
 contains the same structure as any other provider — a `repolish/` template tree
-and, optionally, a `repolish.py` module:
+and, optionally, a `repolish.py` module. The blessed location is `internal/` at
+the repo root (sibling to `src/`): a home for code that only maintains this repo
+and never ships — not under `src/` (that would tie it to the project's install
+boundary) and not under `.repolish/` (ephemeral, gitignored):
 
 ```
 myproject/
-  .local-providers/
+  internal/                ← blessed home for repo-maintenance code
     mycorp/                ← this is your provider_root
       repolish.py          ← optional: create_context, create_anchors, etc.
       repolish/
@@ -38,7 +41,7 @@ myproject/
 # repolish.yaml
 providers:
   codeguide:
-    provider_root: .local-providers/mycorp
+    provider_root: internal/mycorp
 ```
 
 Repolish resolves `provider_root` relative to `repolish.yaml`. If no
@@ -54,7 +57,7 @@ There are two patterns depending on whether you also set `cli`:
 ```yaml
 providers:
   codeguide:
-    provider_root: .local-providers/mycorp
+    provider_root: internal/mycorp
 ```
 
 No CLI command is run. Repolish uses the local directory as the sole source of
@@ -66,7 +69,7 @@ templates and context. The upstream package is not involved at all.
 providers:
   codeguide:
     cli: codeguide-link
-    provider_root: .local-providers/mycorp
+    provider_root: internal/mycorp
 ```
 
 Repolish runs the CLI first. If a `provider-info.json` is found (meaning the CLI
@@ -89,8 +92,8 @@ files, etc.) you can set them independently:
 ```yaml
 providers:
   codeguide:
-    provider_root: .local-providers/mycorp/templates # repolish.py lives here
-    resources_dir: .local-providers/mycorp # root for symlinked resources
+    provider_root: internal/mycorp/templates # repolish.py lives here
+    resources_dir: internal/mycorp # root for symlinked resources
 ```
 
 ## Minimum required structure
@@ -111,20 +114,32 @@ empty and no anchors will be defined. That is enough to override specific files.
 
 `repolish scaffold --local` generates this structure for you — a `repolish.py`
 entry point with a ready `Provider` subclass and a sample template under
-`repolish/`:
+`repolish/`. By convention it goes to `internal/` (sibling to `src/`: code that
+only maintains this repo, never shipped); the provider is aliased `local` and
+named `LocalProvider`. No `--package` name is needed — local providers are not
+packages — and no directory either, `internal/` is the default:
 
 ```bash
-repolish scaffold local_provider --local
+repolish scaffold --local
 ```
 
 ```
-local_provider/
+internal/
   templates/
     repolish.py                     ← LocalProvider entry point
     repolish/some-template.md.jinja ← sample template
 ```
 
-The command prints the `providers:` snippet to paste into `repolish.yaml`. Class
-names are derived from the directory name (`local_provider` → `LocalProvider`)
-and can be overridden with `--prefix`. See
+The command prints the `providers:` snippet to paste into `repolish.yaml`:
+
+```yaml
+providers:
+  local:
+    provider_root: internal/templates
+```
+
+The flat layout above is self-contained (repolish loads `repolish.py` by file
+path, so sibling imports are unavailable). Once you outgrow a single file,
+`repolish scaffold --local --installable` switches to the installable tier:
+`repolish.py` becomes a shim over an editable-installed `internal/` package. See
 [repolish scaffold](../reference/scaffold.md#local-provider-layout) for details.
