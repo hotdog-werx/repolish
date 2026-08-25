@@ -8,6 +8,19 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.11.0] <a name="1.11.0" href="#1.11.0">-</a> August 25, 2026
+
+### 🚀 Features
+
+- After-render phase and insertions in templates (#84) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#84](https://github.com/hotdog-werx/repolish/pull/84)
+- Scaffold local provider (#85) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#85](https://github.com/hotdog-werx/repolish/pull/85)
+
+[1.11.0]: https://github.com/hotdog-werx/repolish/compare/1.10.0...1.11.0
+
 ## [1.10.0] <a name="1.10.0" href="#1.10.0">-</a> August 19, 2026
 
 ### 🚀 Features
