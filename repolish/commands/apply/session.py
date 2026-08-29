@@ -31,10 +31,11 @@ from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
     preprocess_templates,
+    rendered_file_pairs,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.preprocessors import replace_text, safe_file_read
-from repolish.preprocessors.directive_phase import PreprocessPhase
+from repolish.insertions.adoption import adopt_local_insertion_markers
+from repolish.preprocessors import PreprocessPhase, run_phase
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
 from repolish.utils import run_post_process
@@ -137,45 +138,19 @@ def _run_after_render_preprocessors(
     setup_output: Path,
     base_dir: Path,
 ) -> None:
-    """Apply directives tagged with phase="after-render" on rendered output files."""
-    rendered_root = setup_output / 'repolish'
-    if not rendered_root.exists():
-        return
+    """Apply directives tagged with phase="after-render" on rendered output files.
 
-    for rendered_file in rendered_root.rglob('*'):
-        if not rendered_file.is_file():
-            continue
-        try:
-            rendered_text = rendered_file.read_text(encoding='utf-8')
-        except (OSError, UnicodeDecodeError):  # pragma: no cover
-            # Binary files or I/O errors are not expected in rendered output
-            continue
-
-        rel_path = rendered_file.relative_to(rendered_root)
-        local_rel_path = _rendered_rel_path_to_local_rel_path(rel_path)
-        local_text = safe_file_read(base_dir / local_rel_path)
-        updated = replace_text(
-            rendered_text,
-            local_text,
-            anchors_dictionary={},
-            phase=PreprocessPhase.AFTER_RENDER,
-            source_path=str(rendered_file),
-        )
-        if updated != rendered_text:
-            rendered_file.write_text(updated, encoding='utf-8')
-
-
-def _rendered_rel_path_to_local_rel_path(rendered_rel_path: Path) -> Path:
-    """Translate a staged rendered path back to the destination file path."""
-    parts = list(rendered_rel_path.parts)
-    # Note: empty parts would mean an empty/relative Path() was passed.
-    # This should never happen from rglob, but if it does, let it raise
-    # IndexError here so we know the assumption changed.
-    name = parts[-1]
-    prefix = '_repolish.'
-    if name.startswith(prefix):
-        parts[-1] = name.removeprefix(prefix)
-    return Path(*parts)
+    Pairing of rendered files to their local counterparts is owned by hydration
+    (:func:`rendered_file_pairs`); the after-render traversal itself lives in
+    the preprocessors node (:func:`run_phase`). Insertion-marker adoption is
+    wired explicitly as a post pass so the preprocessors package stays free of
+    insertions knowledge.
+    """
+    run_phase(
+        PreprocessPhase.AFTER_RENDER,
+        rendered_file_pairs(setup_output, base_dir),
+        post_passes=[adopt_local_insertion_markers],
+    )
 
 
 def apply_session(

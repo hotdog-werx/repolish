@@ -11,6 +11,9 @@ from dataclasses import dataclass
 
 from hotlog import get_logger
 
+from repolish.preprocessors.directive_phase import directive_phase_of
+from repolish.preprocessors.directives import REGEX_DIRECTIVE_RE
+
 logger = get_logger(__name__)
 
 
@@ -23,9 +26,7 @@ class _MatchedRegion:
     end: int
 
 
-_REGEX_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish-regex\[(.+?)\]:\s*(.*?)\s*$',
-)
+_REGEX_DIRECTIVE_RE = REGEX_DIRECTIVE_RE
 
 
 def _select_capture(match: re.Match) -> str:
@@ -199,16 +200,7 @@ def _strip_regex_directives_for_phase(content: str, phase: str) -> str:
     for line in content.splitlines(keepends=True):
         stripped = line.rstrip('\r\n')
         match = _REGEX_DIRECTIVE_RE.match(stripped)
-        if match and _directive_phase(match) == phase:
+        if match and directive_phase_of(match.group(1)) == phase:
             continue
         result.append(line)
     return ''.join(result)
-
-
-def _directive_phase(match: re.Match[str]) -> str:
-    """Return directive phase parsed from tag suffix with pre-render default."""
-    raw_tag = match.group(1)
-    if '|' not in raw_tag:
-        return 'pre-render'
-    _, maybe_phase = raw_tag.rsplit('|', 1)
-    return maybe_phase if maybe_phase in {'pre-render', 'after-render'} else 'pre-render'

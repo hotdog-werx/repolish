@@ -14,6 +14,11 @@ from hotlog import get_logger
 from repolish.preprocessors.directive_phase import (
     split_directive_tag,
 )
+from repolish.preprocessors.directives import (
+    KEEP_BLOCK_DIRECTIVE_RE,
+    KEEP_HEADER_DIRECTIVE_RE,
+    KEEP_REST_DIRECTIVE_RE,
+)
 
 logger = get_logger(__name__)
 
@@ -55,15 +60,9 @@ class _KeepApplyContext:
     source_path: str | None
 
 
-_KEEP_BLOCK_RE = re.compile(
-    r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+(?:end|end-regex)=("(?:\\.|[^"])*")\s*$',
-)
-_KEEP_REST_RE = re.compile(
-    r'^[^\n]*repolish-keep-(?:rest|the-rest|footer)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
-)
-_KEEP_HEADER_RE = re.compile(
-    r'^[^\n]*repolish-keep-(?:header|the-header)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
-)
+_KEEP_BLOCK_RE = KEEP_BLOCK_DIRECTIVE_RE
+_KEEP_REST_RE = KEEP_REST_DIRECTIVE_RE
+_KEEP_HEADER_RE = KEEP_HEADER_DIRECTIVE_RE
 
 
 def apply_keep_replacements(

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from repolish.misc import ctx_to_dict
 from repolish.pkginfo import resolve_package_identity
-from repolish.preprocessors.core import replace_text
+from repolish.preprocessors import preprocess_text
 from repolish.providers.models.context import BaseContext, BaseInputs
 from repolish.providers.models.provider import (
     FinalizeContextOptions,
@@ -80,17 +80,19 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         alias: Provider alias injected into the instance metadata.
         version: Provider version injected into the instance metadata.
         preprocess: When ``True``, run the full preprocessing pipeline
-            (:func:`replace_text`) on each rendered file after Jinja2
-            expansion.  This strips preprocessor directive lines
-            (``repolish-regex``, ``repolish-keep-*``, etc.) and applies
-            anchor replacements — matching what ``repolish apply`` produces
-            in production.  Defaults to ``False`` to keep the testbed
-            lightweight for unit tests that only need Jinja output.
+            (:func:`~repolish.preprocessors.preprocess_text`) on each
+            rendered file after Jinja2 expansion.  This strips preprocessor
+            directive lines (``repolish-regex``, ``repolish-keep-*``, etc.)
+            and applies anchor replacements.  Defaults to ``False`` to keep
+            the testbed lightweight for unit tests that only need Jinja
+            output. Note this applies the pre-render phase *after* Jinja
+            expansion, which is not the production ordering — a known gap
+            to be addressed separately.
         local_files_dir: Directory containing existing local files that
             preprocessor directives should read from.  When ``preprocess``
             is ``True`` and this is set, each rendered file looks up
             ``local_files_dir / dest_path`` and passes its content as the
-            ``local_content`` argument to :func:`replace_text`.  This
+            ``local_content`` argument to :func:`preprocess_text`.  This
             mirrors how ``repolish apply`` reads the repo's current files
             so that regex/keep directives can extract values from them.
             On the first run (no local files yet) leave this ``None``;
@@ -284,7 +286,7 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         if self.preprocess:
             dest_guess = template_name
             dest_guess = dest_guess.removesuffix('.jinja')
-            rendered = replace_text(
+            rendered = preprocess_text(
                 rendered,
                 self._resolve_local_content(dest_guess),
             )
@@ -443,7 +445,7 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         if src.suffix == '.jinja':
             txt = env.from_string(txt).render(**ctx)
         if self.preprocess:
-            txt = replace_text(txt, local_content)
+            txt = preprocess_text(txt, local_content)
         return txt
 
     def _resolve_local_content(self, dest: str) -> str:

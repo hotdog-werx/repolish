@@ -7,18 +7,26 @@ replacing tags, and orchestrating the complete text replacement pipeline.
 
 import ast
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Generic, Protocol, TypeVar
 
 from hotlog import get_logger
 
-from repolish.insertions.adoption import adopt_local_insertion_markers
 from repolish.preprocessors.anchors import replace_tags_in_content
 from repolish.preprocessors.directive_phase import (
     PreprocessPhase,
     split_directive_tag as _split_directive_tag,
+)
+from repolish.preprocessors.directives import (
+    KEEP_BLOCK_DIRECTIVE_RE,
+    KEEP_HEADER_DIRECTIVE_RE,
+    KEEP_REST_DIRECTIVE_RE,
+    MULTIREGEX_BLOCK_DIRECTIVE_RE,
+    MULTIREGEX_DIRECTIVE_RE,
+    REGEX_DIRECTIVE_RE,
+    TAG_BLOCK_RE,
 )
 from repolish.preprocessors.keep import (
     apply_keep_replacements,
@@ -28,11 +36,29 @@ from repolish.preprocessors.keep import (
 )
 from repolish.preprocessors.multiregex import apply_multiregex_replacements
 from repolish.preprocessors.regex import apply_regex_replacements
-from repolish.utils import read_text_utf8
 
 logger = get_logger(__name__)
 
 T = TypeVar('T')
+
+
+class PostPass(Protocol):
+    """A text transform applied after the built-in directive passes.
+
+    Lets orchestrators (e.g. the apply session) extend a phase with extra
+    reconciliation — such as insertion-marker adoption — without the
+    preprocessors package importing those features itself.
+    """
+
+    def __call__(
+        self,
+        content: str,
+        local_content: str,
+        *,
+        source_path: str | None = None,
+    ) -> str:
+        """Return *content* after reconciling it with *local_content*."""
+        ...
 
 
 @dataclass
@@ -56,25 +82,15 @@ class _PatternDefinition(Generic[T]):
     parse_value: Callable[..., T]
 
 
-_TAG_PATTERN = re.compile(
-    # allow empty inner block (no extra blank line required before end)
-    r'^[^\n]*repolish-start\[(.+?)\][^\n]*\n(.*?)[^\n]*repolish-end\[\1\][^\n]*',
-    re.DOTALL | re.MULTILINE,
-)
+_TAG_PATTERN = TAG_BLOCK_RE
 
 _REGEX_PATTERN_DEF = _PatternDefinition[str](
-    pattern=re.compile(
-        r'^[^\n]*repolish-regex\[(.+?)\]:\s*(.*?)\s*$',
-        re.MULTILINE,
-    ),
+    pattern=REGEX_DIRECTIVE_RE,
     parse_value=lambda pattern: pattern,
 )
 
 _KEEP_BLOCK_PATTERN_DEF = _PatternDefinition[tuple[str, str | None, str | None]](
-    pattern=re.compile(
-        r'^[^\n]*repolish-keep-block\[(.+?)\]:\s*start=("(?:\\.|[^"])*")\s+(end|end-regex)=("(?:\\.|[^"])*")\s*$',
-        re.MULTILINE,
-    ),
+    pattern=KEEP_BLOCK_DIRECTIVE_RE,
     parse_value=lambda start_raw, end_mode, end_raw: _parse_keep_block_bounds(
         start_raw,
         end_mode,
@@ -83,34 +99,22 @@ _KEEP_BLOCK_PATTERN_DEF = _PatternDefinition[tuple[str, str | None, str | None]]
 )
 
 _KEEP_REST_PATTERN_DEF = _PatternDefinition[str](
-    pattern=re.compile(
-        r'^[^\n]*repolish-keep-(?:rest|the-rest|footer)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
-        re.MULTILINE,
-    ),
+    pattern=KEEP_REST_DIRECTIVE_RE,
     parse_value=lambda marker_raw: _parse_keep_literal(marker_raw),
 )
 
 _KEEP_HEADER_PATTERN_DEF = _PatternDefinition[str](
-    pattern=re.compile(
-        r'^[^\n]*repolish-keep-(?:header|the-header)\[(.+?)\]:\s*marker=("(?:\\.|[^"])*")\s*$',
-        re.MULTILINE,
-    ),
+    pattern=KEEP_HEADER_DIRECTIVE_RE,
     parse_value=lambda marker_raw: _parse_keep_literal(marker_raw),
 )
 
 _MULTIREGEX_BLOCK_PATTERN_DEF = _PatternDefinition[str](
-    pattern=re.compile(
-        r'^[^\n]*repolish-multiregex-block\[(.+?)\]:\s*(.*?)\s*$',
-        re.MULTILINE,
-    ),
+    pattern=MULTIREGEX_BLOCK_DIRECTIVE_RE,
     parse_value=lambda pattern: pattern,
 )
 
 _MULTIREGEX_PATTERN_DEF = _PatternDefinition[str](
-    pattern=re.compile(
-        r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
-        re.MULTILINE,
-    ),
+    pattern=MULTIREGEX_DIRECTIVE_RE,
     parse_value=lambda pattern: pattern,
 )
 
@@ -259,19 +263,23 @@ def safe_file_read(file_path: Path) -> str:
         The content of the file, or an empty string if the file does not exist.
     """
     if file_path.exists() and file_path.is_file():
-        return read_text_utf8(file_path)
+        return file_path.read_text(encoding='utf-8')
     return ''
 
 
-def replace_text(
+def preprocess_text(  # noqa: PLR0913 - canonical entry point, params are the public contract
     template_content: str,
     local_content: str,
     anchors_dictionary: dict[str, str] | None = None,
     *,
     phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
     source_path: str | None = None,
+    post_passes: Iterable[PostPass] | None = None,
 ) -> str:
     """Replaces tag blocks and regex patterns in the template content.
+
+    This is the canonical pure text-transform entry point of the preprocessors
+    package: template text in, processed text out, with no file I/O.
 
     Args:
         template_content: The content of the template file.
@@ -283,6 +291,11 @@ def replace_text(
             preserved.
         phase: Directive phase to apply (`pre-render` or `after-render`).
         source_path: Optional template path used for contextual warning logs.
+        post_passes: Extra transforms applied after the built-in directive
+            passes, each receiving ``(content, local_content, *, source_path)``.
+            When ``None``, the legacy default applies: the ``after-render``
+            phase additionally adopts local insertion markers. Pass an explicit
+            iterable (possibly empty) to control the passes yourself.
 
     Returns:
         The modified template content with replaced tag blocks and regex patterns.
@@ -349,14 +362,28 @@ def replace_text(
         local_content,
         phase=selected_phase,
     )
-    if selected_phase == PreprocessPhase.AFTER_RENDER.value:
-        # Preserve developer-chosen insertion function/args from the local file.
-        # Runs only after render so loop-generated markers are fully concrete.
+    if post_passes is None and selected_phase == PreprocessPhase.AFTER_RENDER.value:
+        # Legacy default: preserve developer-chosen insertion function/args
+        # from the local file. Runs only after render so loop-generated markers
+        # are fully concrete. Imported lazily so the preprocessors package has
+        # no static dependency on repolish.insertions — orchestrators should
+        # pass post_passes explicitly instead (see commands/apply/session.py).
+        from repolish.insertions.adoption import (  # noqa: PLC0415 - legacy default, keeps insertions out of the static dependency graph
+            adopt_local_insertion_markers,
+        )
+
         content = adopt_local_insertion_markers(
             content,
             local_content,
             source_path=source_path,
         )
+    elif post_passes:
+        for post_pass in post_passes:
+            content = post_pass(
+                content,
+                local_content,
+                source_path=source_path,
+            )
     result = content
     logger.debug(
         'text_replacement_completed',
@@ -365,3 +392,41 @@ def replace_text(
         multiregexes_applied=len(patterns.multiregexes),
     )
     return result
+
+
+def replace_text(
+    template_content: str,
+    local_content: str,
+    anchors_dictionary: dict[str, str] | None = None,
+    *,
+    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    source_path: str | None = None,
+) -> str:
+    """Backward-compatible alias for :func:`preprocess_text`.
+
+    Kept for existing callers; new code should use :func:`preprocess_text`,
+    which additionally accepts ``post_passes``.
+    """
+    return preprocess_text(
+        template_content,
+        local_content,
+        anchors_dictionary,
+        phase=phase,
+        source_path=source_path,
+    )
+
+
+def strip_directives(
+    content: str,
+    *,
+    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    source_path: str | None = None,
+) -> str:
+    """Strip directive lines and resolve defaults against an empty local file.
+
+    Intended for tooling (e.g. lint) that needs directive-free template text
+    before further parsing. Tag blocks keep their template defaults and keep
+    regions resolve from the template itself, since there is no local content
+    to extract overrides from.
+    """
+    return preprocess_text(content, '', phase=phase, source_path=source_path)

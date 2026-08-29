@@ -9,7 +9,6 @@ from repolish.preprocessors import (
     replace_text,
     safe_file_read,
 )
-from repolish.utils import write_text_utf8
 
 
 @dataclass
@@ -27,7 +26,7 @@ def test_safe_file_read_existing_file(tmp_path: Path):
     """Test safe_file_read with an existing file."""
     test_file = tmp_path / 'test.txt'
     test_content = 'Hello, wörld! 🌍'
-    write_text_utf8(test_file, test_content)
+    test_file.write_text(test_content, encoding='utf-8')
 
     result = safe_file_read(test_file)
     assert result == test_content

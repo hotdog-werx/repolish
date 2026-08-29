@@ -11,16 +11,16 @@ from hotlog import get_logger
 from repolish.preprocessors.directive_phase import (
     split_directive_tag,
 )
+from repolish.preprocessors.directives import (
+    MULTIREGEX_BLOCK_DIRECTIVE_RE,
+    MULTIREGEX_DIRECTIVE_RE,
+)
 from repolish.preprocessors.tag_names import parse_section_name
 
 logger = get_logger(__name__)
 
-_MULTIREGEX_BLOCK_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish-multiregex-block\[(.+?)\]:\s*(.*?)\s*$',
-)
-_MULTIREGEX_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
-)
+_MULTIREGEX_BLOCK_DIRECTIVE_RE = MULTIREGEX_BLOCK_DIRECTIVE_RE
+_MULTIREGEX_DIRECTIVE_RE = MULTIREGEX_DIRECTIVE_RE
 
 _KEY_VALUE_RE = re.compile(
     r'^(\s*)(")?([^"=:\s]+)(")?(\s*)([=:])(\s*)"([^"]*)"(.*)$',

@@ -5,7 +5,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.preprocessors import replace_text, safe_file_read
+from repolish.preprocessors import preprocess_file, write_if_changed
 from repolish.providers import SessionBundle, TemplateMapping
 from repolish.utils import ensure_dot_repolish, path_slug
 
@@ -64,27 +64,9 @@ def _preprocess_single_file(
         local_path: Path to the local project file for anchor extraction.
         anchors: Base anchors from create_anchors().
     """
-    try:
-        tpl_text = tpl_path.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError) as exc:
-        logger.debug(
-            'skipping_unreadable_file',
-            template_file=str(tpl_path),
-            error=str(exc),
-        )
-        return
-
-    local_text = safe_file_read(local_path)
-    new_text = replace_text(
-        tpl_text,
-        local_text,
-        anchors_dictionary=anchors,
-        source_path=str(tpl_path),
-    )
-
-    if new_text != tpl_text:
-        tpl_path.write_text(new_text, encoding='utf-8')
-        tpl_path.chmod(tpl_path.stat().st_mode)
+    result = preprocess_file(tpl_path, local_path, anchors=anchors)
+    if result is not None:
+        write_if_changed(tpl_path, result)
 
 
 def _get_source_template(source_val: str | TemplateMapping) -> str | None:
@@ -115,31 +97,20 @@ class _MappingPreprocessContext:
 
 def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
     """Apply preprocessing for a single mapping entry."""
-    try:
-        tpl_text = args.tpl_path.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError) as exc:
-        logger.debug(
-            'skipping_unreadable_file',
-            template_file=str(args.tpl_path),
-            error=str(exc),
-        )
+    result = preprocess_file(
+        args.tpl_path,
+        args.ctx.base_dir / args.dest_path,
+        anchors=args.ctx.anchors,
+    )
+    if result is None or not result.changed:
         return
 
-    local_path = args.ctx.base_dir / args.dest_path
-    local_text = safe_file_read(local_path)
-    new_text = replace_text(
-        tpl_text,
-        local_text,
-        anchors_dictionary=args.ctx.anchors,
-        source_path=str(args.tpl_path),
-    )
-
-    if new_text != tpl_text and isinstance(args.source_val, TemplateMapping):
+    if isinstance(args.source_val, TemplateMapping):
         dest_safe = path_slug(args.dest_path, sep='_')
         source_name = Path(args.source_template).name
         preproc_name = f'_preproc_{dest_safe}_{source_name}'
         preproc_path = args.ctx.setup_input / 'repolish' / preproc_name
-        preproc_path.write_text(new_text, encoding='utf-8')
+        preproc_path.write_text(result.content, encoding='utf-8')
         preproc_path.chmod(args.tpl_path.stat().st_mode)
         args.mappings_dict[args.dest_path] = TemplateMapping(
             source_template=args.source_val.source_template,
@@ -154,9 +125,8 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
             preprocessed=preproc_name,
             destination=args.dest_path,
         )
-    elif new_text != tpl_text:
-        args.tpl_path.write_text(new_text, encoding='utf-8')
-        args.tpl_path.chmod(args.tpl_path.stat().st_mode)
+    else:
+        write_if_changed(args.tpl_path, result)
 
 
 def _process_mapping_entry(

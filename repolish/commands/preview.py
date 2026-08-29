@@ -5,7 +5,7 @@ from hotlog import get_logger
 from pydantic import BaseModel, Field
 
 from repolish.console import console
-from repolish.preprocessors import extract_patterns, replace_text
+from repolish.preprocessors import extract_patterns, preprocess_text
 
 logger = get_logger(__name__)
 
@@ -69,7 +69,7 @@ def command(
         )
         console.print()
 
-    result = replace_text(
+    result = preprocess_text(
         template,
         target,
         anchors_dictionary=anchors,
