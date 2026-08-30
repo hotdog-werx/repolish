@@ -1,21 +1,9 @@
 # Preprocessors
 
-Repolish applies preprocessing in two phases:
-
-1. `pre-render` (default): runs before Jinja2 on staged templates.
-2. `after-render` (opt-in): runs after Jinja2 on rendered output files.
-
-This handles cases where directives live inside loop-generated or conditional
-template content and therefore only exist after Jinja rendering.
-
-To place a directive in the second phase, append `|after-render` to the tag
-inside the square brackets, for example
-`repolish-keep-block[notes|after-render]`. The default is `pre-render`, so you
-only need the suffix when a directive must wait until Jinja has produced the
-final file content.
-
-All processed directive lines are stripped from final output so project files
-stay clean.
+Repolish processes directives in two phases, `pre-render` (default) and
+`after-render` (opt-in via a `|after-render` suffix) — see
+[Phases](../markers/phases.md). All processed directive lines are stripped from
+final output so project files stay clean.
 
 The most common directives are **regex** and **multiregex**: they live inside
 the template file itself and read values directly from your current project
@@ -39,15 +27,9 @@ Repolish runs the pattern against your current file. If a match is found, the
 captured group replaces the corresponding line in the template. If no match is
 found, the default template line is used unchanged.
 
-The directive line itself is always removed from the output.
-
-To run a regex directive after Jinja rendering, add `|after-render` to the
-directive tag name:
-
-```python
-## repolish-regex[version|after-render]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-```
+The directive line itself is always removed from the output. To run it after
+Jinja rendering instead, use the `|after-render`
+[phase suffix](../markers/phases.md).
 
 ### Capture group behavior
 
@@ -271,15 +253,11 @@ continues to come from the template.
 
 ## Processing order
 
-1. `pre-render` phase on templates: block anchors, keep directives, regex
-   directives, multiregex directives.
-2. Jinja2 rendering.
-3. `after-render` phase on rendered files: keep directives, regex directives,
-   multiregex directives tagged with `|after-render` in the directive name.
-4. Insertions are applied to the generated files on disk, after rendering and
-   after-render preprocessing, but before any post-process formatting step.
+The full pipeline — pre-render phase, Jinja2 rendering, after-render phase,
+insertions, and post-process formatting — is described in
+[Phases](../markers/phases.md#the-full-pipeline).
 
-All directive lines are stripped before Jinja2 sees the file.
+All directive lines are stripped from the final output.
 
 ## Trying it out
 

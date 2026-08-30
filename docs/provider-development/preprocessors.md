@@ -6,30 +6,11 @@ scenarios. For a full explanation of how each directive works, see
 
 ## Two-phase directives
 
-Directives run in `pre-render` mode by default. Use `|after-render` in the
-directive tag when the directive appears inside Jinja-generated content (for
-example loops), so repolish evaluates it after rendering.
-
-Example:
-
-```jinja
-{% for item in items %}
-- {{ item }}
-## repolish-keep-block[user-note|after-render]: start="<!-- note-start -->" end="<!-- note-end -->"
-<!-- note-start -->
-default note for {{ item }}
-<!-- note-end -->
-{% endfor %}
-```
-
-The same `|after-render` tag suffix is supported on:
-
-- `repolish-regex[...]`
-- `repolish-multiregex-block[...]`
-- `repolish-multiregex[...]`
-- `repolish-keep-block[...]`
-- `repolish-keep-rest[...]`
-- `repolish-keep-header[...]`
+Directives run in the `pre-render` phase by default. Use the `|after-render`
+suffix when a directive appears inside Jinja-generated content (for example
+loops), so repolish evaluates it on the rendered file instead — see
+[Phases](../markers/phases.md) for the syntax, supported families, and the full
+pipeline.
 
 ## Choosing the right directive
 

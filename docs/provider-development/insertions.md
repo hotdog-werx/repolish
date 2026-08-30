@@ -22,7 +22,8 @@ Quick checklist:
 
 ## Where insertions fit in apply
 
-Insertions run after template rendering and after-render preprocessing, once the
+Insertions run after template rendering and the
+[after-render directive phase](../markers/phases.md#the-full-pipeline), once the
 generated files exist on disk. They are applied before post-processing so
 formatters can see the final inserted content, and then the per-file insertion
 status is reported in the summary.
