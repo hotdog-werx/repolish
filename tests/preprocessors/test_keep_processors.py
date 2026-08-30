@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from repolish.preprocessors import extract_patterns, replace_text
+from repolish.preprocessors import extract_patterns, preprocess_text
 from repolish.preprocessors.keep import (
     KeepBlockSpec,
     KeepMarkerSpec,
@@ -114,7 +114,7 @@ class KeepCase:
     ids=lambda case: case.name,
 )
 def test_replace_text_keep_directives(case: KeepCase) -> None:
-    result = replace_text(case.template, case.local_content)
+    result = preprocess_text(case.template, case.local_content)
     assert result == case.expected
 
 
@@ -175,7 +175,7 @@ def test_extract_patterns_keep_literals_must_be_strings() -> None:
 
     with (
         mock.patch(
-            'repolish.preprocessors.core.ast.literal_eval',
+            'repolish.preprocessors.keep.ast.literal_eval',
             return_value=123,
         ),
         pytest.raises(TypeError, match='quoted strings'),
@@ -498,7 +498,7 @@ def test_apply_keep_replacements_single_definition_multiple_sibling_blocks() -> 
         done
     """)
 
-    result = replace_text(template, local_content)
+    result = preprocess_text(template, local_content)
 
     assert result == local_content
 
@@ -724,7 +724,7 @@ def test_apply_keep_block_with_end_regex_uses_next_item_boundary() -> None:
                     - 'custom3'
         """)
 
-    result = replace_text(template, local_content)
+    result = preprocess_text(template, local_content)
 
     assert re.search(
         r"provider1:\n\s+- 'static1'\n\s+# additional-paths\n\s+- 'custom1'\n",

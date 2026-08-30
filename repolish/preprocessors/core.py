@@ -1,45 +1,25 @@
-# ruff: noqa: I001
 """Core preprocessing utilities for templates.
 
-This module provides the main functions for extracting patterns from templates,
-replacing tags, and orchestrating the complete text replacement pipeline.
+The pure text layer of the preprocessors package: ``extract_patterns``
+discovers directive patterns and ``preprocess_text`` applies the registered
+directive families (see :mod:`~repolish.preprocessors.registry`) around the
+tag-block replacement pass. No file I/O lives here — that is ``files.py``.
 """
 
-import ast
-import re
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Generic, Protocol, TypeVar
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from typing import Protocol
 
 from hotlog import get_logger
 
 from repolish.preprocessors.anchors import replace_tags_in_content
-from repolish.preprocessors.directive_phase import (
-    PreprocessPhase,
-    split_directive_tag as _split_directive_tag,
-)
-from repolish.preprocessors.directives import (
-    KEEP_BLOCK_DIRECTIVE_RE,
-    KEEP_HEADER_DIRECTIVE_RE,
-    KEEP_REST_DIRECTIVE_RE,
-    MULTIREGEX_BLOCK_DIRECTIVE_RE,
-    MULTIREGEX_DIRECTIVE_RE,
-    REGEX_DIRECTIVE_RE,
-    TAG_BLOCK_RE,
-)
-from repolish.preprocessors.keep import (
-    apply_keep_replacements,
-    KeepBlockSpec,
-    KeepMarkerSpec,
-    KeepPatterns,
-)
-from repolish.preprocessors.multiregex import apply_multiregex_replacements
-from repolish.preprocessors.regex import apply_regex_replacements
+from repolish.preprocessors.directive_phase import PreprocessPhase
+from repolish.preprocessors.directives import TAG_BLOCK_RE
+from repolish.preprocessors.keep import KeepPatterns
+from repolish.preprocessors.multiregex import MultiregexPatterns
+from repolish.preprocessors.registry import FAMILIES
 
 logger = get_logger(__name__)
-
-T = TypeVar('T')
 
 
 class PostPass(Protocol):
@@ -63,117 +43,76 @@ class PostPass(Protocol):
 
 @dataclass
 class Patterns:
-    """Container for extracted patterns from content."""
+    """Container for extracted patterns from content.
+
+    Family payloads live in ``by_family``, keyed by the family names from
+    :data:`~repolish.preprocessors.registry.FAMILIES``. The flat per-family
+    accessors below are read-only compatibility views over those payloads.
+    """
 
     tag_blocks: dict[str, str]
-    keep_blocks: dict[str, tuple[str, str | None, str | None]]
-    keep_rest: dict[str, str]
-    keep_header: dict[str, str]
-    regexes: dict[str, str]
-    multiregex_blocks: dict[str, str]
-    multiregexes: dict[str, str]
+    by_family: dict[str, object] = field(default_factory=dict)
 
+    @property
+    def _keep(self) -> KeepPatterns | None:
+        value = self.by_family.get('keep')
+        return value if isinstance(value, KeepPatterns) else None
 
-@dataclass(frozen=True)
-class _PatternDefinition(Generic[T]):
-    """Definition for a phase-aware directive map extracted from content."""
+    @property
+    def keep_blocks(self) -> dict[str, tuple[str, str | None, str | None]]:
+        """Keep-block bounds as ``(start, end, end_regex)`` tuples."""
+        keep = self._keep
+        if keep is None:
+            return {}
+        return {
+            name: (spec.start, spec.end, spec.end_regex)
+            for name, spec in keep.blocks.items()
+        }
 
-    pattern: re.Pattern[str]
-    parse_value: Callable[..., T]
+    @property
+    def keep_rest(self) -> dict[str, str]:
+        """Keep-rest markers keyed by directive name."""
+        keep = self._keep
+        if keep is None:
+            return {}
+        return {name: spec.marker for name, spec in keep.rest.items()}
 
+    @property
+    def keep_header(self) -> dict[str, str]:
+        """Keep-header markers keyed by directive name."""
+        keep = self._keep
+        if keep is None:
+            return {}
+        return {name: spec.marker for name, spec in keep.header.items()}
 
-_TAG_PATTERN = TAG_BLOCK_RE
+    @property
+    def regexes(self) -> dict[str, str]:
+        """Regex directives keyed by directive name."""
+        value = self.by_family.get('regex')
+        return value if isinstance(value, dict) else {}
 
-_REGEX_PATTERN_DEF = _PatternDefinition[str](
-    pattern=REGEX_DIRECTIVE_RE,
-    parse_value=lambda pattern: pattern,
-)
+    @property
+    def _multiregex(self) -> MultiregexPatterns | None:
+        value = self.by_family.get('multiregex')
+        return value if isinstance(value, MultiregexPatterns) else None
 
-_KEEP_BLOCK_PATTERN_DEF = _PatternDefinition[tuple[str, str | None, str | None]](
-    pattern=KEEP_BLOCK_DIRECTIVE_RE,
-    parse_value=lambda start_raw, end_mode, end_raw: _parse_keep_block_bounds(
-        start_raw,
-        end_mode,
-        end_raw,
-    ),
-)
+    @property
+    def multiregex_blocks(self) -> dict[str, str]:
+        """Multiregex block patterns keyed by directive name."""
+        multiregex = self._multiregex
+        return dict(multiregex.blocks) if multiregex is not None else {}
 
-_KEEP_REST_PATTERN_DEF = _PatternDefinition[str](
-    pattern=KEEP_REST_DIRECTIVE_RE,
-    parse_value=lambda marker_raw: _parse_keep_literal(marker_raw),
-)
-
-_KEEP_HEADER_PATTERN_DEF = _PatternDefinition[str](
-    pattern=KEEP_HEADER_DIRECTIVE_RE,
-    parse_value=lambda marker_raw: _parse_keep_literal(marker_raw),
-)
-
-_MULTIREGEX_BLOCK_PATTERN_DEF = _PatternDefinition[str](
-    pattern=MULTIREGEX_BLOCK_DIRECTIVE_RE,
-    parse_value=lambda pattern: pattern,
-)
-
-_MULTIREGEX_PATTERN_DEF = _PatternDefinition[str](
-    pattern=MULTIREGEX_DIRECTIVE_RE,
-    parse_value=lambda pattern: pattern,
-)
-
-
-def _is_phase_selected(
-    directive_phase: str,
-    selected_phase: str = 'pre-render',
-) -> bool:
-    """Return True when a directive phase should run in selected phase."""
-    return directive_phase == selected_phase
-
-
-def _parse_keep_literal(raw: str) -> str:
-    """Parse a quoted keep directive literal."""
-    value = ast.literal_eval(raw)
-    if not isinstance(value, str):
-        msg = 'keep directive values must be quoted strings'
-        raise TypeError(msg)
-    return value
-
-
-def _parse_keep_block_bounds(
-    start_raw: str,
-    end_mode: str,
-    end_raw: str,
-) -> tuple[str, str | None, str | None]:
-    """Parse keep-block bounds supporting literal `end` and `end-regex`."""
-    start = _parse_keep_literal(start_raw)
-    end_value = _parse_keep_literal(end_raw)
-    if end_mode == 'end':
-        return (start, end_value, None)
-    return (start, None, end_value)
+    @property
+    def multiregexes(self) -> dict[str, str]:
+        """Multiregex value patterns keyed by directive name."""
+        multiregex = self._multiregex
+        return dict(multiregex.regexes) if multiregex is not None else {}
 
 
 def _extract_tag_blocks(content: str) -> dict[str, str]:
     """Extract repolish-start/end blocks preserving only inner content."""
-    raw_tag_blocks = dict(_TAG_PATTERN.findall(content))
+    raw_tag_blocks = dict(TAG_BLOCK_RE.findall(content))
     return {key: value.strip('\n') for key, value in raw_tag_blocks.items()}
-
-
-def _extract_directive_map(
-    content: str,
-    definition: _PatternDefinition[T],
-    *,
-    phase: str,
-    source_path: str | None = None,
-) -> dict[str, T]:
-    """Extract a phase-filtered directive map keyed by logical directive name."""
-    result: dict[str, T] = {}
-    for match in definition.pattern.findall(content):
-        raw_name, *values = match
-        name, directive_phase = _split_directive_tag(
-            raw_name,
-            source_path=source_path,
-        )
-        if not _is_phase_selected(directive_phase, phase):
-            continue
-        result[name] = definition.parse_value(*values)
-    return result
 
 
 def extract_patterns(
@@ -190,81 +129,24 @@ def extract_patterns(
         source_path: Optional template path used for contextual warning logs.
 
     Returns:
-        A Patterns object containing extracted tag blocks and regexes.
+        A Patterns object containing extracted tag blocks and family payloads.
     """
     selected_phase = phase.value
 
     tag_blocks = _extract_tag_blocks(content)
-    keep_blocks = _extract_directive_map(
-        content,
-        _KEEP_BLOCK_PATTERN_DEF,
-        phase=selected_phase,
-        source_path=source_path,
-    )
-    keep_rest = _extract_directive_map(
-        content,
-        _KEEP_REST_PATTERN_DEF,
-        phase=selected_phase,
-        source_path=source_path,
-    )
-    keep_header = _extract_directive_map(
-        content,
-        _KEEP_HEADER_PATTERN_DEF,
-        phase=selected_phase,
-        source_path=source_path,
-    )
-    regexes = _extract_directive_map(
-        content,
-        _REGEX_PATTERN_DEF,
-        phase=selected_phase,
-        source_path=source_path,
-    )
-    multiregex_blocks = _extract_directive_map(
-        content,
-        _MULTIREGEX_BLOCK_PATTERN_DEF,
-        phase=selected_phase,
-        source_path=source_path,
-    )
-    multiregexes = _extract_directive_map(
-        content,
-        _MULTIREGEX_PATTERN_DEF,
-        phase=selected_phase,
-        source_path=source_path,
-    )
+    by_family = {
+        family.name: family.extract(content, selected_phase, source_path)
+        for family in FAMILIES
+    }
 
     logger.debug(
         'extracted_patterns',
+        phase=selected_phase,
         tag_blocks=[str(k) for k in tag_blocks],
-        keep_blocks=dict(keep_blocks),
-        keep_rest=dict(keep_rest),
-        keep_header=dict(keep_header),
-        regexes=[str(k) for k in regexes],
-        multiregexes=[str(k) for k in multiregexes],
+        families=list(by_family),
     )
 
-    return Patterns(
-        tag_blocks=tag_blocks,
-        keep_blocks=keep_blocks,
-        keep_rest=keep_rest,
-        keep_header=keep_header,
-        regexes=regexes,
-        multiregex_blocks=multiregex_blocks,
-        multiregexes=multiregexes,
-    )
-
-
-def safe_file_read(file_path: Path) -> str:
-    """Safely reads the content of a file if it exists.
-
-    Args:
-        file_path: Path to the file to read.
-
-    Returns:
-        The content of the file, or an empty string if the file does not exist.
-    """
-    if file_path.exists() and file_path.is_file():
-        return file_path.read_text(encoding='utf-8')
-    return ''
+    return Patterns(tag_blocks=tag_blocks, by_family=by_family)
 
 
 def preprocess_text(  # noqa: PLR0913 - canonical entry point, params are the public contract
@@ -327,41 +209,39 @@ def preprocess_text(  # noqa: PLR0913 - canonical entry point, params are the pu
                 tags_to_replace[tag] = default_value
         content = replace_tags_in_content(template_content, tags_to_replace)
 
-    content = apply_keep_replacements(
+    for family in FAMILIES:
+        content = family.apply(
+            content,
+            patterns.by_family[family.name],
+            local_content,
+            selected_phase,
+            source_path,
+        )
+
+    result = _run_post_passes(
         content,
-        KeepPatterns(
-            blocks={
-                name: KeepBlockSpec(
-                    start=start,
-                    end=end,
-                    end_regex=end_regex,
-                )
-                for name, (
-                    start,
-                    end,
-                    end_regex,
-                ) in patterns.keep_blocks.items()
-            },
-            rest={name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_rest.items()},
-            header={name: KeepMarkerSpec(marker=marker) for name, marker in patterns.keep_header.items()},
-        ),
         local_content,
-        phase=selected_phase,
+        selected_phase=selected_phase,
         source_path=source_path,
+        post_passes=post_passes,
     )
-    content = apply_regex_replacements(
-        content,
-        patterns.regexes,
-        local_content,
-        phase=selected_phase,
+    logger.debug(
+        'text_replacement_completed',
+        tag_blocks_replaced=len(tags_to_replace),
+        families_applied=[family.name for family in FAMILIES],
     )
-    content = apply_multiregex_replacements(
-        content,
-        patterns.multiregex_blocks,
-        patterns.multiregexes,
-        local_content,
-        phase=selected_phase,
-    )
+    return result
+
+
+def _run_post_passes(
+    content: str,
+    local_content: str,
+    *,
+    selected_phase: str,
+    source_path: str | None,
+    post_passes: Iterable[PostPass] | None,
+) -> str:
+    """Apply caller-supplied post passes, or the legacy after-render default."""
     if post_passes is None and selected_phase == PreprocessPhase.AFTER_RENDER.value:
         # Legacy default: preserve developer-chosen insertion function/args
         # from the local file. Runs only after render so loop-generated markers
@@ -372,48 +252,19 @@ def preprocess_text(  # noqa: PLR0913 - canonical entry point, params are the pu
             adopt_local_insertion_markers,
         )
 
-        content = adopt_local_insertion_markers(
+        return adopt_local_insertion_markers(
             content,
             local_content,
             source_path=source_path,
         )
-    elif post_passes:
+    if post_passes:
         for post_pass in post_passes:
             content = post_pass(
                 content,
                 local_content,
                 source_path=source_path,
             )
-    result = content
-    logger.debug(
-        'text_replacement_completed',
-        tag_blocks_replaced=len(tags_to_replace),
-        regexes_applied=len(patterns.regexes),
-        multiregexes_applied=len(patterns.multiregexes),
-    )
-    return result
-
-
-def replace_text(
-    template_content: str,
-    local_content: str,
-    anchors_dictionary: dict[str, str] | None = None,
-    *,
-    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
-    source_path: str | None = None,
-) -> str:
-    """Backward-compatible alias for :func:`preprocess_text`.
-
-    Kept for existing callers; new code should use :func:`preprocess_text`,
-    which additionally accepts ``post_passes``.
-    """
-    return preprocess_text(
-        template_content,
-        local_content,
-        anchors_dictionary,
-        phase=phase,
-        source_path=source_path,
-    )
+    return content
 
 
 def strip_directives(

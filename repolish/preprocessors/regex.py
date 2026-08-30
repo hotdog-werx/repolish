@@ -12,9 +12,33 @@ from dataclasses import dataclass
 from hotlog import get_logger
 
 from repolish.preprocessors.directive_phase import directive_phase_of
-from repolish.preprocessors.directives import REGEX_DIRECTIVE_RE
+from repolish.preprocessors.directives import (
+    REGEX_DIRECTIVE_RE,
+    DirectiveMapDefinition,
+    extract_directive_map,
+)
 
 logger = get_logger(__name__)
+
+
+def extract_regex_directives(
+    content: str,
+    phase: str,
+    source_path: str | None = None,
+) -> dict[str, str]:
+    """Extract regex directives from *content* for the selected *phase*."""
+    return extract_directive_map(
+        content,
+        _REGEX_EXTRACT_DEF,
+        phase=phase,
+        source_path=source_path,
+    )
+
+
+_REGEX_EXTRACT_DEF = DirectiveMapDefinition[str](
+    pattern=REGEX_DIRECTIVE_RE,
+    parse_value=lambda pattern: pattern,
+)
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-from repolish.preprocessors import replace_text
+from repolish.preprocessors import preprocess_text
 
 ASCII_ART = """
                       ⣠⣾⣿⠟⠋⠙⠻⣦⡀
@@ -70,7 +70,7 @@ def test_replace_ascii_art_single_assertion():
     template's regex captures the block and the local file provides the
     ASCII art starting at column 0.
     """
-    out = replace_text(TEMPLATE, LOCAL)
+    out = preprocess_text(TEMPLATE, LOCAL)
     assert out == EXPECTED_LOCAL
 
 
@@ -80,5 +80,5 @@ def test_replace_ascii_art_indented_anchor():
     When the template's anchor is indented, trimming should drop less-
     indented lines from the captured block.
     """
-    out = replace_text(TEMPLATE_INDENTED, LOCAL_INDENTED)
+    out = preprocess_text(TEMPLATE_INDENTED, LOCAL_INDENTED)
     assert out == EXPECTED_LOCAL_INDENTED

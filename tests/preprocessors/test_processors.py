@@ -6,9 +6,9 @@ import pytest
 
 from repolish.preprocessors import (
     PreprocessPhase,
-    replace_text,
-    safe_file_read,
+    preprocess_text,
 )
+from repolish.preprocessors.files import safe_file_read
 
 
 @dataclass
@@ -349,8 +349,8 @@ def test_safe_file_read_directory(tmp_path: Path):
     ids=lambda x: x.id,
 )
 def test_replace_text(test_case: ReplaceTextTestCase):
-    """Test the main replace_text function with various cases."""
-    result = replace_text(
+    """Test the main preprocess_text function with various cases."""
+    result = preprocess_text(
         test_case.template,
         test_case.local_content,
         anchors_dictionary=test_case.anchors or {},
@@ -386,14 +386,14 @@ def test_replace_text_after_render_keep_block_runs_only_in_second_pass() -> None
         """,
     )
 
-    pre = replace_text(
+    pre = preprocess_text(
         template,
         local_content,
         phase=PreprocessPhase.PRE_RENDER,
     )
     assert 'repolish-keep-block' in pre
 
-    post = replace_text(
+    post = preprocess_text(
         pre,
         local_content,
         phase=PreprocessPhase.AFTER_RENDER,
@@ -411,7 +411,7 @@ def test_replace_text_after_render_regex_runs_only_in_second_pass() -> None:
     )
     local_content = 'version: 2.1.0\n'
 
-    pre = replace_text(
+    pre = preprocess_text(
         template,
         local_content,
         phase=PreprocessPhase.PRE_RENDER,
@@ -419,7 +419,7 @@ def test_replace_text_after_render_regex_runs_only_in_second_pass() -> None:
     assert 'repolish-regex[v|after-render]' in pre
     assert 'version: 0.0.0' in pre
 
-    post = replace_text(
+    post = preprocess_text(
         pre,
         local_content,
         phase=PreprocessPhase.AFTER_RENDER,
@@ -446,14 +446,14 @@ def test_replace_text_after_render_multiregex_runs_only_in_second_pass() -> None
         """,
     )
 
-    pre = replace_text(
+    pre = preprocess_text(
         template,
         local_content,
         phase=PreprocessPhase.PRE_RENDER,
     )
     assert 'repolish-multiregex[tools|after-render]' in pre
 
-    post = replace_text(
+    post = preprocess_text(
         pre,
         local_content,
         phase=PreprocessPhase.AFTER_RENDER,
@@ -472,14 +472,14 @@ def test_replace_text_accepts_phase_enum() -> None:
     )
     local_content = 'version: 2.1.0\n'
 
-    pre = replace_text(
+    pre = preprocess_text(
         template,
         local_content,
         phase=PreprocessPhase.PRE_RENDER,
     )
     assert 'repolish-regex[v|after-render]' in pre
 
-    post = replace_text(pre, local_content, phase=PreprocessPhase.AFTER_RENDER)
+    post = preprocess_text(pre, local_content, phase=PreprocessPhase.AFTER_RENDER)
     assert 'repolish-regex[v|after-render]' not in post
     assert 'version: 2.1.0' in post
 
@@ -489,7 +489,7 @@ def test_replace_text_regex_fallback_skips_whitespace_only_line() -> None:
     template = '## repolish-regex[v]: ^version:\\s*(.+)$\n    '
     local_content = 'version: 9.9.9\n'
 
-    out = replace_text(template, local_content)
+    out = preprocess_text(template, local_content)
 
     # Directive line is stripped; no template match exists to replace.
     assert out == '    '

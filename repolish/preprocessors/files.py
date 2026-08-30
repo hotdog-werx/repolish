@@ -15,11 +15,24 @@ from hotlog import get_logger
 from repolish.preprocessors.core import (
     PostPass,
     preprocess_text,
-    safe_file_read,
 )
 from repolish.preprocessors.directive_phase import PreprocessPhase
 
 logger = get_logger(__name__)
+
+
+def safe_file_read(file_path: Path) -> str:
+    """Safely reads the content of a file if it exists.
+
+    Args:
+        file_path: Path to the file to read.
+
+    Returns:
+        The content of the file, or an empty string if the file does not exist.
+    """
+    if file_path.exists() and file_path.is_file():
+        return file_path.read_text(encoding='utf-8')
+    return ''
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,13 @@ All patterns are compiled with ``re.MULTILINE`` so they serve both full-content
 """
 
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Generic, TypeVar
+
+from repolish.preprocessors.directive_phase import split_directive_tag
+
+T = TypeVar('T')
 
 # Region markers: ``repolish-start[name]`` ... ``repolish-end[name]``.
 # Not a single-line directive — matches whole blocks, so it is only used by
@@ -57,3 +64,36 @@ MULTIREGEX_DIRECTIVE_RE = re.compile(
     r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
     re.MULTILINE,
 )
+
+
+@dataclass(frozen=True)
+class DirectiveMapDefinition(Generic[T]):
+    """How to turn one family's directive-line matches into extracted values.
+
+    ``parse_value`` receives the pattern's captured groups after the bracketed
+    name, in order, and returns the payload stored for that directive.
+    """
+
+    pattern: re.Pattern[str]
+    parse_value: Callable[..., T]
+
+
+def extract_directive_map(
+    content: str,
+    definition: DirectiveMapDefinition[T],
+    *,
+    phase: str,
+    source_path: str | None = None,
+) -> dict[str, T]:
+    """Extract a phase-filtered directive map keyed by logical directive name."""
+    result: dict[str, T] = {}
+    for match in definition.pattern.findall(content):
+        raw_name, *values = match
+        name, directive_phase = split_directive_tag(
+            raw_name,
+            source_path=source_path,
+        )
+        if directive_phase != phase:
+            continue
+        result[name] = definition.parse_value(*values)
+    return result
