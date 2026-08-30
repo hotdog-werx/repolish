@@ -118,8 +118,8 @@ same-indentation region — this stops a greedy multiline pattern from pulling t
 next section of the file into the capture. When in doubt, tighten the pattern
 instead of relying on the guard.
 
-The guard has one real surprise, found while validating this very page with
-`preview`. For an append-zone directive like:
+The guard has one real surprise, with append-zone directives. For a pattern
+like:
 
 ```yaml
 ## repolish-regex[project-ignores]: ^## project-specific patterns[^\n]*\n([\s\S]*)$

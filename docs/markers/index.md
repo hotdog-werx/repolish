@@ -69,5 +69,10 @@ Known gaps, tracked as future work rather than documented behavior:
   finds nothing in your current file, its directive lines survive into the
   output instead of being stripped; this includes fresh projects with no local
   file at all. Quirk, not design (preview-verified).
+- **Stacked keep-block directives** — a keep-block directive's section ends at
+  the next keep directive line, so several adjacent directive lines leave the
+  earlier regions unmanaged. Documented as a placement rule in
+  [Keep Blocks](keep-block.md#syntax); making stacked directives just work is a
+  possible non-breaking change for a later version.
 
 <!-- Usage examples to be drawn from: tests/directives/, tests/insertions/, tests/integration/test_directives_after_render.py -->
