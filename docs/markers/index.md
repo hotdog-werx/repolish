@@ -29,10 +29,14 @@ quadrantChart
 - **Keep regions** — `repolish-keep-block` / `-rest` / `-header`: repolish
   regenerates the file from a template, but marked regions come from _your_
   current version.
-- **Insertions** — `repolish:on/off`: you own the file, but marked regions are
-  filled by provider functions.
-- **Insertion zones** — `repolish-insert` (planned): the template declares the
-  region _and_ the provider fills it. The fourth quadrant completes the pattern.
+- **Insertions** — `repolish:on/off`: marked regions filled by provider
+  functions. The marker block can live in a file you own, or be shipped by a
+  template — insertion markers pass through rendering untouched and are filled
+  after the file is written.
+- **Insertion zones** — `repolish-insert` (planned): like insertions, but the
+  zone markers are declared by the provider and _blend into the document_
+  (provider-branded markers such as a generated badge row that reads as if you
+  wrote it), instead of the explicit `repolish:on/off` comment syntax.
 
 The **Directives** pages in this tab cover the template side — tag blocks, keep
 regions, regex and multiregex — and **Insertions** covers the function-filled
@@ -40,16 +44,16 @@ blocks in developer-owned files.
 
 ## Markers at a glance
 
-| Marker                                              | What it's for                                                               | `after-render`                               | Status    |
-| --------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- | --------- |
-| `repolish-start` / `repolish-end`                   | Tag blocks — provider fills a region (`create_anchors()` / `repolish.yaml`) | No — anchor content must exist before Jinja2 | Available |
-| `repolish-keep-block`                               | Preserve a bounded region from your current file                            | Yes                                          | Available |
-| `repolish-keep-rest`                                | Preserve everything from a marker to end of file                            | Yes                                          | Available |
-| `repolish-keep-header`                              | Preserve the top of the file up to a marker                                 | Yes                                          | Available |
-| `repolish-regex`                                    | Adopt a single value or line by pattern                                     | Yes                                          | Available |
-| `repolish-multiregex-block` / `repolish-multiregex` | Merge a structured section (e.g. `key = "value"` lines) keeping your values | Yes                                          | Available |
-| `repolish:on` / `repolish:off`                      | Insertions — provider function fills blocks in _your own_ files             | n/a — insertions already run after rendering | Available |
-| `repolish-insert`                                   | Insertion zones — provider declares a fillable zone in the template         | n/a — filled by the insertion phase          | Planned   |
+| Marker                                              | What it's for                                                                                     | `after-render`                               | Status    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------- | --------- |
+| `repolish-start` / `repolish-end`                   | Tag blocks — provider fills a region (`create_anchors()` / `repolish.yaml`)                       | No — anchor content must exist before Jinja2 | Available |
+| `repolish-keep-block`                               | Preserve a bounded region from your current file                                                  | Yes                                          | Available |
+| `repolish-keep-rest`                                | Preserve everything from a marker to end of file                                                  | Yes                                          | Available |
+| `repolish-keep-header`                              | Preserve the top of the file up to a marker                                                       | Yes                                          | Available |
+| `repolish-regex`                                    | Adopt a single value or line by pattern                                                           | Yes                                          | Available |
+| `repolish-multiregex-block` / `repolish-multiregex` | Merge a structured section (e.g. `key = "value"` lines) keeping your values                       | Yes                                          | Available |
+| `repolish:on` / `repolish:off`                      | Insertions — provider function fills a marked block, in _your own_ files or shipped by a template | n/a — insertions already run after rendering | Available |
+| `repolish-insert`                                   | Insertion zones — provider declares a fillable zone in the template                               | n/a — filled by the insertion phase          | Planned   |
 
 <!-- insertion-candidate: the after-render and status columns mirror the directive registry (repolish/directives/registry.py) plus the planned insert-zones family — could be generated once directives self-document -->
 
@@ -57,9 +61,11 @@ blocks in developer-owned files.
 
 Known gaps, tracked as future work rather than documented behavior:
 
-- **Insertion zones** — the fourth quadrant (`repolish-insert`): a provider
-  declares a fillable zone in a template, the insertion phase fills it once the
-  file is on disk. Planned.
+- **Insertion zones** — the fourth quadrant (`repolish-insert`): the fill
+  mechanics already exist (`repolish:on/off` works in template-rendered files
+  too); the missing piece is the marker _form_ — provider-declared zones whose
+  branded markers blend into the document and read as if you wrote them, instead
+  of the explicit machinery comment. Planned.
 - **Repeated regex / multiregex occurrences** — regex and multiregex apply is
   _single-occurrence_: with loop-generated duplicates, only the first rendered
   occurrence is reconciled against your file; the rest keep template defaults.

@@ -2,11 +2,11 @@
 
 **Aliases:** `repolish-keep-the-rest`, `repolish-keep-footer`.
 
-Everything from a marker line **to the end of the file** comes from your
-project file; the provider manages the head. This is the [keep block](keep-block.md)
-with its end implied — and the direct descendant of the tail-capture regex
-that the multiregex workflow kept needing ("let me append my own tools after
-yours"). The marker line names the intention instead of hiding it in a pattern.
+Everything from a marker line **to the end of the file** comes from your project
+file; the provider manages the head. This is the [keep block](keep-block.md)
+with its end implied — and the direct descendant of the tail-capture regex that
+the multiregex workflow kept needing ("let me append my own tools after yours").
+The marker line names the intention instead of hiding it in a pattern.
 
 The classic case: `.gitignore`, where the provider ships canonical ignores and
 the project's own entries accumulate at the bottom.
@@ -80,8 +80,8 @@ the project's own entries accumulate at the bottom.
 
 - If your file has no marker line, the template default tail ships — so fresh
   projects still get a sensible file.
-- The marker line itself is preserved in the output; only the directive line
-  is stripped.
+- The marker line itself is preserved in the output; only the directive line is
+  stripped.
 - Supports the [`|after-render` phase](phases.md).
 - Compose it with [multiregex](multiregex.md#adding-your-own-own-the-tail) to
   get "provider owns the values, developers own the tail" in one file — the

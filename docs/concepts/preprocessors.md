@@ -34,12 +34,12 @@ provider-supplied anchor content — are covered in
 
 ## Keep directives
 
-Keep directives name developer-owned regions inside provider-managed files —
-no regex to write, and the visible markers document the intention. Each variant
-is covered in the Markers tab:
+Keep directives name developer-owned regions inside provider-managed files — no
+regex to write, and the visible markers document the intention. Each variant is
+covered in the Markers tab:
 
-- [Keep Blocks](../markers/keep-block.md) — a bounded `start`/`end` region
-  (with `end-regex` for Jinja-generated loops).
+- [Keep Blocks](../markers/keep-block.md) — a bounded `start`/`end` region (with
+  `end-regex` for Jinja-generated loops).
 - [Keep the Rest](../markers/keep-rest.md) — everything from a marker to EOF.
 - [Keep the Header](../markers/keep-header.md) — the top of the file up to a
   marker.
@@ -76,10 +76,10 @@ repolish preview anchor_example.yaml
 
 **Anchor** names are global identifiers across all templates in a run: two
 templates from different providers can each use a `## repolish-start[init]`
-block, but `init` resolves to a single replacement string - the later
-provider's value wins and the earlier one is silently discarded. Namespace
-anchor names per provider (`docker-init` instead of `init`) — see
+block, but `init` resolves to a single replacement string - the later provider's
+value wins and the earlier one is silently discarded. Namespace anchor names per
+provider (`docker-init` instead of `init`) — see
 [Tag Blocks & Anchors](../markers/tag-blocks.md#naming).
 
-Regex, multiregex, and keep directive names are scoped to the template file
-they appear in; the same name in two different files does not conflict.
+Regex, multiregex, and keep directive names are scoped to the template file they
+appear in; the same name in two different files does not conflict.

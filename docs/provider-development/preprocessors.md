@@ -71,8 +71,8 @@ lines document the intention. Pages and examples:
   above its own region; stacked directive lines leave earlier regions
   unmanaged). Includes the registry.py-style example with corrected placement.
 - [Keep the Rest](../markers/keep-rest.md) — everything from a marker to EOF.
-- [Keep the Header](../markers/keep-header.md) — top of file up to a marker;
-  the directive must be the template's first line.
+- [Keep the Header](../markers/keep-header.md) — top of file up to a marker; the
+  directive must be the template's first line.
 
 ---
 
