@@ -68,47 +68,9 @@ provider keys are appended.
 
 ## Block anchors
 
-A block anchor marks a section in the template whose content is supplied by the
-provider's `create_anchors()` method (which can generate content dynamically
-from context, such as assembling install extras from a list) or by an `anchors:`
-mapping in `repolish.yaml` (project-level overrides win). All marker lines are
-stripped - the final project file is clean.
-
-The tradeoff compared to regex directives: to customise the injected content you
-set it in `repolish.yaml`, because editing the file directly won't stick - the
-next apply overwrites it with whatever the provider computes.
-
-```makefile
-.PHONY: install
-install:
-## repolish-start[install-extras]
-	pip install -e ".[dev]"
-## repolish-end[install-extras]
-```
-
-The provider supplies the replacement:
-
-```python
-def create_anchors(self, context: Ctx) -> dict[str, str]:
-    extras = ','.join(['dev', *context.extra_groups])
-    return {'install-extras': f'\tpip install -e ".[{extras}]"'}
-```
-
-After preprocessing, the marker lines are gone and the injected content is in
-place - exactly what Jinja2 will render.
-
-The marker comment style is flexible. Any prefix before `repolish-start[name]`
-is accepted, so you can use the comment syntax that fits the file type:
-
-```python
-# repolish-start[block]   ← Python / TOML / YAML
-// repolish-start[block]  ← JavaScript / CSS
-<!-- repolish-start[block] -->   ← HTML / Markdown
-/* repolish-start[block] */      ← CSS / C
-```
-
-If no replacement is provided for a key, the default content between the markers
-is kept (the markers themselves are still stripped).
+Tag blocks — `repolish-start[name]` … `repolish-end[name]` pairs filled by
+provider-supplied anchor content — are covered in
+[Tag Blocks & Anchors](../markers/tag-blocks.md).
 
 ## Keep directives
 

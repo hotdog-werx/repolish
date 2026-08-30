@@ -104,6 +104,9 @@ There are two anchor types:
   **current project file** to capture a value (e.g. a version the developer
   already bumped). That captured value replaces the default in the template.
 
+See [Tag Blocks & Anchors](../markers/tag-blocks.md) for the full story —
+content sources, override precedence, and when anchors are the right tool.
+
 === "Block anchor — provider template"
 
     The provider ships a template with a block anchor. The default content

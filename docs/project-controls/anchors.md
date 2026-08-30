@@ -39,83 +39,15 @@ yet.
 
 For cases where the provider needs to inject computed content into a section -
 content that changes based on context, like assembling install extras from a
-list - use a block anchor:
-
-```
-## repolish-start[my-section]
-...default content here...
-## repolish-end[my-section]
-```
-
-The marker style (`##`) can be any comment prefix that fits the file type - `#`,
-`//`, `--`, etc. What matters is the `repolish-start[name]` /
-`repolish-end[name]` text. All marker lines are stripped - the final project
-file is clean.
-
-### How it works
-
-1. The provider's template ships the anchor with default content between the
-   markers.
-2. During preprocessing, repolish replaces the block with whatever
-   `create_anchors()` returns for that key, or whatever `anchors:` in
-   `repolish.yaml` specifies (config-level overrides win).
-3. If no replacement is provided, the default content is kept.
-4. The marker lines are stripped from the final written file.
-
-To override an anchor from `repolish.yaml`, add an `anchors` mapping under the
-relevant provider:
-
-```yaml
-providers:
-  mylib:
-    cli: mylib-link
-    anchors:
-      install-extras: 'pip install -e ".[dev,docs]"'
-```
-
-The value must be the full replacement string (no markers). Config-level anchors
-are merged on top of anchor values returned by the provider, so you only need to
-specify the keys you want to override.
-
-Anchor overrides are scoped to the provider they are declared under. Setting
-`anchors:` on one provider entry cannot affect anchors contributed by a
-different provider. This mirrors how `context` overrides work: each provider's
-configuration section is isolated.
-
-Because anchor names are defined by the provider's `create_anchors()`
-implementation, providers should document which anchor keys they support and
-what content each key expects. Without that documentation, project maintainers
-have no way to discover which names are valid or what format the replacement
-string should follow.
+list - use a block anchor (`repolish-start[name]` / `repolish-end[name]`).
+Syntax, content sources (`create_anchors()` and the `anchors:` override in
+`repolish.yaml`), and a worked example are covered in
+[Tag Blocks & Anchors](../markers/tag-blocks.md).
 
 The tradeoff: to customise the injected content you override it in
 `repolish.yaml`, because editing the file directly won't stick - the next apply
 overwrites it with whatever the provider computes. With regex directives the
 file is always the source of truth.
-
-### Example - provider injects custom install extras
-
-Provider template:
-
-```makefile
-## repolish-start[install-extras]
-pip install -e ".[dev]"
-## repolish-end[install-extras]
-```
-
-Provider `create_anchors()`:
-
-```python
-def create_anchors(self, context: Ctx) -> dict[str, str]:
-    extras = ",".join(["dev", *context.extra_groups])
-    return {"install-extras": f'pip install -e ".[{extras}]"'}
-```
-
-Applied result (marker lines stripped):
-
-```makefile
-pip install -e ".[dev,docs,gpu]"
-```
 
 ## When to use each
 

@@ -77,39 +77,11 @@ The block pattern locates the `[tools]` section; the line pattern extracts each
 
 ## Letting the developer own a section (block anchor)
 
-Use a block anchor when the provider should supply content that a developer can
+Use a tag block when the provider should supply content that a developer can
 override for their project, but editing the file directly would not work
-(repolish would overwrite it on the next apply).
-
-```dockerfile
-# repolish/Dockerfile.jinja
-FROM python:3.11-slim
-
-## repolish-start[install]
-RUN apt-get update && apt-get install -y build-essential libssl-dev
-## repolish-end[install]
-
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-```
-
-The provider can compute the default dynamically:
-
-```python
-def create_anchors(self, context: Ctx) -> dict[str, str]:
-    packages = ' '.join(context.system_packages)
-    return {'install': f'RUN apt-get update && apt-get install -y {packages}'}
-```
-
-A developer who needs extra system packages overrides it in `repolish.yaml`:
-
-```yaml
-anchors:
-  install: |
-    RUN apt-get update && apt-get install -y locales libpq-dev
-```
-
-Project-level `anchors:` always win over provider code.
+(repolish would overwrite it on the next apply). Syntax, content sources, and
+override precedence are covered in
+[Tag Blocks & Anchors](../markers/tag-blocks.md).
 
 ---
 
