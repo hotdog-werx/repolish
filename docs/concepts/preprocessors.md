@@ -16,26 +16,15 @@ section contains or which zone should be preserved.
 
 Regex directives — adopting single values from your current project file via
 `## repolish-regex[name]: pattern` — are covered in
-[Regex](../markers/regex.md), including the two-sided contract (the pattern
-must match the template default too) and the indentation trim safeguard.
+[Regex](../markers/regex.md), including the two-sided contract (the pattern must
+match the template default too) and the indentation trim safeguard.
 
 ## Multiregex directives
 
-For structured blocks (a `[tools]` section in a TOML file, a `requirements`
-list, etc.) multiregex directives let you merge additions from the provider
-while keeping versions you have already pinned locally.
-
-```toml
-[tools]
-## repolish-multiregex-block[tools|after-render]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools|after-render]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
-uv = "0.0.0"
-dprint = "0.0.0"
-```
-
-The block pattern locates the relevant section; the line pattern extracts
-key-value pairs. Your existing versions are preserved for matching keys; new
-provider keys are appended.
+Multiregex directives — a block/line pattern pair that keeps your values for a
+structured section like `[tools]` — are covered in
+[Multiregex](../markers/multiregex.md), including the ownership contract (the
+provider owns the key set, you own the values).
 
 ## Block anchors
 

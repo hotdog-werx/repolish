@@ -53,7 +53,6 @@ just a section of it.
 ## Further reading
 
 The [Markers](../markers/index.md) tab covers each directive family in depth —
-[Regex](../markers/regex.md),
-[Tag Blocks & Anchors](../markers/tag-blocks.md) — plus
-[Phases](../markers/phases.md) and debugging with
+[Regex](../markers/regex.md), [Tag Blocks & Anchors](../markers/tag-blocks.md) —
+plus [Phases](../markers/phases.md) and debugging with
 [`repolish preview`](../reference/preview.md).

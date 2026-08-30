@@ -89,24 +89,67 @@ markers are still stripped.
 
 ## Worked example
 
-Template (`repolish/Makefile.jinja`):
+In a provider-managed Makefile. Note there is no _your file_ tab here — tag
+blocks never read it; the content comes from the provider or `repolish.yaml`.
 
-```makefile
-.PHONY: install
-install:
-## repolish-start[install-extras]
-	pip install -e ".[dev]"
-## repolish-end[install-extras]
-```
+=== "Template"
 
-With the provider's `create_anchors()` above and `context.extra_groups` set to
-`['docs', 'gpu']`, the rendered file is:
+    `repolish/Makefile.jinja` — with a default between the markers:
 
-```makefile
-.PHONY: install
-install:
-	pip install -e ".[dev,docs,gpu]"
-```
+    ```makefile
+    .PHONY: install
+    install:
+    ## repolish-start[install-extras]
+    	pip install -e ".[dev]"
+    ## repolish-end[install-extras]
+    ```
+
+=== "Provider code"
+
+    The provider assembles the value from context:
+
+    ```python
+    def create_anchors(self, context: Ctx) -> dict[str, str]:
+        extras = ','.join(['dev', *context.extra_groups])
+        return {'install-extras': f'\tpip install -e ".[{extras}]"'}
+    ```
+
+    With `context.extra_groups == ['docs', 'gpu']` the anchor value becomes
+    `pip install -e ".[dev,docs,gpu]"`.
+
+=== "Try it"
+
+    Save this as `scratch.yaml` — in preview, `config.anchors` holds the
+    *final* anchor map (provider code and YAML overrides already merged):
+
+    ```yaml
+    template: |
+      .PHONY: install
+      install:
+      ## repolish-start[install-extras]
+      	pip install -e ".[dev]"
+      ## repolish-end[install-extras]
+
+    config:
+      anchors:
+        install-extras: "\tpip install -e \".[dev,docs,gpu]\""
+    ```
+
+    and run:
+
+    ```bash
+    repolish preview scratch.yaml
+    ```
+
+=== "Result"
+
+    Markers stripped, anchor content in place — exactly what Jinja2 renders:
+
+    ```makefile
+    .PHONY: install
+    install:
+    	pip install -e ".[dev,docs,gpu]"
+    ```
 
 ## When to use
 

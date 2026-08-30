@@ -2,8 +2,8 @@
 
 Preview directive processing for a single template. This is the interactive
 debugger for working out template and directive syntax before running a full
-`repolish apply` — see the [Markers](../markers/index.md) tab for the
-directive families themselves.
+`repolish apply` — see the [Markers](../markers/index.md) tab for the directive
+families themselves.
 
 ```
 repolish preview [OPTIONS] DEBUG_FILE
@@ -61,13 +61,12 @@ Configuration for the directive pass. Currently supports:
 
 Preview runs the **pre-render phase only**: the Result is what Jinja2 will
 receive. Directives tagged `|after-render` pass through unprocessed and
-unstripped — intentional, since they don't get evaluated until after
-rendering in a real apply. Insertions are not simulated.
+unstripped — intentional, since they don't get evaluated until after rendering
+in a real apply. Insertions are not simulated.
 
 A full-render preview — Jinja2 rendering, the after-render phase, and
-insertions, so the Result matches an actual apply — is a planned expansion.
-The debug-file format will need to grow context/insertion inputs when that
-lands.
+insertions, so the Result matches an actual apply — is a planned expansion. The
+debug-file format will need to grow context/insertion inputs when that lands.
 
 ## Examples
 

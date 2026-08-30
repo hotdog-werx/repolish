@@ -41,26 +41,11 @@ capture-group rules, and the two-sided contract are covered in
 ## Preserving versioned tool entries (multiregex)
 
 Tool version files (`mise.toml`, `.tool-versions`, etc.) list many tools whose
-versions the developer manages locally. You want to ship sensible defaults but
-never clobber versions the developer has already updated.
-
-```toml
-# repolish/.mise.toml.jinja
-[tools]
-## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
-uv = "0.0.0"
-dprint = "0.0.0"
-starship = "0.0.0"
-```
-
-The block pattern locates the `[tools]` section; the line pattern extracts each
-`key = "value"` pair. On apply:
-
-- Keys already present in the project file keep their current values.
-- New keys from the template are appended.
-- Keys removed from the template are left untouched in the project file
-  (repolish does not delete lines it did not put there).
+versions the developer manages locally. Ship sensible defaults without
+clobbering versions the developer has already pinned. Syntax, the pair of
+patterns, and the ownership contract (your values survive for provider-declared
+keys; locally-added keys do not) are covered in
+[Multiregex](../markers/multiregex.md).
 
 ---
 

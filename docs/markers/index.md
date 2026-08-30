@@ -67,6 +67,7 @@ Known gaps, tracked as future work rather than documented behavior:
   pairing); extending the same pairing to regex/multiregex is the follow-up.
 - **Multiregex directive lines in unmatched blocks** — when the block pattern
   finds nothing in your current file, its directive lines survive into the
-  output instead of being stripped. Quirk, not design.
+  output instead of being stripped; this includes fresh projects with no local
+  file at all. Quirk, not design (preview-verified).
 
 <!-- Usage examples to be drawn from: tests/directives/, tests/insertions/, tests/integration/test_directives_after_render.py -->
