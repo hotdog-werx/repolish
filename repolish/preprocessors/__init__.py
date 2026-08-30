@@ -12,16 +12,18 @@ Public layers:
       :func:`run_phase` — the file node, plus their pairing/result types.
 
 Only the names listed in ``__all__`` are public. Family implementations
-(``anchors``, ``keep``, ``regex``, ``multiregex``), the shared region
-machinery (``regions``), and the grammar internals (``directives``,
-``directive_phase``, ``tag_names``) are private to the package. The extension
-point for new preprocessor families is ``registry.py``: one family module
-plus one :class:`~repolish.preprocessors.registry.DirectiveFamily` entry, and
-nothing outside ``repolish.preprocessors`` changes.
+(``anchors``, ``keep``, ``regex``, ``multiregex``) and the grammar internals
+(``directives``, ``directive_phase``, ``tag_names``) are private to the
+package. The extension point for new preprocessor families is
+``registry.py``: one family module plus one
+:class:`~repolish.preprocessors.registry.DirectiveFamily` entry, and nothing
+outside ``repolish.preprocessors`` changes.
 
 Boundary rule: this package must not statically import any other ``repolish.*``
-module; orchestrators inject extras such as insertion-marker adoption via
-``post_passes``.
+module except ``repolish.marker_kit`` — the shared internal leaf whose span,
+pairing, splice, and file I/O mechanics this package and
+``repolish.insertions`` both drive. Orchestrators inject extras such as
+insertion-marker adoption via ``post_passes``.
 """
 
 from repolish.preprocessors.core import (

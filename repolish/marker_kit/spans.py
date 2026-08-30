@@ -1,11 +1,11 @@
-"""Shared bounded-region machinery for marker-delimited template regions.
+"""Bounded marker regions over line lists, shared by marker-driven features.
 
-Keep blocks — and future region-based families such as provider insertion
-zones (the 4th quadrant) — both need to locate ``start ... end``/``end-regex``
-spans across line lists, including repeated occurrences. Hoisting the helpers
-here keeps them reusable without either family importing the other.
-
-Package-internal: not re-exported from ``repolish.preprocessors``.
+Keep blocks — and region-based families such as provider insertion zones (the
+4th quadrant) — need to locate ``start ... end``/``end-regex`` spans across
+line lists, including repeated occurrences. The helpers here are line-indexed;
+packages that work in char offsets (e.g. ``repolish.insertions``) keep their
+own span type and share only :mod:`~repolish.marker_kit.pairing` and
+:mod:`~repolish.marker_kit.splice`.
 """
 
 from __future__ import annotations

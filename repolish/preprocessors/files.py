@@ -12,6 +12,7 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.marker_kit import read_text_or_none, write_mode_preserved
 from repolish.preprocessors.core import (
     PostPass,
     preprocess_text,
@@ -79,13 +80,11 @@ def preprocess_file(
     Returns ``None`` when the template file is unreadable or not valid UTF-8
     (e.g. binary); the local file simply counts as absent when missing.
     """
-    try:
-        template_text = template_path.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError) as exc:
+    template_text = read_text_or_none(template_path)
+    if template_text is None:
         logger.debug(
             'skipping_unreadable_file',
             template_file=str(template_path),
-            error=str(exc),
         )
         return None
 
@@ -108,9 +107,7 @@ def write_if_changed(path: Path, result: FilePreprocessResult) -> bool:
     """
     if not result.changed:
         return False
-    mode = path.stat().st_mode
-    path.write_text(result.content, encoding='utf-8')
-    path.chmod(mode)
+    write_mode_preserved(path, result.content)
     return True
 
 

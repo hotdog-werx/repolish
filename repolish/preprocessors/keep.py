@@ -15,6 +15,14 @@ from hotlog import get_logger
 if TYPE_CHECKING:
     import re
 
+from repolish.marker_kit import (
+    OccurrenceTracker,
+    RegionBoundary,
+    find_all_bounded_regions,
+    find_bounded_regions_in_range,
+    find_first_line_index,
+    occurrence_key,
+)
 from repolish.preprocessors.directive_phase import (
     split_directive_tag,
 )
@@ -24,13 +32,6 @@ from repolish.preprocessors.directives import (
     KEEP_REST_DIRECTIVE_RE,
     DirectiveMapDefinition,
     extract_directive_map,
-)
-from repolish.preprocessors.regions import (
-    RegionBoundary,
-    find_all_bounded_regions,
-    find_bounded_regions_in_range,
-    find_first_line_index,
-    occurrence_key,
 )
 
 logger = get_logger(__name__)
@@ -128,7 +129,7 @@ class _KeepApplyContext:
     template_lines: list[str]
     local_lines: list[str]
     patterns: KeepPatterns
-    keep_block_occurrence: dict[tuple[str, str, str], int]
+    keep_block_occurrence: OccurrenceTracker[tuple[str, str, str]]
     phase: str
     source_path: str | None
 
@@ -164,7 +165,7 @@ def apply_keep_replacements(
         template_lines=template_lines,
         local_lines=local_lines,
         patterns=patterns,
-        keep_block_occurrence={},
+        keep_block_occurrence=OccurrenceTracker(),
         phase=phase,
         source_path=source_path,
     )
@@ -240,7 +241,7 @@ def _apply_keep_block(
         return result, directive_index + 1
 
     marker_key = occurrence_key(spec)
-    occurrence_start = ctx.keep_block_occurrence.get(marker_key, 0)
+    occurrence_start = ctx.keep_block_occurrence.take(marker_key, len(template_regions))
     local_regions = find_all_bounded_regions(
         ctx.local_lines,
         spec,
@@ -264,9 +265,6 @@ def _apply_keep_block(
         cursor = template_region[1] + 1
 
     result.extend(ctx.template_lines[cursor:segment_end])
-    ctx.keep_block_occurrence[marker_key] = occurrence_start + len(
-        template_regions,
-    )
 
     if matched_any:
         logger.debug('keep_block_matched_in_target', name=name)

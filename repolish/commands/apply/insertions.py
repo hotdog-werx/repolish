@@ -18,7 +18,9 @@ from repolish.insertions import (
     is_provider_owner,
     write_back,
 )
+from repolish.insertions.files import apply_insertions_file, render_insertions_file
 from repolish.insertions.parser import InsertionBlock, parse_text
+from repolish.marker_kit import read_text_or_none
 from repolish.utils import build_unified_diff, path_slug
 
 if TYPE_CHECKING:
@@ -218,12 +220,23 @@ def _apply_file_insertions(
 ) -> tuple[InsertionFileResult, dict[str, dict[str, InsertionFileResult]]]:
     """Apply insertions for a single file and return results."""
     target = ctx.base_dir / ctx.rel_path
-    original_text = target.read_text(encoding='utf-8')
+    drive = apply_insertions_file if persist_changes else render_insertions_file
+    outcome = drive(target, ctx.registry, file_path=ctx.rel_path)
+    if outcome is None:
+        return (
+            InsertionFileResult(
+                total_blocks=0,
+                failed_blocks=0,
+                functions=(),
+                diagnostics=(),
+            ),
+            {ctx.rel_path: {}},
+        )
+
+    original_text = outcome.original
+    result = outcome.result
     parsed = parse_text(original_text, file_path=ctx.rel_path)
     disabled_entries = collect_disabled_entries(parsed.blocks, ctx.registry)
-    result = write_back(original_text, ctx.registry, file_path=ctx.rel_path)
-    if persist_changes:
-        target.write_text(result.text, encoding='utf-8')
 
     if result.total_blocks == 0:
         return (
@@ -384,11 +397,9 @@ def stage_registered_insertions(
             continue
 
         staged_file = staged_root / rel_path
-        source_text = (
-            staged_file.read_text(encoding='utf-8')
-            if staged_file.exists() and staged_file.is_file()
-            else target.read_text(encoding='utf-8')
-        )
+        source_text = read_text_or_none(staged_file)
+        if source_text is None:
+            source_text = target.read_text(encoding='utf-8')
 
         rendered = write_back(source_text, registry, file_path=rel_path).text
         staged_file.parent.mkdir(parents=True, exist_ok=True)
@@ -441,11 +452,11 @@ def _staged_check_result(
         return _StagedCheckResult(handled=False)
 
     staged_file = setup_output / 'repolish' / rel_path
-    if not staged_file.exists() or not staged_file.is_file():
+    rendered = read_text_or_none(staged_file)
+    if rendered is None:
         return _StagedCheckResult(handled=False)
 
     current = target.read_text(encoding='utf-8')
-    rendered = staged_file.read_text(encoding='utf-8')
     if current == rendered:
         return _StagedCheckResult(handled=True)
     return _StagedCheckResult(
@@ -461,8 +472,7 @@ def _rendered_diff_if_any(
     registry: dict,
 ) -> tuple[str, str] | None:
     """Return a rendered diff tuple when live rendering differs from current file."""
-    current = target.read_text(encoding='utf-8')
-    rendered = write_back(current, registry, file_path=rel_path).text
-    if current == rendered:
+    outcome = render_insertions_file(target, registry, file_path=rel_path)
+    if outcome is None or not outcome.changed:
         return None
-    return (rel_path, build_unified_diff(rel_path, current, rendered))
+    return (rel_path, build_unified_diff(rel_path, outcome.original, outcome.result.text))
