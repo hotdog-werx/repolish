@@ -1,4 +1,4 @@
-from repolish.preprocessors.tag_names import (
+from repolish.directives.tag_names import (
     is_valid_tag_name,
     parse_section_name,
 )

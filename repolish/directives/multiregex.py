@@ -1,4 +1,4 @@
-"""Multi-regex preprocessing for templates.
+"""Multiregex directive processing for templates.
 
 This module handles multiregex pattern extraction and replacement, which allows
 extracting multiple key-value pairs from a block and replacing them in sections.
@@ -9,16 +9,16 @@ from dataclasses import dataclass
 
 from hotlog import get_logger
 
-from repolish.preprocessors.directive_phase import (
-    split_directive_tag,
-)
-from repolish.preprocessors.directives import (
+from repolish.directives.definitions import (
     MULTIREGEX_BLOCK_DIRECTIVE_RE,
     MULTIREGEX_DIRECTIVE_RE,
     DirectiveMapDefinition,
     extract_directive_map,
 )
-from repolish.preprocessors.tag_names import parse_section_name
+from repolish.directives.phases import (
+    split_directive_tag,
+)
+from repolish.directives.tag_names import parse_section_name
 
 logger = get_logger(__name__)
 

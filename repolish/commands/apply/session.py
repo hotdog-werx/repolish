@@ -27,6 +27,7 @@ from repolish.commands.apply.staging import (
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.validators import _collect_file_validation_messages
 from repolish.config.models.project import RepolishConfig
+from repolish.directives import DirectivePhase, run_phase
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
@@ -35,7 +36,6 @@ from repolish.hydration import (
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.insertions.adoption import adopt_local_insertion_markers
-from repolish.preprocessors import PreprocessPhase, run_phase
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
 from repolish.utils import run_post_process
@@ -134,7 +134,7 @@ def _validation_has_warnings(session: ResolvedSession) -> bool:
     )
 
 
-def _run_after_render_preprocessors(
+def _run_after_render_directives(
     setup_output: Path,
     base_dir: Path,
 ) -> None:
@@ -142,12 +142,12 @@ def _run_after_render_preprocessors(
 
     Pairing of rendered files to their local counterparts is owned by hydration
     (:func:`rendered_file_pairs`); the after-render traversal itself lives in
-    the preprocessors node (:func:`run_phase`). Insertion-marker adoption is
-    wired explicitly as a post pass so the preprocessors package stays free of
+    the directives node (:func:`run_phase`). Insertion-marker adoption is
+    wired explicitly as a post pass so the directives package stays free of
     insertions knowledge.
     """
     run_phase(
-        PreprocessPhase.AFTER_RENDER,
+        DirectivePhase.AFTER_RENDER,
         rendered_file_pairs(setup_output, base_dir),
         post_passes=[adopt_local_insertion_markers],
     )
@@ -215,7 +215,7 @@ def apply_session(
 
     # Reconcile developer-owned content that is only discoverable after Jinja rendering
     # (for example, directives inside loop-generated sections).
-    _run_after_render_preprocessors(setup_output, base_dir)
+    _run_after_render_directives(setup_output, base_dir)
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:

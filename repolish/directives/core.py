@@ -1,8 +1,8 @@
-"""Core preprocessing utilities for templates.
+"""Core directive-processing utilities for templates.
 
-The pure text layer of the preprocessors package: ``extract_patterns``
-discovers directive patterns and ``preprocess_text`` applies the registered
-directive families (see :mod:`~repolish.preprocessors.registry`) around the
+The pure text layer of the directives package: ``extract_patterns``
+discovers directive patterns and ``process_text`` applies the registered
+directive families (see :mod:`~repolish.directives.registry`) around the
 tag-block replacement pass. No file I/O lives here — that is ``files.py``.
 """
 
@@ -12,12 +12,12 @@ from typing import Protocol
 
 from hotlog import get_logger
 
-from repolish.preprocessors.anchors import replace_tags_in_content
-from repolish.preprocessors.directive_phase import PreprocessPhase
-from repolish.preprocessors.directives import TAG_BLOCK_RE
-from repolish.preprocessors.keep import KeepPatterns
-from repolish.preprocessors.multiregex import MultiregexPatterns
-from repolish.preprocessors.registry import FAMILIES
+from repolish.directives.anchors import replace_tags_in_content
+from repolish.directives.definitions import TAG_BLOCK_RE
+from repolish.directives.keep import KeepPatterns
+from repolish.directives.multiregex import MultiregexPatterns
+from repolish.directives.phases import DirectivePhase
+from repolish.directives.registry import FAMILIES
 
 logger = get_logger(__name__)
 
@@ -46,7 +46,7 @@ class Patterns:
     """Container for extracted patterns from content.
 
     Family payloads live in ``by_family``, keyed by the family names from
-    :data:`~repolish.preprocessors.registry.FAMILIES``. The flat per-family
+    :data:`~repolish.directives.registry.FAMILIES``. The flat per-family
     accessors below are read-only compatibility views over those payloads.
     """
 
@@ -118,7 +118,7 @@ def _extract_tag_blocks(content: str) -> dict[str, str]:
 def extract_patterns(
     content: str,
     *,
-    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    phase: DirectivePhase = DirectivePhase.PRE_RENDER,
     source_path: str | None = None,
 ) -> Patterns:
     """Extracts text blocks and regex patterns from the given content.
@@ -149,12 +149,12 @@ def extract_patterns(
     return Patterns(tag_blocks=tag_blocks, by_family=by_family)
 
 
-def preprocess_text(  # noqa: PLR0913 - canonical entry point, params are the public contract
+def process_text(  # noqa: PLR0913 - canonical entry point, params are the public contract
     template_content: str,
     local_content: str,
     anchors_dictionary: dict[str, str] | None = None,
     *,
-    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    phase: DirectivePhase = DirectivePhase.PRE_RENDER,
     source_path: str | None = None,
     post_passes: Iterable[PostPass] | None = None,
 ) -> str:
@@ -201,7 +201,7 @@ def preprocess_text(  # noqa: PLR0913 - canonical entry point, params are the pu
     # fall back to the template's own block content (i.e. leave defaults).
     content = template_content
     tags_to_replace: dict[str, str] = {}
-    if selected_phase == PreprocessPhase.PRE_RENDER.value:
+    if selected_phase == DirectivePhase.PRE_RENDER.value:
         for tag, default_value in patterns.tag_blocks.items():
             if anchors_dictionary and tag in anchors_dictionary:
                 tags_to_replace[tag] = anchors_dictionary[tag]
@@ -242,10 +242,10 @@ def _run_post_passes(
     post_passes: Iterable[PostPass] | None,
 ) -> str:
     """Apply caller-supplied post passes, or the legacy after-render default."""
-    if post_passes is None and selected_phase == PreprocessPhase.AFTER_RENDER.value:
+    if post_passes is None and selected_phase == DirectivePhase.AFTER_RENDER.value:
         # Legacy default: preserve developer-chosen insertion function/args
         # from the local file. Runs only after render so loop-generated markers
-        # are fully concrete. Imported lazily so the preprocessors package has
+        # are fully concrete. Imported lazily so the directives package has
         # no static dependency on repolish.insertions — orchestrators should
         # pass post_passes explicitly instead (see commands/apply/session.py).
         from repolish.insertions.adoption import (  # noqa: PLC0415 - legacy default, keeps insertions out of the static dependency graph
@@ -270,7 +270,7 @@ def _run_post_passes(
 def strip_directives(
     content: str,
     *,
-    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    phase: DirectivePhase = DirectivePhase.PRE_RENDER,
     source_path: str | None = None,
 ) -> str:
     """Strip directive lines and resolve defaults against an empty local file.
@@ -280,4 +280,4 @@ def strip_directives(
     regions resolve from the template itself, since there is no local content
     to extract overrides from.
     """
-    return preprocess_text(content, '', phase=phase, source_path=source_path)
+    return process_text(content, '', phase=phase, source_path=source_path)

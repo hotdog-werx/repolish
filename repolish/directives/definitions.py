@@ -1,4 +1,4 @@
-"""Canonical directive-line grammar shared by all preprocessor families.
+"""Canonical directive-line grammar shared by all directive families.
 
 Every repolish directive family (tags, keep, regex, multiregex) is recognized
 by exactly one compiled pattern defined here. Extraction (``core``) and
@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from repolish.preprocessors.directive_phase import split_directive_tag
+from repolish.directives.phases import split_directive_tag
 
 T = TypeVar('T')
 

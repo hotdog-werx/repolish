@@ -35,8 +35,8 @@ from repolish.commands.apply.staging import (
 )
 from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.console import console
+from repolish.directives import strip_directives
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.preprocessors import strip_directives
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
 

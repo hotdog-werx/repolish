@@ -1,6 +1,6 @@
 """File-level insertion driving: the node interface for target files.
 
-Mirrors :mod:`repolish.preprocessors.files`: guarded read in, structured
+Mirrors :mod:`repolish.directives.files`: guarded read in, structured
 result out, optional mode-preserving persist. Orchestration concerns —
 provider attribution, per-provider reports, staged-tree layout — stay with
 callers such as :mod:`repolish.commands.apply.insertions`.

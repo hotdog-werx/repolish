@@ -1,4 +1,4 @@
-"""Keep-block preprocessing for templates.
+"""Keep-block directive processing for templates.
 
 This module handles explicit developer-owned regions that should be preserved
 from the current project file when present.
@@ -15,6 +15,16 @@ from hotlog import get_logger
 if TYPE_CHECKING:
     import re
 
+from repolish.directives.definitions import (
+    KEEP_BLOCK_DIRECTIVE_RE,
+    KEEP_HEADER_DIRECTIVE_RE,
+    KEEP_REST_DIRECTIVE_RE,
+    DirectiveMapDefinition,
+    extract_directive_map,
+)
+from repolish.directives.phases import (
+    split_directive_tag,
+)
 from repolish.marker_kit import (
     OccurrenceTracker,
     RegionBoundary,
@@ -22,16 +32,6 @@ from repolish.marker_kit import (
     find_bounded_regions_in_range,
     find_first_line_index,
     occurrence_key,
-)
-from repolish.preprocessors.directive_phase import (
-    split_directive_tag,
-)
-from repolish.preprocessors.directives import (
-    KEEP_BLOCK_DIRECTIVE_RE,
-    KEEP_HEADER_DIRECTIVE_RE,
-    KEEP_REST_DIRECTIVE_RE,
-    DirectiveMapDefinition,
-    extract_directive_map,
 )
 
 logger = get_logger(__name__)

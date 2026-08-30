@@ -9,7 +9,7 @@ def read_text_or_none(path: Path) -> str | None:
     ``None`` covers missing files, non-file paths, OS errors, and content that
     is not valid UTF-8 (e.g. binary), so callers can skip or fall back without
     duplicating the guard. Note this is deliberately *more* tolerant than
-    :func:`repolish.preprocessors.files.safe_file_read`, which distinguishes
+    :func:`repolish.directives.files.safe_file_read`, which distinguishes
     missing (empty) from unreadable (raising).
     """
     try:

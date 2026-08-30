@@ -1,4 +1,4 @@
-"""Tests for the file-level preprocessing API (:mod:`repolish.preprocessors.files`).
+"""Tests for the file-level preprocessing API (:mod:`repolish.directives.files`).
 
 These exercise the node interface directly — no Jinja rendering, no pipeline —
 which is exactly what makes the after-render phase testable in isolation.
@@ -7,10 +7,10 @@ which is exactly what makes the after-render phase testable in isolation.
 from pathlib import Path
 from textwrap import dedent
 
-from repolish.preprocessors import (
+from repolish.directives import (
+    DirectivePhase,
     FilePair,
-    PreprocessPhase,
-    preprocess_file,
+    process_file,
     run_phase,
     write_if_changed,
 )
@@ -22,7 +22,7 @@ def _write(path: Path, text: str) -> Path:
     return path
 
 
-# Mirrors tests/integration/test_preprocessors_after_render.py:
+# Mirrors tests/integration/test_directives_after_render.py:
 # loop-generated keep blocks reconciled against developer edits — but here the
 # "rendered" output is supplied directly, so no full repolish flow is needed.
 RENDERED_WITH_LOOP_BLOCKS = """\
@@ -53,7 +53,7 @@ def test_preprocess_file_after_render_reconciles_repeated_blocks(tmp_path: Path)
     template = _write(tmp_path / 'render' / 'NOTES.md', RENDERED_WITH_LOOP_BLOCKS)
     local = _write(tmp_path / 'base' / 'NOTES.md', LOCAL_WITH_CUSTOM_NOTES)
 
-    result = preprocess_file(template, local, phase=PreprocessPhase.AFTER_RENDER)
+    result = process_file(template, local, phase=DirectivePhase.AFTER_RENDER)
 
     assert result is not None
     assert result.changed
@@ -61,7 +61,7 @@ def test_preprocess_file_after_render_reconciles_repeated_blocks(tmp_path: Path)
     assert 'custom alpha note' in result.content
     assert 'custom beta note' in result.content
     assert 'default alpha note' not in result.content
-    # preprocess_file is read-only: persisting is the caller's choice
+    # process_file is read-only: persisting is the caller's choice
     assert template.read_text(encoding='utf-8') == dedent(RENDERED_WITH_LOOP_BLOCKS)
 
 
@@ -70,7 +70,7 @@ def test_preprocess_file_after_render_keeps_defaults_without_local(tmp_path: Pat
 
     # local_path may be None entirely, or point at a missing file
     for local_path in (None, tmp_path / 'base' / 'NOTES.md'):
-        result = preprocess_file(template, local_path, phase=PreprocessPhase.AFTER_RENDER)
+        result = process_file(template, local_path, phase=DirectivePhase.AFTER_RENDER)
         assert result is not None
         assert result.changed  # directive line stripped
         assert 'repolish-keep-block' not in result.content
@@ -87,7 +87,7 @@ def test_preprocess_file_pre_render_applies_regex_directive(tmp_path: Path) -> N
     )
     local = _write(tmp_path / 'local.toml', 'version: 2.1.0\n')
 
-    result = preprocess_file(template, local)
+    result = process_file(template, local)
 
     assert result is not None
     assert result.changed
@@ -100,7 +100,7 @@ def test_preprocess_file_unreadable_template_returns_none(tmp_path: Path) -> Non
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_bytes(b'\xff\xfe\x00binary')
 
-    assert preprocess_file(binary, phase=PreprocessPhase.AFTER_RENDER) is None
+    assert process_file(binary, phase=DirectivePhase.AFTER_RENDER) is None
 
 
 def test_write_if_changed_writes_only_changed_and_preserves_mode(tmp_path: Path) -> None:
@@ -110,7 +110,7 @@ def test_write_if_changed_writes_only_changed_and_preserves_mode(tmp_path: Path)
 
     template = _write(tmp_path / 'tpl.md', '## repolish-regex[v]: ^v: (.+)$\nv: 0\n')
     local = _write(tmp_path / 'local.md', 'v: 9\n')
-    changed_result = preprocess_file(template, local)
+    changed_result = process_file(template, local)
     assert changed_result is not None
     assert changed_result.changed
 
@@ -119,7 +119,7 @@ def test_write_if_changed_writes_only_changed_and_preserves_mode(tmp_path: Path)
     assert (target.stat().st_mode & 0o777) == 0o640
 
     before = target.read_text(encoding='utf-8')
-    unchanged_result = preprocess_file(target, local)
+    unchanged_result = process_file(target, local)
     assert unchanged_result is not None
     assert not unchanged_result.changed
     assert not write_if_changed(target, unchanged_result)
@@ -136,7 +136,7 @@ def test_run_phase_writes_back_and_reports(tmp_path: Path) -> None:
     _write(base / 'NOTES.md', LOCAL_WITH_CUSTOM_NOTES)
 
     result = run_phase(
-        PreprocessPhase.AFTER_RENDER,
+        DirectivePhase.AFTER_RENDER,
         [
             FilePair(changed_file, base / 'NOTES.md'),
             FilePair(unchanged_file, base / 'plain.txt'),
@@ -159,7 +159,7 @@ def test_run_phase_post_passes_are_applied_in_order(tmp_path: Path) -> None:
     local = _write(tmp_path / 'base' / 'out.txt', 'dev\n')
 
     result = run_phase(
-        PreprocessPhase.AFTER_RENDER,
+        DirectivePhase.AFTER_RENDER,
         [FilePair(template, local)],
         post_passes=[stamp],
     )

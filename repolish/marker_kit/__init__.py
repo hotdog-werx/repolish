@@ -1,7 +1,7 @@
 """Shared marker-driving machinery for repolish's file-level features.
 
 Internal leaf package: it is the one cross-package dependency allowed inside
-``repolish.preprocessors`` and ``repolish.insertions``, and it itself imports
+``repolish.directives`` and ``repolish.insertions``, and it itself imports
 nothing from other ``repolish.*`` modules. Both feature packages implement the
 same driver anatomy — scan text into regions, pair template regions against
 local ones, splice results back — so the mechanics live here once:

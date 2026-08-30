@@ -1,9 +1,9 @@
-"""File-level preprocessing: the node interface for template/local pairs.
+"""File-level directive processing: the node interface for template/local pairs.
 
-Everything in this module builds on the pure text API in :mod:`~repolish.preprocessors.core`
+Everything in this module builds on the pure text API in :mod:`~repolish.directives.core`
 and owns the file I/O concerns that pipeline code used to re-implement per
 call site: UTF-8 reads with a binary/unreadable guard, phase application via
-:func:`preprocess_text`, and mode-preserving write-back.
+:func:`process_text`, and mode-preserving write-back.
 """
 
 from collections.abc import Iterable
@@ -12,12 +12,12 @@ from pathlib import Path
 
 from hotlog import get_logger
 
-from repolish.marker_kit import read_text_or_none, write_mode_preserved
-from repolish.preprocessors.core import (
+from repolish.directives.core import (
     PostPass,
-    preprocess_text,
+    process_text,
 )
-from repolish.preprocessors.directive_phase import PreprocessPhase
+from repolish.directives.phases import DirectivePhase
+from repolish.marker_kit import read_text_or_none, write_mode_preserved
 
 logger = get_logger(__name__)
 
@@ -49,8 +49,8 @@ class FilePair:
 
 
 @dataclass(frozen=True)
-class FilePreprocessResult:
-    """Outcome of preprocessing a single file pair."""
+class FileProcessResult:
+    """Outcome of processing a single file pair."""
 
     content: str
     changed: bool
@@ -64,14 +64,14 @@ class PhaseResult:
     skipped: tuple[str, ...]
 
 
-def preprocess_file(
+def process_file(
     template_path: Path,
     local_path: Path | None = None,
     *,
-    phase: PreprocessPhase = PreprocessPhase.PRE_RENDER,
+    phase: DirectivePhase = DirectivePhase.PRE_RENDER,
     anchors: dict[str, str] | None = None,
     post_passes: Iterable[PostPass] | None = None,
-) -> FilePreprocessResult | None:
+) -> FileProcessResult | None:
     """Read *template_path* and apply the given phase against *local_path*.
 
     Pure with respect to the filesystem — the file is read but never written;
@@ -89,7 +89,7 @@ def preprocess_file(
         return None
 
     local_text = safe_file_read(local_path) if local_path is not None else ''
-    content = preprocess_text(
+    content = process_text(
         template_text,
         local_text,
         anchors,
@@ -97,10 +97,10 @@ def preprocess_file(
         source_path=str(template_path),
         post_passes=post_passes,
     )
-    return FilePreprocessResult(content=content, changed=content != template_text)
+    return FileProcessResult(content=content, changed=content != template_text)
 
 
-def write_if_changed(path: Path, result: FilePreprocessResult) -> bool:
+def write_if_changed(path: Path, result: FileProcessResult) -> bool:
     """Write *result.content* back to *path* when it differs, preserving mode.
 
     Returns True when the file was written.
@@ -112,7 +112,7 @@ def write_if_changed(path: Path, result: FilePreprocessResult) -> bool:
 
 
 def run_phase(
-    phase: PreprocessPhase,
+    phase: DirectivePhase,
     pairs: Iterable[FilePair],
     *,
     anchors: dict[str, str] | None = None,
@@ -122,13 +122,13 @@ def run_phase(
 
     Pairing (which rendered file reconciles against which local file) is the
     caller's responsibility — it is pipeline-layout knowledge, not a
-    preprocessor concern.
+    directive concern.
     """
     logger.debug('running_phase', phase=phase.value)
     changed: list[str] = []
     skipped: list[str] = []
     for pair in pairs:
-        result = preprocess_file(
+        result = process_file(
             pair.template_path,
             pair.local_path,
             phase=phase,

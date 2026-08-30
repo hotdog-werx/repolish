@@ -1,4 +1,4 @@
-"""Regex-based preprocessing for templates.
+"""Regex directive processing for templates.
 
 This module handles regex pattern extraction and replacement in templates,
 including support for capture groups and indentation-aware trimming.
@@ -11,12 +11,12 @@ from dataclasses import dataclass
 
 from hotlog import get_logger
 
-from repolish.preprocessors.directive_phase import directive_phase_of
-from repolish.preprocessors.directives import (
+from repolish.directives.definitions import (
     REGEX_DIRECTIVE_RE,
     DirectiveMapDefinition,
     extract_directive_map,
 )
+from repolish.directives.phases import directive_phase_of
 
 logger = get_logger(__name__)
 

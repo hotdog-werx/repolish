@@ -1,6 +1,6 @@
 """Standalone tests for the shared marker-driving primitives.
 
-The feature-package tests (preprocessors, insertions) exercise these helpers
+The feature-package tests (directives, insertions) exercise these helpers
 indirectly; these pin the helpers' contracts directly so a regression surfaces
 in exactly one place.
 """

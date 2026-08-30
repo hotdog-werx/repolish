@@ -5,7 +5,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.preprocessors import preprocess_file, write_if_changed
+from repolish.directives import process_file, write_if_changed
 from repolish.providers import SessionBundle, TemplateMapping
 from repolish.utils import ensure_dot_repolish, path_slug
 
@@ -64,7 +64,7 @@ def _preprocess_single_file(
         local_path: Path to the local project file for anchor extraction.
         anchors: Base anchors from create_anchors().
     """
-    result = preprocess_file(tpl_path, local_path, anchors=anchors)
+    result = process_file(tpl_path, local_path, anchors=anchors)
     if result is not None:
         write_if_changed(tpl_path, result)
 
@@ -97,7 +97,7 @@ class _MappingPreprocessContext:
 
 def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
     """Apply preprocessing for a single mapping entry."""
-    result = preprocess_file(
+    result = process_file(
         args.tpl_path,
         args.ctx.base_dir / args.dest_path,
         anchors=args.ctx.anchors,

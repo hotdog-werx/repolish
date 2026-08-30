@@ -1,4 +1,4 @@
-from repolish.preprocessors import preprocess_text
+from repolish.directives import process_text
 
 TEMPLATE = r"""
 cat1:
@@ -53,7 +53,7 @@ cat3:
 
 
 def test_regex_anchor_allows_following_sections_to_remain():
-    out = preprocess_text(TEMPLATE, LOCAL)
+    out = process_text(TEMPLATE, LOCAL)
     # The replacement should preserve the following sections (cat2) from the
     # template. If cat2 is missing after replacement, the regex replacement
     # logic is too aggressive.
@@ -63,14 +63,14 @@ def test_regex_anchor_allows_following_sections_to_remain():
 
 
 def test_regex_anchor_normal():
-    out = preprocess_text(TEMPLATE, LOCAL_WITH_CAT2)
+    out = process_text(TEMPLATE, LOCAL_WITH_CAT2)
     assert 'cat2:' in out
     assert '- extra' in out
     assert '- cat2-extra' in out
 
 
 def test_regex_anchor_normal_cat3():
-    out = preprocess_text(TEMPLATE, LOCAL_WITH_CAT3)
+    out = process_text(TEMPLATE, LOCAL_WITH_CAT3)
     expected = r"""
 cat1:
   - line1

@@ -7,14 +7,14 @@ from hotlog import get_logger
 logger = get_logger(__name__)
 
 
-class PreprocessPhase(StrEnum):
+class DirectivePhase(StrEnum):
     """Supported preprocessing phases."""
 
     PRE_RENDER = 'pre-render'
     AFTER_RENDER = 'after-render'
 
 
-SUPPORTED_PHASES = {phase.value for phase in PreprocessPhase}
+SUPPORTED_PHASES = {phase.value for phase in DirectivePhase}
 
 
 def directive_phase_of(raw_tag: str) -> str:

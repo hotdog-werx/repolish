@@ -1,4 +1,4 @@
-"""Anchor-based preprocessing for templates.
+"""Anchor (tag-block) directive processing for templates.
 
 This module handles anchor/tag block replacements in templates, where content
 between repolish-start[tag] and repolish-end[tag] markers can be replaced.

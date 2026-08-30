@@ -1,9 +1,9 @@
 """Registry-driven core: family ordering and Patterns compatibility views."""
 
-from repolish.preprocessors import Patterns, extract_patterns, strip_directives
-from repolish.preprocessors.keep import KeepPatterns
-from repolish.preprocessors.multiregex import MultiregexPatterns
-from repolish.preprocessors.registry import FAMILIES
+from repolish.directives import Patterns, extract_patterns, strip_directives
+from repolish.directives.keep import KeepPatterns
+from repolish.directives.multiregex import MultiregexPatterns
+from repolish.directives.registry import FAMILIES
 
 TEMPLATE = """\
 ## repolish-keep-block[notes]: start="<!-- n:on -->" end="<!-- n:off -->"

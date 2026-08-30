@@ -26,8 +26,8 @@ from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
 )
+from repolish.directives import process_file
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.preprocessors import preprocess_file
 from repolish.providers.models import (
     TemplateMapping,
 )
@@ -236,7 +236,7 @@ def _build_promoted_write_context(
     rendered_text: str | None = None
     source_mode: int | None = None
     try:
-        result = preprocess_file(winner.source_file, dest_file, anchors={})
+        result = process_file(winner.source_file, dest_file, anchors={})
         if result is not None:
             source_mode = winner.source_file.stat().st_mode
             rendered_text = result.content

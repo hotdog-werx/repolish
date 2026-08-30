@@ -1,6 +1,6 @@
 """Pair regions between two versions of the same file.
 
-Both keep-block reconciliation (preprocessors) and insertion-marker adoption
+Both keep-block reconciliation (directives) and insertion-marker adoption
 (insertions) answer the same question: *which region in the local file
 corresponds to which region in the template/rendered file?* The shared rule:
 match by key in occurrence order — the template decides *where* regions live,

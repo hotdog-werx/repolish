@@ -1,4 +1,4 @@
-"""Directive-family registry — the extension point for new preprocessors.
+"""Directive-family registry — the extension point for new directive families.
 
 A family is a module exposing an ``extract``/``apply`` pair:
 
@@ -8,34 +8,34 @@ A family is a module exposing an ``extract``/``apply`` pair:
   the family's directive lines for that phase and reconcile regions against
   the local file's content.
 
-Adding a preprocessor family means writing that module and adding one entry to
-:data:`FAMILIES` below — nothing outside ``repolish.preprocessors`` changes.
+Adding a directive family means writing that module and adding one entry to
+:data:`FAMILIES` below — nothing outside ``repolish.directives`` changes.
 Order matters: families apply in listing order against the accumulated
 content.
 
 Tag blocks (``repolish-start``/``repolish-end``) are deliberately *not* here:
 they are the anchors primitive, driven by caller-supplied anchor dictionaries
 in the pre-render phase rather than by local-file reconciliation, and are
-handled by ``core.preprocess_text`` itself.
+handled by ``core.process_text`` itself.
 
-Package-internal: not re-exported from ``repolish.preprocessors``.
+Package-internal: not re-exported from ``repolish.directives``.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-from repolish.preprocessors.keep import (
+from repolish.directives.keep import (
     KeepPatterns,
     apply_keep_replacements,
     extract_keep_patterns,
 )
-from repolish.preprocessors.multiregex import (
+from repolish.directives.multiregex import (
     MultiregexPatterns,
     apply_multiregex_replacements,
     extract_multiregex_patterns,
 )
-from repolish.preprocessors.regex import (
+from repolish.directives.regex import (
     apply_regex_replacements,
     extract_regex_directives,
 )

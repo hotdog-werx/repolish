@@ -11,9 +11,9 @@ from jinja2 import (
     select_autoescape,
 )
 
+from repolish.directives import FilePair
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.misc import ctx_to_dict
-from repolish.preprocessors import FilePair
 from repolish.providers import FileMode, SessionBundle, TemplateMapping
 
 logger = get_logger(__name__)
@@ -476,7 +476,7 @@ def rendered_file_pairs(
     ``setup_output / 'repolish'`` pairs with the same relative path under
     *base_dir*, minus the ``_repolish.`` filename prefix. Pairing is
     staging-layout knowledge belonging to hydration; the preprocessor node
-    only consumes the resulting pairs (see :func:`repolish.preprocessors.run_phase`).
+    only consumes the resulting pairs (see :func:`repolish.directives.run_phase`).
     """
     rendered_root = setup_output / 'repolish'
     pairs: list[FilePair] = []
