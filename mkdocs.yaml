@@ -34,11 +34,11 @@ nav:
       - Directives:
           - Phases: markers/phases.md
           - Tag Blocks & Anchors: markers/tag-blocks.md
+          - Regex: markers/regex.md
+          - Multiregex: markers/multiregex.md
           - Keep Blocks: markers/keep-block.md
           - Keep the Rest: markers/keep-rest.md
           - Keep the Header: markers/keep-header.md
-          - Regex: markers/regex.md
-          - Multiregex: markers/multiregex.md
       - Insertions: markers/insertions.md
 
   - Provider Anatomy:

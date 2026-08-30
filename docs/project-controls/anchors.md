@@ -12,28 +12,9 @@ than reading it from the project), block anchors offer a simpler alternative.
 
 The most common directive preserves a single line - a version string, a config
 value, an author field - by matching it in your existing file and pulling it
-into the template:
-
-```
-## repolish-regex[my-version]: __version__ = "(.+?)"
-__version__ = "0.0.0"
-```
-
-Repolish runs the pattern against the current file. If a match is found, the
-captured group replaces the line. If not, the default line is used.
-
-### Example - preserving a version string
-
-Provider template:
-
-```python
-## repolish-regex[version]: __version__ = "(.+?)"
-__version__ = "0.0.0"
-```
-
-Your file already contains `__version__ = "1.4.2"`. After every apply that line
-stays `1.4.2`. The default `0.0.0` is only used when the file does not exist
-yet.
+into the template. Syntax, the preview workflow, and worked examples (including
+preserving `version` and `description` in `pyproject.toml`) are covered in
+[Regex](../markers/regex.md).
 
 ## Block anchors
 
@@ -71,6 +52,8 @@ just a section of it.
 
 ## Further reading
 
-The [Preprocessors guide](../concepts/preprocessors.md) covers multiregex
-directives (matching structured blocks like `[tools]` sections), processing
-order, and debugging with `repolish preview`.
+The [Markers](../markers/index.md) tab covers each directive family in depth —
+[Regex](../markers/regex.md),
+[Tag Blocks & Anchors](../markers/tag-blocks.md) — plus
+[Phases](../markers/phases.md) and debugging with
+[`repolish preview`](../reference/preview.md).

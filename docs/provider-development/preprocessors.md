@@ -32,20 +32,9 @@ should be able to keep a visible region intact across applies.
 ## Preserving a version string (regex)
 
 The most common use: keep whatever version the developer has in their file
-rather than resetting it to the provider default on every apply.
-
-```python
-# repolish/src/mylib/__init__.py.jinja
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-```
-
-If the project file already contains `__version__ = "1.4.2"` the regex captures
-`1.4.2` and that line is used in the output. New projects without the file get
-the default `"0.0.0"`.
-
-The captured group (inside the parentheses) is what gets substituted. If you
-omit the group the entire regex match is used instead.
+rather than resetting it to the provider default on every apply. Syntax,
+capture-group rules, and the two-sided contract are covered in
+[Regex](../markers/regex.md).
 
 ---
 
@@ -300,43 +289,11 @@ touch `PLUGINS` or `ALLOWED_ENVIRONMENTS`.
 
 ## Giving developers an append zone (regex tail capture)
 
-A common pattern for files like `.gitignore` or GitHub Actions workflow files:
-place a sentinel comment near the end of the template and capture everything
-from that comment to the end of the file. Developers can add lines after the
-sentinel and they will survive every apply.
-
-```yaml
-# repolish/.github/workflows/ci.yaml.jinja
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: pytest
-
-## repolish-regex[additional-jobs]: ^## post-release jobs([\s\S]*)$
-## post-release jobs - add your custom jobs here
-```
-
-The `[\s\S]*` matches any characters including newlines, so everything the
-developer writes after the sentinel comment is captured and reinjected. If no
-match is found (e.g. a fresh project) the default line is kept.
-
-The same pattern works in `.gitignore`:
-
-```gitignore
-# repolish/.gitignore.jinja
-.venv/
-__pycache__/
-dist/
-.repolish/_/
-
-## repolish-regex[project-ignores]: ^## project-specific patterns([\s\S]*)$
-## project-specific patterns - add your own below
-```
-
-Developers append patterns below the sentinel line; repolish preserves them on
-every apply.
+A sentinel comment near the end of the template with a tail-capturing regex
+preserves whatever the developer appends after it. The working pattern
+(including an indentation-trim subtlety that a naive `([\s\S]*)$` capture runs
+into with column-0 entries) is covered in
+[Regex → the trim safeguard](../markers/regex.md#the-trim-safeguard).
 
 ---
 

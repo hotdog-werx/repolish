@@ -14,39 +14,10 @@ section contains or which zone should be preserved.
 
 ## Regex directives
 
-A regex directive captures a value from your **existing project file** and
-injects it back into the template. This is how individual lines survive provider
-updates - versions you have already bumped, author fields, local config entries.
-
-```python
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-```
-
-Repolish runs the pattern against your current file. If a match is found, the
-captured group replaces the corresponding line in the template. If no match is
-found, the default template line is used unchanged.
-
-The directive line itself is always removed from the output. To run it after
-Jinja rendering instead, use the `|after-render`
-[phase suffix](../markers/phases.md).
-
-### Capture group behavior
-
-If your pattern includes a capturing group (parentheses), repolish uses the
-first capture group as the replacement value. With no capturing group the entire
-match is used. Prefer explicit groups when you want only part of the match:
-
-```python
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-# captures just the version string, e.g. 1.2.3
-```
-
-As a conservative safeguard, repolish also trims the captured text to a
-contiguous region based on indentation. This prevents a greedy pattern from
-accidentally pulling in the following section. When a pattern is too broad,
-tighten it or add explicit parentheses to delimit exactly what should be kept.
+Regex directives — adopting single values from your current project file via
+`## repolish-regex[name]: pattern` — are covered in
+[Regex](../markers/regex.md), including the two-sided contract (the pattern
+must match the template default too) and the indentation trim safeguard.
 
 ## Multiregex directives
 
