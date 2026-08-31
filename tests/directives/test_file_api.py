@@ -49,8 +49,13 @@ custom beta note
 """
 
 
-def test_preprocess_file_after_render_reconciles_repeated_blocks(tmp_path: Path) -> None:
-    template = _write(tmp_path / 'render' / 'NOTES.md', RENDERED_WITH_LOOP_BLOCKS)
+def test_preprocess_file_after_render_reconciles_repeated_blocks(
+    tmp_path: Path,
+) -> None:
+    template = _write(
+        tmp_path / 'render' / 'NOTES.md',
+        RENDERED_WITH_LOOP_BLOCKS,
+    )
     local = _write(tmp_path / 'base' / 'NOTES.md', LOCAL_WITH_CUSTOM_NOTES)
 
     result = process_file(template, local, phase=DirectivePhase.AFTER_RENDER)
@@ -62,22 +67,35 @@ def test_preprocess_file_after_render_reconciles_repeated_blocks(tmp_path: Path)
     assert 'custom beta note' in result.content
     assert 'default alpha note' not in result.content
     # process_file is read-only: persisting is the caller's choice
-    assert template.read_text(encoding='utf-8') == dedent(RENDERED_WITH_LOOP_BLOCKS)
+    assert template.read_text(encoding='utf-8') == dedent(
+        RENDERED_WITH_LOOP_BLOCKS,
+    )
 
 
-def test_preprocess_file_after_render_keeps_defaults_without_local(tmp_path: Path) -> None:
-    template = _write(tmp_path / 'render' / 'NOTES.md', RENDERED_WITH_LOOP_BLOCKS)
+def test_preprocess_file_after_render_keeps_defaults_without_local(
+    tmp_path: Path,
+) -> None:
+    template = _write(
+        tmp_path / 'render' / 'NOTES.md',
+        RENDERED_WITH_LOOP_BLOCKS,
+    )
 
     # local_path may be None entirely, or point at a missing file
     for local_path in (None, tmp_path / 'base' / 'NOTES.md'):
-        result = process_file(template, local_path, phase=DirectivePhase.AFTER_RENDER)
+        result = process_file(
+            template,
+            local_path,
+            phase=DirectivePhase.AFTER_RENDER,
+        )
         assert result is not None
         assert result.changed  # directive line stripped
         assert 'repolish-keep-block' not in result.content
         assert 'default alpha note' in result.content
 
 
-def test_preprocess_file_pre_render_applies_regex_directive(tmp_path: Path) -> None:
+def test_preprocess_file_pre_render_applies_regex_directive(
+    tmp_path: Path,
+) -> None:
     template = _write(
         tmp_path / 'config.toml',
         """\
@@ -95,7 +113,9 @@ def test_preprocess_file_pre_render_applies_regex_directive(tmp_path: Path) -> N
     assert '2.1.0' in result.content
 
 
-def test_preprocess_file_unreadable_template_returns_none(tmp_path: Path) -> None:
+def test_preprocess_file_unreadable_template_returns_none(
+    tmp_path: Path,
+) -> None:
     binary = tmp_path / 'render' / 'blob.bin'
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_bytes(b'\xff\xfe\x00binary')
@@ -103,12 +123,17 @@ def test_preprocess_file_unreadable_template_returns_none(tmp_path: Path) -> Non
     assert process_file(binary, phase=DirectivePhase.AFTER_RENDER) is None
 
 
-def test_write_if_changed_writes_only_changed_and_preserves_mode(tmp_path: Path) -> None:
+def test_write_if_changed_writes_only_changed_and_preserves_mode(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / 'x.md'
     target.write_text('old\n', encoding='utf-8')
     target.chmod(0o640)
 
-    template = _write(tmp_path / 'tpl.md', '## repolish-regex[v]: ^v: (.+)$\nv: 0\n')
+    template = _write(
+        tmp_path / 'tpl.md',
+        '## repolish-regex[v]: ^v: (.+)$\nv: 0\n',
+    )
     local = _write(tmp_path / 'local.md', 'v: 9\n')
     changed_result = process_file(template, local)
     assert changed_result is not None
@@ -152,7 +177,12 @@ def test_run_phase_writes_back_and_reports(tmp_path: Path) -> None:
 
 
 def test_run_phase_post_passes_are_applied_in_order(tmp_path: Path) -> None:
-    def stamp(content: str, local_content: str, *, source_path: str | None = None) -> str:
+    def stamp(
+        content: str,
+        local_content: str,
+        *,
+        source_path: str | None = None,
+    ) -> str:
         return content + f'\n# stamped via post pass (local had {len(local_content)} chars)\n'
 
     template = _write(tmp_path / 'render' / 'out.txt', 'body\n')
@@ -165,4 +195,6 @@ def test_run_phase_post_passes_are_applied_in_order(tmp_path: Path) -> None:
     )
 
     assert result.changed == (str(template),)
-    assert '# stamped via post pass (local had 4 chars)' in template.read_text(encoding='utf-8')
+    assert '# stamped via post pass (local had 4 chars)' in template.read_text(
+        encoding='utf-8',
+    )

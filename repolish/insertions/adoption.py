@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 
 def adopt_local_insertion_markers(
-    rendered_content: str,
+    content: str,
     local_content: str,
     *,
     source_path: str | None = None,
@@ -34,7 +34,7 @@ def adopt_local_insertion_markers(
     """Splice local opening markers into rendered content for shared tags.
 
     Args:
-        rendered_content: The template output (post-render) being reconciled.
+        content: The template output (post-render) being reconciled.
         local_content: The current on-disk file content to adopt markers from.
         source_path: Optional path used for contextual debug logs.
 
@@ -43,13 +43,13 @@ def adopt_local_insertion_markers(
         with the same tag exists in the local file. Content is returned
         unchanged when either side has no insertion blocks.
     """
-    if 'repolish:' not in rendered_content or 'repolish:' not in local_content:
-        return rendered_content
+    if 'repolish:' not in content or 'repolish:' not in local_content:
+        return content
 
-    rendered = parse_text(rendered_content, file_path=source_path or '')
+    rendered = parse_text(content, file_path=source_path or '')
     local = parse_text(local_content, file_path=source_path or '')
     if not rendered.blocks or not local.blocks:
-        return rendered_content
+        return content
 
     pairs = pair_in_occurrence_order(
         rendered.blocks,
@@ -61,17 +61,17 @@ def adopt_local_insertion_markers(
     adopted_tags: list[str] = []
     for block, local_block in pairs:
         marker = local_content[local_block.start : local_block.body_start]
-        if marker == rendered_content[block.start : block.body_start]:
+        if marker == content[block.start : block.body_start]:
             continue
         splices.append((block.start, block.body_start, marker))
         adopted_tags.append(block.tag)
 
     if not splices:
-        return rendered_content
+        return content
 
     logger.debug(
         'adopted_local_insertion_markers',
         tags=adopted_tags,
         source_path=source_path,
     )
-    return apply_splices(rendered_content, splices)
+    return apply_splices(content, splices)

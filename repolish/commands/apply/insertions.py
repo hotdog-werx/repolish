@@ -18,7 +18,10 @@ from repolish.insertions import (
     is_provider_owner,
     write_back,
 )
-from repolish.insertions.files import apply_insertions_file, render_insertions_file
+from repolish.insertions.files import (
+    apply_insertions_file,
+    render_insertions_file,
+)
 from repolish.insertions.parser import InsertionBlock, parse_text
 from repolish.marker_kit import read_text_or_none
 from repolish.utils import build_unified_diff, path_slug
@@ -475,4 +478,7 @@ def _rendered_diff_if_any(
     outcome = render_insertions_file(target, registry, file_path=rel_path)
     if outcome is None or not outcome.changed:
         return None
-    return (rel_path, build_unified_diff(rel_path, outcome.original, outcome.result.text))
+    return (
+        rel_path,
+        build_unified_diff(rel_path, outcome.original, outcome.result.text),
+    )

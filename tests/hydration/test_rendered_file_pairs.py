@@ -29,7 +29,9 @@ def test_rendered_file_pairs_strips_staging_prefix(tmp_path: Path) -> None:
     assert by_template[prefixed] == base / 'sub' / 'inner.toml'
 
 
-def test_rendered_file_pairs_skips_directories_and_missing_root(tmp_path: Path) -> None:
+def test_rendered_file_pairs_skips_directories_and_missing_root(
+    tmp_path: Path,
+) -> None:
     assert rendered_file_pairs(tmp_path / 'render', tmp_path / 'base') == []
 
     subdir = tmp_path / 'render' / 'repolish' / 'nested'

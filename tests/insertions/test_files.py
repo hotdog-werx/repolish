@@ -18,7 +18,9 @@ footer
 REGISTRY = {'badge_fn': lambda: 'BADGE'}
 
 
-def test_render_insertions_file_reads_and_renders_without_writing(tmp_path: Path) -> None:
+def test_render_insertions_file_reads_and_renders_without_writing(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / 'README.md'
     target.write_text(TEMPLATE, encoding='utf-8')
 
@@ -33,7 +35,9 @@ def test_render_insertions_file_reads_and_renders_without_writing(tmp_path: Path
     assert target.read_text(encoding='utf-8') == TEMPLATE
 
 
-def test_apply_insertions_file_persists_only_when_changed(tmp_path: Path) -> None:
+def test_apply_insertions_file_persists_only_when_changed(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / 'README.md'
     target.write_text(TEMPLATE, encoding='utf-8')
 

@@ -13,3 +13,7 @@ exclude_lines = [
   "\\.\\.\\.",
 ]
 show_missing = true
+[tool.coverage.run]
+omit = [
+  "repolish/preprocessors/__init__.py", # deprecated, no code to cover
+]

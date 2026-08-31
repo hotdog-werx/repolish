@@ -19,7 +19,10 @@ pipelines; feature packages keep their own grammars and semantics.
 """
 
 from repolish.marker_kit.fileio import read_text_or_none, write_mode_preserved
-from repolish.marker_kit.pairing import OccurrenceTracker, pair_in_occurrence_order
+from repolish.marker_kit.pairing import (
+    OccurrenceTracker,
+    pair_in_occurrence_order,
+)
 from repolish.marker_kit.spans import (
     RegionBoundary,
     find_all_bounded_regions,

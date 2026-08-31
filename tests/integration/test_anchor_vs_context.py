@@ -123,9 +123,13 @@ def test_install_extras_anchor_vs_context(
     override_value = f'{TAB}pip install -e ".[minimal]"'
     if 'config_override' in case.name:
         if case.style == 'anchors':
-            provider_config['overrides'] = {'anchors': {'install-extras': override_value}}
+            provider_config['overrides'] = {
+                'anchors': {'install-extras': override_value},
+            }
         else:
-            provider_config['overrides'] = {'context_merge': {'install_extras': override_value}}
+            provider_config['overrides'] = {
+                'context_merge': {'install_extras': override_value},
+            }
 
     (tmp_path / 'repolish.yaml').write_text(
         json.dumps({'providers': {'p': provider_config}}),

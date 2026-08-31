@@ -24,7 +24,11 @@ python = "3.12"
 
 def test_families_listing_is_ordered_and_complete() -> None:
     """The registry is the single place new directive families hook into."""
-    assert [family.name for family in FAMILIES] == ['keep', 'regex', 'multiregex']
+    assert [family.name for family in FAMILIES] == [
+        'keep',
+        'regex',
+        'multiregex',
+    ]
 
 
 def test_patterns_exposes_family_paylods_by_name() -> None:
@@ -39,11 +43,15 @@ def test_patterns_exposes_family_paylods_by_name() -> None:
 def test_patterns_flat_accessors_match_family_payloads() -> None:
     patterns = extract_patterns(TEMPLATE)
 
-    assert patterns.keep_blocks == {'notes': ('<!-- n:on -->', '<!-- n:off -->', None)}
+    assert patterns.keep_blocks == {
+        'notes': ('<!-- n:on -->', '<!-- n:off -->', None),
+    }
     assert patterns.keep_rest == {'tail': '## tail'}
     assert patterns.keep_header == {}
     assert patterns.regexes == {'version': '^version:\\s*(.+)'}
-    assert patterns.multiregex_blocks == {'mise': '(?s)\\[tools\\]\\n(.*?)(?:\\n\\[|$)'}
+    assert patterns.multiregex_blocks == {
+        'mise': '(?s)\\[tools\\]\\n(.*?)(?:\\n\\[|$)',
+    }
     assert patterns.multiregexes == {'mise': '^([A-Za-z]+) = \\"(.*?)\\"'}
 
 

@@ -113,12 +113,16 @@ _KEEP_BLOCK_EXTRACT_DEF = DirectiveMapDefinition(
 
 _KEEP_REST_EXTRACT_DEF = DirectiveMapDefinition(
     pattern=KEEP_REST_DIRECTIVE_RE,
-    parse_value=lambda marker_raw: KeepMarkerSpec(marker=_parse_keep_literal(marker_raw)),
+    parse_value=lambda marker_raw: KeepMarkerSpec(
+        marker=_parse_keep_literal(marker_raw),
+    ),
 )
 
 _KEEP_HEADER_EXTRACT_DEF = DirectiveMapDefinition(
     pattern=KEEP_HEADER_DIRECTIVE_RE,
-    parse_value=lambda marker_raw: KeepMarkerSpec(marker=_parse_keep_literal(marker_raw)),
+    parse_value=lambda marker_raw: KeepMarkerSpec(
+        marker=_parse_keep_literal(marker_raw),
+    ),
 )
 
 
@@ -241,7 +245,10 @@ def _apply_keep_block(
         return result, directive_index + 1
 
     marker_key = occurrence_key(spec)
-    occurrence_start = ctx.keep_block_occurrence.take(marker_key, len(template_regions))
+    occurrence_start = ctx.keep_block_occurrence.take(
+        marker_key,
+        len(template_regions),
+    )
     local_regions = find_all_bounded_regions(
         ctx.local_lines,
         spec,

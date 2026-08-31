@@ -102,8 +102,16 @@ def _apply_multiregex(
 
 
 FAMILIES: tuple[DirectiveFamily, ...] = (
-    DirectiveFamily(name='keep', extract=extract_keep_patterns, apply=_apply_keep),
-    DirectiveFamily(name='regex', extract=extract_regex_directives, apply=_apply_regex),
+    DirectiveFamily(
+        name='keep',
+        extract=extract_keep_patterns,
+        apply=_apply_keep,
+    ),
+    DirectiveFamily(
+        name='regex',
+        extract=extract_regex_directives,
+        apply=_apply_regex,
+    ),
     DirectiveFamily(
         name='multiregex',
         extract=extract_multiregex_patterns,

@@ -64,10 +64,7 @@ class Patterns:
         keep = self._keep
         if keep is None:
             return {}
-        return {
-            name: (spec.start, spec.end, spec.end_regex)
-            for name, spec in keep.blocks.items()
-        }
+        return {name: (spec.start, spec.end, spec.end_regex) for name, spec in keep.blocks.items()}
 
     @property
     def keep_rest(self) -> dict[str, str]:
@@ -134,10 +131,7 @@ def extract_patterns(
     selected_phase = phase.value
 
     tag_blocks = _extract_tag_blocks(content)
-    by_family = {
-        family.name: family.extract(content, selected_phase, source_path)
-        for family in FAMILIES
-    }
+    by_family = {family.name: family.extract(content, selected_phase, source_path) for family in FAMILIES}
 
     logger.debug(
         'extracted_patterns',

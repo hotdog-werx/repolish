@@ -9,9 +9,11 @@ branding — but the machinery beneath should stay provider-managed.
 
 <!-- Align with: tests/directives/test_keep_processors.py; example validated with repolish preview -->
 
-!!! warning "Placement" The directive must be the **first line of the
-template**. Placed later, it is ignored — by then content has already been
-emitted, and honoring it would duplicate that content.
+!!! warning "Placement"
+
+    The directive must be the **first line of the template**. Placed later, it is
+    ignored — by then content has already been emitted, and honoring it would
+    duplicate that content.
 
 ## Worked example
 

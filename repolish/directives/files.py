@@ -140,5 +140,10 @@ def run_phase(
             continue
         if write_if_changed(pair.template_path, result):
             changed.append(str(pair.template_path))
-    logger.debug('phase_completed', phase=phase.value, changed=len(changed), skipped=len(skipped))
+    logger.debug(
+        'phase_completed',
+        phase=phase.value,
+        changed=len(changed),
+        skipped=len(skipped),
+    )
     return PhaseResult(changed=tuple(changed), skipped=tuple(skipped))
