@@ -4,6 +4,7 @@ These exercise the node interface directly — no Jinja rendering, no pipeline �
 which is exactly what makes the after-render phase testable in isolation.
 """
 
+import sys
 from pathlib import Path
 from textwrap import dedent
 
@@ -141,7 +142,9 @@ def test_write_if_changed_writes_only_changed_and_preserves_mode(
 
     assert write_if_changed(target, changed_result)
     assert target.read_text(encoding='utf-8') == changed_result.content
-    assert (target.stat().st_mode & 0o777) == 0o640
+    if sys.platform != 'win32':
+        # Windows has no Unix permission bits — chmod only honors read-only.
+        assert (target.stat().st_mode & 0o777) == 0o640
 
     before = target.read_text(encoding='utf-8')
     unchanged_result = process_file(target, local)

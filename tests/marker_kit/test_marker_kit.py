@@ -5,6 +5,7 @@ indirectly; these pin the helpers' contracts directly so a regression surfaces
 in exactly one place.
 """
 
+import sys
 from pathlib import Path
 
 from repolish.marker_kit import (
@@ -83,7 +84,9 @@ def test_read_text_or_none_and_write_mode_preserved(tmp_path: Path) -> None:
 
     write_mode_preserved(target, 'a = 2\n')
     assert target.read_text(encoding='utf-8') == 'a = 2\n'
-    assert (target.stat().st_mode & 0o777) == 0o640
+    if sys.platform != 'win32':
+        # Windows has no Unix permission bits — chmod only honors read-only.
+        assert (target.stat().st_mode & 0o777) == 0o640
 
     binary = tmp_path / 'blob.bin'
     binary.write_bytes(b'\xff\xfe\x00\x01')
