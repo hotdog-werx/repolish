@@ -30,8 +30,8 @@ def replace_tags_in_content(content: str, tags: dict[str, str]) -> str:
         # Match entire block including optional leading/trailing newline so
         # the replacement doesn't leave extra blank lines.
         pattern = re.compile(
-            r'\n?[^\n]*repolish-start\[' + re.escape(tag) + r'\][^\n]*\n'
-            r'(.*?)[^\n]*repolish-end\[' + re.escape(tag) + r'\][^\n]*\n?',
+            r'\n?[^\n]*repolish[-:]start\[' + re.escape(tag) + r'\][^\n]*\n'
+            r'(.*?)[^\n]*repolish[-:]end\[' + re.escape(tag) + r'\][^\n]*\n?',
             re.DOTALL | re.MULTILINE,
         )
         content = pattern.sub(lambda _m, v=value: f'\n{v}\n', content)

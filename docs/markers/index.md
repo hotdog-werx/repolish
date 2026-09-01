@@ -3,10 +3,21 @@
 Markers are the lines you (or a provider template) place inside a document to
 tell repolish how each marked region should behave. There are two families:
 
-- **Directives** — `repolish-*` markers in _template files_, processed around
-  rendering.
+- **Directives** — `repolish:<command>[tag]` markers in _template files_,
+  processed around rendering.
 - **Insertions** — `repolish:on/off`, marker blocks in your own files, filled by
   provider functions after files are written.
+
+!!! info "Unified grammar"
+
+    All directives share one command form: `repolish:` + command + optional
+    `[tag]`, with the payload separated by whitespace —
+    `repolish:regex[version] <pattern>`, `repolish:keep-block[x] start="..."`,
+    `repolish:start[init]`. The older dash spelling
+    (`repolish-regex[version]: <payload>`) is still accepted but logs a
+    deprecation warning and will be removed in v2 — write the colon form in new
+    templates. Insertion markers (`repolish:on:<tag>`) are not directives and
+    are unaffected.
 
 ## The four quadrants
 
@@ -26,9 +37,9 @@ quadrantChart
 
 - **Plain files** (no marker needed) — you own the file and you edit it;
   repolish leaves everything alone.
-- **Keep regions** — `repolish-keep-block` / `-rest` / `-header`: repolish
-  regenerates the file from a template, but marked regions come from _your_
-  current version.
+- **Keep regions** — `repolish:keep-block` / `keep-rest` / `keep-header`:
+  repolish regenerates the file from a template, but marked regions come from
+  _your_ current version.
 - **Insertions** — `repolish:on/off`: marked regions filled by provider
   functions. The marker block can live in a file you own, or be shipped by a
   template — insertion markers pass through rendering untouched and are filled
@@ -46,12 +57,12 @@ blocks in developer-owned files.
 
 | Marker                                              | What it's for                                                                                     | `after-render`                               | Status    |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------- | --------- |
-| `repolish-start` / `repolish-end`                   | Tag blocks — provider fills a region (`create_anchors()` / `repolish.yaml`)                       | No — anchor content must exist before Jinja2 | Available |
-| `repolish-keep-block`                               | Preserve a bounded region from your current file                                                  | Yes                                          | Available |
-| `repolish-keep-rest`                                | Preserve everything from a marker to end of file                                                  | Yes                                          | Available |
-| `repolish-keep-header`                              | Preserve the top of the file up to a marker                                                       | Yes                                          | Available |
-| `repolish-regex`                                    | Adopt a single value or line by pattern                                                           | Yes                                          | Available |
-| `repolish-multiregex-block` / `repolish-multiregex` | Merge a structured section (e.g. `key = "value"` lines) keeping your values                       | Yes                                          | Available |
+| `repolish:start` / `repolish:end`                   | Tag blocks — provider fills a region (`create_anchors()` / `repolish.yaml`)                       | No — anchor content must exist before Jinja2 | Available |
+| `repolish:keep-block`                               | Preserve a bounded region from your current file                                                  | Yes                                          | Available |
+| `repolish:keep-rest`                                | Preserve everything from a marker to end of file                                                  | Yes                                          | Available |
+| `repolish:keep-header`                              | Preserve the top of the file up to a marker                                                       | Yes                                          | Available |
+| `repolish:regex`                                    | Adopt a single value or line by pattern                                                           | Yes                                          | Available |
+| `repolish:multiregex-block` / `repolish:multiregex` | Merge a structured section (e.g. `key = "value"` lines) keeping your values                       | Yes                                          | Available |
 | `repolish:on` / `repolish:off`                      | Insertions — provider function fills a marked block, in _your own_ files or shipped by a template | n/a — insertions already run after rendering | Available |
 | `repolish-insert`                                   | Insertion zones — provider declares a fillable zone in the template                               | n/a — filled by the insertion phase          | Planned   |
 

@@ -19,7 +19,7 @@ page was validated with it.
 ## Syntax
 
 ```python
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
+## repolish:regex[version] ^__version__\s*=\s*"(.+?)"$
 __version__ = "0.0.0"
 ```
 
@@ -44,9 +44,9 @@ Preserving `version` and `description` in a provider-managed `pyproject.toml`:
     ```toml
     [project]
     name = "mylib"
-    ## repolish-regex[version]: ^version\s*=\s*"(.+?)"$
+    ## repolish:regex[version] ^version\s*=\s*"(.+?)"$
     version = "0.0.0"
-    ## repolish-regex[description]: ^description\s*=\s*"(.*?)"$
+    ## repolish:regex[description] ^description\s*=\s*"(.*?)"$
     description = ""
     ```
 
@@ -69,9 +69,9 @@ Preserving `version` and `description` in a provider-managed `pyproject.toml`:
     template: |
       [project]
       name = "mylib"
-      ## repolish-regex[version]: ^version\s*=\s*"(.+?)"$
+      ## repolish:regex[version] ^version\s*=\s*"(.+?)"$
       version = "0.0.0"
-      ## repolish-regex[description]: ^description\s*=\s*"(.*?)"$
+      ## repolish:regex[description] ^description\s*=\s*"(.*?)"$
       description = ""
 
     target: |
@@ -122,7 +122,7 @@ The guard has one real surprise, with append-zone directives. For a pattern
 like:
 
 ```yaml
-## repolish-regex[project-ignores]: ^## project-specific patterns[^\n]*\n([\s\S]*)$
+## repolish:regex[project-ignores] ^## project-specific patterns[^\n]*\n([\s\S]*)$
 ## project-specific patterns - add your own below
 ```
 
@@ -140,7 +140,7 @@ Write a small YAML debug file and run it until the pattern does what you mean:
 
 ```yaml title="scratch.yaml"
 template: |
-  ## repolish-regex[version]: ^version\s*=\s*"(.+?)"$
+  ## repolish:regex[version] ^version\s*=\s*"(.+?)"$
   version = "0.0.0"
 
 target: |

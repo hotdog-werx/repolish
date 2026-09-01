@@ -13,7 +13,7 @@ from typing import Protocol
 from hotlog import get_logger
 
 from repolish.directives.anchors import replace_tags_in_content
-from repolish.directives.definitions import TAG_BLOCK_RE
+from repolish.directives.definitions import TAG_BLOCK_RE, warn_legacy_dash_directives
 from repolish.directives.keep import KeepPatterns
 from repolish.directives.multiregex import MultiregexPatterns
 from repolish.directives.phases import DirectivePhase
@@ -128,6 +128,9 @@ def extract_patterns(
     Returns:
         A Patterns object containing extracted tag blocks and family payloads.
     """
+    if phase == DirectivePhase.PRE_RENDER:
+        warn_legacy_dash_directives(content, source_path=source_path)
+
     selected_phase = phase.value
 
     tag_blocks = _extract_tag_blocks(content)
