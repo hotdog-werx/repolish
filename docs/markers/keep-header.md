@@ -1,6 +1,6 @@
 # Keep the Header
 
-**Alias:** `repolish-keep-the-header`.
+**Alias:** `repolish:keep-the-header`.
 
 The mirror of [keep-rest](keep-rest.md): the developer owns the **top** of the
 file, up to a marker line; the provider owns everything below it. Use it when a
@@ -22,7 +22,7 @@ branding — but the machinery beneath should stay provider-managed.
     `repolish/PROJECT.md.jinja`:
 
     ```markdown
-    ## repolish-keep-header[intro]: marker="## managed"
+    ## repolish:keep-header[intro] marker="## managed"
     # This project
 
     Intro the developer can edit.
@@ -53,7 +53,7 @@ branding — but the machinery beneath should stay provider-managed.
 
     ```yaml
     template: |
-      ## repolish-keep-header[intro]: marker="## managed"
+      ## repolish:keep-header[intro] marker="## managed"
       # This project
 
       Intro the developer can edit.

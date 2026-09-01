@@ -24,7 +24,7 @@ final file content. Such a directive must declare the `after-render` phase so
 repolish evaluates it on the rendered output instead.
 
 ```jinja
-## repolish-keep-block[user-note|after-render]: start="<!-- note-start -->" end="<!-- note-end -->"
+## repolish:keep-block[user-note|after-render] start="<!-- note-start -->" end="<!-- note-end -->"
 <!-- note-start -->
 {% for item in items %}
 - {{ item }}
@@ -41,7 +41,7 @@ against the developer's current file after rendering.
 Append `|after-render` to the directive name **inside the square brackets**:
 
 ```
-repolish-keep-block[notes|after-render]: start="..." end="..."
+repolish:keep-block[notes|after-render] start="..." end="..."
    directive kind     name   phase
 ```
 
@@ -50,12 +50,12 @@ every directive family.
 
 The suffix works on all directive families except tag blocks:
 
-- `repolish-regex[...]`
-- `repolish-multiregex-block[...]` / `repolish-multiregex[...]`
-- `repolish-keep-block[...]` / `repolish-keep-rest[...]` /
-  `repolish-keep-header[...]`
+- `repolish:regex[...]`
+- `repolish:multiregex-block[...]` / `repolish:multiregex[...]`
+- `repolish:keep-block[...]` / `repolish:keep-rest[...]` /
+  `repolish:keep-header[...]`
 
-Tag blocks (`repolish-start[...]` / `repolish-end[...]`) are anchors-driven and
+Tag blocks (`repolish:start[...]` / `repolish:end[...]`) are anchors-driven and
 are **always replaced before Jinja2 runs** — content injected after rendering
 would never be seen by the template engine.
 
@@ -93,8 +93,8 @@ version from the developer's existing file:
 ```toml
 # repolish/mise.toml.jinja
 [tools]
-## repolish-multiregex-block[tools|after-render]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools|after-render]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+## repolish:multiregex-block[tools|after-render] ^\[tools\](.*?)(?=\n\[|\Z)
+## repolish:multiregex[tools|after-render] ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
 {% for tool, default in tools.items() %}
 {{ tool }} = "{{ default }}"
 {% endfor %}
@@ -102,7 +102,7 @@ version from the developer's existing file:
 
 No provider code reads project files; the template itself declares what
 survives. For a single value (a version line, an author field) the same idea
-uses `repolish-regex[name|after-render]` instead of the block pair.
+uses `repolish:regex[name|after-render]` instead of the block pair.
 
 <!-- Align with: tests/integration/test_directives_after_render.py::test_after_render_multiregex_preserves_only_selected_provider_sections -->
 
@@ -128,7 +128,7 @@ file goes through this pipeline in order:
 
 Note what this means in practice: values captured in the `pre-render` phase are
 substituted into the template **before** Jinja2 sees it, so a
-`repolish-regex`-adopted line is what Jinja renders around — while an
+`repolish:regex`-adopted line is what Jinja renders around — while an
 `|after-render` directive operates on content that is already final.
 
 !!! note "Phases for project-owned files?" Insertions already touch project

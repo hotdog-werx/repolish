@@ -17,7 +17,7 @@ line is stripped.
 ## Syntax
 
 ```markdown
-## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
+## repolish:keep-block[notes] start="<!-- notes-start -->" end="<!-- notes-end -->"
 
 <!-- notes-start -->
 
@@ -49,7 +49,7 @@ a possible non-breaking change for a later version.
     ```markdown
     # My Project
 
-    ## repolish-keep-block[custom]: start="<!-- custom-start -->" end="<!-- custom-end -->"
+    ## repolish:keep-block[custom] start="<!-- custom-start -->" end="<!-- custom-end -->"
     <!-- custom-start -->
 
     Default content for new projects.
@@ -79,7 +79,7 @@ a possible non-breaking change for a later version.
     template: |
       # My Project
 
-      ## repolish-keep-block[custom]: start="<!-- custom-start -->" end="<!-- custom-end -->"
+      ## repolish:keep-block[custom] start="<!-- custom-start -->" end="<!-- custom-end -->"
       <!-- custom-start -->
 
       Default content for new projects.
@@ -122,7 +122,7 @@ One directive covers **many blocks** that share the same markers — repolish
 matches them in encounter order, first block to first block, second to second:
 
 ```markdown title="template"
-## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
+## repolish:keep-block[notes] start="<!-- notes-start -->" end="<!-- notes-end -->"
 
 ## Installation
 
@@ -159,13 +159,13 @@ the [placement rule](#syntax)):
 ```python title="repolish/registry.py.jinja"
 """Plugin registry — managed by repolish, lists owned by the project."""
 
-# repolish-keep-block[plugins]: start="# -- plugins-start" end="# -- plugins-end"
+# repolish:keep-block[plugins] start="# -- plugins-start" end="# -- plugins-end"
 
 # -- plugins-start
 PLUGINS = []
 # -- plugins-end
 
-# repolish-keep-block[envs]: start="# -- envs-start" end="# -- envs-end"
+# repolish:keep-block[envs] start="# -- envs-start" end="# -- envs-end"
 
 # -- envs-start
 ALLOWED_ENVIRONMENTS = ["development"]
@@ -182,7 +182,7 @@ matching a pattern — the piece that made keep blocks usable inside Jinja loops
 where a literal end marker is awkward and every repetition is identical:
 
 ```yaml title="template"
-## repolish-keep-block[provider-additional|after-render]: start="# additional-paths" end-regex="^provider[0-9]+:$"
+## repolish:keep-block[provider-additional|after-render] start="# additional-paths" end-regex="^provider[0-9]+:$"
 {% for idx in providers %}
 provider{{ idx }}:
    - static{{ idx }}

@@ -1,6 +1,6 @@
 # Multiregex
 
-Multiregex was born from regex fatigue: one [`repolish-regex`](regex.md) per
+Multiregex was born from regex fatigue: one [`repolish:regex`](regex.md) per
 line didn't scale. Instead of a pattern per line, you write **two patterns
 once** — one to locate a block, one to read key/value pairs out of it — and
 every matching line in that block is covered.
@@ -18,16 +18,16 @@ A multiregex directive is a **pair of markers sharing one tag**:
 
 ```toml
 [tools]
-## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+## repolish:multiregex-block[tools] ^\[tools\](.*?)(?=\n\[|\Z)
+## repolish:multiregex[tools] ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
 uv = "0.0.0"
 dprint = "0.0.0"
 ```
 
-- **`repolish-multiregex-block[tag]`** — the block pattern. It runs against
+- **`repolish:multiregex-block[tag]`** — the block pattern. It runs against
   **your current file**; its first capture group is the block body to read
   (everything between `[tools]` and the next section header here).
-- **`repolish-multiregex[tag]`** — the line pattern. It extracts key/value pairs
+- **`repolish:multiregex[tag]`** — the line pattern. It extracts key/value pairs
   from that body. The canonical shape is `^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$`
   — `key = "value"` lines, key in group 2, value in group 4.
 - The template keeps a real `[tools]` section with default values. The section
@@ -44,8 +44,8 @@ dprint = "0.0.0"
 
     ```toml
     [tools]
-    ## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-    ## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+    ## repolish:multiregex-block[tools] ^\[tools\](.*?)(?=\n\[|\Z)
+    ## repolish:multiregex[tools] ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
     uv = "0.0.0"
     dprint = "0.0.0"
     starship = "0.0.0"
@@ -68,8 +68,8 @@ dprint = "0.0.0"
     ```yaml
     template: |
       [tools]
-      ## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-      ## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+      ## repolish:multiregex-block[tools] ^\[tools\](.*?)(?=\n\[|\Z)
+      ## repolish:multiregex[tools] ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
       uv = "0.0.0"
       dprint = "0.0.0"
       starship = "0.0.0"
@@ -122,12 +122,12 @@ descendant:
 
 ```toml title="repolish/mise.toml.jinja"
 [tools]
-## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
+## repolish:multiregex-block[tools] ^\[tools\](.*?)(?=\n\[|\Z)
+## repolish:multiregex[tools] ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
 uv = "0.0.0"
 dprint = "0.0.0"
 
-## repolish-keep-rest[extra-tools]: marker="## local tools"
+## repolish:keep-rest[extra-tools] marker="## local tools"
 ## local tools
 # add your own tools below
 ```

@@ -1,6 +1,6 @@
 # Keep the Rest
 
-**Aliases:** `repolish-keep-the-rest`, `repolish-keep-footer`.
+**Aliases:** `repolish:keep-the-rest`, `repolish:keep-footer`.
 
 Everything from a marker line **to the end of the file** comes from your project
 file; the provider manages the head. This is the [keep block](keep-block.md)
@@ -22,7 +22,7 @@ the project's own entries accumulate at the bottom.
     ```gitignore
     .venv/
     __pycache__/
-    ## repolish-keep-rest[tail]: marker="## mine"
+    ## repolish:keep-rest[tail] marker="## mine"
     ## mine
     # add your own below
     ```
@@ -46,7 +46,7 @@ the project's own entries accumulate at the bottom.
     template: |
       .venv/
       __pycache__/
-      ## repolish-keep-rest[tail]: marker="## mine"
+      ## repolish:keep-rest[tail] marker="## mine"
       ## mine
       # add your own below
 

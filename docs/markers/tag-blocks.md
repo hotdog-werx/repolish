@@ -1,6 +1,6 @@
 # Tag Blocks & Anchors
 
-Tag blocks — `repolish-start[name]` … `repolish-end[name]` pairs in a template —
+Tag blocks — `repolish:start[name]` … `repolish:end[name]` pairs in a template —
 mark a region whose content the **provider** fills with an _anchor value_.
 Unlike every other directive family, the developer's project file is never read:
 the provider (or `repolish.yaml`) owns what goes between the markers.
@@ -23,19 +23,19 @@ file; what remains is the replacement content, ready for Jinja2.
 A block is a pair of marker lines sharing the same name:
 
 ```makefile
-## repolish-start[install-extras]
+## repolish:start[install-extras]
 pip install -e ".[dev]"
-## repolish-end[install-extras]
+## repolish:end[install-extras]
 ```
 
-The comment style is flexible — any prefix before `repolish-start[name]` is
+The comment style is flexible — any prefix before `repolish:start[name]` is
 accepted, so use whatever comment syntax fits the file type:
 
 ```
-# repolish-start[block]            ← Python / TOML / YAML
-// repolish-start[block]           ← JavaScript / CSS
-<!-- repolish-start[block] -->     ← HTML / Markdown
-/* repolish-start[block] */        ← CSS / C
+# repolish:start[block]            ← Python / TOML / YAML
+// repolish:start[block]           ← JavaScript / CSS
+<!-- repolish:start[block] -->     ← HTML / Markdown
+/* repolish:start[block] */        ← CSS / C
 ```
 
 The content between the markers is the **default**: it ships in the template and
@@ -99,9 +99,9 @@ blocks never read it; the content comes from the provider or `repolish.yaml`.
     ```makefile
     .PHONY: install
     install:
-    ## repolish-start[install-extras]
+    ## repolish:start[install-extras]
     	pip install -e ".[dev]"
-    ## repolish-end[install-extras]
+    ## repolish:end[install-extras]
     ```
 
 === "Provider code"
@@ -126,9 +126,9 @@ blocks never read it; the content comes from the provider or `repolish.yaml`.
     template: |
       .PHONY: install
       install:
-      ## repolish-start[install-extras]
+      ## repolish:start[install-extras]
       	pip install -e ".[dev]"
-      ## repolish-end[install-extras]
+      ## repolish:end[install-extras]
 
     config:
       anchors:
@@ -175,7 +175,7 @@ anchor sources resolve to.
 
 Directive names are **global identifiers** across all templates in a run: anchor
 values from every provider are merged into one map, and two templates using
-`repolish-start[init]` share that one replacement — the provider processed later
+`repolish:start[init]` share that one replacement — the provider processed later
 silently wins, even in a template owned by another provider.
 
 Until the naming question is settled (see below), **namespace your anchor
