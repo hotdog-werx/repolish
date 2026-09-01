@@ -146,10 +146,11 @@ the full resolution rules and CLI protocol.
 
 - **`anchors`** - optional mapping of anchor name to replacement string. Merged
   on top of whatever `create_anchors()` returns for this provider; config-level
-  values take precedence. Overrides are scoped to the provider they appear under
-  — one provider's `anchors` cannot affect another provider's anchors. Providers
-  should document which anchor keys they support. Deprecated in favor of
-  `overrides.anchors`. See [Block anchors](../project-controls/anchors.md).
+  values take precedence. Note the merge target is one global map: an override
+  here also fills same-named anchors in other providers' templates, so namespace
+  anchor names per provider (see [Naming](../markers/tag-blocks.md#naming)).
+  Providers should document which anchor keys they support. Deprecated in favor
+  of `overrides.anchors`. See [Block anchors](../project-controls/anchors.md).
 
 - **`file_mappings`** - per-file options within `overrides.file_mappings`. Each
   destination path may be enabled or disabled independently, and can also carry

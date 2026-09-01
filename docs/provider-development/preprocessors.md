@@ -6,30 +6,11 @@ scenarios. For a full explanation of how each directive works, see
 
 ## Two-phase directives
 
-Directives run in `pre-render` mode by default. Use `|after-render` in the
-directive tag when the directive appears inside Jinja-generated content (for
-example loops), so repolish evaluates it after rendering.
-
-Example:
-
-```jinja
-{% for item in items %}
-- {{ item }}
-## repolish-keep-block[user-note|after-render]: start="<!-- note-start -->" end="<!-- note-end -->"
-<!-- note-start -->
-default note for {{ item }}
-<!-- note-end -->
-{% endfor %}
-```
-
-The same `|after-render` tag suffix is supported on:
-
-- `repolish-regex[...]`
-- `repolish-multiregex-block[...]`
-- `repolish-multiregex[...]`
-- `repolish-keep-block[...]`
-- `repolish-keep-rest[...]`
-- `repolish-keep-header[...]`
+Directives run in the `pre-render` phase by default. Use the `|after-render`
+suffix when a directive appears inside Jinja-generated content (for example
+loops), so repolish evaluates it on the rendered file instead — see
+[Phases](../markers/phases.md) for the syntax, supported families, and the full
+pipeline.
 
 ## Choosing the right directive
 
@@ -51,339 +32,57 @@ should be able to keep a visible region intact across applies.
 ## Preserving a version string (regex)
 
 The most common use: keep whatever version the developer has in their file
-rather than resetting it to the provider default on every apply.
-
-```python
-# repolish/src/mylib/__init__.py.jinja
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-```
-
-If the project file already contains `__version__ = "1.4.2"` the regex captures
-`1.4.2` and that line is used in the output. New projects without the file get
-the default `"0.0.0"`.
-
-The captured group (inside the parentheses) is what gets substituted. If you
-omit the group the entire regex match is used instead.
+rather than resetting it to the provider default on every apply. Syntax,
+capture-group rules, and the two-sided contract are covered in
+[Regex](../markers/regex.md).
 
 ---
 
 ## Preserving versioned tool entries (multiregex)
 
 Tool version files (`mise.toml`, `.tool-versions`, etc.) list many tools whose
-versions the developer manages locally. You want to ship sensible defaults but
-never clobber versions the developer has already updated.
-
-```toml
-# repolish/.mise.toml.jinja
-[tools]
-## repolish-multiregex-block[tools]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
-uv = "0.0.0"
-dprint = "0.0.0"
-starship = "0.0.0"
-```
-
-The block pattern locates the `[tools]` section; the line pattern extracts each
-`key = "value"` pair. On apply:
-
-- Keys already present in the project file keep their current values.
-- New keys from the template are appended.
-- Keys removed from the template are left untouched in the project file
-  (repolish does not delete lines it did not put there).
+versions the developer manages locally. Ship sensible defaults without
+clobbering versions the developer has already pinned. Syntax, the pair of
+patterns, and the ownership contract (your values survive for provider-declared
+keys; locally-added keys do not) are covered in
+[Multiregex](../markers/multiregex.md).
 
 ---
 
 ## Letting the developer own a section (block anchor)
 
-Use a block anchor when the provider should supply content that a developer can
+Use a tag block when the provider should supply content that a developer can
 override for their project, but editing the file directly would not work
-(repolish would overwrite it on the next apply).
-
-```dockerfile
-# repolish/Dockerfile.jinja
-FROM python:3.11-slim
-
-## repolish-start[install]
-RUN apt-get update && apt-get install -y build-essential libssl-dev
-## repolish-end[install]
-
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-```
-
-The provider can compute the default dynamically:
-
-```python
-def create_anchors(self, context: Ctx) -> dict[str, str]:
-    packages = ' '.join(context.system_packages)
-    return {'install': f'RUN apt-get update && apt-get install -y {packages}'}
-```
-
-A developer who needs extra system packages overrides it in `repolish.yaml`:
-
-```yaml
-anchors:
-  install: |
-    RUN apt-get update && apt-get install -y locales libpq-dev
-```
-
-Project-level `anchors:` always win over provider code.
+(repolish would overwrite it on the next apply). Syntax, content sources, and
+override precedence are covered in
+[Tag Blocks & Anchors](../markers/tag-blocks.md).
 
 ---
 
 ## Keeping a visible zone intact (keep directives)
 
-Use keep directives when you want a template to define the overall file shape
-but still preserve a developer-edited region if the file already exists.
-
-### Keep a bounded block
-
-This is the best fit for README-style custom sections surrounded by obvious
-markers.
-
-```markdown
-# repolish/README.md.jinja
-
-## repolish-keep-block[readme-custom-block]: start="<!-- start -->" end="<!-- end -->"
-
-<!-- start -->
-
-Default content for new projects
-
-<!-- end -->
-```
-
-If the project file already contains the marker pair, repolish keeps the block
-between them. Otherwise the default block stays in place.
-
-When a fixed end marker is not practical, use `end-regex` to close each kept
-region dynamically:
-
-```yaml
-## repolish-keep-block[provider-additional|after-render]: start="# additional-paths" end-regex="^provider[0-9]+:$"
-{% for idx in providers %}
-provider{{ idx }}:
-  - static{{ idx }}
-  # additional-paths
-  - default{{ idx }}
-{% endfor %}
-```
-
-This searches forward from each `start` marker to the first line matching
-`end-regex`. If no match appears before the next keep directive (or end of
-file), repolish closes the region at that boundary.
-
-If multiple sibling `keep-block` directives in one file reuse the same marker
-pair, repolish matches local blocks by encounter order and puts them back in
-that same order. One directive is all you need:
-
-```markdown
-# repolish/README.md.jinja
-
-## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
-
-## Installation
-
-<!-- notes-start -->
-
-_No notes yet._
-
-<!-- notes-end -->
-
-## Usage
-
-<!-- notes-start -->
-
-_No notes yet._
-
-<!-- notes-end -->
-```
-
-If the project file already has both marker pairs, each block is preserved in
-its own position:
-
-```markdown
-## Installation
-
-<!-- notes-start -->
-
-Run `pip install mylib` with Python 3.11+.
-
-<!-- notes-end -->
-
-## Usage
-
-<!-- notes-start -->
-
-Import and call `mylib.run()` after configuring credentials.
-
-<!-- notes-end -->
-```
-
-Blocks without a matching pair in the project file fall back to the template
-default (`_No notes yet._`). There is no need to add a `notes-2` or
-`notes-installation` directive variant.
-
-### Keep the rest of the file from a marker onward
-
-Use `keep-rest` for files like `.gitignore`, where the developer owns a tail
-section after a sentinel comment.
-
-```gitignore
-# repolish/.gitignore.jinja
-.venv/
-__pycache__/
-
-## repolish-keep-rest[repo-overrides]: marker="## repo-overrides"
-## repo-overrides
-# Add local overrides below
-```
-
-### Keep the header up to a marker
-
-Use `keep-header` when the developer should own the intro/top-of-file preface
-and the provider owns the section below the marker.
-
-Place the `keep-header` directive at the very start of the template file. If it
-appears later, repolish treats it as invalid and leaves the template content in
-place to avoid duplicated prefixes.
-
-```toml
-# repolish/pyproject.toml.jinja
-## repolish-keep-header[repo-header]: marker="## repolish-managed-start"
-Project header text
-## repolish-managed-start
-Provider-managed settings below
-```
-
-The marker text is explicit in the directive so the visible comment style can
-match the file type (`#`, `##`, `<!-- -->`, and so on).
-
-Aliases supported in v1:
-
-- `keep-rest` / `keep-the-rest` / `keep-footer`
-- `keep-header` / `keep-the-header`
-
----
-
-## Keeping developer-maintained lists in a structured Python file (keep-block)
-
-Some Python files have a fixed structure that the provider owns, but contain
-lists that only a developer can meaningfully fill in — plugin registrations,
-feature flag entries, allowed values, and so on. `keep-block` lets the provider
-manage the file while leaving those lists entirely up to the developer.
-
-Consider a `registry.py` that the provider ships as part of every project. The
-provider controls the imports, the class skeleton, and the module docstring, but
-each project registers its own plugins and its own allowed environments:
-
-```python
-# repolish/src/{{ project_name }}/registry.py.jinja
-"""Plugin registry — managed by repolish, lists owned by the project."""
-
-from __future__ import annotations
-
-from myframework import Plugin, Environment
-
-# repolish-keep-block[plugins]: start="# -- plugins-start" end="# -- plugins-end"
-# repolish-keep-block[environments]: start="# -- environments-start" end="# -- environments-end"
-
-# -- plugins-start
-PLUGINS: list[type[Plugin]] = []
-# -- plugins-end
-
-
-# -- environments-start
-ALLOWED_ENVIRONMENTS: list[str] = ["development", "staging", "production"]
-# -- environments-end
-
-
-def load_plugins() -> None:
-    for cls in PLUGINS:
-        cls.register()
-```
-
-On a fresh project, the template defaults are used as-is. Once developers have
-added entries, those two blocks survive every apply unchanged:
-
-```python
-# src/myapp/registry.py  (developer's current file)
-"""Plugin registry — managed by repolish, lists owned by the project."""
-
-from __future__ import annotations
-
-from myframework import Plugin, Environment
-
-# -- plugins-start
-PLUGINS: list[type[Plugin]] = [
-    AuthPlugin,
-    AuditPlugin,
-    MetricsPlugin,
-]
-# -- plugins-end
-
-
-# -- environments-start
-ALLOWED_ENVIRONMENTS: list[str] = [
-    "development",
-    "staging",
-    "production",
-    "demo",
-]
-# -- environments-end
-
-
-def load_plugins() -> None:
-    for cls in PLUGINS:
-        cls.register()
-```
-
-The provider can freely change imports, add new methods, rename the module
-docstring, or add a third `keep-block` section — none of those changes will
-touch `PLUGINS` or `ALLOWED_ENVIRONMENTS`.
+For developer-owned regions inside provider-managed files, reach for keep
+directives instead of hand-written tail-capture regexes — the visible marker
+lines document the intention. Pages and examples:
+
+- [Keep Blocks](../markers/keep-block.md) — bounded `start`/`end` regions,
+  repeated blocks (first-to-first pairing), `end-regex` for Jinja-generated
+  loops, and the directive-placement rule (each keep-block directive directly
+  above its own region; stacked directive lines leave earlier regions
+  unmanaged). Includes the registry.py-style example with corrected placement.
+- [Keep the Rest](../markers/keep-rest.md) — everything from a marker to EOF.
+- [Keep the Header](../markers/keep-header.md) — top of file up to a marker; the
+  directive must be the template's first line.
 
 ---
 
 ## Giving developers an append zone (regex tail capture)
 
-A common pattern for files like `.gitignore` or GitHub Actions workflow files:
-place a sentinel comment near the end of the template and capture everything
-from that comment to the end of the file. Developers can add lines after the
-sentinel and they will survive every apply.
-
-```yaml
-# repolish/.github/workflows/ci.yaml.jinja
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: pytest
-
-## repolish-regex[additional-jobs]: ^## post-release jobs([\s\S]*)$
-## post-release jobs - add your custom jobs here
-```
-
-The `[\s\S]*` matches any characters including newlines, so everything the
-developer writes after the sentinel comment is captured and reinjected. If no
-match is found (e.g. a fresh project) the default line is kept.
-
-The same pattern works in `.gitignore`:
-
-```gitignore
-# repolish/.gitignore.jinja
-.venv/
-__pycache__/
-dist/
-.repolish/_/
-
-## repolish-regex[project-ignores]: ^## project-specific patterns([\s\S]*)$
-## project-specific patterns - add your own below
-```
-
-Developers append patterns below the sentinel line; repolish preserves them on
-every apply.
+A sentinel comment near the end of the template with a tail-capturing regex
+preserves whatever the developer appends after it. The working pattern
+(including an indentation-trim subtlety that a naive `([\s\S]*)$` capture runs
+into with column-0 entries) is covered in
+[Regex → the trim safeguard](../markers/regex.md#the-trim-safeguard).
 
 ---
 

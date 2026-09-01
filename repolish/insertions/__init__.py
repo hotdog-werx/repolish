@@ -6,6 +6,11 @@ from repolish.insertions.disabled import (
     disabled_reason_for_block,
     resolve_renderer_for_function,
 )
+from repolish.insertions.files import (
+    FileInsertionOutcome,
+    apply_insertions_file,
+    render_insertions_file,
+)
 from repolish.insertions.models import (
     BlockContext,
     CommentStyle,
@@ -39,18 +44,21 @@ __all__ = [
     'DisabledDiagnosticEntry',
     'DisabledInsertionEntry',
     'ErrorDiagnosticEntry',
+    'FileInsertionOutcome',
     'InsertionBlock',
     'InsertionReport',
     'ParsedInsertions',
     'Renderer',
     'WriteBackResult',
     'WriteDiagnostic',
+    'apply_insertions_file',
     'collect_disabled_entries',
     'disabled_reason_for_block',
     'is_block_context_annotation',
     'is_insertion_block_annotation',
     'is_provider_owner',
     'parse_text',
+    'render_insertions_file',
     'resolve_provider_function_name',
     'resolve_renderer_for_function',
     'write_back',

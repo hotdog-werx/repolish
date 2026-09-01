@@ -2305,3 +2305,34 @@ def test_provider_insertion_receives_file_path_in_block_context(
     assert 'file-is:README.md' in content
     assert 'block-file-is:README.md' in content
     assert 'insertions: ✓ ok (2 ok, 0 failed)' in result.output
+
+
+def test_insertion_target_that_is_not_text_is_skipped_gracefully(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider can mistakenly register insertions for a binary file; apply must not break.
+
+    The registered path exists on disk, so the existence guard passes it
+    through — but the file cannot be decoded as UTF-8, so insertion rendering
+    quietly treats it as "no blocks": apply succeeds and the file is untouched.
+    """
+    payload = b'\x89PNG\r\n\x1a\n binary \x00\xff payload \xfe'
+    (tmp_path / 'blob.bin').write_bytes(payload)
+
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def render(value: str):
+            return f'VALUE={value}'
+
+        return {'blob.bin': {'render': render}}""",
+    )
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    assert (tmp_path / 'blob.bin').read_bytes() == payload

@@ -1,4 +1,4 @@
-"""Shared tag-name parsing helpers for preprocessors."""
+"""Shared tag-name parsing helpers for directive families."""
 
 from __future__ import annotations
 

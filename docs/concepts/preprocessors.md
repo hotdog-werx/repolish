@@ -1,21 +1,9 @@
 # Preprocessors
 
-Repolish applies preprocessing in two phases:
-
-1. `pre-render` (default): runs before Jinja2 on staged templates.
-2. `after-render` (opt-in): runs after Jinja2 on rendered output files.
-
-This handles cases where directives live inside loop-generated or conditional
-template content and therefore only exist after Jinja rendering.
-
-To place a directive in the second phase, append `|after-render` to the tag
-inside the square brackets, for example
-`repolish-keep-block[notes|after-render]`. The default is `pre-render`, so you
-only need the suffix when a directive must wait until Jinja has produced the
-final file content.
-
-All processed directive lines are stripped from final output so project files
-stay clean.
+Repolish processes directives in two phases, `pre-render` (default) and
+`after-render` (opt-in via a `|after-render` suffix) — see
+[Phases](../markers/phases.md). All processed directive lines are stripped from
+final output so project files stay clean.
 
 The most common directives are **regex** and **multiregex**: they live inside
 the template file itself and read values directly from your current project
@@ -26,260 +14,43 @@ section contains or which zone should be preserved.
 
 ## Regex directives
 
-A regex directive captures a value from your **existing project file** and
-injects it back into the template. This is how individual lines survive provider
-updates - versions you have already bumped, author fields, local config entries.
-
-```python
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-```
-
-Repolish runs the pattern against your current file. If a match is found, the
-captured group replaces the corresponding line in the template. If no match is
-found, the default template line is used unchanged.
-
-The directive line itself is always removed from the output.
-
-To run a regex directive after Jinja rendering, add `|after-render` to the
-directive tag name:
-
-```python
-## repolish-regex[version|after-render]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-```
-
-### Capture group behavior
-
-If your pattern includes a capturing group (parentheses), repolish uses the
-first capture group as the replacement value. With no capturing group the entire
-match is used. Prefer explicit groups when you want only part of the match:
-
-```python
-## repolish-regex[version]: ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
-# captures just the version string, e.g. 1.2.3
-```
-
-As a conservative safeguard, repolish also trims the captured text to a
-contiguous region based on indentation. This prevents a greedy pattern from
-accidentally pulling in the following section. When a pattern is too broad,
-tighten it or add explicit parentheses to delimit exactly what should be kept.
+Regex directives — adopting single values from your current project file via
+`## repolish-regex[name]: pattern` — are covered in
+[Regex](../markers/regex.md), including the two-sided contract (the pattern must
+match the template default too) and the indentation trim safeguard.
 
 ## Multiregex directives
 
-For structured blocks (a `[tools]` section in a TOML file, a `requirements`
-list, etc.) multiregex directives let you merge additions from the provider
-while keeping versions you have already pinned locally.
-
-```toml
-[tools]
-## repolish-multiregex-block[tools|after-render]: ^\[tools\](.*?)(?=\n\[|\Z)
-## repolish-multiregex[tools|after-render]: ^(")?([^"=\s]+)(")?\s*=\s*"([^"]+)"$
-uv = "0.0.0"
-dprint = "0.0.0"
-```
-
-The block pattern locates the relevant section; the line pattern extracts
-key-value pairs. Your existing versions are preserved for matching keys; new
-provider keys are appended.
+Multiregex directives — a block/line pattern pair that keeps your values for a
+structured section like `[tools]` — are covered in
+[Multiregex](../markers/multiregex.md), including the ownership contract (the
+provider owns the key set, you own the values).
 
 ## Block anchors
 
-A block anchor marks a section in the template whose content is supplied by the
-provider's `create_anchors()` method (which can generate content dynamically
-from context, such as assembling install extras from a list) or by an `anchors:`
-mapping in `repolish.yaml` (project-level overrides win). All marker lines are
-stripped - the final project file is clean.
-
-The tradeoff compared to regex directives: to customise the injected content you
-set it in `repolish.yaml`, because editing the file directly won't stick - the
-next apply overwrites it with whatever the provider computes.
-
-```makefile
-.PHONY: install
-install:
-## repolish-start[install-extras]
-	pip install -e ".[dev]"
-## repolish-end[install-extras]
-```
-
-The provider supplies the replacement:
-
-```python
-def create_anchors(self, context: Ctx) -> dict[str, str]:
-    extras = ','.join(['dev', *context.extra_groups])
-    return {'install-extras': f'\tpip install -e ".[{extras}]"'}
-```
-
-After preprocessing, the marker lines are gone and the injected content is in
-place - exactly what Jinja2 will render.
-
-The marker comment style is flexible. Any prefix before `repolish-start[name]`
-is accepted, so you can use the comment syntax that fits the file type:
-
-```python
-# repolish-start[block]   ← Python / TOML / YAML
-// repolish-start[block]  ← JavaScript / CSS
-<!-- repolish-start[block] -->   ← HTML / Markdown
-/* repolish-start[block] */      ← CSS / C
-```
-
-If no replacement is provided for a key, the default content between the markers
-is kept (the markers themselves are still stripped).
+Tag blocks — `repolish-start[name]` … `repolish-end[name]` pairs filled by
+provider-supplied anchor content — are covered in
+[Tag Blocks & Anchors](../markers/tag-blocks.md).
 
 ## Keep directives
 
-Keep directives preserve developer-owned content inside provider-managed files
-without forcing you to handwrite multiline regex patterns. Use them when you
-want to keep a visible region in place if the project file already has one,
-while still shipping a sensible template default for fresh projects.
+Keep directives name developer-owned regions inside provider-managed files — no
+regex to write, and the visible markers document the intention. Each variant is
+covered in the Markers tab:
 
-### Keep a bounded region
-
-Use `repolish-keep-block` when the developer-owned content sits between two
-explicit markers.
-
-```markdown
-## repolish-keep-block[readme-custom-block|after-render]: start="<!-- start -->" end="<!-- end -->"
-
-<!-- start -->
-
-Default block content
-
-<!-- end -->
-```
-
-If the current project file already has a matching marker pair, repolish keeps
-that content. Otherwise the template default remains.
-
-You can also use a dynamic closing boundary with `end-regex` when a literal end
-marker is awkward or unavailable (for example, stop at the next loop item):
-
-```yaml
-## repolish-keep-block[provider-additional|after-render]: start="# additional-paths" end-regex="^provider[0-9]+:$"
-{% for idx in providers %}
-provider{{ idx }}:
-   - static{{ idx }}
-   # additional-paths
-   - default{{ idx }}
-{% endfor %}
-```
-
-With `end-regex`, repolish searches forward from each `start` marker for the
-first matching line. If no match is found before the directive segment ends, the
-region closes at the segment end.
-
-When several sibling `keep-block` directives use the same `start`/`end` markers
-in one file, repolish matches them in encounter order and restores local blocks
-in that same order.
-
-One directive is enough — no need to give each block a different name:
-
-```markdown
-## repolish-keep-block[notes]: start="<!-- notes-start -->" end="<!-- notes-end -->"
-
-## Installation
-
-<!-- notes-start -->
-
-_No notes yet._
-
-<!-- notes-end -->
-
-## Usage
-
-<!-- notes-start -->
-
-_No notes yet._
-
-<!-- notes-end -->
-```
-
-If the project file already has both marker pairs with developer content:
-
-```markdown
-## Installation
-
-<!-- notes-start -->
-
-Run `pip install mylib` with Python 3.11+.
-
-<!-- notes-end -->
-
-## Usage
-
-<!-- notes-start -->
-
-Import and call `mylib.run()` after configuring credentials.
-
-<!-- notes-end -->
-```
-
-The output preserves both blocks in place — first block matched to first, second
-to second, and so on:
-
-```markdown
-## Installation
-
-<!-- notes-start -->
-
-Run `pip install mylib` with Python 3.11+.
-
-<!-- notes-end -->
-
-## Usage
-
-<!-- notes-start -->
-
-Import and call `mylib.run()` after configuring credentials.
-
-<!-- notes-end -->
-```
-
-### Keep everything from a marker to EOF
-
-Use `repolish-keep-rest` when a marker introduces a developer-owned tail.
-
-```gitignore
-## repolish-keep-rest[repo-overrides]: marker="## repo-overrides"
-## repo-overrides
-# Placeholder
-```
-
-Everything from the marker line to EOF is preserved from the project file when
-present.
-
-### Keep the header up to a marker
-
-Use `repolish-keep-header` when the developer owns the top of the file and the
-provider owns the section below the marker.
-
-`repolish-keep-header` must appear at the start of the template file. If placed
-later in the file, repolish ignores the directive to avoid duplicating content
-that may already have been emitted before the directive line.
-
-```toml
-## repolish-keep-header[repo-header]: marker="## managed-start"
-Intro text the developer can edit
-## managed-start
-Provider-managed content below
-```
-
-The header is preserved from the project file, while the provider-managed tail
-continues to come from the template.
+- [Keep Blocks](../markers/keep-block.md) — a bounded `start`/`end` region (with
+  `end-regex` for Jinja-generated loops).
+- [Keep the Rest](../markers/keep-rest.md) — everything from a marker to EOF.
+- [Keep the Header](../markers/keep-header.md) — the top of the file up to a
+  marker.
 
 ## Processing order
 
-1. `pre-render` phase on templates: block anchors, keep directives, regex
-   directives, multiregex directives.
-2. Jinja2 rendering.
-3. `after-render` phase on rendered files: keep directives, regex directives,
-   multiregex directives tagged with `|after-render` in the directive name.
-4. Insertions are applied to the generated files on disk, after rendering and
-   after-render preprocessing, but before any post-process formatting step.
+The full pipeline — pre-render phase, Jinja2 rendering, after-render phase,
+insertions, and post-process formatting — is described in
+[Phases](../markers/phases.md#the-full-pipeline).
 
-All directive lines are stripped before Jinja2 sees the file.
+All directive lines are stripped from the final output.
 
 ## Trying it out
 
@@ -303,28 +74,12 @@ repolish preview anchor_example.yaml
 
 ## Directive naming and uniqueness
 
-Directive names are **global identifiers** across all templates in a run. Two
-templates from different providers can each have a `## repolish-start[init]`
-block, but the replacement value for `init` is a single string - the later
-provider's value wins and the earlier one is silently discarded.
+**Anchor** names are global identifiers across all templates in a run: two
+templates from different providers can each use a `## repolish-start[init]`
+block, but `init` resolves to a single replacement string - the later provider's
+value wins and the earlier one is silently discarded. Namespace anchor names per
+provider (`docker-init` instead of `init`) — see
+[Tag Blocks & Anchors](../markers/tag-blocks.md#naming).
 
-To avoid this, scope names to the file or provider:
-
-```
-docker-init       ← instead of just "init"
-readme-badges     ← instead of "badges"
-mylib-version     ← instead of "version"
-```
-
-The same rule applies to regex and multiregex directive names. A regex named
-`version` in one template will silently conflict with a `version` directive in
-another template that is processed later.
-
-Block anchor replacements come from three places, merged in this order:
-
-1. Provider code - `create_anchors()` return value.
-2. Config-level anchors - the `anchors:` mapping in `repolish.yaml` (wins over
-   provider code).
-
-Regex and multiregex directives only read from the current project file; they
-are not affected by `repolish.yaml` anchors.
+Regex, multiregex, and keep directive names are scoped to the template file they
+appear in; the same name in two different files does not conflict.

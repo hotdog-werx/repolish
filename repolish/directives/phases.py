@@ -7,14 +7,28 @@ from hotlog import get_logger
 logger = get_logger(__name__)
 
 
-class PreprocessPhase(StrEnum):
+class DirectivePhase(StrEnum):
     """Supported preprocessing phases."""
 
     PRE_RENDER = 'pre-render'
     AFTER_RENDER = 'after-render'
 
 
-SUPPORTED_PHASES = {phase.value for phase in PreprocessPhase}
+SUPPORTED_PHASES = {phase.value for phase in DirectivePhase}
+
+
+def directive_phase_of(raw_tag: str) -> str:
+    """Parse the phase suffix from *raw_tag* without emitting a warning.
+
+    Shared with :func:`split_directive_tag` so apply-time directive stripping
+    and extraction use the same grammar. Invalid suffixes silently fall back
+    to ``pre-render``; extraction (via :func:`split_directive_tag`) is the one
+    place that warns.
+    """
+    if '|' not in raw_tag:
+        return 'pre-render'
+    _, maybe_phase = raw_tag.rsplit('|', 1)
+    return maybe_phase if maybe_phase in SUPPORTED_PHASES else 'pre-render'
 
 
 def split_directive_tag(

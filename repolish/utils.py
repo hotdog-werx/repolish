@@ -141,16 +141,6 @@ def ensure_meta_dir(base_dir: Path) -> Path:
     return meta_dir
 
 
-def read_text_utf8(path: Path) -> str:
-    """Read text from a file using UTF-8 encoding."""
-    return path.read_text(encoding='utf-8')
-
-
-def write_text_utf8(path: Path, content: str) -> None:
-    """Write text to a file using UTF-8 encoding."""
-    path.write_text(content, encoding='utf-8')
-
-
 def open_utf8(path: Path, mode: str = 'r') -> IO[str]:
     """Open a file with UTF-8 encoding."""
     return path.open(mode, encoding='utf-8')

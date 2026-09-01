@@ -1,4 +1,4 @@
-"""Regex-based preprocessing for templates.
+"""Regex directive processing for templates.
 
 This module handles regex pattern extraction and replacement in templates,
 including support for capture groups and indentation-aware trimming.
@@ -11,7 +11,34 @@ from dataclasses import dataclass
 
 from hotlog import get_logger
 
+from repolish.directives.definitions import (
+    REGEX_DIRECTIVE_RE,
+    DirectiveMapDefinition,
+    extract_directive_map,
+)
+from repolish.directives.phases import directive_phase_of
+
 logger = get_logger(__name__)
+
+
+def extract_regex_directives(
+    content: str,
+    phase: str,
+    source_path: str | None = None,
+) -> dict[str, str]:
+    """Extract regex directives from *content* for the selected *phase*."""
+    return extract_directive_map(
+        content,
+        _REGEX_EXTRACT_DEF,
+        phase=phase,
+        source_path=source_path,
+    )
+
+
+_REGEX_EXTRACT_DEF = DirectiveMapDefinition[str](
+    pattern=REGEX_DIRECTIVE_RE,
+    parse_value=lambda pattern: pattern,
+)
 
 
 @dataclass(frozen=True)
@@ -23,9 +50,7 @@ class _MatchedRegion:
     end: int
 
 
-_REGEX_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish-regex\[(.+?)\]:\s*(.*?)\s*$',
-)
+_REGEX_DIRECTIVE_RE = REGEX_DIRECTIVE_RE
 
 
 def _select_capture(match: re.Match) -> str:
@@ -199,16 +224,7 @@ def _strip_regex_directives_for_phase(content: str, phase: str) -> str:
     for line in content.splitlines(keepends=True):
         stripped = line.rstrip('\r\n')
         match = _REGEX_DIRECTIVE_RE.match(stripped)
-        if match and _directive_phase(match) == phase:
+        if match and directive_phase_of(match.group(1)) == phase:
             continue
         result.append(line)
     return ''.join(result)
-
-
-def _directive_phase(match: re.Match[str]) -> str:
-    """Return directive phase parsed from tag suffix with pre-render default."""
-    raw_tag = match.group(1)
-    if '|' not in raw_tag:
-        return 'pre-render'
-    _, maybe_phase = raw_tag.rsplit('|', 1)
-    return maybe_phase if maybe_phase in {'pre-render', 'after-render'} else 'pre-render'

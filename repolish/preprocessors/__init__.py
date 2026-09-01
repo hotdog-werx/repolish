@@ -1,36 +1,45 @@
-"""Preprocessing utilities for repolish templates.
+"""Compatibility shim for the old ``repolish.preprocessors`` import path.
 
-This package contains utilities for preprocessing template files before they are
-rendered with jinja. Preprocessing includes extracting patterns, applying regex
-replacements, and handling special repolish markers.
+The package was renamed to :mod:`repolish.directives` (the name encodes the
+artifacts it processes, not the phase timing). The public names below keep
+working; new code should import from ``repolish.directives`` and use
+``process_text``/``process_file``/``DirectivePhase``/``FileProcessResult``.
+
+Only the import path and renames are supported here — internal submodules
+(``keep``, ``registry``, ...) live solely under ``repolish.directives``.
 """
 
-from repolish.preprocessors.anchors import replace_tags_in_content
-from repolish.preprocessors.core import (
+from repolish.directives import (
+    DirectivePhase,
+    FilePair,
+    FileProcessResult,
     Patterns,
+    PhaseResult,
+    PostPass,
     extract_patterns,
-    replace_text,
-    safe_file_read,
+    process_file,
+    process_text,
+    run_phase,
+    strip_directives,
+    write_if_changed,
 )
-from repolish.preprocessors.directive_phase import (
-    PreprocessPhase,
-    split_directive_tag,
-    warn_invalid_phase_suffix,
-)
-from repolish.preprocessors.keep import apply_keep_replacements
-from repolish.preprocessors.multiregex import apply_multiregex_replacements
-from repolish.preprocessors.regex import apply_regex_replacements
+
+PreprocessPhase = DirectivePhase
+FilePreprocessResult = FileProcessResult
+preprocess_text = process_text
+preprocess_file = process_file
 
 __all__ = [
+    'FilePair',
+    'FilePreprocessResult',
     'Patterns',
+    'PhaseResult',
+    'PostPass',
     'PreprocessPhase',
-    'apply_keep_replacements',
-    'apply_multiregex_replacements',
-    'apply_regex_replacements',
     'extract_patterns',
-    'replace_tags_in_content',
-    'replace_text',
-    'safe_file_read',
-    'split_directive_tag',
-    'warn_invalid_phase_suffix',
+    'preprocess_file',
+    'preprocess_text',
+    'run_phase',
+    'strip_directives',
+    'write_if_changed',
 ]

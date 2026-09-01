@@ -1,4 +1,4 @@
-from repolish.preprocessors import regex
+from repolish.directives import regex
 
 
 def test_extend_when_whitespace_and_newline():

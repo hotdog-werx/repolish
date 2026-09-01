@@ -1,26 +1,69 @@
-"""Multi-regex preprocessing for templates.
+"""Multiregex directive processing for templates.
 
 This module handles multiregex pattern extraction and replacement, which allows
 extracting multiple key-value pairs from a block and replacing them in sections.
 """
 
 import re
+from dataclasses import dataclass
 
 from hotlog import get_logger
 
-from repolish.preprocessors.directive_phase import (
+from repolish.directives.definitions import (
+    MULTIREGEX_BLOCK_DIRECTIVE_RE,
+    MULTIREGEX_DIRECTIVE_RE,
+    DirectiveMapDefinition,
+    extract_directive_map,
+)
+from repolish.directives.phases import (
     split_directive_tag,
 )
-from repolish.preprocessors.tag_names import parse_section_name
+from repolish.directives.tag_names import parse_section_name
 
 logger = get_logger(__name__)
 
-_MULTIREGEX_BLOCK_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish-multiregex-block\[(.+?)\]:\s*(.*?)\s*$',
+
+@dataclass(frozen=True)
+class MultiregexPatterns:
+    """Container for all multiregex directives extracted from a template."""
+
+    blocks: dict[str, str]
+    regexes: dict[str, str]
+
+
+def extract_multiregex_patterns(
+    content: str,
+    phase: str,
+    source_path: str | None = None,
+) -> MultiregexPatterns:
+    """Extract all multiregex directives from *content* for the selected *phase*."""
+    blocks = extract_directive_map(
+        content,
+        _MULTIREGEX_BLOCK_EXTRACT_DEF,
+        phase=phase,
+        source_path=source_path,
+    )
+    regexes = extract_directive_map(
+        content,
+        _MULTIREGEX_EXTRACT_DEF,
+        phase=phase,
+        source_path=source_path,
+    )
+    return MultiregexPatterns(blocks=blocks, regexes=regexes)
+
+
+_MULTIREGEX_BLOCK_EXTRACT_DEF = DirectiveMapDefinition[str](
+    pattern=MULTIREGEX_BLOCK_DIRECTIVE_RE,
+    parse_value=lambda pattern: pattern,
 )
-_MULTIREGEX_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish-multiregex\[(.+?)\]:\s*(.*?)\s*$',
+
+_MULTIREGEX_EXTRACT_DEF = DirectiveMapDefinition[str](
+    pattern=MULTIREGEX_DIRECTIVE_RE,
+    parse_value=lambda pattern: pattern,
 )
+
+_MULTIREGEX_BLOCK_DIRECTIVE_RE = MULTIREGEX_BLOCK_DIRECTIVE_RE
+_MULTIREGEX_DIRECTIVE_RE = MULTIREGEX_DIRECTIVE_RE
 
 _KEY_VALUE_RE = re.compile(
     r'^(\s*)(")?([^"=:\s]+)(")?(\s*)([=:])(\s*)"([^"]*)"(.*)$',

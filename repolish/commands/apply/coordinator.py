@@ -26,8 +26,8 @@ from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
 )
+from repolish.directives import process_file
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.preprocessors import replace_text, safe_file_read
 from repolish.providers.models import (
     TemplateMapping,
 )
@@ -227,20 +227,21 @@ def _build_promoted_write_context(
     winner: PromotionWinner,
     dest_file: Path,
 ) -> PromotedWriteContext:
-    """Prepare hydrated text candidate for promoted files when possible."""
+    """Prepare hydrated text candidate for promoted files when possible.
+
+    Falls back to byte-for-byte copy behavior when either side cannot be
+    decoded as UTF-8 — that tolerance is specific to promoted files, so it
+    lives here rather than in the preprocessor node.
+    """
     rendered_text: str | None = None
     source_mode: int | None = None
     try:
-        source_text = winner.source_file.read_text(encoding='utf-8')
-        rendered_text = replace_text(
-            source_text,
-            safe_file_read(dest_file),
-            anchors_dictionary={},
-            source_path=str(winner.source_file),
-        )
-        source_mode = winner.source_file.stat().st_mode
+        result = process_file(winner.source_file, dest_file, anchors={})
+        if result is not None:
+            source_mode = winner.source_file.stat().st_mode
+            rendered_text = result.content
     except (OSError, UnicodeDecodeError):
-        # Keep byte-for-byte copy behavior for unreadable/binary sources.
+        # Undecodable destination or vanished source — byte copy instead.
         rendered_text = None
     return PromotedWriteContext(
         winner=winner,

@@ -184,7 +184,12 @@ def _run(params: ScaffoldParams) -> int:
     if params.directory is None:  # pragma: no cover
         return 1
     dest = (Path.cwd() / params.directory).resolve()
-    return _run_package(params.package, dest, params.prefix, monorepo=params.monorepo)
+    return _run_package(
+        params.package,
+        dest,
+        params.prefix,
+        monorepo=params.monorepo,
+    )
 
 
 def scaffold(params: ScaffoldParams = _DEFAULT_SCAFFOLD_PARAMS) -> None:

@@ -11,6 +11,7 @@ from jinja2 import (
     select_autoescape,
 )
 
+from repolish.directives import FilePair
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.misc import ctx_to_dict
 from repolish.providers import FileMode, SessionBundle, TemplateMapping
@@ -463,6 +464,38 @@ def _get_target_path(dest_path: str, setup_output: Path) -> Path:
     """Compute target output path with _repolish. prefix."""
     prefix = '_repolish.'
     return setup_output / 'repolish' / Path(dest_path).parent / (prefix + Path(dest_path).name)
+
+
+def rendered_file_pairs(
+    setup_output: Path,
+    base_dir: Path,
+) -> list[FilePair]:
+    """Pair rendered output files with their local destination counterparts.
+
+    Reverses :func:`_get_target_path`: every file under
+    ``setup_output / 'repolish'`` pairs with the same relative path under
+    *base_dir*, minus the ``_repolish.`` filename prefix. Pairing is
+    staging-layout knowledge belonging to hydration; the preprocessor node
+    only consumes the resulting pairs (see :func:`repolish.directives.run_phase`).
+    """
+    rendered_root = setup_output / 'repolish'
+    pairs: list[FilePair] = []
+    if not rendered_root.exists():
+        return pairs
+    prefix = '_repolish.'
+    for rendered_file in rendered_root.rglob('*'):
+        if not rendered_file.is_file():
+            continue
+        parts = list(rendered_file.relative_to(rendered_root).parts)
+        if parts[-1].startswith(prefix):
+            parts[-1] = parts[-1].removeprefix(prefix)
+        pairs.append(
+            FilePair(
+                template_path=rendered_file,
+                local_path=base_dir / Path(*parts),
+            ),
+        )
+    return pairs
 
 
 def _render_template_text(

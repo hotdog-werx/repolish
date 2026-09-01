@@ -35,8 +35,8 @@ from repolish.commands.apply.staging import (
 )
 from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.console import console
+from repolish.directives import strip_directives
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.preprocessors.core import replace_text
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
 
@@ -225,8 +225,8 @@ def _lint_template(
     rel = tpl_path.relative_to(tpl_root).as_posix()
     raw = tpl_path.read_text(encoding='utf-8')
     # Strip preprocessor directives so Jinja2 can parse clean source.
-    # Pass empty local content — anchors keep their template defaults.
-    cleaned = replace_text(raw, '', source_path=str(tpl_path))
+    # No local file participates — anchors keep their template defaults.
+    cleaned = strip_directives(raw, source_path=str(tpl_path))
 
     result = TemplateResult(path=rel)
 

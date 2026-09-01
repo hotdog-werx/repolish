@@ -1,10 +1,14 @@
 # Insertions
 
-Insertions let a provider fill reserved blocks inside files that are not fully
-owned by template rendering.
+Insertions let a provider fill reserved blocks via `repolish:on/off` markers —
+whether the block lives in a developer-owned file or is shipped by a
+provider-rendered template. The concept, the two flows, and developer-side
+behavior (marker adoption) are covered in
+[Insertions](../markers/insertions.md); this guide is the provider-side
+reference.
 
-Use insertions when a developer-owned file needs one or more generated regions,
-while the rest of the file stays hand-edited.
+In the developer-owned flow, the file stays hand-edited except for the marked
+regions.
 
 - `create_file_mappings()` owns and writes entire files
 - `create_file_validators()` checks final files
@@ -22,7 +26,8 @@ Quick checklist:
 
 ## Where insertions fit in apply
 
-Insertions run after template rendering and after-render preprocessing, once the
+Insertions run after template rendering and the
+[after-render directive phase](../markers/phases.md#the-full-pipeline), once the
 generated files exist on disk. They are applied before post-processing so
 formatters can see the final inserted content, and then the per-file insertion
 status is reported in the summary.

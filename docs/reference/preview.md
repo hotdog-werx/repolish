@@ -1,8 +1,9 @@
 # repolish preview
 
-Preview preprocessor output for a single template. This is the interactive
-debugger for working out template and preprocessor syntax before running a full
-`repolish apply`.
+Preview directive processing for a single template. This is the interactive
+debugger for working out template and directive syntax before running a full
+`repolish apply` — see the [Markers](../markers/index.md) tab for the directive
+families themselves.
 
 ```
 repolish preview [OPTIONS] DEBUG_FILE
@@ -41,8 +42,8 @@ config:
 
 ### `template` (required)
 
-The Jinja2 template content. Preprocessor directives (anchor tags, regex
-markers) are processed first, then the result is treated as output.
+The Jinja2 template content. Directives (tag blocks, regex markers) are
+processed first, then the result is treated as output.
 
 ### `target` (optional)
 
@@ -52,9 +53,20 @@ Omit when the template produces fully static output.
 
 ### `config` (optional)
 
-Configuration for the preprocessor. Currently supports:
+Configuration for the directive pass. Currently supports:
 
 - `anchors` - a mapping of anchor names to their replacement values.
+
+## Scope
+
+Preview runs the **pre-render phase only**: the Result is what Jinja2 will
+receive. Directives tagged `|after-render` pass through unprocessed and
+unstripped — intentional, since they don't get evaluated until after rendering
+in a real apply. Insertions are not simulated.
+
+A full-render preview — Jinja2 rendering, the after-render phase, and
+insertions, so the Result matches an actual apply — is a planned expansion. The
+debug-file format will need to grow context/insertion inputs when that lands.
 
 ## Examples
 

@@ -170,7 +170,7 @@ def test_apply_invalid_regex_phase_suffix_logs_warning_and_falls_back_to_pre_ren
     )
 
     warn_mock = mocker.patch(
-        'repolish.preprocessors.directive_phase.logger.warning',
+        'repolish.directives.phases.logger.warning',
     )
 
     monkeypatch.chdir(tmp_path)
@@ -253,7 +253,7 @@ def test_apply_invalid_keep_phase_suffix_logs_warning_and_falls_back_to_pre_rend
     )
 
     warn_mock = mocker.patch(
-        'repolish.preprocessors.directive_phase.logger.warning',
+        'repolish.directives.phases.logger.warning',
     )
 
     monkeypatch.chdir(tmp_path)
@@ -336,7 +336,7 @@ def test_apply_invalid_multiregex_phase_suffix_logs_warning_and_falls_back_to_pr
     )
 
     warn_mock = mocker.patch(
-        'repolish.preprocessors.directive_phase.logger.warning',
+        'repolish.directives.phases.logger.warning',
     )
 
     monkeypatch.chdir(tmp_path)
