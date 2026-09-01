@@ -1,11 +1,16 @@
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.directives import process_file, write_if_changed
+from repolish.directives import (
+    FerriedItem,
+    FileProcessResult,
+    process_file,
+    write_if_changed,
+)
 from repolish.providers import SessionBundle, TemplateMapping
 from repolish.utils import ensure_dot_repolish, path_slug
 
@@ -23,6 +28,13 @@ class _PreprocessContext:
     setup_input: Path
     base_dir: Path
     anchors: dict[str, str]
+    ferry: dict[str, list[FerriedItem]] = field(default_factory=dict)
+    """Per-family ferry items collected across all preprocessed pairs.
+
+    Populated from each :class:`~repolish.directives.FileProcessResult` and
+    returned by :func:`preprocess_templates` — even for pairs whose content
+    did not change, since ferry data is independent of preprocessing output.
+    """
 
 
 def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
@@ -55,18 +67,25 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
 def _preprocess_single_file(
     tpl_path: Path,
     local_path: Path,
-    anchors: dict[str, str],
+    ctx: _PreprocessContext,
 ) -> None:
     """Apply anchor-driven preprocessing to a single template file.
 
     Args:
         tpl_path: Path to the staged template file.
         local_path: Path to the local project file for anchor extraction.
-        anchors: Base anchors from create_anchors().
+        ctx: Preprocessing context (anchors + ferry collection).
     """
-    result = process_file(tpl_path, local_path, anchors=anchors)
+    result = process_file(tpl_path, local_path, anchors=ctx.anchors)
     if result is not None:
+        _collect_ferry(ctx, result)
         write_if_changed(tpl_path, result)
+
+
+def _collect_ferry(ctx: _PreprocessContext, result: FileProcessResult) -> None:
+    """Accumulate one pair's ferry items onto the context, by family."""
+    for family_name, items in result.ferry.items():
+        ctx.ferry.setdefault(family_name, []).extend(items)
 
 
 def _get_source_template(source_val: str | TemplateMapping) -> str | None:
@@ -102,7 +121,10 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
         args.ctx.base_dir / args.dest_path,
         anchors=args.ctx.anchors,
     )
-    if result is None or not result.changed:
+    if result is None:
+        return
+    _collect_ferry(args.ctx, result)
+    if not result.changed:
         return
 
     if isinstance(args.source_val, TemplateMapping):
@@ -217,14 +239,14 @@ def _process_auto_staged_templates(
         if rel_str in mapped_sources or rel_str in suppressed_sources:
             continue
         local_path = ctx.base_dir / rel_str
-        _preprocess_single_file(tpl, local_path, ctx.anchors)
+        _preprocess_single_file(tpl, local_path, ctx)
 
 
 def preprocess_templates(
     setup_input: Path,
     providers: SessionBundle,
     base_dir: Path,
-) -> None:
+) -> dict[str, tuple[FerriedItem, ...]]:
     """Apply anchor-driven replacements to files under setup_input.
 
     Local project files used for anchor-driven overrides are resolved relative
@@ -238,6 +260,11 @@ def preprocess_templates(
 
     For auto-staged templates and plain string mappings, the template is
     preprocessed in-place using the local file at the destination path.
+
+    Returns the per-family ferry collected from every processed pair (family
+    name → items, in processing order). Dests are raw file paths here — the
+    apply session relativizes them against *base_dir* when it merges the
+    phases, since only it knows both phases' dest shapes.
     """
     # Build context object once and pass it around
     ctx = _PreprocessContext(
@@ -271,3 +298,5 @@ def preprocess_templates(
         suppressed_sources,
         ctx,
     )
+
+    return {family: tuple(items) for family, items in ctx.ferry.items()}

@@ -85,7 +85,10 @@ def test_namespace_forms_process_identically(
     unmatched-block leak quirk preserves the literal directive line, and dash
     vs colon would then differ in spelling only.
     """
-    assert process_text(new + '\n' + tail, local) == process_text(legacy + '\n' + tail, local)
+    assert process_text(new + '\n' + tail, local) == process_text(
+        legacy + '\n' + tail,
+        local,
+    )
 
 
 @pytest.mark.parametrize('sep', LEGACY_AND_NEW)
@@ -174,7 +177,9 @@ def test_legacy_dash_form_warns_once_per_file() -> None:
         v: 0
     """)
 
-    with mock.patch('repolish.directives.definitions.logger.warning') as warning_mock:
+    with mock.patch(
+        'repolish.directives.definitions.logger.warning',
+    ) as warning_mock:
         extract_patterns(template, source_path='templates/example.md')
 
     warning_mock.assert_called_once()
@@ -192,7 +197,9 @@ def test_colon_form_does_not_warn() -> None:
         placeholder
     """)
 
-    with mock.patch('repolish.directives.definitions.logger.warning') as warning_mock:
+    with mock.patch(
+        'repolish.directives.definitions.logger.warning',
+    ) as warning_mock:
         extract_patterns(template)
 
     warning_mock.assert_not_called()
@@ -202,7 +209,9 @@ def test_after_render_extraction_does_not_repeat_the_warning() -> None:
     """The dash warning fires only on the pre-render pass, not per phase."""
     template = '## repolish-regex[version]: ^v: (.+)$\nv: 0\n'
 
-    with mock.patch('repolish.directives.definitions.logger.warning') as warning_mock:
+    with mock.patch(
+        'repolish.directives.definitions.logger.warning',
+    ) as warning_mock:
         extract_patterns(template, phase=DirectivePhase.AFTER_RENDER)
 
     warning_mock.assert_not_called()
