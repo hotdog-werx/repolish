@@ -43,9 +43,11 @@ from repolish.directives.files import (
     write_if_changed,
 )
 from repolish.directives.phases import DirectivePhase
+from repolish.directives.registry import FerriedItem
 
 __all__ = [
     'DirectivePhase',
+    'FerriedItem',
     'FilePair',
     'FileProcessResult',
     'Patterns',

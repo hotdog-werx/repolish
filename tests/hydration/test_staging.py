@@ -8,6 +8,7 @@ import pytest
 from pydantic import BaseModel
 
 from repolish.builder import stage_templates
+from repolish.directives import FerriedItem
 from repolish.hydration.staging import preprocess_templates
 from repolish.providers import SessionBundle, TemplateMapping
 from repolish.providers.models.files import FileMode
@@ -474,3 +475,69 @@ def test_preprocess_templates_skips_suppress_mode_mappings(
     assert isinstance(mapping, TemplateMapping)
     assert mapping.source_template == 'suppressed.toml.jinja'
     assert mapping.preprocessed_source is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: preprocess_templates returns the generic ferry
+# ---------------------------------------------------------------------------
+
+
+def test_preprocess_templates_returns_ferry_with_raw_dests(
+    tmp_path: Path,
+    ferrying_family: None,
+) -> None:
+    """preprocess_templates returns each family's ferry with raw file dests.
+
+    Dests stay raw (absolute) here — the apply session relativizes them
+    against the project root when it merges both phases' ferries.
+    """
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+    write_file(
+        tpl_dir / 'README.md',
+        '## repolish-keep-block[badges]: start="<!-- badges -->" end="<!-- /badges -->"\n',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    providers = SessionBundle(anchors={}, delete_files=[], delete_history={})
+
+    ferry = preprocess_templates(setup_input, providers, base_dir)
+
+    assert ferry == {
+        'ferry-family': (FerriedItem(dest=str(base_dir / 'README.md'), payload='badges'),),
+    }
+
+
+def test_preprocess_templates_ferries_mapping_destinations(
+    tmp_path: Path,
+    ferrying_family: None,
+) -> None:
+    """Mapped destinations ferry under the mapping's dest path, not the source."""
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+    write_file(
+        tpl_dir / 'tpl.md',
+        '## repolish-keep-block[badges]: start="<!-- badges -->" end="<!-- /badges -->"\n',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    write_file(base_dir / 'docs' / 'README.md', 'local\n')
+    providers = SessionBundle(
+        anchors={},
+        file_mappings={'docs/README.md': 'tpl.md'},
+    )
+
+    ferry = preprocess_templates(setup_input, providers, base_dir)
+
+    assert ferry == {
+        'ferry-family': (
+            FerriedItem(
+                dest=str(base_dir / 'docs' / 'README.md'),
+                payload='badges',
+            ),
+        ),
+    }

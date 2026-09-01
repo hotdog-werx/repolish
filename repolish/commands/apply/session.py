@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from hotlog import get_logger
@@ -27,7 +28,12 @@ from repolish.commands.apply.staging import (
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.validators import _collect_file_validation_messages
 from repolish.config.models.project import RepolishConfig
-from repolish.directives import DirectivePhase, run_phase
+from repolish.directives import (
+    DirectivePhase,
+    FerriedItem,
+    PhaseResult,
+    run_phase,
+)
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
@@ -137,7 +143,7 @@ def _validation_has_warnings(session: ResolvedSession) -> bool:
 def _run_after_render_directives(
     setup_output: Path,
     base_dir: Path,
-) -> None:
+) -> PhaseResult:
     """Apply directives tagged with phase="after-render" on rendered output files.
 
     Pairing of rendered files to their local counterparts is owned by hydration
@@ -145,12 +151,47 @@ def _run_after_render_directives(
     the directives node (:func:`run_phase`). Insertion-marker adoption is
     wired explicitly as a post pass so the directives package stays free of
     insertions knowledge.
+
+    Returns the phase result so the session can merge whatever families
+    ferried past the phase (``PhaseResult.ferry``).
     """
-    run_phase(
+    return run_phase(
         DirectivePhase.AFTER_RENDER,
         rendered_file_pairs(setup_output, base_dir),
         post_passes=[adopt_local_insertion_markers],
     )
+
+
+def _merge_ferries(
+    *phase_ferries: dict[str, tuple[FerriedItem, ...]],
+) -> dict[str, tuple[FerriedItem, ...]]:
+    """Union per-family ferry dicts from the directive phases, in phase order."""
+    merged: dict[str, list[FerriedItem]] = {}
+    for phase_ferry in phase_ferries:
+        for family, items in phase_ferry.items():
+            merged.setdefault(family, []).extend(items)
+    return {family: tuple(items) for family, items in merged.items()}
+
+
+def _relativize_ferry_dests(
+    ferry: dict[str, tuple[FerriedItem, ...]],
+    base_dir: Path,
+) -> dict[str, tuple[FerriedItem, ...]]:
+    """Rewrite each item's dest relative to *base_dir* when it lives under it.
+
+    Dests outside *base_dir* (staged files whose pair had no local side) keep
+    their original path — consumers decide what those mean.
+    """
+
+    def _relative(dest: str) -> str:
+        try:
+            return Path(dest).relative_to(base_dir).as_posix()
+        except ValueError:
+            return dest
+
+    return {
+        family: tuple(replace(item, dest=_relative(item.dest)) for item in items) for family, items in ferry.items()
+    }
 
 
 def apply_session(
@@ -206,8 +247,9 @@ def apply_session(
     _log_paused_files(paused)
     providers.paused_files = paused
 
-    # Preprocess templates (anchor-driven replacements)
-    preprocess_templates(setup_input, providers, base_dir)
+    # Preprocess templates (anchor-driven replacements). The returned ferry
+    # carries whatever directive families ferried past the pre-render phase.
+    pre_render_ferry = preprocess_templates(setup_input, providers, base_dir)
 
     # Render templates using Jinja2
     if render_templates(setup_input, providers, setup_output) != 0:
@@ -215,7 +257,15 @@ def apply_session(
 
     # Reconcile developer-owned content that is only discoverable after Jinja rendering
     # (for example, directives inside loop-generated sections).
-    _run_after_render_directives(setup_output, base_dir)
+    after_render = _run_after_render_directives(setup_output, base_dir)
+
+    # Deliver every family's ferried data to its consumers: merged across both
+    # phases, dests relativized to the project root. Consumers (insertions,
+    # validators, ...) read the families they know from `providers.ferry`.
+    providers.ferry = _relativize_ferry_dests(
+        _merge_ferries(pre_render_ferry, after_render.ferry),
+        base_dir,
+    )
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:

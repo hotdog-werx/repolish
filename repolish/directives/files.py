@@ -7,7 +7,7 @@ call site: UTF-8 reads with a binary/unreadable guard, phase application via
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from hotlog import get_logger
@@ -17,6 +17,7 @@ from repolish.directives.core import (
     process_text,
 )
 from repolish.directives.phases import DirectivePhase
+from repolish.directives.registry import FerriedItem, ferrying_families
 from repolish.marker_kit import read_text_or_none, write_mode_preserved
 
 logger = get_logger(__name__)
@@ -50,18 +51,55 @@ class FilePair:
 
 @dataclass(frozen=True)
 class FileProcessResult:
-    """Outcome of processing a single file pair."""
+    """Outcome of processing a single file pair.
+
+    ``ferry`` carries what each ferrying family extracted from the raw
+    template text, keyed by family name, with the pair's destination stamped
+    on every item (:class:`~repolish.directives.registry.FerriedItem`).
+    """
 
     content: str
     changed: bool
+    ferry: dict[str, tuple[FerriedItem, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class PhaseResult:
-    """Summary of :func:`run_phase` over a set of file pairs."""
+    """Summary of :func:`run_phase` over a set of file pairs.
+
+    ``ferry`` is the per-family union of every pair's ferry, in pair order.
+    """
 
     changed: tuple[str, ...]
     skipped: tuple[str, ...]
+    ferry: dict[str, tuple[FerriedItem, ...]] = field(default_factory=dict)
+
+
+def _run_ferry_hooks(
+    template_text: str,
+    template_path: Path,
+    local_path: Path | None,
+    phase: DirectivePhase,
+) -> dict[str, tuple[FerriedItem, ...]]:
+    """Run every ferrying family's hook on the raw template text.
+
+    Each item is stamped with the pair's destination — the local project
+    file when the pair has one, else the staged file itself. Families whose
+    hook yields nothing are omitted, so an empty dict means "nothing ferried".
+    """
+    families = ferrying_families()
+    if not families:
+        return {}
+    dest = str(local_path) if local_path is not None else str(template_path)
+    ferry: dict[str, tuple[FerriedItem, ...]] = {}
+    for family in families:
+        hook = family.ferry
+        if hook is None:  # pragma: no cover -- ferrying_families() filters these
+            continue
+        payloads = hook(template_text, phase.value, str(template_path))
+        if payloads:
+            ferry[family.name] = tuple(FerriedItem(dest=dest, payload=payload) for payload in payloads)
+    return ferry
 
 
 def process_file(
@@ -97,7 +135,11 @@ def process_file(
         source_path=str(template_path),
         post_passes=post_passes,
     )
-    return FileProcessResult(content=content, changed=content != template_text)
+    return FileProcessResult(
+        content=content,
+        changed=content != template_text,
+        ferry=_run_ferry_hooks(template_text, template_path, local_path, phase),
+    )
 
 
 def write_if_changed(path: Path, result: FileProcessResult) -> bool:
@@ -127,6 +169,7 @@ def run_phase(
     logger.debug('running_phase', phase=phase.value)
     changed: list[str] = []
     skipped: list[str] = []
+    ferry: dict[str, list[FerriedItem]] = {}
     for pair in pairs:
         result = process_file(
             pair.template_path,
@@ -138,6 +181,8 @@ def run_phase(
         if result is None:
             skipped.append(str(pair.template_path))
             continue
+        for family_name, items in result.ferry.items():
+            ferry.setdefault(family_name, []).extend(items)
         if write_if_changed(pair.template_path, result):
             changed.append(str(pair.template_path))
     logger.debug(
@@ -146,4 +191,8 @@ def run_phase(
         changed=len(changed),
         skipped=len(skipped),
     )
-    return PhaseResult(changed=tuple(changed), skipped=tuple(skipped))
+    return PhaseResult(
+        changed=tuple(changed),
+        skipped=tuple(skipped),
+        ferry={family: tuple(items) for family, items in ferry.items()},
+    )

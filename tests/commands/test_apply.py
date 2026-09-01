@@ -141,7 +141,7 @@ def test_apply_command_handles_missing_provider_and_extra_directory(
     )
     mocker.patch(
         'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
+    ).return_value = {}
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).return_value = None
@@ -198,7 +198,7 @@ def test_apply_warns_when_providers_not_ready(
     )
     mocker.patch(
         'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
+    ).return_value = {}
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).return_value = None
@@ -254,7 +254,7 @@ def test_apply_command_runs_with_valid_provider(
     )
     mocker.patch(
         'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
+    ).return_value = {}
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).return_value = None
@@ -375,7 +375,7 @@ def _base_mocks(
     ).return_value = providers
     mocker.patch(
         'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
+    ).return_value = {}
     mocker.patch(
         'repolish.commands.apply.check.render_template',
     ).return_value = None
@@ -522,7 +522,7 @@ def test_template_sources_translated_from_alias_to_pid(
     ).return_value = providers
     mocker.patch(
         'repolish.commands.apply.session.preprocess_templates',
-    ).return_value = None
+    ).return_value = {}
     mocker.patch(
         'repolish.commands.apply.session.apply_generated_output',
     ).return_value = {}
