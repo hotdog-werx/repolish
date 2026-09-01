@@ -15,6 +15,7 @@ from repolish.marker_kit import (
     find_all_bounded_regions,
     find_bounded_region,
     find_first_line_index,
+    find_prefixed_bounded_regions,
     occurrence_key,
     pair_in_occurrence_order,
     read_text_or_none,
@@ -72,6 +73,19 @@ def test_bounded_region_helpers_cover_literal_and_regex_bounds() -> None:
 
     regex_boundary = RegionBoundary(start='<!-- on -->', end_regex=r'^<!-- off')
     assert find_bounded_region(lines, 0, regex_boundary) == (1, 3)
+
+
+def test_prefixed_regions_skip_unbounded_zones() -> None:
+    """A zone with no end boundary yields no region — never swallows the file."""
+    lines = ['<!-- on -->\n', 'body\n', 'outro\n']
+
+    # No end at all (open boundary, like keep's open-ended KeepBlockSpec).
+    open_boundary = RegionBoundary(start='<!-- on -->')
+    assert find_prefixed_bounded_regions(lines, open_boundary) == []
+
+    # An end-regex that never matches is skipped the same way.
+    unmatched = RegionBoundary(start='<!-- on -->', end_regex=r'^<!-- never')
+    assert find_prefixed_bounded_regions(lines, unmatched) == []
 
 
 def test_read_text_or_none_and_write_mode_preserved(tmp_path: Path) -> None:

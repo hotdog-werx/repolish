@@ -13,17 +13,13 @@ import pytest
 
 from repolish.directives import (
     DirectivePhase,
-    FilePair,
-    process_file,
     process_text,
-    run_phase,
 )
 from repolish.directives import (
     insert_zones as insert_zones_module,
 )
 from repolish.directives.insert_zones import (
-    InsertZoneDeclaration,
-    extract_insert_zone_declarations,
+    _parse_quoted_literal,
     extract_insert_zones,
 )
 
@@ -77,7 +73,10 @@ def test_extract_end_regex_mode() -> None:
 
 
 def test_extract_filters_by_phase_tag() -> None:
-    template = TEMPLATE.replace('repolish:insert[badges]', 'repolish:insert[badges|after-render]')
+    template = TEMPLATE.replace(
+        'repolish:insert[badges]',
+        'repolish:insert[badges|after-render]',
+    )
 
     assert extract_insert_zones(template, 'pre-render') == {}
     zones = extract_insert_zones(template, 'after-render')
@@ -103,20 +102,48 @@ def test_apply_strips_directive_and_keeps_region() -> None:
     assert '<!-- generated:badges:off -->' in processed
 
 
+def test_zone_literals_must_be_quoted_strings() -> None:
+    """Non-string directive values are refused loudly.
+
+    The directive regex only captures quoted literals, so a non-string can
+    only arrive if the grammar is ever loosened — the parser still refuses it
+    (mirrors keep's literal parser). Reached directly because the grammar
+    cannot produce this input.
+    """
+    with pytest.raises(TypeError, match='quoted strings'):
+        _parse_quoted_literal('123')
+
+
 def test_other_phase_directive_survives_until_its_phase() -> None:
-    template = TEMPLATE.replace('repolish:insert[badges]', 'repolish:insert[badges|after-render]')
+    template = TEMPLATE + (
+        '## repolish:insert[footer|after-render] '
+        'start="<!-- generated:footer:on" end="<!-- generated:footer:off -->"\n'
+        '<!-- generated:footer:on -->\n'
+        '_default footer_\n'
+        '<!-- generated:footer:off -->\n'
+    )
 
     pre_rendered = process_text(template, '', phase=DirectivePhase.PRE_RENDER)
-    assert 'repolish:insert[badges|after-render]' in pre_rendered
+    # The pre-render zone is consumed; the after-render line waits for its pass.
+    assert 'repolish:insert[badges]' not in pre_rendered
+    assert 'repolish:insert[footer|after-render]' in pre_rendered
+    assert '_default badge row._' in pre_rendered
 
-    after_rendered = process_text(pre_rendered, '', phase=DirectivePhase.AFTER_RENDER)
-    assert 'repolish:insert[badges|after-render]' not in after_rendered
-    assert '_default badge row._' in after_rendered
+    after_rendered = process_text(
+        pre_rendered,
+        '',
+        phase=DirectivePhase.AFTER_RENDER,
+    )
+    assert 'repolish:insert' not in after_rendered
+    assert '_default footer_' in after_rendered
 
 
 def test_apply_warns_when_template_region_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The logger is patched (not pytest's caplog) because hotlog is
+    # structlog-based and never reaches the stdlib handlers caplog listens on;
+    # patching the family's logger is the only way to hear the warning.
     template = TEMPLATE.replace(
         '<!-- generated:badges:on my-org/my-repo style=flat -->\n_default badge row._\n<!-- generated:badges:off -->\n',  # noqa: E501
         '',
@@ -127,7 +154,9 @@ def test_apply_warns_when_template_region_missing(
     processed = process_text(template, '', source_path='tpl/README.md')
 
     assert 'repolish:insert' not in processed
-    assert 'insert_zone_template_region_not_found' in str(mock_warn.call_args[0][0])
+    assert 'insert_zone_template_region_not_found' in str(
+        mock_warn.call_args[0][0],
+    )
 
 
 def test_local_opening_args_adopted_body_never_is() -> None:
@@ -164,65 +193,3 @@ second-default
     # Occurrence pairing: only the second opening marker's args were edited.
     assert processed.count('<!-- generated:badges:on -->') == 1
     assert '<!-- generated:badges:on tuned/repo -->' in processed
-
-
-def test_process_file_ferries_declarations_with_dest(tmp_path: Path) -> None:
-    template = _write(tmp_path / 'render' / 'README.md', TEMPLATE)
-    local = _write(tmp_path / 'base' / 'README.md', '# Project\n')
-
-    result = process_file(template, local, phase=DirectivePhase.PRE_RENDER)
-
-    assert result is not None
-    assert 'repolish:insert' not in result.content
-    declaration = result.zone_declarations[0]
-    assert declaration == InsertZoneDeclaration(
-        name='badges',
-        spec=declaration.spec,
-        dest=str(local),
-    )
-    assert declaration.spec.boundary.start == '<!-- generated:badges:on'
-
-
-def test_process_file_other_phase_ferries_nothing_and_leaves_line(
-    tmp_path: Path,
-) -> None:
-    template = _write(
-        tmp_path / 'render' / 'README.md',
-        TEMPLATE.replace('repolish:insert[badges]', 'repolish:insert[badges|after-render]'),
-    )
-
-    result = process_file(template, None, phase=DirectivePhase.PRE_RENDER)
-
-    assert result is not None
-    assert result.zone_declarations == ()
-    assert 'repolish:insert[badges|after-render]' in result.content
-
-    _write(tmp_path / 'render' / 'README.md', result.content)
-    after = process_file(template, None, phase=DirectivePhase.AFTER_RENDER)
-    assert after is not None
-    assert after.zone_declarations[0].name == 'badges'
-    assert 'repolish:insert' not in after.content
-
-
-def test_run_phase_aggregates_declarations(tmp_path: Path) -> None:
-    template_a = _write(tmp_path / 'stage' / 'A.md', TEMPLATE)
-    template_b = _write(tmp_path / 'stage' / 'B.md', TEMPLATE)
-    local_a = _write(tmp_path / 'base' / 'A.md', '# A\n')
-    local_b = _write(tmp_path / 'base' / 'B.md', '# B\n')
-
-    summary = run_phase(
-        DirectivePhase.PRE_RENDER,
-        [FilePair(template_a, local_a), FilePair(template_b, local_b)],
-    )
-
-    assert sorted(summary.changed) == sorted([str(template_a), str(template_b)])
-    assert {d.dest for d in summary.zone_declarations} == {
-        str(local_a),
-        str(local_b),
-    }
-
-
-def test_extract_declarations_have_no_dest_until_callers_attach_it() -> None:
-    declarations = extract_insert_zone_declarations(TEMPLATE, 'pre-render')
-
-    assert declarations[0].dest == ''

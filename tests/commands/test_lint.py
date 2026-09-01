@@ -369,5 +369,9 @@ def test_unbranded_zone_does_not_fail_the_lint(tmp_path: Path) -> None:
         '## repolish:insert[b] start="<!-- b:on" end="<!-- b:off -->"\n'
         '<!-- b:on -->\n{{ package_name }}\n<!-- b:off -->\n'
     )
-    provider_dir = _make_provider(tmp_path, _CLASS_PROVIDER_BASE, {'README.md': template})
+    provider_dir = _make_provider(
+        tmp_path,
+        _CLASS_PROVIDER_BASE,
+        {'README.md': template},
+    )
     assert command(provider_dir) == 0

@@ -32,9 +32,8 @@ developer's.
 from __future__ import annotations
 
 import shlex
-from dataclasses import dataclass, field, replace
-from pathlib import Path
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 from hotlog import get_logger
 
@@ -49,7 +48,7 @@ from repolish.marker_kit import find_prefixed_bounded_regions
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from repolish.directives import InsertZoneDeclaration
+    from repolish.directives import FerriedItem, InsertZoneDeclaration
     from repolish.marker_kit import PrefixedRegion
 
 logger = get_logger(__name__)
@@ -73,28 +72,20 @@ class ZoneFillOutcome:
 
 
 def collect_insert_zones(
-    declarations: Iterable[InsertZoneDeclaration],
-    base_dir: Path,
+    items: Iterable[FerriedItem],
 ) -> dict[str, tuple[InsertZoneDeclaration, ...]]:
-    """Group ferried zone declarations by project-relative destination.
+    """Group the insert-zone family's ferried items by project-relative dest.
 
-    Declarations arrive with ``dest`` in whatever form the producing phase
-    attached (absolute from the after-render phase, already relative from
-    pre-render staging); everything is normalized to ``base_dir``-relative
-    POSIX strings so the insertion drivers can key on the same ``rel_path``
-    they use for file insertions. Declarations without a ``dest`` (pure text
-    extractions) are dropped.
+    The session already relativized every dest against the project root, so
+    grouping is all that is left: the drivers key on the same ``rel_path``
+    they use for file insertions. Each payload is the family's
+    :class:`~repolish.directives.InsertZoneDeclaration`.
     """
     merged: dict[str, list[InsertZoneDeclaration]] = {}
-    for declaration in declarations:
-        if not declaration.dest:
-            continue
-        try:
-            rel = Path(declaration.dest).relative_to(base_dir).as_posix()
-        except ValueError:
-            rel = Path(declaration.dest).as_posix()
-        merged.setdefault(rel, []).append(replace(declaration, dest=rel))
-    return {rel: tuple(items) for rel, items in merged.items()}
+    for item in items:
+        declaration = cast('InsertZoneDeclaration', item.payload)
+        merged.setdefault(item.dest, []).append(declaration)
+    return {dest: tuple(declarations) for dest, declarations in merged.items()}
 
 
 def _resolve_zone_fill(
@@ -184,6 +175,52 @@ def _resolve_zone_fill(
     return block, diagnostics, [new_body] if new_body else []
 
 
+@dataclass
+class _FillPlan:
+    """Mutable accumulators shared by the per-declaration fill passes."""
+
+    blocks: list[InsertionBlock] = field(default_factory=list)
+    diagnostics: list[WriteDiagnostic] = field(default_factory=list)
+    functions: list[str] = field(default_factory=list)
+    splices: list[tuple[int, int, list[str]]] = field(default_factory=list)
+
+
+def _plan_declaration_fills(
+    declaration: InsertZoneDeclaration,
+    lines: list[str],
+    registry: Mapping,
+    file_path: str,
+    plan: _FillPlan,
+) -> int:
+    """Resolve every occurrence of one zone, appending to *plan*.
+
+    Returns how many occurrences of the declaration were found (0 when the
+    markers are absent from the file — a debug-worthy no-op, not an error).
+    """
+    regions = find_prefixed_bounded_regions(lines, declaration.spec.boundary)
+    if not regions:
+        logger.debug(
+            'insert_zone_fill_region_not_found',
+            name=declaration.name,
+            file_path=file_path,
+        )
+        return 0
+    for region in regions:
+        block, region_diagnostics, new_body = _resolve_zone_fill(
+            declaration,
+            region,
+            ''.join(lines[region.start + 1 : region.end]),
+            registry,
+            file_path,
+        )
+        plan.blocks.append(block)
+        plan.functions.append(block.function)
+        plan.diagnostics.extend(region_diagnostics)
+        if new_body is not None:
+            plan.splices.append((region.start + 1, region.end, new_body))
+    return len(regions)
+
+
 def fill_insert_zones(
     text: str,
     declarations: Iterable[InsertZoneDeclaration],
@@ -203,45 +240,19 @@ def fill_insert_zones(
         return ZoneFillOutcome(text=text)
 
     lines = text.splitlines(keepends=True)
-    blocks: list[InsertionBlock] = []
-    diagnostics: list[WriteDiagnostic] = []
-    functions: list[str] = []
-    total = 0
-    splices: list[tuple[int, int, list[str]]] = []
+    plan = _FillPlan()
 
-    for declaration in zones:
-        regions = find_prefixed_bounded_regions(lines, declaration.spec.boundary)
-        if not regions:
-            logger.debug(
-                'insert_zone_fill_region_not_found',
-                name=declaration.name,
-                file_path=file_path,
-            )
-            continue
-        for region in regions:
-            total += 1
-            block, region_diagnostics, new_body = _resolve_zone_fill(
-                declaration,
-                region,
-                ''.join(lines[region.start + 1 : region.end]),
-                registry,
-                file_path,
-            )
-            blocks.append(block)
-            functions.append(block.function)
-            diagnostics.extend(region_diagnostics)
-            if new_body is not None:
-                splices.append((region.start + 1, region.end, new_body))
+    total = sum(_plan_declaration_fills(declaration, lines, registry, file_path, plan) for declaration in zones)
 
     # Apply bottom-up so splice indices stay valid for earlier zones.
-    for body_start, body_end, body_lines in sorted(splices, reverse=True):
+    for body_start, body_end, body_lines in sorted(plan.splices, reverse=True):
         lines[body_start:body_end] = body_lines
 
     return ZoneFillOutcome(
         text=''.join(lines),
-        blocks=blocks,
-        diagnostics=diagnostics,
-        functions=tuple(functions),
+        blocks=plan.blocks,
+        diagnostics=plan.diagnostics,
+        functions=tuple(plan.functions),
         total_blocks=total,
-        failed_blocks=len(diagnostics),
+        failed_blocks=len(plan.diagnostics),
     )

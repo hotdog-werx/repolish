@@ -1,11 +1,7 @@
 from pathlib import Path
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
 
 from repolish.commands.apply.insertions import check_registered_insertions
-
-if TYPE_CHECKING:
-    from repolish.providers.models import SessionBundle
+from repolish.providers import SessionBundle
 
 
 def _write_marker_file(path: Path, body: str) -> None:
@@ -21,7 +17,7 @@ def test_check_registered_insertions_without_staged_output_uses_rendered_diff(
     target = tmp_path / 'README.md'
     _write_marker_file(target, '')
 
-    providers = SimpleNamespace(
+    providers = SessionBundle(
         file_insertions={
             'README.md': {
                 'render': lambda: 'generated',
@@ -30,10 +26,7 @@ def test_check_registered_insertions_without_staged_output_uses_rendered_diff(
         paused_files=set(),
     )
 
-    diffs = check_registered_insertions(
-        cast('SessionBundle', providers),
-        tmp_path,
-    )
+    diffs = check_registered_insertions(providers, tmp_path)
 
     assert len(diffs) == 1
     path, diff_text = diffs[0]
@@ -47,7 +40,7 @@ def test_check_registered_insertions_missing_staged_file_falls_back_and_detects_
     target = tmp_path / 'README.md'
     _write_marker_file(target, 'generated')
 
-    providers = SimpleNamespace(
+    providers = SessionBundle(
         file_insertions={
             'README.md': {
                 'render': lambda: 'generated',
@@ -60,7 +53,7 @@ def test_check_registered_insertions_missing_staged_file_falls_back_and_detects_
     (setup_output / 'repolish').mkdir(parents=True, exist_ok=True)
 
     diffs = check_registered_insertions(
-        cast('SessionBundle', providers),
+        providers,
         tmp_path,
         setup_output=setup_output,
     )

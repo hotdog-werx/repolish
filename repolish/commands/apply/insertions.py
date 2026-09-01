@@ -15,6 +15,7 @@ from repolish.insertions import (
     ErrorDiagnosticEntry,
     InsertionReport,
     collect_disabled_entries,
+    collect_insert_zones,
     is_provider_owner,
 )
 from repolish.insertions.files import (
@@ -27,7 +28,6 @@ from repolish.marker_kit import read_text_or_none
 from repolish.utils import build_unified_diff, path_slug
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from pathlib import Path
 
     from repolish.directives import InsertZoneDeclaration
@@ -318,11 +318,21 @@ def _merge_provider_results(
         provider_results.setdefault(provider_alias, {})[rel_path] = file_result
 
 
+def _zone_map(
+    providers: SessionBundle,
+) -> dict[str, tuple[InsertZoneDeclaration, ...]]:
+    """Group the insert-zone family's ferried declarations by destination.
+
+    The apply session delivers every family's data on ``providers.ferry``
+    before any insertion driver runs; this is the drivers' one read of it.
+    """
+    return collect_insert_zones(providers.ferry.get('insert-zone', ()))
+
+
 def apply_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
     pid_to_alias: dict[str, str] | None = None,
-    zone_declarations: Mapping[str, tuple[InsertZoneDeclaration, ...]] | None = None,
 ) -> tuple[
     dict[str, InsertionFileResult],
     dict[str, dict[str, InsertionFileResult]],
@@ -334,14 +344,15 @@ def apply_registered_insertions(
 
     Files carrying template-declared insert zones are processed even when no
     provider registered ``repolish:on`` insertions for them — the union of
-    ``providers.file_insertions`` and *zone_declarations* drives the loop.
+    ``providers.file_insertions`` and the ferried zone declarations drives
+    the loop.
     """
     results: dict[str, InsertionFileResult] = {}
     provider_results: dict[str, dict[str, InsertionFileResult]] = {}
     reports_dir = base_dir / '.repolish' / '_' / 'insertions'
     reports_dir.mkdir(parents=True, exist_ok=True)
     paused_files = providers.paused_files
-    zone_map = dict(zone_declarations or {})
+    zone_map = _zone_map(providers)
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
         registry = providers.file_insertions.get(rel_path, {})
@@ -375,7 +386,6 @@ def summarize_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
     pid_to_alias: dict[str, str] | None = None,
-    zone_declarations: Mapping[str, tuple[InsertZoneDeclaration, ...]] | None = None,
 ) -> tuple[
     dict[str, InsertionFileResult],
     dict[str, dict[str, InsertionFileResult]],
@@ -386,7 +396,7 @@ def summarize_registered_insertions(
     reports_dir = base_dir / '.repolish' / '_' / 'insertions'
     reports_dir.mkdir(parents=True, exist_ok=True)
     paused_files = providers.paused_files
-    zone_map = dict(zone_declarations or {})
+    zone_map = _zone_map(providers)
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
         registry = providers.file_insertions.get(rel_path, {})
@@ -420,7 +430,6 @@ def stage_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
     setup_output: Path,
-    zone_declarations: Mapping[str, tuple[InsertZoneDeclaration, ...]] | None = None,
 ) -> None:
     """Render insertion targets into staged output for apply/check parity.
 
@@ -430,7 +439,7 @@ def stage_registered_insertions(
     """
     staged_root = setup_output / 'repolish'
     paused_files = providers.paused_files
-    zone_map = dict(zone_declarations or {})
+    zone_map = _zone_map(providers)
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
         registry = providers.file_insertions.get(rel_path, {})
@@ -457,12 +466,11 @@ def check_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
     setup_output: Path | None = None,
-    zone_declarations: Mapping[str, tuple[InsertZoneDeclaration, ...]] | None = None,
 ) -> list[tuple[str, str]]:
     """Return insertion drift diffs for check mode without mutating files."""
     diffs: list[tuple[str, str]] = []
     paused_files = providers.paused_files
-    zone_map = dict(zone_declarations or {})
+    zone_map = _zone_map(providers)
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
         registry = providers.file_insertions.get(rel_path, {})

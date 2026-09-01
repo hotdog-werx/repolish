@@ -39,6 +39,7 @@ from typing import cast
 from repolish.directives.insert_zones import (
     InsertZoneSpec,
     apply_insert_zones,
+    extract_insert_zone_declarations,
     extract_insert_zones,
 )
 from repolish.directives.keep import (
@@ -176,6 +177,7 @@ FAMILIES: tuple[DirectiveFamily, ...] = (
         name='insert-zone',
         extract=extract_insert_zones,
         apply=_apply_insert_zones,
+        ferry=extract_insert_zone_declarations,
     ),
 )
 

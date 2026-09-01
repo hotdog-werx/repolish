@@ -40,7 +40,12 @@ def test_families_listing_is_ordered_and_complete() -> None:
 def test_patterns_exposes_family_paylods_by_name() -> None:
     patterns = extract_patterns(TEMPLATE)
 
-    assert set(patterns.by_family) == {'keep', 'regex', 'multiregex', 'insert-zone'}
+    assert set(patterns.by_family) == {
+        'keep',
+        'regex',
+        'multiregex',
+        'insert-zone',
+    }
     assert isinstance(patterns.by_family['keep'], KeepPatterns)
     assert isinstance(patterns.by_family['regex'], dict)
     assert isinstance(patterns.by_family['multiregex'], MultiregexPatterns)

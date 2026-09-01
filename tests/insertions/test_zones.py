@@ -5,7 +5,7 @@ Zone declarations arrive from the directive ferry; filling resolves a renderer
 body. Every fallback keeps the template default instead of failing the file.
 """
 
-from repolish.directives import InsertZoneDeclaration
+from repolish.directives import FerriedItem, InsertZoneDeclaration
 from repolish.directives.insert_zones import InsertZoneSpec
 from repolish.insertions import (
     InsertionBlock,
@@ -16,20 +16,19 @@ from repolish.insertions.zones import collect_insert_zones, fill_insert_zones
 from repolish.marker_kit import RegionBoundary
 
 
-def _decl(  # noqa: PLR0913 - test fixture: each knob maps to one spec field
+def _decl(
     name: str,
     function: str | None = None,
     *,
     start: str = '<!-- gen:badges:on',
     end: str | None = '<!-- gen:badges:off -->',
     end_regex: str | None = None,
-    dest: str = '',
 ) -> InsertZoneDeclaration:
     if end_regex is not None:
         boundary = RegionBoundary(start=start, end_regex=end_regex)
     else:
         boundary = RegionBoundary(start=start, end=end)
-    return InsertZoneDeclaration(name, InsertZoneSpec(boundary, function), dest)
+    return InsertZoneDeclaration(name, InsertZoneSpec(boundary, function))
 
 
 TEXT = """\
@@ -131,7 +130,11 @@ def test_failing_renderer_keeps_default_with_diagnostic() -> None:
 def test_malformed_opening_args_keep_default_with_diagnostic() -> None:
     text = TEXT.replace('style=flat', 'style="unterminated')
 
-    outcome = fill_insert_zones(text, [_decl('badges')], {'badges': lambda: 'x'})
+    outcome = fill_insert_zones(
+        text,
+        [_decl('badges')],
+        {'badges': lambda: 'x'},
+    )
 
     assert '_default badge row._' in outcome.text
     assert outcome.failed_blocks == 1
@@ -144,8 +147,8 @@ def test_disabled_wrapper_returns_body_so_default_survives() -> None:
     def _render(block: InsertionBlock) -> str:
         return block.body
 
-    _render.__repolish_disabled_functions__ = frozenset({'badges'})  # type: ignore[attr-defined]
-    _render.__repolish_disabled_tags__ = frozenset()  # type: ignore[attr-defined]
+    _render.__repolish_disabled_functions__ = frozenset({'badges'})  # ty: ignore[unresolved-attribute]
+    _render.__repolish_disabled_tags__ = frozenset()  # ty: ignore[unresolved-attribute]
 
     outcome = fill_insert_zones(TEXT, [_decl('badges')], {'badges': _render})
 
@@ -221,20 +224,38 @@ def test_fill_with_no_declarations_is_identity() -> None:
     assert outcome.total_blocks == 0
 
 
-def test_collect_insert_zones_groups_by_relative_dest(tmp_path) -> None:  # noqa: ANN001 - pytest tmp_path
-    base = tmp_path
-    abs_dest = _decl('badges', dest=str(base / 'README.md'))
-    rel_dest = _decl('badges', dest='docs/GUIDE.md')
-    no_dest = _decl('badges')
+def test_unmatched_end_regex_zone_is_skipped_not_swallowed() -> None:
+    """A zone whose end-regex never matches fills nothing and keeps the file."""
 
-    grouped = collect_insert_zones([abs_dest, rel_dest, no_dest], base)
+    def badges() -> str:
+        return 'filled'
+
+    text = '<!-- gen:badges:on -->\n_default_\nno closing marker here\n'
+    declaration = _decl('badges', end=None, end_regex='^<!-- gen:badges:off')
+
+    outcome = fill_insert_zones(text, [declaration], {'badges': badges})
+
+    assert outcome.text == text
+    assert outcome.total_blocks == 0
+    assert outcome.blocks == []
+    assert outcome.diagnostics == []
+
+
+def test_collect_insert_zones_groups_by_ferried_dest() -> None:
+    """The adapter groups mailbox items by their (already relative) dest."""
+    readme = FerriedItem(dest='README.md', payload=_decl('badges'))
+    guide = FerriedItem(dest='docs/GUIDE.md', payload=_decl('badges'))
+
+    grouped = collect_insert_zones([readme, guide])
 
     assert sorted(grouped) == ['README.md', 'docs/GUIDE.md']
-    assert grouped['README.md'][0].dest == 'README.md'
+    assert grouped['README.md'][0].name == 'badges'
 
-    # Declarations from both phases for the same file merge into one tuple.
+    # Items from both phases for the same file merge into one tuple.
     merged = collect_insert_zones(
-        [_decl('badges', dest='README.md'), _decl('links', dest='README.md')],
-        base,
+        [
+            readme,
+            FerriedItem(dest='README.md', payload=_decl('links')),
+        ],
     )
     assert [d.name for d in merged['README.md']] == ['badges', 'links']

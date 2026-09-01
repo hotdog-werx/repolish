@@ -52,11 +52,18 @@ class P(Provider[Ctx, BaseInputs]):
 """
 
 
-def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str) -> None:
+def _setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
     _write(tmp_path / 'p' / 'repolish.py', provider)
     _write(tmp_path / 'p' / 'repolish' / 'README.md', TEMPLATE)
     config = {'providers': {'p': {'provider_root': './p'}}}
-    (tmp_path / 'repolish.yaml').write_text(json.dumps(config, indent=4), encoding='utf-8')
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(config, indent=4),
+        encoding='utf-8',
+    )
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
 
