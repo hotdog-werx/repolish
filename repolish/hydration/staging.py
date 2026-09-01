@@ -1,12 +1,13 @@
 import shutil
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
 from repolish.directives import (
-    InsertZoneDeclaration,
+    FerriedItem,
+    FileProcessResult,
     process_file,
     write_if_changed,
 )
@@ -27,9 +28,13 @@ class _PreprocessContext:
     setup_input: Path
     base_dir: Path
     anchors: dict[str, str]
-    zone_declarations: list[InsertZoneDeclaration] = field(default_factory=list)
-    """Insert zones declared by pre-render templates, collected for the
-    insertion phase (dests absolute until relativized on return)."""
+    ferry: dict[str, list[FerriedItem]] = field(default_factory=dict)
+    """Per-family ferry items collected across all preprocessed pairs.
+
+    Populated from each :class:`~repolish.directives.FileProcessResult` and
+    returned by :func:`preprocess_templates` — even for pairs whose content
+    did not change, since ferry data is independent of preprocessing output.
+    """
 
 
 def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
@@ -69,12 +74,18 @@ def _preprocess_single_file(
     Args:
         tpl_path: Path to the staged template file.
         local_path: Path to the local project file for anchor extraction.
-        ctx: Preprocessing context (anchors plus zone-declaration collector).
+        ctx: Preprocessing context (anchors + ferry collection).
     """
     result = process_file(tpl_path, local_path, anchors=ctx.anchors)
     if result is not None:
-        ctx.zone_declarations.extend(result.zone_declarations)
+        _collect_ferry(ctx, result)
         write_if_changed(tpl_path, result)
+
+
+def _collect_ferry(ctx: _PreprocessContext, result: FileProcessResult) -> None:
+    """Accumulate one pair's ferry items onto the context, by family."""
+    for family_name, items in result.ferry.items():
+        ctx.ferry.setdefault(family_name, []).extend(items)
 
 
 def _get_source_template(source_val: str | TemplateMapping) -> str | None:
@@ -112,7 +123,7 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
     )
     if result is None:
         return
-    args.ctx.zone_declarations.extend(result.zone_declarations)
+    _collect_ferry(args.ctx, result)
     if not result.changed:
         return
 
@@ -235,7 +246,7 @@ def preprocess_templates(
     setup_input: Path,
     providers: SessionBundle,
     base_dir: Path,
-) -> tuple[InsertZoneDeclaration, ...]:
+) -> dict[str, tuple[FerriedItem, ...]]:
     """Apply anchor-driven replacements to files under setup_input.
 
     Local project files used for anchor-driven overrides are resolved relative
@@ -250,8 +261,10 @@ def preprocess_templates(
     For auto-staged templates and plain string mappings, the template is
     preprocessed in-place using the local file at the destination path.
 
-    Returns the insert-zone declarations found in pre-render templates, ferried
-    to the insertion phase with ``dest`` relativized against ``base_dir``.
+    Returns the per-family ferry collected from every processed pair (family
+    name → items, in processing order). Dests are raw file paths here — the
+    apply session relativizes them against *base_dir* when it merges the
+    phases, since only it knows both phases' dest shapes.
     """
     # Build context object once and pass it around
     ctx = _PreprocessContext(
@@ -286,19 +299,4 @@ def preprocess_templates(
         ctx,
     )
 
-    return tuple(
-        replace(declaration, dest=_relativize_dest(declaration.dest, base_dir))
-        for declaration in ctx.zone_declarations
-    )
-
-
-def _relativize_dest(dest: str, base_dir: Path) -> str:
-    """Relativize an absolute declaration dest against *base_dir*.
-
-    Falls back to the raw dest when it is not under base_dir (never expected
-    in practice — the ferry always attaches ``base_dir / rel``).
-    """
-    try:
-        return Path(dest).relative_to(base_dir).as_posix()
-    except ValueError:
-        return dest
+    return {family: tuple(items) for family, items in ctx.ferry.items()}

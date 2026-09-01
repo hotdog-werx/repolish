@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from hotlog import get_logger
@@ -27,7 +28,12 @@ from repolish.commands.apply.staging import (
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.validators import _collect_file_validation_messages
 from repolish.config.models.project import RepolishConfig
-from repolish.directives import DirectivePhase, PhaseResult, run_phase
+from repolish.directives import (
+    DirectivePhase,
+    FerriedItem,
+    PhaseResult,
+    run_phase,
+)
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
@@ -35,7 +41,6 @@ from repolish.hydration import (
     rendered_file_pairs,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.insertions import collect_insert_zones
 from repolish.insertions.adoption import adopt_local_insertion_markers
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
@@ -145,14 +150,48 @@ def _run_after_render_directives(
     (:func:`rendered_file_pairs`); the after-render traversal itself lives in
     the directives node (:func:`run_phase`). Insertion-marker adoption is
     wired explicitly as a post pass so the directives package stays free of
-    insertions knowledge. The phase result's ``zone_declarations`` ferry
-    after-render-only zone declarations to the insertion phase.
+    insertions knowledge.
+
+    Returns the phase result so the session can merge whatever families
+    ferried past the phase (``PhaseResult.ferry``).
     """
     return run_phase(
         DirectivePhase.AFTER_RENDER,
         rendered_file_pairs(setup_output, base_dir),
         post_passes=[adopt_local_insertion_markers],
     )
+
+
+def _merge_ferries(
+    *phase_ferries: dict[str, tuple[FerriedItem, ...]],
+) -> dict[str, tuple[FerriedItem, ...]]:
+    """Union per-family ferry dicts from the directive phases, in phase order."""
+    merged: dict[str, list[FerriedItem]] = {}
+    for phase_ferry in phase_ferries:
+        for family, items in phase_ferry.items():
+            merged.setdefault(family, []).extend(items)
+    return {family: tuple(items) for family, items in merged.items()}
+
+
+def _relativize_ferry_dests(
+    ferry: dict[str, tuple[FerriedItem, ...]],
+    base_dir: Path,
+) -> dict[str, tuple[FerriedItem, ...]]:
+    """Rewrite each item's dest relative to *base_dir* when it lives under it.
+
+    Dests outside *base_dir* (staged files whose pair had no local side) keep
+    their original path — consumers decide what those mean.
+    """
+
+    def _relative(dest: str) -> str:
+        try:
+            return Path(dest).relative_to(base_dir).as_posix()
+        except ValueError:
+            return dest
+
+    return {
+        family: tuple(replace(item, dest=_relative(item.dest)) for item in items) for family, items in ferry.items()
+    }
 
 
 def apply_session(
@@ -208,9 +247,9 @@ def apply_session(
     _log_paused_files(paused)
     providers.paused_files = paused
 
-    # Preprocess templates (anchor-driven replacements); ferries the pre-render
-    # insert-zone declarations (or () for stubbed test doubles).
-    pre_render_zones = preprocess_templates(setup_input, providers, base_dir) or ()
+    # Preprocess templates (anchor-driven replacements). The returned ferry
+    # carries whatever directive families ferried past the pre-render phase.
+    pre_render_ferry = preprocess_templates(setup_input, providers, base_dir)
 
     # Render templates using Jinja2
     if render_templates(setup_input, providers, setup_output) != 0:
@@ -220,10 +259,11 @@ def apply_session(
     # (for example, directives inside loop-generated sections).
     after_render = _run_after_render_directives(setup_output, base_dir)
 
-    # Merge zone declarations from both phases, keyed by project-relative dest,
-    # for the insertion-phase drivers below.
-    zone_declarations = collect_insert_zones(
-        (*pre_render_zones, *after_render.zone_declarations),
+    # Deliver every family's ferried data to its consumers: merged across both
+    # phases, dests relativized to the project root. Consumers (insertions,
+    # validators, ...) read the families they know from `providers.ferry`.
+    providers.ferry = _relativize_ferry_dests(
+        _merge_ferries(pre_render_ferry, after_render.ferry),
         base_dir,
     )
 
@@ -231,12 +271,7 @@ def apply_session(
     if check_only:
         # In check mode, we compare staged output against base_dir without modifying files.
         # Do NOT apply_generated_output here - that would overwrite local changes!
-        stage_registered_insertions(
-            providers,
-            base_dir,
-            setup_output,
-            zone_declarations,
-        )
+        stage_registered_insertions(providers, base_dir, setup_output)
         _run_post_process_if_needed(
             config,
             setup_output,
@@ -250,14 +285,12 @@ def apply_session(
                 resolved_symlinks=resolved_symlinks,
                 provider_infos=config.providers,
                 disable_auto_staging=is_root_pass,
-                zone_declarations=zone_declarations,
             ),
         )
         file_results, provider_results = summarize_registered_insertions(
             providers,
             base_dir,
             pid_to_alias,
-            zone_declarations=zone_declarations,
         )
         session.insertion_results = file_results
         session.provider_insertion_results = provider_results
@@ -275,7 +308,6 @@ def apply_session(
         providers,
         base_dir,
         pid_to_alias,
-        zone_declarations=zone_declarations,
     )
     session.insertion_results = file_results
     session.provider_insertion_results = provider_results

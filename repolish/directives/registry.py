@@ -8,8 +8,18 @@ A family is a module exposing an ``extract``/``apply`` pair:
   the family's directive lines for that phase and reconcile regions against
   the local file's content.
 
+A family may also declare a ``ferry`` hook — data it wants delivered to a
+consumer *past* the directive phases (for example, declarations for a phase
+that runs after rendering). The file node
+(:mod:`repolish.directives.files`) calls each ferrying family on the raw
+template text and stamps the destination on :class:`FerriedItem`; the pipeline
+carries the items through hydration and the apply session without knowing
+what they are. Consumers read the families they know from
+``SessionBundle.ferry``.
+
 Adding a directive family means writing that module and adding one entry to
-:data:`FAMILIES` below — nothing outside ``repolish.directives`` changes.
+:data:`FAMILIES` below — nothing outside ``repolish.directives`` changes (a
+ferrying family adds only its consumer on the receiving side).
 Order matters: families apply in listing order against the accumulated
 content.
 
@@ -18,7 +28,8 @@ they are the anchors primitive, driven by caller-supplied anchor dictionaries
 in the pre-render phase rather than by local-file reconciliation, and are
 handled by ``core.process_text`` itself.
 
-Package-internal: not re-exported from ``repolish.directives``.
+Package-internal: not re-exported from ``repolish.directives`` (except
+``FerriedItem``, which ferry consumers type against).
 """
 
 from collections.abc import Callable
@@ -47,6 +58,28 @@ from repolish.directives.regex import (
 
 ExtractFn = Callable[[str, str, str | None], object]
 ApplyFn = Callable[[str, object, str, str, str | None], str]
+FerryFn = Callable[[str, str, str | None], tuple[object, ...]]
+"""Signature of a family's ferry hook: ``(template_text, phase, source_path)``.
+
+Same calling convention as :data:`ExtractFn`, but returns the opaque payloads
+the family wants delivered to its consumer past the directive phases. Hooks
+filter by phase themselves, exactly like ``extract``.
+"""
+
+
+@dataclass(frozen=True)
+class FerriedItem:
+    """One family payload traveling past the directive phases to its consumer.
+
+    ``dest`` is the file the payload applies to — the local project file when
+    the pair has one, else the staged/rendered file — stamped by
+    :func:`repolish.directives.files.process_file` (the only place that knows
+    the pairing). ``payload`` is the family's own type; the pipeline treats it
+    as opaque.
+    """
+
+    dest: str
+    payload: object
 
 
 @dataclass(frozen=True)
@@ -56,6 +89,7 @@ class DirectiveFamily:
     name: str
     extract: ExtractFn
     apply: ApplyFn
+    ferry: FerryFn | None = None
 
 
 def _apply_keep(
@@ -144,3 +178,8 @@ FAMILIES: tuple[DirectiveFamily, ...] = (
         apply=_apply_insert_zones,
     ),
 )
+
+
+def ferrying_families() -> tuple[DirectiveFamily, ...]:
+    """Return the families that declared a ferry hook, in registry order."""
+    return tuple(family for family in FAMILIES if family.ferry is not None)

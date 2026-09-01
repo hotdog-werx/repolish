@@ -508,6 +508,12 @@ class SessionBundle(BaseModel):
     Used for summary/debug output when the same target file is updated by more than
     one provider in a monorepo or multi-provider session.
     """
+    ferry: dict[str, tuple] = Field(default_factory=dict)
+    """Family name → tuple of ``FerriedItem`` payloads (``repolish.directives``)
+    that directive families ferried past their phases during this run. Populated
+    by the apply session after both directive phases, with dests relativized
+    to the project root where possible; consumers read the families they know.
+    Empty when no family ferries data."""
 
 
 def _records_from_template_sources(

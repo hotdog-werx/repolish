@@ -13,7 +13,10 @@ from typing import Protocol
 from hotlog import get_logger
 
 from repolish.directives.anchors import replace_tags_in_content
-from repolish.directives.definitions import TAG_BLOCK_RE, warn_legacy_dash_directives
+from repolish.directives.definitions import (
+    TAG_BLOCK_RE,
+    warn_legacy_dash_directives,
+)
 from repolish.directives.keep import KeepPatterns
 from repolish.directives.multiregex import MultiregexPatterns
 from repolish.directives.phases import DirectivePhase

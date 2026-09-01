@@ -5,6 +5,10 @@ from textwrap import dedent
 
 import pytest
 
+from repolish.directives import registry
+from repolish.directives.keep import extract_keep_patterns
+from repolish.directives.registry import DirectiveFamily
+
 from .integration.conftest import (
     _DIST_DIR,
     _EXAMPLES_DIR,
@@ -146,3 +150,37 @@ def temp_repolish_dirs(tmp_path: Path) -> list[str]:
     )
 
     return [str(dir1), str(dir2), str(dir3)]
+
+
+@pytest.fixture
+def ferrying_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Register a synthetic ferrying directive family for the current test.
+
+    No real family ferries data yet (``ferrying_families()`` is empty on a
+    stock registry), so tests of the ferry pipeline — directives, hydration,
+    apply session — use this family, shaped like the first real one will be
+    (insertion zones): it owns no directives, and its hook ferries the
+    keep-block declarations found in the raw text, extracted by the real
+    keep extractor in the hook's own phase.
+    """
+
+    def _extract(content, phase, source_path=None):  # noqa: ANN001, ANN202
+        """Registry extract signature; the family owns no directives."""
+        return {}
+
+    def _apply(content, specs, local_content, phase, source_path=None):  # noqa: ANN001, ANN202
+        """Registry apply signature; the family changes nothing."""
+        return content
+
+    def _ferry(content, phase, source_path=None):  # noqa: ANN001, ANN202
+        """Ferry each keep-block declaration's name past the directive phases."""
+        patterns = extract_keep_patterns(content, phase, source_path)
+        return tuple(patterns.blocks)
+
+    family = DirectiveFamily(
+        name='ferry-family',
+        extract=_extract,
+        apply=_apply,
+        ferry=_ferry,
+    )
+    monkeypatch.setattr(registry, 'FAMILIES', (*registry.FAMILIES, family))

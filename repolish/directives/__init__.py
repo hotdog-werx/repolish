@@ -47,9 +47,11 @@ from repolish.directives.insert_zones import (
     InsertZoneSpec,
 )
 from repolish.directives.phases import DirectivePhase
+from repolish.directives.registry import FerriedItem
 
 __all__ = [
     'DirectivePhase',
+    'FerriedItem',
     'FilePair',
     'FileProcessResult',
     'InsertZoneDeclaration',
