@@ -1,0 +1,85 @@
+# Insertion Zones
+
+[Insertions](insertions.md) work in template-rendered files too, but their
+`repolish:on:tag` markers always read as foreign machinery dropped into your
+document. Insertion zones solve the cosmetic part: the provider declares a
+fillable region whose markers are **branded for the content** — a badge row, a
+footer, a signature — so the rendered file reads as if it was written that way,
+while a provider function still fills the body on every apply.
+
+The template ships a default between the markers; anything undeclared
+(overrides, missing function, render failure) keeps that default instead of
+failing the file.
+
+## Syntax
+
+```markdown
+## repolish:insert[badges] start="<!-- generated:badges:on" end="<!-- generated:badges:off -->"
+
+<!-- generated:badges:on my-org/my-repo style=flat -->
+
+_Default badge row for new projects._
+
+<!-- generated:badges:off -->
+```
+
+- `start` / `end` are literal marker strings; `start` matches by **prefix**, so
+  the opening marker line may carry arguments
+  (`<!-- generated:badges:on my-org/my-repo style=flat -->`).
+- `end-regex="..."` replaces `end` for generated closers.
+- `function="name"` (optional) names the provider function to call. Without it,
+  the zone's tag **is** the function name — `repolish:insert[badges]` looks up
+  `badges` in the file's function registry, so the common case needs nothing
+  extra. When several providers register functions for one file, qualify with
+  the provider alias — `function="my-provider:badges"` targets that provider's
+  function specifically, the same naming rule insertion markers use.
+- The zone can repeat in one file; every occurrence is filled. The
+  [`|after-render` phase](phases.md) is supported for Jinja-generated zones.
+- Zones are colon-grammar only — there is no legacy dash spelling. The exact
+  zone and marker syntax is on the [Grammar](grammar.md#insertion-zone-grammar)
+  page.
+
+!!! tip "Brand the markers"
+
+    `repolish lint` warns (without failing) when literal zone markers lack a
+    `generated` / `gen` / `auto` word — branded markers are the entire point.
+
+## Developer control
+
+You tune what the function sees by editing the arguments on the opening marker
+line — say, switching `style=flat` to `style=social`. Those edits survive
+re-apply: on each run the rendered file re-adopts your opening marker (paired in
+occurrence order, like keep blocks) and the body re-fills from your args. The
+**body** itself is always regenerated — never hand-edit inside the markers, same
+rule as insertions.
+
+Zones participate in `overrides.insertions` like ordinary insertion blocks:
+disabling a function or tag leaves the template default in place.
+
+## Fallbacks
+
+The zone body is the provider's promise, but the file must never die over it:
+
+- **no function registered** → the template default stays, a diagnostic is
+  reported.
+- **function raises** → the template default stays (unlike insertion blocks,
+  which empty the body); diagnostic reported.
+- **disabled via config** → the template default stays; counted as disabled in
+  the insertion report.
+
+## Provider side
+
+```python
+def create_file_insertions(self, context):
+    def badges(*args):
+        owner_repo = args[0] if args else 'unknown/unknown'
+        style = next((a.split('=', 1)[1] for a in args if a.startswith('style=')), 'flat')
+        return render_badges(owner_repo, style=style)
+
+    return {'README.md': {'badges': badges}}
+```
+
+The function receives the opening marker's arguments the same way an insertion
+function receives marker args (shlex-split, `-->` stripped); the usual signature
+forms apply — `*args`, positional params, or a single `InsertionBlock` parameter
+for full metadata.

@@ -1,6 +1,7 @@
 """Registry-driven core: family ordering and Patterns compatibility views."""
 
 from repolish.directives import Patterns, extract_patterns, strip_directives
+from repolish.directives.insert_zones import InsertZoneSpec
 from repolish.directives.keep import KeepPatterns
 from repolish.directives.multiregex import MultiregexPatterns
 from repolish.directives.registry import FAMILIES
@@ -19,6 +20,10 @@ version: 0.0.0
 ## repolish-multiregex[mise]: ^([A-Za-z]+) = \\"(.*?)\\"
 [tools]
 python = "3.12"
+## repolish:insert[badges] start="<!-- generated:badges:on" end="<!-- generated:badges:off -->"
+<!-- generated:badges:on my-org/my-repo -->
+badge default
+<!-- generated:badges:off -->
 """
 
 
@@ -28,16 +33,23 @@ def test_families_listing_is_ordered_and_complete() -> None:
         'keep',
         'regex',
         'multiregex',
+        'insert-zone',
     ]
 
 
 def test_patterns_exposes_family_paylods_by_name() -> None:
     patterns = extract_patterns(TEMPLATE)
 
-    assert set(patterns.by_family) == {'keep', 'regex', 'multiregex'}
+    assert set(patterns.by_family) == {'keep', 'regex', 'multiregex', 'insert-zone'}
     assert isinstance(patterns.by_family['keep'], KeepPatterns)
     assert isinstance(patterns.by_family['regex'], dict)
     assert isinstance(patterns.by_family['multiregex'], MultiregexPatterns)
+    zones = patterns.by_family['insert-zone']
+    assert isinstance(zones, dict)
+    assert isinstance(zones['badges'], InsertZoneSpec)
+    assert zones['badges'].boundary.start == '<!-- generated:badges:on'
+    assert zones['badges'].boundary.end == '<!-- generated:badges:off -->'
+    assert zones['badges'].function is None
 
 
 def test_patterns_flat_accessors_match_family_payloads() -> None:

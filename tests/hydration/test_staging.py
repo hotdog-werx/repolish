@@ -474,3 +474,61 @@ def test_preprocess_templates_skips_suppress_mode_mappings(
     assert isinstance(mapping, TemplateMapping)
     assert mapping.source_template == 'suppressed.toml.jinja'
     assert mapping.preprocessed_source is None
+
+
+ZONE_TEMPLATE = """\
+# Project
+
+## repolish:insert[badges] start="<!-- generated:badges:on" end="<!-- generated:badges:off -->"
+<!-- generated:badges:on -->
+_default._
+<!-- generated:badges:off -->
+"""
+
+
+def test_preprocess_templates_ferries_zone_declarations_relativized(
+    tmp_path: Path,
+) -> None:
+    """Auto-staged zone templates return declarations keyed by project path."""
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+    write_file(tpl_dir / 'README.md', ZONE_TEMPLATE)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = SessionBundle(anchors={}, delete_files=[], delete_history={})
+
+    declarations = preprocess_templates(setup_input, providers, base_dir)
+
+    assert [(d.name, d.dest) for d in declarations] == [('badges', 'README.md')]
+    # The directive line was stripped from the staged template; the zone
+    # region (markers + template default) flows through untouched.
+    staged = (tpl_dir / 'README.md').read_text(encoding='utf-8')
+    assert 'repolish:insert' not in staged
+    assert '_default._' in staged
+
+
+def test_preprocess_templates_ferries_mapping_destinations(tmp_path: Path) -> None:
+    """A TemplateMapping destination gets its own pre-render declaration."""
+    setup_input = tmp_path / '_' / 'stage'
+    tpl_dir = setup_input / 'repolish'
+    tpl_dir.mkdir(parents=True)
+    write_file(tpl_dir / 'README.template.md', ZONE_TEMPLATE)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    providers = SessionBundle(
+        anchors={},
+        file_mappings={
+            'docs/README.md': TemplateMapping(source_template='README.template.md'),
+        },
+    )
+
+    declarations = preprocess_templates(setup_input, providers, base_dir)
+
+    assert [(d.name, d.dest) for d in declarations] == [
+        ('badges', 'docs/README.md'),
+    ]

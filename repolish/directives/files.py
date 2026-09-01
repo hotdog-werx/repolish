@@ -4,10 +4,15 @@ Everything in this module builds on the pure text API in :mod:`~repolish.directi
 and owns the file I/O concerns that pipeline code used to re-implement per
 call site: UTF-8 reads with a binary/unreadable guard, phase application via
 :func:`process_text`, and mode-preserving write-back.
+
+Insert-zone declarations ride along on the results (``zone_declarations``):
+they are parsed from the pre-directive template text so the insertion phase
+knows which template-authored zones exist even though the directive lines
+themselves are stripped by the phase that selects them.
 """
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from hotlog import get_logger
@@ -15,6 +20,10 @@ from hotlog import get_logger
 from repolish.directives.core import (
     PostPass,
     process_text,
+)
+from repolish.directives.insert_zones import (
+    InsertZoneDeclaration,
+    extract_insert_zone_declarations,
 )
 from repolish.directives.phases import DirectivePhase
 from repolish.marker_kit import read_text_or_none, write_mode_preserved
@@ -54,6 +63,9 @@ class FileProcessResult:
 
     content: str
     changed: bool
+    zone_declarations: tuple[InsertZoneDeclaration, ...] = ()
+    """Insert zones declared by the template for this phase, ferried to the
+    insertion phase (dest = the local/destination path)."""
 
 
 @dataclass(frozen=True)
@@ -62,6 +74,8 @@ class PhaseResult:
 
     changed: tuple[str, ...]
     skipped: tuple[str, ...]
+    zone_declarations: tuple[InsertZoneDeclaration, ...] = ()
+    """Aggregated insert-zone declarations across all processed pairs."""
 
 
 def process_file(
@@ -97,7 +111,20 @@ def process_file(
         source_path=str(template_path),
         post_passes=post_passes,
     )
-    return FileProcessResult(content=content, changed=content != template_text)
+    dest_path = local_path if local_path is not None else template_path
+    declarations = tuple(
+        replace(declaration, dest=str(dest_path))
+        for declaration in extract_insert_zone_declarations(
+            template_text,
+            phase.value,
+            source_path=str(template_path),
+        )
+    )
+    return FileProcessResult(
+        content=content,
+        changed=content != template_text,
+        zone_declarations=declarations,
+    )
 
 
 def write_if_changed(path: Path, result: FileProcessResult) -> bool:
@@ -127,6 +154,7 @@ def run_phase(
     logger.debug('running_phase', phase=phase.value)
     changed: list[str] = []
     skipped: list[str] = []
+    declarations: list[InsertZoneDeclaration] = []
     for pair in pairs:
         result = process_file(
             pair.template_path,
@@ -138,6 +166,7 @@ def run_phase(
         if result is None:
             skipped.append(str(pair.template_path))
             continue
+        declarations.extend(result.zone_declarations)
         if write_if_changed(pair.template_path, result):
             changed.append(str(pair.template_path))
     logger.debug(
@@ -146,4 +175,8 @@ def run_phase(
         changed=len(changed),
         skipped=len(skipped),
     )
-    return PhaseResult(changed=tuple(changed), skipped=tuple(skipped))
+    return PhaseResult(
+        changed=tuple(changed),
+        skipped=tuple(skipped),
+        zone_declarations=tuple(declarations),
+    )

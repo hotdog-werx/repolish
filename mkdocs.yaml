@@ -31,6 +31,7 @@ nav:
 
   - Markers:
       - Overview: markers/index.md
+      - Grammar: markers/grammar.md
       - Directives:
           - Phases: markers/phases.md
           - Tag Blocks & Anchors: markers/tag-blocks.md
@@ -40,6 +41,7 @@ nav:
           - Keep the Rest: markers/keep-rest.md
           - Keep the Header: markers/keep-header.md
       - Insertions: markers/insertions.md
+      - Insertion Zones: markers/insert-zones.md
 
   - Provider Anatomy:
       - Overview: provider-development/overview.md

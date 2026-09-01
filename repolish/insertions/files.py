@@ -13,23 +13,30 @@ from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
-from repolish.insertions.writer import write_back
+from repolish.insertions.writer import WriteBackResult, write_back
+from repolish.insertions.zones import fill_insert_zones
 from repolish.marker_kit import read_text_or_none, write_mode_preserved
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
-    from repolish.insertions.writer import RenderRegistry, WriteBackResult
+    from repolish.directives import InsertZoneDeclaration
+    from repolish.insertions.models import InsertionBlock
+    from repolish.insertions.writer import RenderRegistry
 
 logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
 class FileInsertionOutcome:
-    """Outcome of rendering insertions over one file."""
+    """Outcome of rendering insertions (and zones) over one file."""
 
     original: str
     result: WriteBackResult
+    zone_blocks: tuple[InsertionBlock, ...] = ()
+    """Synthetic blocks for filled insertion zones, for provider attribution
+    and disabled-override reporting alongside the parsed ones."""
 
     @property
     def changed(self) -> bool:
@@ -37,11 +44,44 @@ class FileInsertionOutcome:
         return self.original != self.result.text
 
 
+def render_insertions_text(
+    text: str,
+    registry: RenderRegistry,
+    *,
+    file_path: str = '',
+    zone_declarations: Iterable[InsertZoneDeclaration] = (),
+) -> tuple[WriteBackResult, tuple[InsertionBlock, ...]]:
+    """Render ``repolish:on`` blocks and zone declarations over *text*.
+
+    ``write_back`` runs first; the zone fill then operates on its output.
+    Diagnostics, block counts, and function names merge into one
+    :class:`WriteBackResult`; the zones' synthetic blocks ride back alongside
+    so callers can attribute failures to providers the same way they do for
+    ``repolish:on`` blocks.
+    """
+    back = write_back(text, registry, file_path=file_path)
+    zones = fill_insert_zones(
+        back.text,
+        zone_declarations,
+        registry,
+        file_path=file_path,
+    )
+    result = WriteBackResult(
+        text=zones.text,
+        diagnostics=[*back.diagnostics, *zones.diagnostics],
+        total_blocks=back.total_blocks + zones.total_blocks,
+        failed_blocks=back.failed_blocks + zones.failed_blocks,
+        functions=(*back.functions, *zones.functions),
+    )
+    return result, tuple(zones.blocks)
+
+
 def render_insertions_file(
     path: Path,
     registry: RenderRegistry,
     *,
     file_path: str = '',
+    zone_declarations: Iterable[InsertZoneDeclaration] = (),
 ) -> FileInsertionOutcome | None:
     """Read *path* and render its insertion blocks against *registry*.
 
@@ -54,9 +94,16 @@ def render_insertions_file(
     if text is None:
         logger.debug('insertions_unreadable_file', path=str(path))
         return None
+    result, zone_blocks = render_insertions_text(
+        text,
+        registry,
+        file_path=file_path,
+        zone_declarations=zone_declarations,
+    )
     return FileInsertionOutcome(
         original=text,
-        result=write_back(text, registry, file_path=file_path),
+        result=result,
+        zone_blocks=zone_blocks,
     )
 
 
@@ -65,13 +112,19 @@ def apply_insertions_file(
     registry: RenderRegistry,
     *,
     file_path: str = '',
+    zone_declarations: Iterable[InsertZoneDeclaration] = (),
 ) -> FileInsertionOutcome | None:
     """Render insertions for *path* and persist only when content changed.
 
     Returns the same outcome as :func:`render_insertions_file`; ``None`` when
     unreadable.
     """
-    outcome = render_insertions_file(path, registry, file_path=file_path)
+    outcome = render_insertions_file(
+        path,
+        registry,
+        file_path=file_path,
+        zone_declarations=zone_declarations,
+    )
     if outcome is not None and outcome.changed:
         write_mode_preserved(path, outcome.result.text)
     return outcome

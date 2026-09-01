@@ -1,17 +1,25 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.insertions import check_registered_insertions
 from repolish.commands.apply.symlinks import check_symlinks
-from repolish.config import ResolvedProviderInfo
 from repolish.hydration import (
     check_generated_output,
     render_template,
     rich_print_diffs,
 )
-from repolish.providers.models import SessionBundle
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
+
+    from repolish.config import ResolvedProviderInfo
+    from repolish.directives import InsertZoneDeclaration
+    from repolish.providers.models import SessionBundle
 
 logger = get_logger(__name__)
 
@@ -26,6 +34,7 @@ class CheckContext:
     resolved_symlinks: dict[str, list]
     provider_infos: dict[str, ResolvedProviderInfo]
     disable_auto_staging: bool = False
+    zone_declarations: Mapping[str, tuple[InsertZoneDeclaration, ...]] | None = None
 
 
 def render_templates(
@@ -60,6 +69,7 @@ def finish_check(ctx: CheckContext) -> tuple[int, dict[str, str]]:
             ctx.providers,
             ctx.base_dir,
             ctx.setup_output,
+            zone_declarations=ctx.zone_declarations,
         ),
     )
     symlink_issues = check_symlinks(ctx.resolved_symlinks, ctx.provider_infos)

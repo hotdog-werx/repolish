@@ -27,7 +27,7 @@ from repolish.commands.apply.staging import (
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.validators import _collect_file_validation_messages
 from repolish.config.models.project import RepolishConfig
-from repolish.directives import DirectivePhase, run_phase
+from repolish.directives import DirectivePhase, PhaseResult, run_phase
 from repolish.hydration import (
     apply_generated_output,
     prepare_staging,
@@ -35,6 +35,7 @@ from repolish.hydration import (
     rendered_file_pairs,
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
+from repolish.insertions import collect_insert_zones
 from repolish.insertions.adoption import adopt_local_insertion_markers
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
@@ -137,16 +138,17 @@ def _validation_has_warnings(session: ResolvedSession) -> bool:
 def _run_after_render_directives(
     setup_output: Path,
     base_dir: Path,
-) -> None:
+) -> PhaseResult:
     """Apply directives tagged with phase="after-render" on rendered output files.
 
     Pairing of rendered files to their local counterparts is owned by hydration
     (:func:`rendered_file_pairs`); the after-render traversal itself lives in
     the directives node (:func:`run_phase`). Insertion-marker adoption is
     wired explicitly as a post pass so the directives package stays free of
-    insertions knowledge.
+    insertions knowledge. The phase result's ``zone_declarations`` ferry
+    after-render-only zone declarations to the insertion phase.
     """
-    run_phase(
+    return run_phase(
         DirectivePhase.AFTER_RENDER,
         rendered_file_pairs(setup_output, base_dir),
         post_passes=[adopt_local_insertion_markers],
@@ -206,8 +208,9 @@ def apply_session(
     _log_paused_files(paused)
     providers.paused_files = paused
 
-    # Preprocess templates (anchor-driven replacements)
-    preprocess_templates(setup_input, providers, base_dir)
+    # Preprocess templates (anchor-driven replacements); ferries the pre-render
+    # insert-zone declarations (or () for stubbed test doubles).
+    pre_render_zones = preprocess_templates(setup_input, providers, base_dir) or ()
 
     # Render templates using Jinja2
     if render_templates(setup_input, providers, setup_output) != 0:
@@ -215,13 +218,25 @@ def apply_session(
 
     # Reconcile developer-owned content that is only discoverable after Jinja rendering
     # (for example, directives inside loop-generated sections).
-    _run_after_render_directives(setup_output, base_dir)
+    after_render = _run_after_render_directives(setup_output, base_dir)
+
+    # Merge zone declarations from both phases, keyed by project-relative dest,
+    # for the insertion-phase drivers below.
+    zone_declarations = collect_insert_zones(
+        (*pre_render_zones, *after_render.zone_declarations),
+        base_dir,
+    )
 
     is_root_pass = session.global_context.workspace.mode == 'root'
     if check_only:
         # In check mode, we compare staged output against base_dir without modifying files.
         # Do NOT apply_generated_output here - that would overwrite local changes!
-        stage_registered_insertions(providers, base_dir, setup_output)
+        stage_registered_insertions(
+            providers,
+            base_dir,
+            setup_output,
+            zone_declarations,
+        )
         _run_post_process_if_needed(
             config,
             setup_output,
@@ -235,12 +250,14 @@ def apply_session(
                 resolved_symlinks=resolved_symlinks,
                 provider_infos=config.providers,
                 disable_auto_staging=is_root_pass,
+                zone_declarations=zone_declarations,
             ),
         )
         file_results, provider_results = summarize_registered_insertions(
             providers,
             base_dir,
             pid_to_alias,
+            zone_declarations=zone_declarations,
         )
         session.insertion_results = file_results
         session.provider_insertion_results = provider_results
@@ -258,6 +275,7 @@ def apply_session(
         providers,
         base_dir,
         pid_to_alias,
+        zone_declarations=zone_declarations,
     )
     session.insertion_results = file_results
     session.provider_insertion_results = provider_results

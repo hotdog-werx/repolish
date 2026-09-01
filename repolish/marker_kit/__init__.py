@@ -24,23 +24,27 @@ from repolish.marker_kit.pairing import (
     pair_in_occurrence_order,
 )
 from repolish.marker_kit.spans import (
+    PrefixedRegion,
     RegionBoundary,
     find_all_bounded_regions,
     find_bounded_region,
     find_bounded_regions_in_range,
     find_first_line_index,
+    find_prefixed_bounded_regions,
     occurrence_key,
 )
 from repolish.marker_kit.splice import apply_splices
 
 __all__ = [
     'OccurrenceTracker',
+    'PrefixedRegion',
     'RegionBoundary',
     'apply_splices',
     'find_all_bounded_regions',
     'find_bounded_region',
     'find_bounded_regions_in_range',
     'find_first_line_index',
+    'find_prefixed_bounded_regions',
     'occurrence_key',
     'pair_in_occurrence_order',
     'read_text_or_none',

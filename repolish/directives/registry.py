@@ -25,6 +25,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
+from repolish.directives.insert_zones import (
+    InsertZoneSpec,
+    apply_insert_zones,
+    extract_insert_zones,
+)
 from repolish.directives.keep import (
     KeepPatterns,
     apply_keep_replacements,
@@ -101,6 +106,22 @@ def _apply_multiregex(
     )
 
 
+def _apply_insert_zones(
+    content: str,
+    specs: object,
+    local_content: str,
+    phase: str,
+    source_path: str | None,
+) -> str:
+    return apply_insert_zones(
+        content,
+        cast('dict[str, InsertZoneSpec]', specs),
+        local_content,
+        phase=phase,
+        source_path=source_path,
+    )
+
+
 FAMILIES: tuple[DirectiveFamily, ...] = (
     DirectiveFamily(
         name='keep',
@@ -116,5 +137,10 @@ FAMILIES: tuple[DirectiveFamily, ...] = (
         name='multiregex',
         extract=extract_multiregex_patterns,
         apply=_apply_multiregex,
+    ),
+    DirectiveFamily(
+        name='insert-zone',
+        extract=extract_insert_zones,
+        apply=_apply_insert_zones,
     ),
 )

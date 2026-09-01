@@ -10,6 +10,7 @@ from repolish.insertions.files import (
     FileInsertionOutcome,
     apply_insertions_file,
     render_insertions_file,
+    render_insertions_text,
 )
 from repolish.insertions.models import (
     BlockContext,
@@ -37,6 +38,11 @@ from repolish.insertions.writer import (
     WriteDiagnostic,
     write_back,
 )
+from repolish.insertions.zones import (
+    ZoneFillOutcome,
+    collect_insert_zones,
+    fill_insert_zones,
+)
 
 __all__ = [
     'BlockContext',
@@ -51,14 +57,18 @@ __all__ = [
     'Renderer',
     'WriteBackResult',
     'WriteDiagnostic',
+    'ZoneFillOutcome',
     'apply_insertions_file',
     'collect_disabled_entries',
+    'collect_insert_zones',
     'disabled_reason_for_block',
+    'fill_insert_zones',
     'is_block_context_annotation',
     'is_insertion_block_annotation',
     'is_provider_owner',
     'parse_text',
     'render_insertions_file',
+    'render_insertions_text',
     'resolve_provider_function_name',
     'resolve_renderer_for_function',
     'write_back',

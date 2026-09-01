@@ -84,14 +84,15 @@ never write it.
 All directive lines are stripped from output. Default phase: pre-render; suffix
 `|after-render` inside the tag runs on rendered file (`[name|after-render]`).
 
-| Marker                                                              | Use                                    | Rule                                                                                                  |
-| ------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `## repolish:start[n]` … `## repolish:end[n]`                       | provider fills region (anchors)        | pre-render only; names are global — namespace them (`docker-init`)                                    |
-| `## repolish:regex[n] <pattern>`                                    | adopt one value from project file      | capture group = preserved value; pattern must also match template default; single-occurrence          |
-| `## repolish:multiregex-block[n]` + `## repolish:multiregex[n]`     | merge `key = "value"` section          | provider owns keys, project owns values; local-only keys dropped; template needs `[n]` section header |
-| `## repolish:keep-block[n] start="..." end="..."` (or `end-regex=`) | preserve region in template-owned file | directive directly above its region; repeated blocks pair first-to-first                              |
-| `## repolish:keep-rest[n] marker="..."`                             | preserve marker→EOF                    | aliases: keep-the-rest, keep-footer                                                                   |
-| `## repolish:keep-header[n] marker="..."`                           | preserve top→marker                    | must be template's first line                                                                         |
+| Marker                                                              | Use                                    | Rule                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `## repolish:start[n]` … `## repolish:end[n]`                       | provider fills region (anchors)        | pre-render only; names are global — namespace them (`docker-init`)                                                                                                                                                                           |
+| `## repolish:regex[n] <pattern>`                                    | adopt one value from project file      | capture group = preserved value; pattern must also match template default; single-occurrence                                                                                                                                                 |
+| `## repolish:multiregex-block[n]` + `## repolish:multiregex[n]`     | merge `key = "value"` section          | provider owns keys, project owns values; local-only keys dropped; template needs `[n]` section header                                                                                                                                        |
+| `## repolish:keep-block[n] start="..." end="..."` (or `end-regex=`) | preserve region in template-owned file | directive directly above its region; repeated blocks pair first-to-first                                                                                                                                                                     |
+| `## repolish:keep-rest[n] marker="..."`                             | preserve marker→EOF                    | aliases: keep-the-rest, keep-footer                                                                                                                                                                                                          |
+| `## repolish:keep-header[n] marker="..."`                           | preserve top→marker                    | must be template's first line                                                                                                                                                                                                                |
+| `## repolish:insert[n] start="..." end="..."`                       | provider-branded, function-filled zone | tag `n` is the fn name by default (`function="alias:fn"` overrides); opening marker carries args (prefix match); dev arg edits survive; body always refilled; unknown/failing/disabled fn → template default stays; colon-only, no dash form |
 
 ## Insertions (file markers, not directives)
 
@@ -105,6 +106,11 @@ Body always regenerated; never hand-edit inside. Dev edits to marker
 function/args survive re-apply (adoption). Works in developer files AND
 template-rendered files (markers pass through render, filled after write). No
 phase suffix ever.
+
+Insertion zones (`repolish:insert`), the blended variant: provider declares the
+zone in the template with branded markers (`<!-- generated:badges:on … -->`),
+bodies fill from the file's function registry on apply, template default is the
+fallback for unknown/failing/disabled functions.
 
 ## Debug workflow
 
@@ -138,5 +144,6 @@ cookiecutter `{{ cookiecutter.x }}` (gone in v1).
 [installation](getting-started/installation.md) ·
 [provider API](provider-development/context.md) ·
 [config schema](provider-development/config-file.md) ·
-[markers](markers/index.md) · [insertions](markers/insertions.md) ·
-[testing](provider-development/testing.md)
+[markers](markers/index.md) · [grammar](markers/grammar.md) ·
+[insertions](markers/insertions.md) · [insertion zones](markers/insert-zones.md)
+· [testing](provider-development/testing.md)

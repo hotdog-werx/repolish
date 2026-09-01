@@ -1,11 +1,15 @@
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from hotlog import get_logger
 
 from repolish.config import RepolishConfig
-from repolish.directives import process_file, write_if_changed
+from repolish.directives import (
+    InsertZoneDeclaration,
+    process_file,
+    write_if_changed,
+)
 from repolish.providers import SessionBundle, TemplateMapping
 from repolish.utils import ensure_dot_repolish, path_slug
 
@@ -23,6 +27,9 @@ class _PreprocessContext:
     setup_input: Path
     base_dir: Path
     anchors: dict[str, str]
+    zone_declarations: list[InsertZoneDeclaration] = field(default_factory=list)
+    """Insert zones declared by pre-render templates, collected for the
+    insertion phase (dests absolute until relativized on return)."""
 
 
 def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
@@ -55,17 +62,18 @@ def prepare_staging(config: RepolishConfig) -> tuple[Path, Path, Path]:
 def _preprocess_single_file(
     tpl_path: Path,
     local_path: Path,
-    anchors: dict[str, str],
+    ctx: _PreprocessContext,
 ) -> None:
     """Apply anchor-driven preprocessing to a single template file.
 
     Args:
         tpl_path: Path to the staged template file.
         local_path: Path to the local project file for anchor extraction.
-        anchors: Base anchors from create_anchors().
+        ctx: Preprocessing context (anchors plus zone-declaration collector).
     """
-    result = process_file(tpl_path, local_path, anchors=anchors)
+    result = process_file(tpl_path, local_path, anchors=ctx.anchors)
     if result is not None:
+        ctx.zone_declarations.extend(result.zone_declarations)
         write_if_changed(tpl_path, result)
 
 
@@ -102,7 +110,10 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
         args.ctx.base_dir / args.dest_path,
         anchors=args.ctx.anchors,
     )
-    if result is None or not result.changed:
+    if result is None:
+        return
+    args.ctx.zone_declarations.extend(result.zone_declarations)
+    if not result.changed:
         return
 
     if isinstance(args.source_val, TemplateMapping):
@@ -217,14 +228,14 @@ def _process_auto_staged_templates(
         if rel_str in mapped_sources or rel_str in suppressed_sources:
             continue
         local_path = ctx.base_dir / rel_str
-        _preprocess_single_file(tpl, local_path, ctx.anchors)
+        _preprocess_single_file(tpl, local_path, ctx)
 
 
 def preprocess_templates(
     setup_input: Path,
     providers: SessionBundle,
     base_dir: Path,
-) -> None:
+) -> tuple[InsertZoneDeclaration, ...]:
     """Apply anchor-driven replacements to files under setup_input.
 
     Local project files used for anchor-driven overrides are resolved relative
@@ -238,6 +249,9 @@ def preprocess_templates(
 
     For auto-staged templates and plain string mappings, the template is
     preprocessed in-place using the local file at the destination path.
+
+    Returns the insert-zone declarations found in pre-render templates, ferried
+    to the insertion phase with ``dest`` relativized against ``base_dir``.
     """
     # Build context object once and pass it around
     ctx = _PreprocessContext(
@@ -271,3 +285,20 @@ def preprocess_templates(
         suppressed_sources,
         ctx,
     )
+
+    return tuple(
+        replace(declaration, dest=_relativize_dest(declaration.dest, base_dir))
+        for declaration in ctx.zone_declarations
+    )
+
+
+def _relativize_dest(dest: str, base_dir: Path) -> str:
+    """Relativize an absolute declaration dest against *base_dir*.
+
+    Falls back to the raw dest when it is not under base_dir (never expected
+    in practice — the ferry always attaches ``base_dir / rel``).
+    """
+    try:
+        return Path(dest).relative_to(base_dir).as_posix()
+    except ValueError:
+        return dest

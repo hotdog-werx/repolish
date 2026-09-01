@@ -42,12 +42,18 @@ from repolish.directives.files import (
     run_phase,
     write_if_changed,
 )
+from repolish.directives.insert_zones import (
+    InsertZoneDeclaration,
+    InsertZoneSpec,
+)
 from repolish.directives.phases import DirectivePhase
 
 __all__ = [
     'DirectivePhase',
     'FilePair',
     'FileProcessResult',
+    'InsertZoneDeclaration',
+    'InsertZoneSpec',
     'Patterns',
     'PhaseResult',
     'PostPass',

@@ -76,9 +76,23 @@ MULTIREGEX_DIRECTIVE_RE = re.compile(
     re.MULTILINE,
 )
 
+# ``repolish:insert[name] start="..." end="..." [function="..."]`` (or
+# end-regex="..."). Insert zones were born under the colon grammar, so the
+# dash spelling is intentionally NOT accepted here. Capturing groups are
+# name, start marker, end mode, end value, optional function, in that order.
+INSERT_ZONE_DIRECTIVE_RE = re.compile(
+    r'^[^\n]*repolish:insert\[(.+?)\]\s*'
+    r'start=("(?:\\.|[^"])*")\s+'
+    r'(end|end-regex)=("(?:\\.|[^"])*")'
+    r'(?:\s+function=("(?:\\.|[^"])*"))?'
+    r'\s*$',
+    re.MULTILINE,
+)
+
 # Deprecated dash-namespace detection: ``repolish-<command>[`` for any known
 # directive command. Insertions (``repolish:on``/``repolish:off``) never had a
-# dash spelling, so they are not here.
+# dash spelling, and ``repolish:insert`` was born after the colon unification,
+# so neither is here.
 LEGACY_DASH_DIRECTIVE_RE = re.compile(
     r'^[^\n]*repolish-(?:multiregex-block|multiregex|keep-the-rest|keep-the-header'
     r'|keep-block|keep-rest|keep-footer|keep-header|regex|start|end)\[',
