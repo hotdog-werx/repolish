@@ -8,6 +8,25 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.12.0] <a name="1.12.0" href="#1.12.0">-</a> September 02, 2026
+
+### 🚀 Features
+
+- _(directives)_ Unify grammar on repolish:<command>, warn on legacy dash form
+  (#88) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#88](https://github.com/hotdog-werx/repolish/pull/88)
+
+### 🚜 Refactor
+
+- Preprocessors renamed to directives (#87) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#87](https://github.com/hotdog-werx/repolish/pull/87)
+- Generic ferry for directive families (#89) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#89](https://github.com/hotdog-werx/repolish/pull/89)
+
+[1.12.0]: https://github.com/hotdog-werx/repolish/compare/1.11.0...1.12.0
+
 ## [1.11.0] <a name="1.11.0" href="#1.11.0">-</a> August 25, 2026
 
 ### 🚀 Features
