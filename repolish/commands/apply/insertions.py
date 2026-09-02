@@ -50,6 +50,10 @@ class _ProviderInsertionContext:
     zone_declarations: tuple[InsertZoneDeclaration, ...] = ()
     """Insert zones declared for this file by template directives (empty when
     the file carries no zones)."""
+    zone_registry: dict = field(default_factory=dict)
+    """Registry zone fills resolve against: the session-wide registry with
+    this file's entries layered on top, so per-file config-disabled renderers
+    keep applying to zones while every contributed function stays reachable."""
     zone_blocks: tuple[InsertionBlock, ...] = ()
     """Synthetic blocks from the zone fill, set after the drive call for
     provider attribution in reporting."""
@@ -246,6 +250,7 @@ def _apply_file_insertions(
         ctx.registry,
         file_path=ctx.rel_path,
         zone_declarations=ctx.zone_declarations,
+        zone_registry=ctx.zone_registry,
     )
     if outcome is None:
         return (
@@ -263,7 +268,13 @@ def _apply_file_insertions(
     ctx.zone_blocks = outcome.zone_blocks
     parsed = parse_text(original_text, file_path=ctx.rel_path)
     all_blocks = [*parsed.blocks, *outcome.zone_blocks]
-    disabled_entries = collect_disabled_entries(all_blocks, ctx.registry)
+    # Zones resolve (and can be disabled) through the session-wide registry;
+    # developer-authored markers stay on the file's allowlist.
+    zone_registry = ctx.zone_registry or ctx.registry
+    disabled_entries = [
+        *collect_disabled_entries(parsed.blocks, ctx.registry),
+        *collect_disabled_entries(outcome.zone_blocks, zone_registry),
+    ]
 
     if result.total_blocks == 0:
         return (
@@ -329,6 +340,23 @@ def _zone_map(
     return collect_insert_zones(providers.ferry.get('insert-zone', ()))
 
 
+def _zone_registry(
+    providers: SessionBundle,
+    rel_path: str,
+) -> dict:
+    """Zone resolution registry: session-wide, with the file's entries on top.
+
+    Zones are provider-authored, so they may resolve any contributed function —
+    the per-file allowlist governs developer-authored markers only. The file's
+    own entries win their keys so config-disabled renderers (per-file
+    overrides) keep applying to that file's zones.
+    """
+    return {
+        **providers.insertion_registry,
+        **providers.file_insertions.get(rel_path, {}),
+    }
+
+
 def apply_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
@@ -366,6 +394,7 @@ def apply_registered_insertions(
                 pid_to_alias=pid_to_alias,
                 reports_dir=reports_dir,
                 zone_declarations=zone_map.get(rel_path, ()),
+                zone_registry=_zone_registry(providers, rel_path),
             )
 
             aggregated, file_provider_results = _apply_file_insertions(
@@ -410,6 +439,7 @@ def summarize_registered_insertions(
                 pid_to_alias=pid_to_alias,
                 reports_dir=reports_dir,
                 zone_declarations=zone_map.get(rel_path, ()),
+                zone_registry=_zone_registry(providers, rel_path),
             )
 
             aggregated, file_provider_results = _apply_file_insertions(
@@ -457,6 +487,7 @@ def stage_registered_insertions(
             registry,
             file_path=rel_path,
             zone_declarations=zone_map.get(rel_path, ()),
+            zone_registry=_zone_registry(providers, rel_path),
         )
         staged_file.parent.mkdir(parents=True, exist_ok=True)
         staged_file.write_text(rendered.text, encoding='utf-8')
@@ -491,6 +522,7 @@ def check_registered_insertions(
                         target=target,
                         registry=registry,
                         zone_declarations=zone_map.get(rel_path, ()),
+                        zone_registry=_zone_registry(providers, rel_path),
                     )
                 )
                 is not None
@@ -530,6 +562,7 @@ def _rendered_diff_if_any(
     target: Path,
     registry: dict,
     zone_declarations: tuple[InsertZoneDeclaration, ...] = (),
+    zone_registry: dict | None = None,
 ) -> tuple[str, str] | None:
     """Return a rendered diff tuple when live rendering differs from current file."""
     outcome = render_insertions_file(
@@ -537,6 +570,7 @@ def _rendered_diff_if_any(
         registry,
         file_path=rel_path,
         zone_declarations=zone_declarations,
+        zone_registry=zone_registry,
     )
     if outcome is None or not outcome.changed:
         return None

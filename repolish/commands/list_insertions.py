@@ -144,6 +144,9 @@ def _print_index(index: list[_InsertionFunctionInfo]) -> None:
     root = Tree(
         f'[bold]available insertion functions[/bold] ({len(provider_names)} providers, {len(index)} functions)',
     )
+    root.add(
+        '[dim]files gate developer markers; template zones may call any listed function[/dim]',
+    )
 
     by_provider: dict[str, list[_InsertionFunctionInfo]] = {}
     for entry in index:
@@ -159,7 +162,7 @@ def _print_index(index: list[_InsertionFunctionInfo]) -> None:
             fn_branch = provider_branch.add(
                 f'{entry.function_name}  [dim]- {entry.summary}[/dim]',
             )
-            fn_branch.add(f'[dim]files:[/dim] {files}')
+            fn_branch.add(f'[dim]files (repolish:on markers):[/dim] {files}')
 
     console.print(root)
 

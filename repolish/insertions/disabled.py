@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
     from repolish.insertions.models import InsertionBlock
 
@@ -90,7 +90,7 @@ def disabled_reason_for_block(
 
 
 def collect_disabled_entries(
-    blocks: list[InsertionBlock],
+    blocks: Iterable[InsertionBlock],
     registry: dict,
 ) -> list[DisabledInsertionEntry]:
     """Collect disabled insertion metadata for summary/report output.

@@ -29,10 +29,13 @@ _Default badge row for new projects._
 - `end-regex="..."` replaces `end` for generated closers.
 - `function="name"` (optional) names the provider function to call. Without it,
   the zone's tag **is** the function name — `repolish:insert[badges]` looks up
-  `badges` in the file's function registry, so the common case needs nothing
-  extra. When several providers register functions for one file, qualify with
-  the provider alias — `function="my-provider:badges"` targets that provider's
-  function specifically, the same naming rule insertion markers use.
+  `badges`, so the common case needs nothing extra. When several providers
+  register the same function name, qualify with the provider alias —
+  `function="my-provider:badges"` targets that provider's function specifically,
+  the same naming rule insertion markers use. Because the provider authors the
+  zone into its own template, zones resolve against **every function the
+  session's providers contributed** — they are not gated by the per-file
+  allowlist `create_file_insertions` applies to developer-authored markers.
 - The zone can repeat in one file; every occurrence is filled. The
   [`|after-render` phase](phases.md) is supported for Jinja-generated zones.
 - Zones are colon-grammar only — there is no legacy dash spelling. The exact
@@ -78,6 +81,11 @@ def create_file_insertions(self, context):
 
     return {'README.md': {'badges': badges}}
 ```
+
+The destination file does **not** have to appear in this mapping (or in a
+list-mode allowlist) for the zone to fill — registering the function anywhere is
+enough, since the provider already chose it by declaring the zone. The mapping
+only gates developer-authored `repolish:on` markers.
 
 The function receives the opening marker's arguments the same way an insertion
 function receives marker args (shlex-split, `-->` stripped); the usual signature

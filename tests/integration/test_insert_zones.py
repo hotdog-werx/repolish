@@ -106,6 +106,45 @@ def test_zone_filled_then_args_adopted_on_reapply(
     run_repolish(['apply', '--check'], exit_code=0)
 
 
+def test_zone_fills_from_function_allowlisted_for_another_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Zones are provider-authored.
+
+    They are not gated by the per-file allowlist that governs
+    developer-authored markers.
+    """
+    _setup(
+        tmp_path,
+        monkeypatch,
+        """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class Ctx(BaseContext):
+            pass
+
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def badges(*args):
+                    return 'BADGES(' + ' '.join(args) + ')'
+                # Allowlisted for a different developer-owned file only.
+                return {'CONTRIBUTING.md': {'badges': badges}}
+        """,
+    )
+
+    run_repolish(['apply'], exit_code=0)
+    readme = (tmp_path / 'README.md').read_text(encoding='utf-8')
+    assert 'BADGES(repolish/repolish style=flat)' in readme
+    assert '_default badge row._' not in readme
+
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
 def test_zone_without_renderer_keeps_template_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -63,6 +63,11 @@ def test_list_insertions_shows_provider_functions(
     assert 'p' in result.output
     assert 'generate-uv-sources' in result.output
     assert 'Generate uv source block for one mode.' in result.output
+    # The per-file allowlist is labeled as the developer-marker scope;
+    # template zones get the whole registry.
+    assert 'files (repolish:on markers)' in result.output
+    assert 'README.md' in result.output
+    assert 'template zones may call any listed function' in result.output
 
 
 def test_list_insertions_filters_by_provider_and_function(

@@ -499,6 +499,11 @@ class Provider(ABC, Generic[ContextT, InputT]):
         This hook also accepts a list of destination paths. In that form,
         repolish calls :meth:`create_insertion_registry` and applies the returned
         shared function registry to each listed path.
+
+        The paths gate developer-authored markers only. Template insert zones
+        (``repolish:insert``) resolve against every contributed function
+        regardless of this allowlist — the provider already chose the function
+        by declaring the zone.
         """
         return {}
 

@@ -508,6 +508,12 @@ class SessionBundle(BaseModel):
     Used for summary/debug output when the same target file is updated by more than
     one provider in a monorepo or multi-provider session.
     """
+    insertion_registry: InsertionRegistry = Field(default_factory=dict)
+    """Every insertion function contributed this session, keyed like the per-file
+    registries (unqualified first-wins plus ``alias:fn`` qualified keys).
+    Provider-authored template zones resolve against this — the per-file
+    ``file_insertions`` entries stay the allowlist for developer-authored
+    ``repolish:on`` markers."""
     ferry: dict[str, tuple] = Field(default_factory=dict)
     """Family name → tuple of ``FerriedItem`` payloads (``repolish.directives``)
     that directive families ferried past their phases during this run. Populated
@@ -758,6 +764,11 @@ class Accumulators:
     # create_file_insertions(). This is additive and mode-aware, so each active
     # provider contributes only the functions valid in its current workspace mode.
     file_insertions: InsertionRegistryByPath = field(default_factory=dict)
+    # Every insertion function contributed this session (dict- and list-form
+    # create_file_insertions alike), keyed like the per-file registries.
+    # Provider-authored template zones resolve against this; the per-file
+    # registries stay the allowlist for developer-authored markers.
+    insertion_registry: InsertionRegistry = field(default_factory=dict)
     insertion_sources: dict[str, list[str]] = field(default_factory=dict)
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
