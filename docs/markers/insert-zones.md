@@ -49,20 +49,19 @@ _Default badge row for new projects._
 
 ## Why custom markers at all
 
-Two things set zones apart from plain `repolish:on` blocks, and both follow
-from the same root: a zone is **declared by a directive** in a provider
-template, and that directive is what carries the phase, the default body, and
-the marker pair.
+Two things set zones apart from plain `repolish:on` blocks, and both follow from
+the same root: a zone is **declared by a directive** in a provider template, and
+that directive is what carries the phase, the default body, and the marker pair.
 
 - The declaration is what opts a region into the
   [`|after-render` phase](phases.md) — `repolish:on` / `repolish:off` blocks
   have no directive to tag, so they cannot run after rendering.
 - Custom markers only make sense because the provider controls both sides and
-  the markers always live in the document: the provider declares the zone with
-  a directive in the template, writes the marker pair around it, and ships
-  the markers (the directive itself strips during rendering) in the rendered
-  file, guaranteeing they read as content. A reader never has to recognize
-  the block as repolish machinery.
+  the markers always live in the document: the provider declares the zone with a
+  directive in the template, writes the marker pair around it, and ships the
+  markers (the directive itself strips during rendering) in the rendered file,
+  guaranteeing they read as content. A reader never has to recognize the block
+  as repolish machinery.
 
 That second point is also the limit:
 

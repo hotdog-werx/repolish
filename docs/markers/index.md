@@ -65,7 +65,7 @@ blocks in developer-owned files.
 | `repolish:regex`                                    | Adopt a single value or line by pattern                                                           | Yes                                          | Available |
 | `repolish:multiregex-block` / `repolish:multiregex` | Merge a structured section (e.g. `key = "value"` lines) keeping your values                       | Yes                                          | Available |
 | `repolish:on` / `repolish:off`                      | Insertions — provider function fills a marked block, in _your own_ files or shipped by a template | n/a — insertions already run after rendering | Available |
-| `repolish:insert[n] start="..." end="..."`          | Insertion zone — provider-branded, function-filled region declared by the template                | Yes                       | Available |
+| `repolish:insert[n] start="..." end="..."`          | Insertion zone — provider-branded, function-filled region declared by the template                | Yes                                          | Available |
 
 <!-- insertion-candidate: the after-render and status columns mirror the directive registry (repolish/directives/registry.py) — could be generated once directives self-document -->
 
