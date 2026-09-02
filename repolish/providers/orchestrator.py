@@ -144,6 +144,7 @@ def _run_provider_pipeline(
         file_validators=accum.file_validators,
         validator_sources=accum.validator_sources,
         file_insertions=accum.file_insertions,
+        insertion_registry=accum.insertion_registry,
         insertion_sources=accum.insertion_sources,
         promoted_file_mappings=accum.promoted_file_mappings,
     )

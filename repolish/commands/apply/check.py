@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.insertions import check_registered_insertions
 from repolish.commands.apply.symlinks import check_symlinks
-from repolish.config import ResolvedProviderInfo
 from repolish.hydration import (
     check_generated_output,
     render_template,
     rich_print_diffs,
 )
-from repolish.providers.models import SessionBundle
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from repolish.config import ResolvedProviderInfo
+    from repolish.providers.models import SessionBundle
 
 logger = get_logger(__name__)
 

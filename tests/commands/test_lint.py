@@ -4,7 +4,11 @@ from textwrap import dedent
 
 import pytest
 
-from repolish.commands.lint import command
+from repolish.commands.lint import (
+    _has_brand_token,
+    _zone_marker_warnings,
+    command,
+)
 
 
 @dataclass
@@ -325,3 +329,49 @@ def test_lint_module_style_provider_fails_load(tmp_path: Path) -> None:
         {'out.txt': '{{ package_name }}\n'},
     )
     assert command(provider_dir) == 1
+
+
+# ---------------------------------------------------------------------------
+# Insert-zone marker branding warnings (advisory, never fail the lint)
+# ---------------------------------------------------------------------------
+
+
+def test_zone_marker_warnings_flag_unbranded_markers() -> None:
+    raw = '## repolish:insert[b] start="<!-- b:on" end="<!-- b:off -->"\n<!-- b:on -->\nx\n<!-- b:off -->\n'
+    warnings = _zone_marker_warnings(raw, 'tpl/README.md')
+    assert len(warnings) == 1
+    assert "'b'" in warnings[0]
+    assert 'generated' in warnings[0]
+
+
+def test_branded_markers_produce_no_warnings() -> None:
+    raw = (
+        '## repolish:insert[b] start="<!-- generated:b:on" end="<!-- generated:b:off -->"\n'
+        '<!-- generated:b:on -->\nx\n<!-- generated:b:off -->\n'
+    )
+    assert _zone_marker_warnings(raw, 'tpl/README.md') == []
+
+
+def test_zone_marker_warnings_cover_both_phases() -> None:
+    raw = '## repolish:insert[b|after-render] start="<!-- b:on" end="<!-- b:off -->"\n'
+    assert len(_zone_marker_warnings(raw, 'tpl/README.md')) == 1
+
+
+def test_brand_token_matching_is_word_based() -> None:
+    # "legend" contains "gen" but is not branding.
+    assert not _has_brand_token('<!-- legend:on')
+    assert _has_brand_token('<!-- auto:badge:on')
+    assert _has_brand_token('# GENERATED:docs:on')
+
+
+def test_unbranded_zone_does_not_fail_the_lint(tmp_path: Path) -> None:
+    template = (
+        '## repolish:insert[b] start="<!-- b:on" end="<!-- b:off -->"\n'
+        '<!-- b:on -->\n{{ package_name }}\n<!-- b:off -->\n'
+    )
+    provider_dir = _make_provider(
+        tmp_path,
+        _CLASS_PROVIDER_BASE,
+        {'README.md': template},
+    )
+    assert command(provider_dir) == 0

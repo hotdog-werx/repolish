@@ -30,9 +30,9 @@ An `on`/`off` pair reserves the region between them:
 
 The body between the markers is **always regenerated** by the function on each
 apply — put nothing there yourself. Use whatever comment syntax the file type
-supports (`#`, `//`, `<!-- -->`, …); the tag and colon are optional. Full syntax
-variations in the
-[provider insertions guide](../provider-development/insertions.md#marker-format).
+supports (`#`, `//`, `<!-- -->`, …); the tag and colon are optional. The exact
+syntax — comment styles, argument quoting, provider-qualified function names —
+is on the [Grammar](grammar.md#insertion-marker-grammar) page.
 
 ## Worked example
 

@@ -15,12 +15,13 @@ from repolish.insertions import (
     ErrorDiagnosticEntry,
     InsertionReport,
     collect_disabled_entries,
+    collect_insert_zones,
     is_provider_owner,
-    write_back,
 )
 from repolish.insertions.files import (
     apply_insertions_file,
     render_insertions_file,
+    render_insertions_text,
 )
 from repolish.insertions.parser import InsertionBlock, parse_text
 from repolish.marker_kit import read_text_or_none
@@ -29,6 +30,7 @@ from repolish.utils import build_unified_diff, path_slug
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from repolish.directives import InsertZoneDeclaration
     from repolish.insertions.writer import WriteBackResult
     from repolish.providers import SessionBundle
 
@@ -45,6 +47,16 @@ class _ProviderInsertionContext:
     provider_ids: list[str]
     pid_to_alias: dict[str, str] | None
     reports_dir: Path
+    zone_declarations: tuple[InsertZoneDeclaration, ...] = ()
+    """Insert zones declared for this file by template directives (empty when
+    the file carries no zones)."""
+    zone_registry: dict = field(default_factory=dict)
+    """Registry zone fills resolve against: the session-wide registry with
+    this file's entries layered on top, so per-file config-disabled renderers
+    keep applying to zones while every contributed function stays reachable."""
+    zone_blocks: tuple[InsertionBlock, ...] = ()
+    """Synthetic blocks from the zone fill, set after the drive call for
+    provider attribution in reporting."""
 
     results: dict[str, InsertionFileResult] = field(default_factory=dict)
     provider_results: dict[str, dict[str, InsertionFileResult]] = field(
@@ -151,6 +163,15 @@ def _process_provider_insertions(
             ctx.rel_path,
             is_first_provider=is_first_provider,
         )
+        provider_blocks.extend(
+            block
+            for block in ctx.zone_blocks
+            if is_provider_owner(
+                block.function,
+                provider_alias,
+                is_first_provider=is_first_provider,
+            )
+        )
         provider_functions = _filter_provider_functions(
             result.functions,
             provider_alias,
@@ -224,7 +245,13 @@ def _apply_file_insertions(
     """Apply insertions for a single file and return results."""
     target = ctx.base_dir / ctx.rel_path
     drive = apply_insertions_file if persist_changes else render_insertions_file
-    outcome = drive(target, ctx.registry, file_path=ctx.rel_path)
+    outcome = drive(
+        target,
+        ctx.registry,
+        file_path=ctx.rel_path,
+        zone_declarations=ctx.zone_declarations,
+        zone_registry=ctx.zone_registry,
+    )
     if outcome is None:
         return (
             InsertionFileResult(
@@ -238,8 +265,16 @@ def _apply_file_insertions(
 
     original_text = outcome.original
     result = outcome.result
+    ctx.zone_blocks = outcome.zone_blocks
     parsed = parse_text(original_text, file_path=ctx.rel_path)
-    disabled_entries = collect_disabled_entries(parsed.blocks, ctx.registry)
+    all_blocks = [*parsed.blocks, *outcome.zone_blocks]
+    # Zones resolve (and can be disabled) through the session-wide registry;
+    # developer-authored markers stay on the file's allowlist.
+    zone_registry = ctx.zone_registry or ctx.registry
+    disabled_entries = [
+        *collect_disabled_entries(parsed.blocks, ctx.registry),
+        *collect_disabled_entries(outcome.zone_blocks, zone_registry),
+    ]
 
     if result.total_blocks == 0:
         return (
@@ -252,7 +287,7 @@ def _apply_file_insertions(
             {ctx.rel_path: {}},
         )
 
-    tag_to_func = _build_tag_to_func_map(parsed.blocks)
+    tag_to_func = _build_tag_to_func_map(all_blocks)
     aggregated, per_provider = _process_provider_insertions(
         ctx,
         original_text,
@@ -294,6 +329,34 @@ def _merge_provider_results(
         provider_results.setdefault(provider_alias, {})[rel_path] = file_result
 
 
+def _zone_map(
+    providers: SessionBundle,
+) -> dict[str, tuple[InsertZoneDeclaration, ...]]:
+    """Group the insert-zone family's ferried declarations by destination.
+
+    The apply session delivers every family's data on ``providers.ferry``
+    before any insertion driver runs; this is the drivers' one read of it.
+    """
+    return collect_insert_zones(providers.ferry.get('insert-zone', ()))
+
+
+def _zone_registry(
+    providers: SessionBundle,
+    rel_path: str,
+) -> dict:
+    """Zone resolution registry: session-wide, with the file's entries on top.
+
+    Zones are provider-authored, so they may resolve any contributed function —
+    the per-file allowlist governs developer-authored markers only. The file's
+    own entries win their keys so config-disabled renderers (per-file
+    overrides) keep applying to that file's zones.
+    """
+    return {
+        **providers.insertion_registry,
+        **providers.file_insertions.get(rel_path, {}),
+    }
+
+
 def apply_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
@@ -306,14 +369,21 @@ def apply_registered_insertions(
 
     When multiple providers target the same file, each provider's insertions
     are tracked separately for reporting. Reports are written per-provider.
+
+    Files carrying template-declared insert zones are processed even when no
+    provider registered ``repolish:on`` insertions for them — the union of
+    ``providers.file_insertions`` and the ferried zone declarations drives
+    the loop.
     """
     results: dict[str, InsertionFileResult] = {}
     provider_results: dict[str, dict[str, InsertionFileResult]] = {}
     reports_dir = base_dir / '.repolish' / '_' / 'insertions'
     reports_dir.mkdir(parents=True, exist_ok=True)
     paused_files = providers.paused_files
+    zone_map = _zone_map(providers)
 
-    for rel_path, registry in providers.file_insertions.items():
+    for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
+        registry = providers.file_insertions.get(rel_path, {})
         provider_ids = providers.insertion_sources.get(rel_path, [])
         if not _should_skip_file(rel_path, base_dir, paused_files):
             ctx = _ProviderInsertionContext(
@@ -323,6 +393,8 @@ def apply_registered_insertions(
                 provider_ids=provider_ids,
                 pid_to_alias=pid_to_alias,
                 reports_dir=reports_dir,
+                zone_declarations=zone_map.get(rel_path, ()),
+                zone_registry=_zone_registry(providers, rel_path),
             )
 
             aggregated, file_provider_results = _apply_file_insertions(
@@ -353,8 +425,10 @@ def summarize_registered_insertions(
     reports_dir = base_dir / '.repolish' / '_' / 'insertions'
     reports_dir.mkdir(parents=True, exist_ok=True)
     paused_files = providers.paused_files
+    zone_map = _zone_map(providers)
 
-    for rel_path, registry in providers.file_insertions.items():
+    for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
+        registry = providers.file_insertions.get(rel_path, {})
         provider_ids = providers.insertion_sources.get(rel_path, [])
         if not _should_skip_file(rel_path, base_dir, paused_files):
             ctx = _ProviderInsertionContext(
@@ -364,6 +438,8 @@ def summarize_registered_insertions(
                 provider_ids=provider_ids,
                 pid_to_alias=pid_to_alias,
                 reports_dir=reports_dir,
+                zone_declarations=zone_map.get(rel_path, ()),
+                zone_registry=_zone_registry(providers, rel_path),
             )
 
             aggregated, file_provider_results = _apply_file_insertions(
@@ -393,8 +469,10 @@ def stage_registered_insertions(
     """
     staged_root = setup_output / 'repolish'
     paused_files = providers.paused_files
+    zone_map = _zone_map(providers)
 
-    for rel_path, registry in providers.file_insertions.items():
+    for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
+        registry = providers.file_insertions.get(rel_path, {})
         target = base_dir / rel_path
         if _should_skip_file(rel_path, base_dir, paused_files):
             continue
@@ -404,9 +482,15 @@ def stage_registered_insertions(
         if source_text is None:
             source_text = target.read_text(encoding='utf-8')
 
-        rendered = write_back(source_text, registry, file_path=rel_path).text
+        rendered, _zone_blocks = render_insertions_text(
+            source_text,
+            registry,
+            file_path=rel_path,
+            zone_declarations=zone_map.get(rel_path, ()),
+            zone_registry=_zone_registry(providers, rel_path),
+        )
         staged_file.parent.mkdir(parents=True, exist_ok=True)
-        staged_file.write_text(rendered, encoding='utf-8')
+        staged_file.write_text(rendered.text, encoding='utf-8')
 
 
 def check_registered_insertions(
@@ -417,8 +501,10 @@ def check_registered_insertions(
     """Return insertion drift diffs for check mode without mutating files."""
     diffs: list[tuple[str, str]] = []
     paused_files = providers.paused_files
+    zone_map = _zone_map(providers)
 
-    for rel_path, registry in providers.file_insertions.items():
+    for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
+        registry = providers.file_insertions.get(rel_path, {})
         if not _should_skip_file(rel_path, base_dir, paused_files):
             target = base_dir / rel_path
             staged_result = _staged_check_result(
@@ -435,6 +521,8 @@ def check_registered_insertions(
                         rel_path=rel_path,
                         target=target,
                         registry=registry,
+                        zone_declarations=zone_map.get(rel_path, ()),
+                        zone_registry=_zone_registry(providers, rel_path),
                     )
                 )
                 is not None
@@ -473,9 +561,17 @@ def _rendered_diff_if_any(
     rel_path: str,
     target: Path,
     registry: dict,
+    zone_declarations: tuple[InsertZoneDeclaration, ...] = (),
+    zone_registry: dict | None = None,
 ) -> tuple[str, str] | None:
     """Return a rendered diff tuple when live rendering differs from current file."""
-    outcome = render_insertions_file(target, registry, file_path=rel_path)
+    outcome = render_insertions_file(
+        target,
+        registry,
+        file_path=rel_path,
+        zone_declarations=zone_declarations,
+        zone_registry=zone_registry,
+    )
     if outcome is None or not outcome.changed:
         return None
     return (

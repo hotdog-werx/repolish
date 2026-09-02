@@ -17,10 +17,11 @@ are excluded from the lint; inserting Jinja expressions inside anchor values
 is the user's own responsibility.
 """
 
+import re
 import types
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union, get_args, get_origin
+from typing import Union, cast, get_args, get_origin
 
 import jinja2
 import jinja2.meta
@@ -35,12 +36,19 @@ from repolish.commands.apply.staging import (
 )
 from repolish.config.models.provider import ResolvedProviderInfo
 from repolish.console import console
-from repolish.directives import strip_directives
+from repolish.directives import (
+    DirectivePhase,
+    InsertZoneSpec,
+    extract_patterns,
+    strip_directives,
+)
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
 
 logger = get_logger(__name__)
+
+_ZONE_BRAND_TOKENS = frozenset({'generated', 'gen', 'auto'})
 
 
 @dataclass
@@ -54,11 +62,16 @@ class LintIssue:
 
 @dataclass
 class TemplateResult:
-    """Aggregated findings for one template file."""
+    """Aggregated findings for one template file.
+
+    ``warnings`` are non-blocking advisories (currently: insert-zone marker
+    branding); they never affect :attr:`ok` or the lint exit code.
+    """
 
     path: str
     issues: list[LintIssue] = field(default_factory=list)
     render_error: str | None = None
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -214,6 +227,50 @@ def _check_chains(
 # ---------------------------------------------------------------------------
 
 
+def _collect_zone_specs(
+    raw: str,
+    source_path: str,
+) -> dict[str, InsertZoneSpec]:
+    """Extract insert-zone specs for both phases from a raw template."""
+    specs: dict[str, InsertZoneSpec] = {}
+    for phase in DirectivePhase:
+        zone_specs = cast(
+            'dict[str, InsertZoneSpec]',
+            extract_patterns(
+                raw,
+                phase=phase,
+                source_path=source_path,
+            ).by_family.get('insert-zone', {}),
+        )
+        specs.update(zone_specs)
+    return specs
+
+
+def _zone_marker_warnings(raw: str, source_path: str) -> list[str]:
+    """Advise when a zone's literal markers don't read as generated content.
+
+    Zone markers appear inside user-facing documents, so they should carry a
+    ``generated``/``gen``/``auto`` word (e.g. ``<!-- generated:badges:on``)
+    rather than looking hand-authored. Advisory only — never blocks the lint.
+    """
+    warnings: list[str] = []
+    for name, spec in _collect_zone_specs(raw, source_path).items():
+        offenders = [
+            marker for marker in (spec.boundary.start, spec.boundary.end) if marker and not _has_brand_token(marker)
+        ]
+        if offenders:
+            warnings.append(
+                f'insert zone {name!r}: markers should carry a "generated"/"gen"/"auto" word — {offenders}',
+            )
+    return warnings
+
+
+def _has_brand_token(marker: str) -> bool:
+    """True when *marker* contains generated/gen/auto as an alphanumeric word."""
+    words = re.split(r'[^A-Za-z0-9]+', marker.lower())
+    return any(word in _ZONE_BRAND_TOKENS for word in words)
+
+
 def _lint_template(
     tpl_path: Path,
     tpl_root: Path,
@@ -229,6 +286,7 @@ def _lint_template(
     cleaned = strip_directives(raw, source_path=str(tpl_path))
 
     result = TemplateResult(path=rel)
+    result.warnings.extend(_zone_marker_warnings(raw, str(tpl_path)))
 
     try:
         ast = env.parse(cleaned)
@@ -279,6 +337,29 @@ def _resolve_context(
     return ctx.model_dump(), type(ctx)
 
 
+def _report_result(
+    r: TemplateResult,
+    console: Console,
+) -> tuple[int, int]:
+    """Print one template's status and details; return its (issues, render errors)."""
+    status = '[green]✓[/green]' if r.ok else '[red]✗[/red]'
+    console.print(f'{status} {r.path}')
+    for warning in r.warnings:
+        console.print(f'  [yellow]⚠ {warning}[/yellow]')
+    issues = 0
+    render_errors = 0
+    if not r.ok:
+        for issue in r.issues:
+            console.print(
+                f'  [yellow]•[/yellow] [bold]{issue.chain}[/bold]: {issue.reason}',
+            )
+            issues += 1
+        if r.render_error:
+            console.print(f'  [red]render:[/red] {r.render_error}')
+            render_errors += 1
+    return issues, render_errors
+
+
 def _report_results(
     results: list[TemplateResult],
     console: Console,
@@ -287,18 +368,9 @@ def _report_results(
     issues_total = 0
     render_errors_total = 0
     for r in results:
-        if r.ok:
-            console.print(f'[green]✓[/green] {r.path}')
-            continue
-        console.print(f'[red]✗[/red] {r.path}')
-        for issue in r.issues:
-            console.print(
-                f'  [yellow]•[/yellow] [bold]{issue.chain}[/bold]: {issue.reason}',
-            )
-            issues_total += 1
-        if r.render_error:
-            console.print(f'  [red]render:[/red] {r.render_error}')
-            render_errors_total += 1
+        issues, render_errors = _report_result(r, console)
+        issues_total += issues
+        render_errors_total += render_errors
     return issues_total, render_errors_total
 
 

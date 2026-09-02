@@ -11,10 +11,10 @@ disabled blocks, keeping the policy logic in one place.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable, Mapping
 
     from repolish.insertions.models import InsertionBlock
 
@@ -35,13 +35,13 @@ class DisabledInsertionEntry:
 
 
 def resolve_renderer_for_function(
-    registry: dict,
+    registry: Mapping[str, object],
     function_name: str,
 ) -> Callable | None:
     """Resolve a renderer the same way insertion writing resolves function lookups.
 
     Args:
-        registry: The function registry dict
+        registry: The function registry (keyed by function name)
         function_name: The function name to look up (may be qualified)
 
     Returns:
@@ -50,12 +50,12 @@ def resolve_renderer_for_function(
     renderer = registry.get(function_name)
     if renderer is None and ':' in function_name:
         renderer = registry.get(function_name.rsplit(':', 1)[1])
-    return renderer
+    return cast('Callable | None', renderer)
 
 
 def disabled_reason_for_block(
     block: InsertionBlock,
-    registry: dict,
+    registry: Mapping[str, object],
 ) -> str | None:
     """Return a human-readable disable reason for one block, when configured.
 
@@ -90,7 +90,7 @@ def disabled_reason_for_block(
 
 
 def collect_disabled_entries(
-    blocks: list[InsertionBlock],
+    blocks: Iterable[InsertionBlock],
     registry: dict,
 ) -> list[DisabledInsertionEntry]:
     """Collect disabled insertion metadata for summary/report output.

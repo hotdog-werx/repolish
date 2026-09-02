@@ -42,6 +42,10 @@ from repolish.directives.files import (
     run_phase,
     write_if_changed,
 )
+from repolish.directives.insert_zones import (
+    InsertZoneDeclaration,
+    InsertZoneSpec,
+)
 from repolish.directives.phases import DirectivePhase
 from repolish.directives.registry import FerriedItem
 
@@ -50,6 +54,8 @@ __all__ = [
     'FerriedItem',
     'FilePair',
     'FileProcessResult',
+    'InsertZoneDeclaration',
+    'InsertZoneSpec',
     'Patterns',
     'PhaseResult',
     'PostPass',

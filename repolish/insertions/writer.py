@@ -46,7 +46,7 @@ def _preserve_block_whitespace(body: str) -> tuple[str, str]:
     return leading, trailing
 
 
-def _call_registered_renderer(
+def call_registered_renderer(
     registry: RenderRegistry,
     block: InsertionBlock,
 ) -> str:
@@ -164,7 +164,7 @@ def _render_block(
 ) -> str:
     """Render a block using either a direct callback or a named function registry."""
     if isinstance(render, Mapping):
-        return _call_registered_renderer(render, block)
+        return call_registered_renderer(render, block)
     return render(block) if render else block.body
 
 

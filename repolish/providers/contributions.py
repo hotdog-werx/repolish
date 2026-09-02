@@ -595,6 +595,11 @@ def _handle_provider_insertions(
             registry.setdefault(function_name, bound_fn)
             # Always expose provider-qualified keys for explicit targeting.
             registry[f'{provider_name}:{function_name}'] = bound_fn
+            # Same pair goes to the session-wide registry: provider-authored
+            # template zones resolve against it regardless of which files the
+            # provider allowlisted for developer-authored markers.
+            accum.insertion_registry.setdefault(function_name, bound_fn)
+            accum.insertion_registry[f'{provider_name}:{function_name}'] = bound_fn
         accum.insertion_sources.setdefault(path, []).append(provider_id)
 
 

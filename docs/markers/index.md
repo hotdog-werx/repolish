@@ -17,7 +17,8 @@ tell repolish how each marked region should behave. There are two families:
     (`repolish-regex[version]: <payload>`) is still accepted but logs a
     deprecation warning and will be removed in v2 — write the colon form in new
     templates. Insertion markers (`repolish:on:<tag>`) are not directives and
-    are unaffected.
+    are unaffected. The exact syntax for both families lives on the
+    [Grammar](grammar.md) page.
 
 ## The four quadrants
 
@@ -44,10 +45,10 @@ quadrantChart
   functions. The marker block can live in a file you own, or be shipped by a
   template — insertion markers pass through rendering untouched and are filled
   after the file is written.
-- **Insertion zones** — `repolish-insert` (planned): like insertions, but the
-  zone markers are declared by the provider and _blend into the document_
-  (provider-branded markers such as a generated badge row that reads as if you
-  wrote it), instead of the explicit `repolish:on/off` comment syntax.
+- **[Insertion zones](insert-zones.md)** — `repolish:insert`: like insertions,
+  but the zone markers are declared by the provider and _blend into the
+  document_ (provider-branded markers such as a generated badge row that reads
+  as if you wrote it), instead of the explicit `repolish:on/off` comment syntax.
 
 The **Directives** pages in this tab cover the template side — tag blocks, keep
 regions, regex and multiregex — and **Insertions** covers the function-filled
@@ -64,19 +65,14 @@ blocks in developer-owned files.
 | `repolish:regex`                                    | Adopt a single value or line by pattern                                                           | Yes                                          | Available |
 | `repolish:multiregex-block` / `repolish:multiregex` | Merge a structured section (e.g. `key = "value"` lines) keeping your values                       | Yes                                          | Available |
 | `repolish:on` / `repolish:off`                      | Insertions — provider function fills a marked block, in _your own_ files or shipped by a template | n/a — insertions already run after rendering | Available |
-| `repolish-insert`                                   | Insertion zones — provider declares a fillable zone in the template                               | n/a — filled by the insertion phase          | Planned   |
+| `repolish:insert[n] start="..." end="..."`          | Insertion zone — provider-branded, function-filled region declared by the template                | Yes                                          | Available |
 
-<!-- insertion-candidate: the after-render and status columns mirror the directive registry (repolish/directives/registry.py) plus the planned insert-zones family — could be generated once directives self-document -->
+<!-- insertion-candidate: the after-render and status columns mirror the directive registry (repolish/directives/registry.py) — could be generated once directives self-document -->
 
 ## What markers don't cover (yet)
 
 Known gaps, tracked as future work rather than documented behavior:
 
-- **Insertion zones** — the fourth quadrant (`repolish-insert`): the fill
-  mechanics already exist (`repolish:on/off` works in template-rendered files
-  too); the missing piece is the marker _form_ — provider-declared zones whose
-  branded markers blend into the document and read as if you wrote them, instead
-  of the explicit machinery comment. Planned.
 - **Repeated regex / multiregex occurrences** — regex and multiregex apply is
   _single-occurrence_: with loop-generated duplicates, only the first rendered
   occurrence is reconciled against your file; the rest keep template defaults.

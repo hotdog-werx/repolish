@@ -90,6 +90,101 @@ def find_all_bounded_regions(
     return regions
 
 
+@dataclass(frozen=True)
+class PrefixedRegion:
+    """A bounded region whose opening line carries a trailing payload.
+
+    Insertion-zone opening markers can carry arguments on the same line
+    (``<!-- generated:badges:on my-org/my-repo -->``), so their opener is found
+    by *prefix* rather than the exact match :data:`RegionBoundary` finders use.
+    ``opening_args`` is the stripped text following the start prefix on the
+    opening line.
+    """
+
+    start: int
+    """Inclusive opening marker line index."""
+    end: int
+    """Inclusive closing line index."""
+    opening_args: str
+    """Text after the start prefix on the opening line (may be empty)."""
+
+
+def find_prefixed_bounded_regions(
+    lines: list[str],
+    boundary: RegionBoundary,
+) -> list[PrefixedRegion]:
+    """Return all regions whose opening line *starts with* ``boundary.start``.
+
+    Unlike :func:`find_all_bounded_regions`, the opener matches by prefix so
+    trailing arguments on the marker line are tolerated and captured. The end
+    boundary follows the same rules as :func:`find_bounded_region` (literal
+    exact-strip match, or first ``end_regex`` match), except that an unmatched
+    ``end_regex`` yields no region — an unbounded zone is skipped rather than
+    allowed to swallow the rest of the file.
+    """
+    regions: list[PrefixedRegion] = []
+    search_start = 0
+    while search_start < len(lines):
+        opening_index = _find_prefixed_opening(
+            lines,
+            boundary.start,
+            start=search_start,
+        )
+        if opening_index is None:
+            break
+        end_index = _find_zone_end_line_index(
+            lines,
+            start=opening_index + 1,
+            boundary=boundary,
+        )
+        if end_index is None:
+            search_start = opening_index + 1
+            continue
+        opening_args = lines[opening_index].strip()[len(boundary.start) :].strip()
+        regions.append(
+            PrefixedRegion(
+                start=opening_index,
+                end=end_index,
+                opening_args=opening_args,
+            ),
+        )
+        search_start = end_index + 1
+    return regions
+
+
+def _find_prefixed_opening(
+    lines: list[str],
+    start_prefix: str,
+    *,
+    start: int,
+) -> int | None:
+    """Return the first line index whose stripped content starts with *start_prefix*."""
+    for index in range(start, len(lines)):
+        if lines[index].strip().startswith(start_prefix):
+            return index
+    return None
+
+
+def _find_zone_end_line_index(
+    lines: list[str],
+    *,
+    start: int,
+    boundary: RegionBoundary,
+) -> int | None:
+    """Find the zone end boundary; unbounded end-regex zones are rejected."""
+    if boundary.end is not None:
+        return _find_end_index_by_marker(lines, start, len(lines), boundary.end)
+
+    if boundary.end_regex is None:
+        return None
+
+    end_re = re.compile(boundary.end_regex)
+    for index in range(start, len(lines)):
+        if end_re.search(lines[index].strip()):
+            return index
+    return None
+
+
 def find_bounded_regions_in_range(
     lines: list[str],
     start_index: int,
