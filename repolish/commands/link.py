@@ -187,7 +187,20 @@ def _link_config(
         config.providers,
         mode=mode,
     )
-    apply_copies(resolved_copies, resolved.providers)
+    paused_files = frozenset(resolved.paused_files)
+    if paused_files:
+        # Drop paused targets before display so the copy summary tree only
+        # lists files that were actually materialised; apply_copies logs a
+        # `copy_paused` warning for each dropped entry.
+        resolved_copies = {
+            alias: [copy for copy in copies if copy.target.as_posix() not in paused_files]
+            for alias, copies in resolved_copies.items()
+        }
+    apply_copies(
+        resolved_copies,
+        resolved.providers,
+        paused_files=paused_files,
+    )
     return 0, resolved_symlinks, resolved_copies
 
 

@@ -718,3 +718,62 @@ def test_apply_copies_dispatches_to_create_provider_copies(
     apply_copies(resolved_copies, providers)
 
     mock_create.assert_called_once_with('mylib', resources_dir, copies)
+
+
+def test_apply_copies_skips_unknown_provider(
+    mocker: MockerFixture,
+) -> None:
+    """Copy entries whose provider is absent from the resolved config are skipped."""
+    resolved_copies = {
+        'ghost': [
+            ProviderCopy(
+                source=Path('configs/dprint.json'),
+                target=Path('dprint.json'),
+            ),
+        ],
+    }
+
+    mock_create = mocker.patch(
+        'repolish.commands.apply.symlinks.create_provider_copies',
+    )
+
+    apply_copies(resolved_copies, {})
+
+    mock_create.assert_not_called()
+
+
+def test_apply_copies_skips_paused_targets(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_copies filters out copy targets listed in paused_files."""
+    resources_dir = tmp_path / '.repolish' / 'mylib'
+    resources_dir.mkdir(parents=True)
+    providers = {
+        'mylib': ResolvedProviderInfo(
+            alias='mylib',
+            provider_root=resources_dir,
+            resources_dir=resources_dir,
+        ),
+    }
+    paused_copy = ProviderCopy(
+        source=Path('configs/pinned.json'),
+        target=Path('pinned.json'),
+    )
+    active_copy = ProviderCopy(
+        source=Path('configs/dprint.json'),
+        target=Path('dprint.json'),
+    )
+    resolved_copies = {'mylib': [paused_copy, active_copy]}
+
+    mock_create = mocker.patch(
+        'repolish.commands.apply.symlinks.create_provider_copies',
+    )
+
+    apply_copies(
+        resolved_copies,
+        providers,
+        paused_files=frozenset({'pinned.json'}),
+    )
+
+    mock_create.assert_called_once_with('mylib', resources_dir, [active_copy])

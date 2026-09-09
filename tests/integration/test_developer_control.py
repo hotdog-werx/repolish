@@ -3,6 +3,8 @@
 Scenarios covered:
 - paused_files skips a file during apply (file not written)
 - paused_files skips a file during --check (no diff reported)
+- paused_files skips a provider resource copy during apply and during link
+- an unpaused provider resource copy is re-copied normally
 - template_overrides: null suppresses a file during apply
 - template_overrides: null suppresses a file during --check
 - template_overrides pins a file to a specific provider
@@ -48,6 +50,36 @@ def _inline_provider(directory: Path, files: dict[str, str]) -> None:
     )
 
 
+def _inline_provider_with_copy(
+    directory: Path,
+    resource_name: str,
+    resource_content: str,
+    target: str,
+) -> None:
+    """Create a minimal provider in ``directory`` that copies one resource file.
+
+    The resource lives outside ``repolish/`` so it is never treated as a
+    template; the provider declares it via ``create_default_copies`` instead.
+    """
+    _write(directory / 'resources' / resource_name, resource_content)
+    _write(
+        directory / 'repolish.py',
+        f"""\
+        from repolish import BaseContext, Provider, BaseInputs, ResourceCopy
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_default_copies(self):
+                return [ResourceCopy(source='resources/{resource_name}', target='{target}')]
+        """,
+    )
+
+
 # ---------------------------------------------------------------------------
 # paused_files
 # ---------------------------------------------------------------------------
@@ -86,6 +118,102 @@ def test_paused_file_is_not_written_by_apply(
     assert (tmp_path / 'managed.txt').read_text(
         encoding='utf-8',
     ) == 'local content\n'
+
+
+def test_paused_copy_target_is_not_overwritten_by_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy target listed in paused_files is not overwritten during apply.
+
+    Copied files are committed project files (unlike symlinks, which stay
+    links to provider resources), so pausing must stop repolish from
+    re-copying the provider version over local fixes.
+    """
+    _inline_provider_with_copy(
+        tmp_path / 'p',
+        'copied.txt',
+        'from provider\n',
+        'copied.txt',
+    )
+    _write(tmp_path / 'copied.txt', 'local fix\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['copied.txt'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / 'copied.txt').read_text(
+        encoding='utf-8',
+    ) == 'local fix\n'
+
+
+def test_paused_copy_target_is_not_overwritten_by_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy target listed in paused_files is not overwritten during link."""
+    _inline_provider_with_copy(
+        tmp_path / 'p',
+        'copied.txt',
+        'from provider\n',
+        'copied.txt',
+    )
+    _write(tmp_path / 'copied.txt', 'local fix\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['copied.txt'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['link'])
+
+    assert (tmp_path / 'copied.txt').read_text(
+        encoding='utf-8',
+    ) == 'local fix\n'
+
+
+def test_unpaused_copy_target_is_overwritten_by_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy target NOT in paused_files is re-copied normally during apply."""
+    _inline_provider_with_copy(
+        tmp_path / 'p',
+        'copied.txt',
+        'from provider\n',
+        'copied.txt',
+    )
+    _write(tmp_path / 'copied.txt', 'local fix\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / 'copied.txt').read_text(
+        encoding='utf-8',
+    ) == 'from provider\n'
 
 
 def test_paused_file_reports_no_diff_in_check(

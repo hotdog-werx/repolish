@@ -22,8 +22,15 @@ that file will be silently skipped — no diff, no apply, no failure.
 | --------------- | ------------------------------------------------------------------------------------------------------------ |
 | `--check`       | File is excluded from comparison. No diff is reported even if the provider would generate different content. |
 | `apply`         | File is not written. Your local copy is untouched.                                                           |
+| `link`          | Provider resource `copies` targeting the file are skipped too — a paused copy keeps your local edits.        |
 | `delete_files`  | If a provider requested the file be deleted, the deletion is also skipped.                                   |
 | Everything else | All other files continue to be managed normally.                                                             |
+
+Pausing also protects **copied files** — files a provider materialises via
+`copies` because they must not be Jinja-interpreted (JSON configs, WASM plugins,
+…). Repolish skips re-copying those while the entry stays in `paused_files`.
+Provider **symlinks** are not affected: they stay links to provider resources
+and are not meant to be edited locally in the first place.
 
 Pausing a file does **not** remove the provider's template. When you unpause the
 file, repolish will resume comparing and applying it on the next run.
