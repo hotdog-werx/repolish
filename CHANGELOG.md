@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.12.1] <a name="1.12.1" href="#1.12.1">-</a> September 09, 2026
+
+### 🐛 Bug Fixes
+
+- Disable/pause copied files (#92) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#92](https://github.com/hotdog-werx/repolish/pull/92)
+
+[1.12.1]: https://github.com/hotdog-werx/repolish/compare/1.12.0...1.12.1
+
 ## [1.12.0] <a name="1.12.0" href="#1.12.0">-</a> September 02, 2026
 
 ### 🚀 Features
