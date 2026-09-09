@@ -21,6 +21,7 @@ from repolish.config import (
     ResolvedProviderInfo,
 )
 from repolish.config.models import ProviderFileInfo
+from repolish.config.models.provider import ProviderOverrides
 from repolish.linker import (
     create_provider_symlinks,
     process_provider,
@@ -1087,3 +1088,108 @@ class P(Provider[BaseContext, BaseInputs]):
 
     assert 'mylib' in result
     assert result['mylib'][0].target == Path('dprint.json')
+
+
+def test_collect_provider_copies_override_disables_default(
+    tmp_path: Path,
+) -> None:
+    """overrides.copies can disable one provider-declared default copy target."""
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+    (provider_dir / 'repolish.py').write_text("""\
+from repolish import Provider, BaseContext, BaseInputs, ResourceCopy
+
+class P(Provider[BaseContext, BaseInputs]):
+    def create_default_copies(self):
+        return [
+            ResourceCopy(source='configs/dprint.json', target='dprint.json'),
+            ResourceCopy(source='configs/pinned.json', target='pinned.json'),
+        ]
+""")
+
+    resolved_info = ResolvedProviderInfo(
+        alias='mylib',
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    raw_config = ProviderConfig(
+        cli='mylib-link',
+        overrides=ProviderOverrides(copies={'pinned.json': False}),
+    )
+
+    result = collect_provider_copies(
+        {'mylib': resolved_info},
+        {'mylib': raw_config},
+    )
+
+    assert [c.target for c in result['mylib']] == [Path('dprint.json')]
+
+
+def test_collect_provider_copies_override_disables_explicit_entry(
+    tmp_path: Path,
+) -> None:
+    """overrides.copies also filters targets inside an explicit copies list."""
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+
+    resolved_info = ResolvedProviderInfo(
+        alias='mylib',
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    explicit = [
+        ProviderCopy(
+            source=Path('configs/dprint.json'),
+            target=Path('dprint.json'),
+        ),
+        ProviderCopy(
+            source=Path('configs/pinned.json'),
+            target=Path('pinned.json'),
+        ),
+    ]
+    raw_config = ProviderConfig(
+        cli='mylib-link',
+        copies=explicit,
+        overrides=ProviderOverrides(copies={'pinned.json': False}),
+    )
+
+    result = collect_provider_copies(
+        {'mylib': resolved_info},
+        {'mylib': raw_config},
+    )
+
+    assert [c.target for c in result['mylib']] == [Path('dprint.json')]
+
+
+def test_collect_provider_copies_override_enabled_keeps_target(
+    tmp_path: Path,
+) -> None:
+    """overrides.copies entries set to true (or absent) keep the copy."""
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    provider_dir.mkdir(parents=True)
+
+    resolved_info = ResolvedProviderInfo(
+        alias='mylib',
+        provider_root=provider_dir,
+        resources_dir=provider_dir,
+    )
+    explicit = [
+        ProviderCopy(
+            source=Path('configs/dprint.json'),
+            target=Path('dprint.json'),
+        ),
+    ]
+    raw_config = ProviderConfig(
+        cli='mylib-link',
+        copies=explicit,
+        overrides=ProviderOverrides(
+            copies={'dprint.json': True, 'other.json': False},
+        ),
+    )
+
+    result = collect_provider_copies(
+        {'mylib': resolved_info},
+        {'mylib': raw_config},
+    )
+
+    assert [c.target for c in result['mylib']] == [Path('dprint.json')]

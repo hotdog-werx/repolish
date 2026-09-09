@@ -66,3 +66,22 @@ indefinitely defeats the purpose of using repolish to keep files consistent.
 `paused_files` is temporary. If you want to permanently exclude a file from all
 providers, use [`template_overrides`](template-overrides.md) with a `null` value
 instead.
+
+For **resource copies** the permanent equivalent is `overrides.copies` on the
+provider entry: it disables a single copy target without replacing the
+provider's whole copy list (and without the paused warning repolish emits for
+`paused_files`):
+
+```yaml
+providers:
+  mylib:
+    cli: mylib-link
+    overrides:
+      copies:
+        # project owns this file now — repolish never re-copies it
+        dprint.json: false
+```
+
+This works on top of both the provider's `create_default_copies` declarations
+and an explicit `copies:` list. Use it when the project — not the provider —
+should own the file long-term.

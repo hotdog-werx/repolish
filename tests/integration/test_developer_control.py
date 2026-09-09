@@ -5,6 +5,7 @@ Scenarios covered:
 - paused_files skips a file during --check (no diff reported)
 - paused_files skips a provider resource copy during apply and during link
 - an unpaused provider resource copy is re-copied normally
+- overrides.copies: false permanently stops one resource copy (project owns the file)
 - template_overrides: null suppresses a file during apply
 - template_overrides: null suppresses a file during --check
 - template_overrides pins a file to a specific provider
@@ -214,6 +215,47 @@ def test_unpaused_copy_target_is_overwritten_by_apply(
     assert (tmp_path / 'copied.txt').read_text(
         encoding='utf-8',
     ) == 'from provider\n'
+
+
+def test_disabled_copy_target_is_owned_by_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """overrides.copies: false stops repolish copying the target permanently.
+
+    Unlike paused_files this is a permanent, silent opt-out: the project owns
+    the file and repolish never re-copies the provider version over it —
+    no paused warning is emitted.
+    """
+    _inline_provider_with_copy(
+        tmp_path / 'p',
+        'copied.txt',
+        'from provider\n',
+        'copied.txt',
+    )
+    _write(tmp_path / 'copied.txt', 'project owned\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {'copies': {'copied.txt': False}},
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / 'copied.txt').read_text(
+        encoding='utf-8',
+    ) == 'project owned\n'
 
 
 def test_paused_file_reports_no_diff_in_check(
