@@ -326,7 +326,11 @@ def apply_session(
             skip_post_process=skip_post_process,
         )
     apply_symlinks(resolved_symlinks, config.providers)
-    apply_copies(session.resolved_copies, config.providers)
+    apply_copies(
+        session.resolved_copies,
+        config.providers,
+        paused_files=providers.paused_files,
+    )
 
     session.validation_results = _collect_file_validation_messages(
         providers,

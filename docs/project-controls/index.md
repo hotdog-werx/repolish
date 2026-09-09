@@ -21,6 +21,7 @@ flowchart TD
     B -->|One file, temporary| C[paused_files]
     B -->|One file, permanent – pick a different provider| D[template_overrides]
     B -->|One file, permanent – drop it entirely| E[template_overrides: null]
+    B -->|One copied resource, permanent – project owns it| I[overrides.copies: false]
     B -->|Wrong value in a template| F[context_overrides / context]
     B -->|Need a custom template for this project| G[local provider]
     B -->|Keep a section you wrote| H[anchors]
@@ -30,6 +31,7 @@ flowchart TD
 | ------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------- |
 | [`paused_files`](pause.md)                              | Repolish silently skips listed files                       | top-level `repolish.yaml`          |
 | [`template_overrides`](template-overrides.md)           | Pin a file to a specific provider, or suppress it entirely | top-level `repolish.yaml`          |
+| `overrides.copies` (see [pause](pause.md))              | Stop copying one resource so the project owns the file     | per-provider in `repolish.yaml`    |
 | [`context` / `context_overrides`](context-overrides.md) | Patch the values a provider injects into templates         | per-provider in `repolish.yaml`    |
 | [Local provider](local-providers.md)                    | Replace a provider's templates and logic with your own     | `provider_root` in `repolish.yaml` |
 | [Anchors](anchors.md)                                   | Mark sections repolish must never overwrite                | markers in your files              |

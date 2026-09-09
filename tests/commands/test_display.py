@@ -443,6 +443,43 @@ def test_summary_tree_insertion_only_file_shows_hollow_marker(
     assert 'insertions: ✓ ok (1 ok, 0 failed)' in output
 
 
+def test_summary_tree_insertion_only_file_under_provider_filter(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Insertion-only rows say 'possibly provider-owned' when providers are filtered.
+
+    With a --provider filter active we cannot know whether the insertions came
+    from an excluded provider, so the confident 'developer owned' label must
+    not be used.
+    """
+    session = _make_session(
+        tmp_path,
+        mode='standalone',
+        file_records=[
+            FileRecord(
+                path='README.md',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+            ),
+        ],
+    )
+    session.provider_filter = ['my-provider']
+    session.insertion_results = {
+        'README.md': InsertionFileResult(total_blocks=1, failed_blocks=0),
+    }
+    session.providers.file_insertions = {
+        'README.md': {
+            'display-year': lambda: '2026',
+        },
+    }
+
+    output = _capture(mocker, [session])
+    assert '◌ README.md  possibly provider-owned' in output
+    assert 'developer owned' not in output
+    assert 'insertions: ✓ ok (1 ok, 0 failed)' in output
+
+
 def test_summary_tree_insertion_row_owned_by_other_provider_shows_hollow_marker(
     tmp_path: Path,
     mocker: MockerFixture,

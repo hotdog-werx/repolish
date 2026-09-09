@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from hotlog import get_logger
+
 from repolish.config import ProviderSymlink, ResolvedProviderInfo
 from repolish.config.models.provider import ProviderCopy
 from repolish.linker.orchestrator import (
@@ -7,6 +9,8 @@ from repolish.linker.orchestrator import (
     create_provider_symlinks,
 )
 from repolish.linker.windows_utils import normalize_windows_path
+
+logger = get_logger(__name__)
 
 
 def check_symlinks(
@@ -69,14 +73,33 @@ def apply_symlinks(
 def apply_copies(
     resolved_copies: dict[str, list[ProviderCopy]],
     providers: dict[str, ResolvedProviderInfo],
+    *,
+    paused_files: frozenset[str] = frozenset(),
 ) -> None:
     """Materialise all resolved resource copies for every provider.
 
     Delegates to `create_provider_copies` for each alias that appears in
     both `resolved_copies` and `providers`. Providers absent from the
     current config are silently skipped.
+
+    Copy targets listed in `paused_files` are skipped: unlike symlinks,
+    copies are committed project files, so pausing one must stop repolish
+    from re-copying the provider version over local fixes.
     """
     for alias, copies in resolved_copies.items():
         info = providers.get(alias)
-        if info:
-            create_provider_copies(alias, info.resources_dir, copies)
+        if not info:
+            continue
+        active_copies = []
+        for copy in copies:
+            if copy.target.as_posix() in paused_files:
+                logger.info(
+                    'copy_paused',
+                    provider=alias,
+                    target=str(copy.target),
+                    suggestion='remove the entry from paused_files once the local fix is no longer needed',
+                    _display_level=1,
+                )
+                continue
+            active_copies.append(copy)
+        create_provider_copies(alias, info.resources_dir, active_copies)

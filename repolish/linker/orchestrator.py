@@ -288,6 +288,41 @@ def _load_provider_default_copies(
     return []  # pragma: no cover
 
 
+def _filter_disabled_copies(
+    alias: str,
+    copies: list[ProviderCopy],
+    raw: ProviderConfig | None,
+) -> list[ProviderCopy]:
+    """Drop copy targets disabled via ``overrides.copies`` in the project config.
+
+    Disabled targets are dropped silently (debug log only) — unlike
+    ``paused_files``, owning a file via this override is a permanent,
+    intentional decision, not a temporary pause that needs a reminder.
+    """
+    overrides = raw.overrides if raw is not None else None
+    disabled = overrides.copies if overrides is not None else None
+    if not disabled:
+        return copies
+    return [copy for copy in copies if not _copy_is_disabled(alias, copy, disabled)]
+
+
+def _copy_is_disabled(
+    alias: str,
+    copy: ProviderCopy,
+    disabled: dict[str, bool],
+) -> bool:
+    """Return True if *copy*'s target is explicitly disabled, logging the drop."""
+    target = copy.target.as_posix()
+    if disabled.get(target, True):
+        return False
+    logger.debug(
+        'copy_disabled',
+        provider=alias,
+        target=target,
+    )
+    return True
+
+
 def collect_provider_copies(
     providers: dict[str, ResolvedProviderInfo],
     providers_config: dict[str, ProviderConfig],
@@ -296,7 +331,8 @@ def collect_provider_copies(
     """Resolve the effective copies list per provider without creating them.
 
     Explicit entries in ``repolish.yaml`` take priority; absent entries fall
-    back to the defaults declared in ``repolish.py``.  Providers with no
+    back to the defaults declared in ``repolish.py``.  Targets disabled via
+    ``overrides.copies`` are dropped from either source.  Providers with no
     effective copies are omitted.
 
     Args:
@@ -316,6 +352,7 @@ def collect_provider_copies(
                 info.provider_root,
                 mode,
             )
+        effective = _filter_disabled_copies(alias, effective, raw)
         if effective:
             result[alias] = effective
     return result

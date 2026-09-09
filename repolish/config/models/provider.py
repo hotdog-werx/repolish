@@ -24,6 +24,7 @@ class ProviderOverrides(BaseModel):
     - ``context_dotted``: Dot-notation overrides for nested context values (deep)
     - ``anchors``: Anchor definitions to override provider defaults
     - ``file_mappings``: Per-file enabled/disabled overrides
+    - ``copies``: Per-copy enabled/disabled overrides keyed by target path
 
     Usage in repolish.yaml::
 
@@ -48,6 +49,9 @@ class ProviderOverrides(BaseModel):
               # Shortcut: just disable a file
               file_mappings:
                 path/to/file.yaml: false
+              # Stop copying one resource so the project owns the file
+              copies:
+                dprint.json: false
     """
 
     context_merge: dict[str, Any] | None = Field(
@@ -74,6 +78,16 @@ class ProviderOverrides(BaseModel):
             'Per-file options keyed by destination path. '
             'Shortcut: use ``false`` to disable (sets ``enabled: false``). '
             'Full form: dict with ``enabled``, ``priority``, ``skip_render`` fields.'
+        ),
+    )
+    copies: dict[str, bool] | None = Field(
+        default=None,
+        description=(
+            'Per-copy enabled flags keyed by target path (relative to repo root). '
+            'Set an entry to ``false`` to stop repolish copying that resource so '
+            'the project can own the file outright. Unlike ``paused_files`` this '
+            'is permanent and silent. Applies on top of both provider-declared '
+            'default copies and an explicit ``copies`` list.'
         ),
     )
     validators: dict[str, dict[str, bool] | bool] | None = Field(
@@ -294,6 +308,7 @@ class ProviderConfig(BaseModel):
                 'context_dotted': raw_overrides.context_dotted,
                 'anchors': raw_overrides.anchors,
                 'file_mappings': raw_overrides.file_mappings,
+                'copies': raw_overrides.copies,
                 'validators': raw_overrides.validators,
                 'insertions': raw_overrides.insertions,
                 'insertions_extend_files': raw_overrides.insertions_extend_files,

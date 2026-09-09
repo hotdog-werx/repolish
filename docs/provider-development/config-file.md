@@ -100,8 +100,8 @@ the full resolution rules and CLI protocol.
 
 > The consolidated `overrides` field is the recommended location for all
 > provider-level overrides. It covers `context_merge`, `context_dotted`,
-> `anchors`, and `file_mappings` in one place. The older top-level fields
-> (`context`, `context_overrides`, and `anchors`) are still supported for
+> `anchors`, `file_mappings`, and `copies` in one place. The older top-level
+> fields (`context`, `context_overrides`, and `anchors`) are still supported for
 > backwards compatibility, but they are deprecated and should be migrated to
 > `overrides.*`.
 
@@ -206,6 +206,23 @@ Each entry has a `source` path (relative to the provider's `resources_dir`) and
 a `target` path (relative to the project root). This is the mechanism for adding
 symlinks the provider doesn't ship by default, or for trimming ones you don't
 want.
+
+The `copies` key follows the same rules for resource copies (files that are
+physically copied rather than symlinked). To stop copying a single target
+without replacing the whole list — for example when the project wants to own the
+file outright — use `overrides.copies` instead:
+
+```yaml
+providers:
+  mylib:
+    cli: mylib-link
+    overrides:
+      copies:
+        dprint.json: false # project owns this file; repolish never re-copies it
+```
+
+See [Pause a File](../project-controls/pause.md) for the difference between this
+permanent opt-out and a temporary `paused_files` entry.
 
 ## Notes on schema evolution
 

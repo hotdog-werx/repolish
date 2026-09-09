@@ -195,8 +195,9 @@ Use `--check` in CI to gate merges on drift. When the check fails, run
 ### `repolish apply`
 
 Repolish writes every file from the rendered output into your project, processes
-any `delete_files`, and creates symlinks registered by providers. `paused_files`
-are skipped here too.
+any `delete_files`, and creates symlinks and resource copies registered by
+providers. `paused_files` are skipped here too — for both rendered files and
+resource copies.
 
 After apply, `.repolish/_/render/` holds the exact state of what was written,
 which is useful for debugging.

@@ -55,6 +55,65 @@ def _write_repolish_config(tmp_path: Path, config: dict) -> None:
     )
 
 
+def test_providers_filter_insertion_only_label_hedged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insertion-only rows say 'possibly provider-owned' under --providers.
+
+    Without the filter, an unstaged insertion target is confidently developer
+    owned. With a provider filter active, the provider that stages the file
+    may simply be excluded, so the summary must hedge.
+    """
+    _write(
+        tmp_path / 'pins' / 'repolish.py',
+        """\
+        from repolish import BaseContext, Provider, BaseInputs
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def display_year():
+                    return '2026'
+                return {'README.md': {'display-year': display_year}}
+        """,
+    )
+    _write(
+        tmp_path / 'README.md',
+        """\
+        Project readme
+        <!-- repolish:on:one display-year -->
+        2024
+        <!-- repolish:off:one -->
+        """,
+    )
+
+    _write_repolish_config(
+        tmp_path,
+        {
+            'providers': {
+                'pins': {'provider_root': './pins'},
+            },
+        },
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    unfiltered = run_repolish(['apply'])
+    assert 'developer owned' in unfiltered.output
+    assert 'possibly provider-owned' not in unfiltered.output
+
+    filtered = run_repolish(['apply', '--providers', 'pins'])
+    assert 'possibly provider-owned' in filtered.output
+    assert 'developer owned' not in filtered.output
+
+
 def test_providers_filter_runs_only_specified_providers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
