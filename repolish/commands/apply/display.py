@@ -299,6 +299,19 @@ def _validator_display_prefix(
     return '✓ ', 'green'
 
 
+def _insertion_only_label(session: ResolvedSession) -> str:
+    """Label for an insertion-only file that was never staged.
+
+    Without a provider filter every configured provider ran, so no provider
+    claimed the file and it is confidently developer-owned. Under a provider
+    filter the true owner may simply be an excluded provider, so the weaker
+    "possibly provider-owned" applies.
+    """
+    if session.provider_filter is not None:
+        return 'possibly provider-owned'
+    return 'developer owned'
+
+
 def _is_insertion_only_not_staged(
     record: FileRecord,
     session: ResolvedSession,
@@ -470,7 +483,7 @@ def _file_status_node(
     if other_owner:
         node.append(f'  owned by {other_owner}', style='dim yellow')
     elif _is_insertion_only_not_staged(record, session):
-        node.append('  developer owned', style='dim yellow')
+        node.append(f'  {_insertion_only_label(session)}', style='dim yellow')
 
     _append_insertion_summary_line(node, record, session)
     return node

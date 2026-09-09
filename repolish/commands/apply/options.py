@@ -87,6 +87,10 @@ class ResolvedSession:
         Reverse map of ``alias_to_pid``.
     resolved_symlinks:
         Symlink declarations collected from all providers.
+    provider_filter:
+        Aliases passed via ``--provider``; ``None`` when no filtering is active.
+        Display code uses this to hedge labels: an insertion-only file is
+        confidently "developer owned" only when every configured provider ran.
     extra_provider_entries:
         Provider entries contributed by member sessions (root pass only).
     extra_inputs:
@@ -99,6 +103,7 @@ class ResolvedSession:
     global_context: GlobalContext = field(repr=False)
     providers: SessionBundle = field(repr=False)
     aliases: list[str] = field(default_factory=list)
+    provider_filter: list[str] | None = field(default=None, repr=False)
     alias_to_pid: dict[str, str] = field(default_factory=dict, repr=False)
     pid_to_alias: dict[str, str] = field(default_factory=dict, repr=False)
     resolved_symlinks: dict[str, list[ProviderSymlink]] = field(
