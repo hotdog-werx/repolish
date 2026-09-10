@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_mock
@@ -288,3 +289,280 @@ def test_process_provider_skips_when_no_cli(
     exit_code = process_provider('lib', config, tmp_path)
 
     assert exit_code == 0
+
+
+def _write_cli_info(
+    alias: str,
+    config_dir: Path,
+    resources_dir: Path,
+    site_package_dir: Path,
+) -> None:
+    """Write a provider-info file the way a CLI provider's ``--info`` would."""
+    info = ProviderFileInfo(
+        resources_dir=str(resources_dir),
+        provider_root='',
+        site_package_dir=str(site_package_dir),
+        package_name='mylib',
+        project_name='mylib',
+    )
+    info_file = get_provider_info_path(alias, config_dir)
+    info_file.parent.mkdir(parents=True, exist_ok=True)
+    info_file.write_text(json.dumps(info.model_dump(mode='json')))
+
+
+def _mock_probe(
+    mocker: pytest_mock.MockerFixture,
+    payload: dict,
+) -> MagicMock:
+    """Mock subprocess.run so the first call returns a ``--info`` payload."""
+    mock_run = mocker.patch('subprocess.run')
+    mock_info = MagicMock()
+    mock_info.stdout = json.dumps(payload)
+    mock_run.return_value = mock_info
+    return mock_run
+
+
+def test_apply_trusts_valid_cache_without_probe(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Without verify_locations (apply), a valid cache skips the CLI entirely."""
+    monkeypatch.chdir(tmp_path)
+    site = (tmp_path / 'site' / 'mylib').resolve()
+    site.mkdir(parents=True)
+    resources = tmp_path / '.repolish' / 'mylib'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(site)
+    _write_cli_info('lib', tmp_path, resources, site)
+
+    mock_run = _mock_probe(mocker, {})
+    providers = {'lib': ProviderConfig(cli='mylib-link')}
+    result = ensure_providers_ready(['lib'], providers, tmp_path)
+
+    mock_run.assert_not_called()
+    assert result.ready == ['lib']
+    assert result.cached == ['lib']
+
+
+def test_link_probe_skips_relink_when_location_unchanged(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Repolish link probes --info; matching location means no link subprocess."""
+    monkeypatch.chdir(tmp_path)
+    site = (tmp_path / 'site' / 'mylib').resolve()
+    site.mkdir(parents=True)
+    resources = tmp_path / '.repolish' / 'mylib'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(site)
+    _write_cli_info('lib', tmp_path, resources, site)
+
+    probe_payload = {
+        'resources_dir': str(resources),
+        'provider_root': '',
+        'site_package_dir': str(site),
+        'package_name': 'mylib',
+        'project_name': 'mylib',
+    }
+    mock_run = _mock_probe(mocker, probe_payload)
+    providers = {'lib': ProviderConfig(cli='mylib-link')}
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    # Only the --info probe ran; the link command was skipped.
+    assert mock_run.call_count == 1
+    assert mock_run.call_args[0][0] == ['mylib-link', '--info']
+    assert result.ready == ['lib']
+    assert result.cached == ['lib']
+
+
+def test_link_probe_reregisters_when_location_moved(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A provider package that moved (dev ↔ release) is re-registered."""
+    monkeypatch.chdir(tmp_path)
+    old_site = (tmp_path / 'old_site' / 'mylib').resolve()
+    old_site.mkdir(parents=True)
+    new_site = (tmp_path / 'new_site' / 'mylib').resolve()
+    new_site.mkdir(parents=True)
+    resources = tmp_path / '.repolish' / 'mylib'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(old_site)  # still pointing at the old location
+    _write_cli_info('lib', tmp_path, resources, old_site)
+
+    probe_payload = {
+        'resources_dir': str(resources),
+        'provider_root': '',
+        'site_package_dir': str(new_site),
+        'package_name': 'mylib',
+        'project_name': 'mylib',
+    }
+    mock_run = mocker.patch('subprocess.run')
+    mock_run.side_effect = [
+        MagicMock(stdout=json.dumps(probe_payload)),
+        MagicMock(),
+    ]
+
+    providers = {'lib': ProviderConfig(cli='mylib-link')}
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    # Probe + actual link both ran.
+    assert mock_run.call_count == 2
+    assert result.ready == ['lib']
+    assert result.cached == []
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['site_package_dir'] == str(new_site)
+
+
+def test_link_probe_missing_link_target_reruns_link(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Location unchanged but .repolish/<alias> is not a symlink → re-link."""
+    monkeypatch.chdir(tmp_path)
+    site = (tmp_path / 'site' / 'mylib').resolve()
+    site.mkdir(parents=True)
+    resources = tmp_path / '.repolish' / 'mylib'
+    resources.mkdir(parents=True)  # plain directory, not a symlink
+
+    _write_cli_info('lib', tmp_path, resources, site)
+
+    probe_payload = {
+        'resources_dir': str(resources),
+        'provider_root': '',
+        'site_package_dir': str(site),
+        'package_name': 'mylib',
+        'project_name': 'mylib',
+    }
+    mock_run = mocker.patch('subprocess.run')
+    mock_run.side_effect = [
+        MagicMock(stdout=json.dumps(probe_payload)),
+        MagicMock(),
+    ]
+
+    providers = {'lib': ProviderConfig(cli='mylib-link')}
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    assert mock_run.call_count == 2
+    assert result.cached == []
+
+
+def test_static_provider_unchanged_is_cached(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A static provider whose config paths match the cache is not re-registered."""
+    monkeypatch.chdir(tmp_path)
+    provider_root = (tmp_path / 'my_provider').resolve()
+    provider_root.mkdir()
+    _write_info('lib', tmp_path, provider_root, provider_root)
+
+    mock_register = mocker.patch('repolish.linker.health._register_provider')
+    providers = {'lib': ProviderConfig(provider_root=str(provider_root))}
+    result = ensure_providers_ready(['lib'], providers, tmp_path)
+
+    mock_register.assert_not_called()
+    assert result.cached == ['lib']
+
+
+def test_static_provider_config_change_reregisters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Changing provider_root in repolish.yaml re-registers even without --force."""
+    monkeypatch.chdir(tmp_path)
+    old_root = (tmp_path / 'old_provider').resolve()
+    old_root.mkdir()
+    new_root = (tmp_path / 'new_provider').resolve()
+    new_root.mkdir()
+    _write_info(
+        'lib',
+        tmp_path,
+        old_root,
+        old_root,
+    )  # cache still on the old path
+
+    providers = {'lib': ProviderConfig(provider_root=str(new_root))}
+    result = ensure_providers_ready(['lib'], providers, tmp_path)
+
+    assert result.ready == ['lib']
+    assert result.cached == []
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['provider_root'] == str(new_root)
+
+
+def test_no_cache_file_registers_from_scratch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Without a provider-info file at all, the provider registers normally."""
+    monkeypatch.chdir(tmp_path)
+    provider_root = tmp_path / 'my_provider'
+    provider_root.mkdir()
+
+    providers = {'lib': ProviderConfig(provider_root=str(provider_root))}
+    result = ensure_providers_ready(['lib'], providers, tmp_path)  # no force, no cache
+
+    assert result.ready == ['lib']
+    assert result.cached == []
+    assert get_provider_info_path('lib', tmp_path).exists()
+
+
+def test_link_probe_failure_falls_back_to_registration(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A probe that fails (CLI missing or broken) falls through to registration.
+
+    Registration probes again inside ``run_provider_link``; when that fails
+    too, the static ``provider_root`` fallback registers the provider.
+    """
+    monkeypatch.chdir(tmp_path)
+    site = (tmp_path / 'site' / 'mylib').resolve()
+    site.mkdir(parents=True)
+    resources = tmp_path / '.repolish' / 'mylib'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(site)
+    _write_cli_info('lib', tmp_path, resources, site)
+
+    mock_run = mocker.patch(
+        'subprocess.run',
+        side_effect=FileNotFoundError('mylib-link'),
+    )
+    providers = {
+        'lib': ProviderConfig(cli='mylib-link', provider_root=str(site)),
+    }
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    # Probe in _probe_or_register + probe in run_provider_link, both failed.
+    assert mock_run.call_count == 2
+    assert result.ready == ['lib']
+    assert result.cached == []
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['site_package_dir'] == ''  # static fallback: no package location

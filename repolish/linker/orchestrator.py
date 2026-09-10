@@ -11,6 +11,7 @@ from typing import cast
 from hotlog import get_logger
 
 from repolish.config import ProviderConfig
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.models.provider import (
     ProviderCopy,
     ProviderSymlink,
@@ -470,6 +471,7 @@ def process_provider(
     config_dir: Path,
     *,
     location_context: str | None = None,
+    fresh_info: ProviderFileInfo | None = None,
 ) -> int:
     """Run the provider's link CLI to materialise resources under ``.repolish/``.
 
@@ -484,6 +486,9 @@ def process_provider(
         location_context: Optional context string for monorepo awareness
             (e.g., 'root', 'packages/package_a'). Passed to provider CLIs
             via REPOLISH_LINK_CONTEXT environment variable.
+        fresh_info: Info from an already-run ``--info`` probe, when the
+            caller probed the CLI before deciding to register; avoids running
+            the probe a second time.
 
     Returns:
         0 on success, 1 on failure.
@@ -501,6 +506,7 @@ def process_provider(
             provider_name,
             provider_config.cli,
             location_context=location_context,
+            fresh_info=fresh_info,
         )
     except subprocess.CalledProcessError as e:
         logger.exception(

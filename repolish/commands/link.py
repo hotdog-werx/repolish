@@ -167,6 +167,7 @@ def _link_config(
         config_path.resolve().parent,
         force=force,
         location_context=location_context,
+        verify_locations=True,
     )
     if result.failed:
         logger.warning(
