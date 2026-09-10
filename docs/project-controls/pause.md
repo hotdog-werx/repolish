@@ -16,6 +16,32 @@ paused_files:
 That is the whole change. On the next `repolish --check` or `repolish apply`
 that file will be silently skipped — no diff, no apply, no failure.
 
+## Entry forms
+
+Besides exact paths, entries accept two broader forms:
+
+- **Directory** — `.github/workflows` (trailing slash optional) pauses the
+  directory itself and everything under it. The pause is literal-prefix based,
+  so `.github/workflows` does **not** pause `.github/workflows-extra/`.
+- **Glob** — `*.generated.py` or `docs/*.md` pauses every matching path.
+  Patterns are case-sensitive `fnmatch` globs; `*` also crosses directory
+  separators, so `docs/*.md` covers `docs/a/guide.md`.
+
+```yaml
+paused_files:
+  - .github # back off from the whole workflows setup for now
+  - '*.generated.py' # quote glob entries so YAML keeps them as strings
+```
+
+Backslashes are normalised to forward slashes, so an entry typed with Windows
+separators (`.github\workflows`) matches the same paths.
+
+Broad matching is safe here precisely because `paused_files` is loud and
+temporary: every run logs the `files_paused` warning listing what is being
+skipped. The permanent, silent mechanisms — `overrides.file_mappings` and
+`overrides.copies` — deliberately stay exact-match only, so a mistyped pattern
+there can never silently orphan files.
+
 ## What it does (and does not do)
 
 | Behaviour       | Detail                                                                                                       |
@@ -29,8 +55,12 @@ that file will be silently skipped — no diff, no apply, no failure.
 Pausing also protects **copied files** — files a provider materialises via
 `copies` because they must not be Jinja-interpreted (JSON configs, WASM plugins,
 …). Repolish skips re-copying those while the entry stays in `paused_files`.
-Provider **symlinks** are not affected: they stay links to provider resources
-and are not meant to be edited locally in the first place.
+This includes individual files inside a **directory copy**: pausing
+`.github/workflows/ci.yml` keeps your local version even when the provider
+re-copies the whole `.github/workflows/` folder. Directory and glob entries
+cover copies the same way — pausing `.github` protects every copied file under
+it. Provider **symlinks** are not affected: they stay links to provider
+resources and are not meant to be edited locally in the first place.
 
 Pausing a file does **not** remove the provider's template. When you unpause the
 file, repolish will resume comparing and applying it on the next run.
@@ -83,5 +113,8 @@ providers:
 ```
 
 This works on top of both the provider's `create_default_copies` declarations
-and an explicit `copies:` list. Use it when the project — not the provider —
-should own the file long-term.
+and an explicit `copies:` list. Like `paused_files`, it also covers individual
+files inside a **directory copy**: disabling `.github/workflows/ci.yml` makes
+the project own that file even when the provider re-copies the whole
+`.github/workflows/` folder. Use it when the project — not the provider — should
+own the file long-term.

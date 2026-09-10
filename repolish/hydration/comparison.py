@@ -1,11 +1,13 @@
 import difflib
 import filecmp
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.config.paused import is_paused
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.misc import is_conditional_file
@@ -92,10 +94,26 @@ def _compare_and_prepare_diff(
         return (a_raw == b_raw), [], []
 
 
+def _regular_file_skip(
+    skip_files: set[str],
+    paused_files: frozenset[str],
+) -> Callable[[str], bool]:
+    """Build the auto-staged skip predicate for diff checking.
+
+    Paused paths may be directory or glob entries, so they go through the
+    pause matcher instead of plain set membership.
+    """
+
+    def _skip(rel_str: str) -> bool:
+        return is_paused(rel_str, paused_files) or rel_str in skip_files
+
+    return _skip
+
+
 def _check_one_regular_file(
     out: Path,
     setup_output: Path,
-    skip_files: set[str],
+    should_skip: Callable[[str], bool],
     base_dir: Path,
     *,
     preserve: bool,
@@ -105,7 +123,7 @@ def _check_one_regular_file(
     rel_str = rel.as_posix()
     if is_conditional_file(rel_str):
         return None
-    if rel_str in skip_files:
+    if should_skip(rel_str):
         return None
     dest = base_dir / rel
     if not dest.exists():
@@ -132,7 +150,7 @@ def _check_one_regular_file(
 def _check_regular_files(  # noqa: PLR0913
     output_files: list[Path],
     setup_output: Path,
-    skip_files: set[str],
+    should_skip: Callable[[str], bool],
     base_dir: Path,
     *,
     preserve: bool,
@@ -143,7 +161,9 @@ def _check_regular_files(  # noqa: PLR0913
     Args:
         output_files: List of files in the template output.
         setup_output: Path to the rendered output directory.
-        skip_files: Set of file paths to skip (mapped sources + delete files + create-only existing files).
+        should_skip: Predicate returning True for paths to exclude from the
+            diff (paused paths, mapped sources, delete files, and existing
+            create-only files).
         base_dir: Base directory where the project root is located.
         preserve: Whether to preserve line endings during comparison.
         disable_auto_staging: When True, auto-staged files are not expected in
@@ -158,7 +178,7 @@ def _check_regular_files(  # noqa: PLR0913
         result = _check_one_regular_file(
             out,
             setup_output,
-            skip_files,
+            should_skip,
             base_dir,
             preserve=preserve,
         )
@@ -239,7 +259,7 @@ def _check_file_mappings(
     diffs: list[tuple[str, str]] = []
 
     for dest_path, source_path in providers.file_mappings.items():
-        if dest_path in ctx.paused_files:
+        if is_paused(dest_path, ctx.paused_files):
             continue
         if _should_skip_mapping(
             dest_path,
@@ -287,8 +307,10 @@ def check_generated_output(
     delete_files_set = resolution.delete_dests
     create_only_files_set = resolution.create_only_dests
 
-    # Build skip set: include create-only files that already exist in the project
-    skip_files = mapped_sources | delete_files_set | paused_files | resolution.suppressed_sources
+    # Build skip set: include create-only files that already exist in the project.
+    # Paused paths are checked with the pause matcher separately (they may be
+    # directory or glob entries, not just exact paths).
+    skip_files = mapped_sources | delete_files_set | resolution.suppressed_sources
     for rel_str in create_only_files_set:
         if (base_dir / rel_str).exists():
             skip_files.add(rel_str)
@@ -298,7 +320,7 @@ def check_generated_output(
         _check_regular_files(
             output_files,
             setup_output,
-            skip_files,
+            _regular_file_skip(skip_files, paused_files),
             base_dir,
             preserve=preserve,
             disable_auto_staging=disable_auto_staging,
@@ -324,7 +346,7 @@ def check_generated_output(
     # provider-declared deletions: if a path is expected deleted but exists in
     # the project, surface that so devs know to run repolish
     for rel in providers.delete_files:
-        if rel.as_posix() in paused_files:
+        if is_paused(rel.as_posix(), paused_files):
             continue
         proj_target = base_dir / rel
         if proj_target.exists():

@@ -13,6 +13,7 @@ from repolish.config import (
     RepolishConfigFile,
     load_config_file,
 )
+from repolish.config.paused import is_paused
 from repolish.config.resolution import resolve_config
 from repolish.config.topology import (
     detect_workspace,
@@ -193,7 +194,7 @@ def _link_config(
         # lists files that were actually materialised; apply_copies logs a
         # `copy_paused` warning for each dropped entry.
         resolved_copies = {
-            alias: [copy for copy in copies if copy.target.as_posix() not in paused_files]
+            alias: [copy for copy in copies if not is_paused(copy.target.as_posix(), paused_files)]
             for alias, copies in resolved_copies.items()
         }
     apply_copies(

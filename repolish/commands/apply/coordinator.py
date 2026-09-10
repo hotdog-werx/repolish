@@ -22,6 +22,7 @@ from repolish.commands.apply.utils import (
     chdir,
 )
 from repolish.config.loader import load_config_file
+from repolish.config.paused import is_paused
 from repolish.config.topology import (
     detect_workspace,
     detect_workspace_from_config,
@@ -332,7 +333,7 @@ def _apply_winners(
             continue
 
         source_template = winner.mapping.source_template
-        if dest in paused_dests:
+        if is_paused(dest, paused_dests):
             promoted_records.append(
                 FileRecord(
                     path=winner.dest,

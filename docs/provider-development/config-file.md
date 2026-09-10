@@ -48,10 +48,13 @@ Repolish cannot run without at least one provider configured.
     - ruff check --fix .
   ```
 
-- **`paused_files`** _(list of strings)_ - POSIX-style file paths that repolish
-  should temporarily ignore. Paused files are excluded from both `--check`
-  comparison and `apply` writes. Use this to opt out of provider management for
-  specific files while a provider is being fixed or updated. See
+- **`paused_files`** _(list of strings)_ - paths that repolish should
+  temporarily ignore. Each entry may be an exact path, a directory (everything
+  under it is paused), or a case-sensitive `fnmatch` glob; backslashes are
+  accepted for Windows-typed configs. Paused files are excluded from both
+  `--check` comparison and `apply` writes, and paused copy targets are not
+  re-copied. Use this to opt out of provider management for specific files while
+  a provider is being fixed or updated. See
   [Pause a File](../project-controls/pause.md) for details.
 
   ```yaml
@@ -220,6 +223,10 @@ providers:
       copies:
         dprint.json: false # project owns this file; repolish never re-copies it
 ```
+
+Keys are destination paths relative to the project root, and they may point
+inside a directory copy: disabling `.github/workflows/ci.yml` excludes just that
+file from the provider's whole-folder copy of `.github/workflows/`.
 
 See [Pause a File](../project-controls/pause.md) for the difference between this
 permanent opt-out and a temporary `paused_files` entry.

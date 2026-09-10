@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from repolish.config.paused import is_paused
 from repolish.providers.models import BaseContext, SessionBundle
 from repolish.providers.models.files import (
     FileValidatorEntry,
@@ -151,7 +152,7 @@ def _collect_file_validation_messages(
     provider_contexts = bundle.provider_contexts
 
     for rel_path, validators in validators_by_file.items():
-        if rel_path in bundle.paused_files:
+        if is_paused(rel_path, bundle.paused_files):
             continue
         file_ok, file_results = _run_validators_for_file(
             rel_path,

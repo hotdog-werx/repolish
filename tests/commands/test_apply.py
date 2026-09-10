@@ -20,7 +20,11 @@ from repolish.commands.apply.session import (
 )
 from repolish.commands.apply.symlinks import apply_copies
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
-from repolish.config.models.provider import ProviderCopy, ProviderSymlink
+from repolish.config.models.provider import (
+    ProviderCopy,
+    ProviderOverrides,
+    ProviderSymlink,
+)
 from repolish.linker.health import ProviderReadinessResult
 from repolish.providers import SessionBundle
 from repolish.providers.models import (
@@ -717,7 +721,13 @@ def test_apply_copies_dispatches_to_create_provider_copies(
 
     apply_copies(resolved_copies, providers)
 
-    mock_create.assert_called_once_with('mylib', resources_dir, copies)
+    mock_create.assert_called_once_with(
+        'mylib',
+        resources_dir,
+        copies,
+        paused_files=frozenset(),
+        disabled_copies=frozenset(),
+    )
 
 
 def test_apply_copies_skips_unknown_provider(
@@ -776,4 +786,53 @@ def test_apply_copies_skips_paused_targets(
         paused_files=frozenset({'pinned.json'}),
     )
 
-    mock_create.assert_called_once_with('mylib', resources_dir, [active_copy])
+    mock_create.assert_called_once_with(
+        'mylib',
+        resources_dir,
+        [active_copy],
+        paused_files=frozenset({'pinned.json'}),
+        disabled_copies=frozenset(),
+    )
+
+
+def test_apply_copies_forwards_disabled_overrides(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_copies derives the overrides.copies disable set from the provider info.
+
+    Top-level disabled targets are already dropped by collect_provider_copies;
+    the set is forwarded so directory copies can skip disabled files *inside*
+    the copied tree.
+    """
+    resources_dir = tmp_path / '.repolish' / 'mylib'
+    resources_dir.mkdir(parents=True)
+    providers = {
+        'mylib': ResolvedProviderInfo(
+            alias='mylib',
+            provider_root=resources_dir,
+            resources_dir=resources_dir,
+            overrides=ProviderOverrides(
+                copies={
+                    '.github/workflows/ci.yml': False,
+                    '.github/workflows/release.yml': True,
+                },
+            ),
+        ),
+    }
+    dir_copy = ProviderCopy(
+        source=Path('_repolish.github'),
+        target=Path('.github/workflows'),
+    )
+    resolved_copies = {'mylib': [dir_copy]}
+
+    mock_create = mocker.patch(
+        'repolish.commands.apply.symlinks.create_provider_copies',
+    )
+
+    apply_copies(resolved_copies, providers)
+
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs['disabled_copies'] == frozenset(
+        {'.github/workflows/ci.yml'},
+    )
