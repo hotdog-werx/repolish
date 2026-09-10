@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from hotlog import get_logger
 
 from repolish.commands.apply.options import InsertionFileResult
+from repolish.config.paused import is_paused
 from repolish.insertions import (
     DisabledDiagnosticEntry,
     DisabledInsertionEntry,
@@ -313,7 +314,7 @@ def _should_skip_file(
     paused_files: frozenset[str] | None = None,
 ) -> bool:
     """Check if a file should be skipped for insertion processing."""
-    if paused_files and rel_path in paused_files:
+    if paused_files and is_paused(rel_path, paused_files):
         return True
     target = base_dir / rel_path
     return not target.exists() or target.is_dir()

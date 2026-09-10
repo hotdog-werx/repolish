@@ -6,6 +6,7 @@ Scenarios covered:
 - paused_files skips a provider resource copy during apply and during link
 - an unpaused provider resource copy is re-copied normally
 - overrides.copies: false permanently stops one resource copy (project owns the file)
+- overrides.copies: false also owns a single file inside a copied directory
 - template_overrides: null suppresses a file during apply
 - template_overrides: null suppresses a file during --check
 - template_overrides pins a file to a specific provider
@@ -77,6 +78,38 @@ def _inline_provider_with_copy(
 
             def create_default_copies(self):
                 return [ResourceCopy(source='resources/{resource_name}', target='{target}')]
+        """,
+    )
+
+
+def _inline_provider_with_dir_copy(
+    directory: Path,
+    source_dir: str,
+    target_dir: str,
+    files: dict[str, str],
+) -> None:
+    """Create a minimal provider in ``directory`` that copies a whole folder.
+
+    Mirrors the real-world pattern of shipping raw workflow files in a
+    ``_repolish.``-prefixed folder (no Jinja interpretation) and copying the
+    folder into the project via ``create_default_copies``.
+    """
+    for name, content in files.items():
+        _write(directory / source_dir / name, content)
+    _write(
+        directory / 'repolish.py',
+        f"""\
+        from repolish import BaseContext, Provider, BaseInputs, ResourceCopy
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_default_copies(self):
+                return [ResourceCopy(source='{source_dir}', target='{target_dir}')]
         """,
     )
 
@@ -258,6 +291,103 @@ def test_disabled_copy_target_is_owned_by_project(
     ) == 'project owned\n'
 
 
+def test_paused_file_inside_copied_directory_is_not_overwritten(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paused file inside a copied directory keeps local fixes; siblings don't.
+
+    Directory copies go through ``shutil.copytree``; pausing must still apply
+    to the individual files under the copy target, not just the target itself.
+    """
+    _inline_provider_with_dir_copy(
+        tmp_path / 'p',
+        '_repolish.github',
+        '.github/workflows',
+        {
+            'ci.yml': 'from provider ci\n',
+            'release.yml': 'from provider release\n',
+        },
+    )
+    _write(tmp_path / '.github' / 'workflows' / 'ci.yml', 'local fix\n')
+    _write(tmp_path / '.github' / 'workflows' / 'release.yml', 'stale local\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['.github/workflows/ci.yml'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    # paused file: local fix preserved
+    assert (tmp_path / '.github' / 'workflows' / 'ci.yml').read_text(
+        encoding='utf-8',
+    ) == 'local fix\n'
+    # sibling inside the same copied directory: re-copied normally
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').read_text(
+        encoding='utf-8',
+    ) == 'from provider release\n'
+
+
+def test_disabled_file_inside_copied_directory_is_owned_by_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """overrides.copies: false owns one file inside a copied directory.
+
+    The provider re-copies the whole ``.github/workflows/`` folder, but the
+    file the project disabled via ``overrides.copies`` is filtered out of the
+    directory walk and keeps its local content.
+    """
+    _inline_provider_with_dir_copy(
+        tmp_path / 'p',
+        '_repolish.github',
+        '.github/workflows',
+        {
+            'ci.yml': 'from provider ci\n',
+            'release.yml': 'from provider release\n',
+        },
+    )
+    _write(tmp_path / '.github' / 'workflows' / 'ci.yml', 'project owned\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'copies': {'.github/workflows/ci.yml': False},
+                        },
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    # project-owned file: local content preserved
+    assert (tmp_path / '.github' / 'workflows' / 'ci.yml').read_text(
+        encoding='utf-8',
+    ) == 'project owned\n'
+    # sibling: re-copied normally
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').exists()
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').read_text(
+        encoding='utf-8',
+    ) == 'from provider release\n'
+
+
 def test_paused_file_reports_no_diff_in_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -302,6 +432,173 @@ def test_unpaused_file_is_written_by_apply(
     assert (tmp_path / 'managed.txt').read_text(
         encoding='utf-8',
     ) == 'from provider\n'
+
+
+def test_paused_directory_is_not_written_by_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory entry in paused_files backs repolish off everything under it.
+
+    Pausing ``.github`` protects both workflow files while ``README.md``
+    outside the directory is still managed normally.
+    """
+    _inline_provider(
+        tmp_path / 'p',
+        {
+            '.github/workflows/ci.yml': 'from provider ci\n',
+            '.github/workflows/release.yml': 'from provider release\n',
+            'README.md': 'from provider readme\n',
+        },
+    )
+    _write(tmp_path / '.github' / 'workflows' / 'ci.yml', 'local fix\n')
+    _write(tmp_path / '.github' / 'workflows' / 'release.yml', 'local fix\n')
+    _write(tmp_path / 'README.md', 'local readme\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['.github'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / '.github' / 'workflows' / 'ci.yml').read_text(
+        encoding='utf-8',
+    ) == 'local fix\n'
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').read_text(
+        encoding='utf-8',
+    ) == 'local fix\n'
+    # files outside the paused directory are still applied
+    assert (tmp_path / 'README.md').read_text(
+        encoding='utf-8',
+    ) == 'from provider readme\n'
+
+
+def test_paused_directory_covers_files_inside_copied_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paused directory entry protects every file inside a directory copy."""
+    _inline_provider_with_dir_copy(
+        tmp_path / 'p',
+        '_repolish.github',
+        '.github/workflows',
+        {
+            'ci.yml': 'from provider ci\n',
+            'release.yml': 'from provider release\n',
+        },
+    )
+    _write(tmp_path / '.github' / 'workflows' / 'ci.yml', 'local fix ci\n')
+    _write(
+        tmp_path / '.github' / 'workflows' / 'release.yml',
+        'local fix release\n',
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['.github'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / '.github' / 'workflows' / 'ci.yml').read_text(
+        encoding='utf-8',
+    ) == 'local fix ci\n'
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').read_text(
+        encoding='utf-8',
+    ) == 'local fix release\n'
+
+
+def test_paused_directory_reports_no_diff_in_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory entry in paused_files produces no diff in --check."""
+    _inline_provider(
+        tmp_path / 'p',
+        {
+            '.github/workflows/ci.yml': 'from provider ci\n',
+            'README.md': 'from provider readme\n',
+        },
+    )
+    _write(tmp_path / '.github' / 'workflows' / 'ci.yml', 'local fix\n')
+    _write(tmp_path / 'README.md', 'from provider readme\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['.github'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    # exit_code=0 means no diff reported despite the local fix
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+def test_paused_glob_entry_is_not_written_by_apply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A glob entry in paused_files pauses every matching file.
+
+    ``*.generated.py`` protects both generated modules while ``keep.py``
+    continues to be managed normally.
+    """
+    _inline_provider(
+        tmp_path / 'p',
+        {
+            'a.generated.py': 'from provider a\n',
+            'b.generated.py': 'from provider b\n',
+            'keep.py': 'from provider keep\n',
+        },
+    )
+    _write(tmp_path / 'a.generated.py', 'local fix a\n')
+    _write(tmp_path / 'b.generated.py', 'local fix b\n')
+    _write(tmp_path / 'keep.py', 'local keep\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['*.generated.py'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    assert (tmp_path / 'a.generated.py').read_text(
+        encoding='utf-8',
+    ) == 'local fix a\n'
+    assert (tmp_path / 'b.generated.py').read_text(
+        encoding='utf-8',
+    ) == 'local fix b\n'
+    # non-matching files are still applied
+    assert (tmp_path / 'keep.py').read_text(
+        encoding='utf-8',
+    ) == 'from provider keep\n'
 
 
 # ---------------------------------------------------------------------------

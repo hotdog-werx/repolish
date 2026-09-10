@@ -1,9 +1,11 @@
 import filecmp
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.config.paused import is_paused
 from repolish.hydration.comparison import collect_output_files
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.misc import get_source_str_from_mapping
@@ -13,10 +15,30 @@ from repolish.providers import SessionBundle, TemplateMapping
 logger = get_logger(__name__)
 
 
+def _auto_stage_skip_reason(
+    skip_sources: set[str],
+    paused_files: frozenset[str],
+) -> Callable[[str], str | None]:
+    """Build the auto-stage skip predicate used by :func:`_apply_regular_files`.
+
+    Auto-staged paths use the same string as their destination, so the
+    ``paused_files`` matcher (exact, directory, or glob) applies directly.
+    """
+
+    def _reason(rel_str: str) -> str | None:
+        if is_paused(rel_str, paused_files):
+            return 'paused'
+        if rel_str in skip_sources:
+            return 'in_skip_sources'
+        return None
+
+    return _reason
+
+
 def _apply_regular_files(
     output_files: list[Path],
     setup_output: Path,
-    skip_sources: set[str],
+    skip_reason: Callable[[str], str | None],
     base_dir: Path,
     *,
     disable_auto_staging: bool = False,
@@ -29,7 +51,9 @@ def _apply_regular_files(
     Args:
         output_files: List of files in the template output.
         setup_output: Path to the rendered output directory.
-        skip_sources: Set of file paths to skip (file_mappings sources + existing create-only files).
+        skip_reason: Predicate returning a skip reason for paths that must
+            not be copied (file_mappings sources, existing create-only files,
+            and paused paths), or None to copy.
         base_dir: Base directory where the project root is located.
         disable_auto_staging: When True, skip all auto-staged files (used for
             monorepo root passes where every output file must be explicitly
@@ -51,12 +75,12 @@ def _apply_regular_files(
             logger.debug('skipping_repolish_prefix_file', file=rel_str)
             continue
 
-        # Skip files that are source files in file_mappings or existing create-only files
-        if rel_str in skip_sources:
+        reason = skip_reason(rel_str)
+        if reason is not None:
             logger.info(
                 'skipping_file',
                 file=rel_str,
-                reason='in_skip_sources',
+                reason=reason,
                 _display_level=1,
             )
             continue
@@ -171,7 +195,7 @@ def _apply_file_mappings(
     """
     status: dict[str, str] = {}
     for dest_path, source_path in file_mappings.items():
-        if dest_path in paused_files:
+        if is_paused(dest_path, paused_files):
             continue
         source_str = _resolve_mapping_source(dest_path, source_path)
         if not source_str:
@@ -230,7 +254,9 @@ def apply_generated_output(
 
     # Build skip set: include create-only files that already exist in the project
     # Also skip sources that providers explicitly suppressed via a None mapping.
-    skip_sources = mapped_sources | paused_files | resolution.suppressed_sources
+    # Paused paths are checked with the pause matcher separately — they may be
+    # directory or glob entries, not just exact paths.
+    skip_sources = mapped_sources | resolution.suppressed_sources
     for rel_str in create_only_files_set:
         target_exists = (base_dir / rel_str).exists()
         if target_exists:
@@ -253,7 +279,7 @@ def apply_generated_output(
     file_status = _apply_regular_files(
         output_files,
         setup_output,
-        skip_sources,
+        _auto_stage_skip_reason(skip_sources, paused_files),
         base_dir,
         disable_auto_staging=disable_auto_staging,
     )
@@ -288,7 +314,7 @@ def _apply_deletions(
     """
     status: dict[str, str] = {}
     for rel in delete_files:
-        if rel.as_posix() in paused_files:
+        if is_paused(rel.as_posix(), paused_files):
             continue
         target = base_dir / rel
         if target.exists():

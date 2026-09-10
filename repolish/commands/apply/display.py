@@ -7,6 +7,7 @@ from rich.tree import Tree
 from repolish.commands.apply.debug import debug_file_slug
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config import ProviderSymlink
+from repolish.config.paused import is_paused
 from repolish.console import console, supports_hyperlinks
 from repolish.providers._log import logger
 from repolish.providers.models import (
@@ -194,7 +195,7 @@ def _file_skip_reason(
         if record.path in session.providers.disabled_file_mappings:
             return 'disabled'
         return 'suppressed'
-    if record.path in frozenset(session.config.paused_files):
+    if is_paused(record.path, frozenset(session.config.paused_files)):
         return 'paused'
     if (
         session.global_context.workspace.mode == 'root'

@@ -11,6 +11,7 @@ from jinja2 import (
     select_autoescape,
 )
 
+from repolish.config.paused import is_paused
 from repolish.directives import FilePair
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.misc import ctx_to_dict
@@ -252,7 +253,7 @@ def _add_mapping_to_skip_set(
     """
     if v.file_mode == FileMode.DELETE:  # pragma: no cover
         return
-    if dest_path in paused_files:
+    if is_paused(dest_path, paused_files):
         if v.preprocessed_source:
             skip_set.add(v.preprocessed_source)
     else:
@@ -539,7 +540,7 @@ def _process_mapping_dict(
     for dest_path, source_val in list(mappings.items()):
         if not isinstance(source_val, TemplateMapping):
             continue
-        if dest_path in paused_files:
+        if is_paused(dest_path, paused_files):
             logger.info(
                 'skipping_paused_file_mapping',
                 dest=dest_path,

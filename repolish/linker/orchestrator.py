@@ -3,6 +3,7 @@
 import importlib.util
 import shutil
 import subprocess
+from collections.abc import Callable
 from inspect import isclass
 from pathlib import Path
 from typing import cast
@@ -15,6 +16,7 @@ from repolish.config.models.provider import (
     ProviderSymlink,
     ResolvedProviderInfo,
 )
+from repolish.config.paused import is_paused
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
 from repolish.providers.models import (
@@ -27,17 +29,135 @@ from repolish.providers.models import (
 logger = get_logger(__name__)
 
 
+def _dir_copy_ignore(
+    provider_name: str,
+    source_path: Path,
+    target_path: Path,
+    paused_files: frozenset[str],
+    disabled_copies: frozenset[str],
+) -> Callable[[str, list[str]], list[str]]:
+    """Build a copytree ``ignore`` callable that skips paused/owned files.
+
+    Skip checks normally compare a copy's top-level target against the paused
+    set or the ``overrides.copies`` disable map; for a directory copy that
+    target is a folder, so the files *inside* it would never match. This
+    filter maps each walked entry to its destination path under the copy
+    target and drops the ones the project paused or took ownership of.
+    """
+
+    def _ignore(directory: str, names: list[str]) -> list[str]:
+        rel = Path(directory).relative_to(source_path)
+        skipped: list[str] = []
+        for name in names:
+            dest = (target_path / rel / name).as_posix()
+            if is_paused(dest, paused_files):
+                logger.info(
+                    'copy_paused',
+                    provider=provider_name,
+                    target=dest,
+                    suggestion='remove the entry from paused_files once the local fix is no longer needed',
+                    _display_level=1,
+                )
+                skipped.append(name)
+            elif dest in disabled_copies:
+                logger.debug(
+                    'copy_disabled',
+                    provider=provider_name,
+                    target=dest,
+                )
+                skipped.append(name)
+        return skipped
+
+    return _ignore
+
+
+def _materialize_one_copy(
+    provider_name: str,
+    resources_dir: Path,
+    copy: ProviderCopy,
+    paused_files: frozenset[str],
+    disabled_copies: frozenset[str],
+) -> None:
+    """Copy a single resource file or directory tree into the project root."""
+    source_path = resources_dir / copy.source
+    target_path = Path(copy.target)
+    logger.debug(
+        'copying_resource',
+        source=str(copy.source),
+        target=str(copy.target),
+    )
+    if not source_path.exists():
+        msg = f'Copy source does not exist: {source_path}'
+        raise FileNotFoundError(msg)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if source_path.is_dir():
+        _copy_directory(
+            provider_name,
+            source_path,
+            target_path,
+            paused_files,
+            disabled_copies,
+        )
+    else:
+        shutil.copy2(source_path, target_path)
+    logger.info(
+        'resource_copied',
+        provider=provider_name,
+        target=str(copy.target),
+        _display_level=1,
+    )
+
+
+def _copy_directory(
+    provider_name: str,
+    source_path: Path,
+    target_path: Path,
+    paused_files: frozenset[str],
+    disabled_copies: frozenset[str],
+) -> None:
+    """Copy a directory tree, filtering paused/owned files out of the walk."""
+    ignore = (
+        _dir_copy_ignore(
+            provider_name,
+            source_path,
+            target_path,
+            paused_files,
+            disabled_copies,
+        )
+        if paused_files or disabled_copies
+        else None
+    )
+    shutil.copytree(
+        source_path,
+        target_path,
+        dirs_exist_ok=True,
+        ignore=ignore,
+    )
+
+
 def create_provider_copies(
     provider_name: str,
     resources_dir: Path,
     copies: list[ProviderCopy],
+    *,
+    paused_files: frozenset[str] = frozenset(),
+    disabled_copies: frozenset[str] = frozenset(),
 ) -> None:
     """Copy files for a provider from its resources into the project root.
+
+    Copy targets listed in ``paused_files`` are skipped — including
+    individual files inside a directory copy, which are filtered out of the
+    ``shutil.copytree`` walk before anything is written.  Targets disabled
+    via ``overrides.copies`` (project-owned files) are dropped the same way,
+    silently.
 
     Args:
         provider_name: Alias of the provider.
         resources_dir: Absolute path to the provider's resource directory.
         copies: List of copy configurations to materialise.
+        paused_files: POSIX destination paths that must not be overwritten.
+        disabled_copies: POSIX destination paths disabled via
+            ``overrides.copies``; the project owns these files outright.
     """
     if not copies:
         return
@@ -50,26 +170,12 @@ def create_provider_copies(
     )
 
     for copy in copies:
-        source_path = resources_dir / copy.source
-        target_path = Path(copy.target)
-        logger.debug(
-            'copying_resource',
-            source=str(copy.source),
-            target=str(copy.target),
-        )
-        if not source_path.exists():
-            msg = f'Copy source does not exist: {source_path}'
-            raise FileNotFoundError(msg)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        if source_path.is_dir():
-            shutil.copytree(source_path, target_path, dirs_exist_ok=True)
-        else:
-            shutil.copy2(source_path, target_path)
-        logger.info(
-            'resource_copied',
-            provider=provider_name,
-            target=str(copy.target),
-            _display_level=1,
+        _materialize_one_copy(
+            provider_name,
+            resources_dir,
+            copy,
+            paused_files,
+            disabled_copies,
         )
 
     logger.info(

@@ -962,6 +962,86 @@ def test_create_provider_copies_directory(
     assert not (tmp_path / 'vendors').is_symlink()
 
 
+def test_create_provider_copies_directory_skips_paused_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Paused paths inside a directory copy are filtered out of the copytree walk."""
+    monkeypatch.chdir(tmp_path)
+
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    src_dir = provider_dir / '_repolish.github'
+    src_dir.mkdir(parents=True)
+    (src_dir / 'ci.yml').write_text('from provider ci\n')
+    (src_dir / 'release.yml').write_text('from provider release\n')
+
+    (tmp_path / '.github' / 'workflows').mkdir(parents=True)
+    (tmp_path / '.github' / 'workflows' / 'ci.yml').write_text('local fix\n')
+
+    copies = [
+        ProviderCopy(
+            source=Path('_repolish.github'),
+            target=Path('.github/workflows'),
+        ),
+    ]
+    create_provider_copies(
+        'mylib',
+        provider_dir,
+        copies,
+        paused_files=frozenset({'.github/workflows/ci.yml'}),
+    )
+
+    # paused file: local fix preserved
+    assert (tmp_path / '.github' / 'workflows' / 'ci.yml').read_text(
+        encoding='utf-8',
+    ) == 'local fix\n'
+    # sibling: copied normally
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').read_text(
+        encoding='utf-8',
+    ) == 'from provider release\n'
+
+
+def test_create_provider_copies_directory_skips_disabled_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Files disabled via overrides.copies are filtered out of the copytree walk."""
+    monkeypatch.chdir(tmp_path)
+
+    provider_dir = tmp_path / '.repolish' / 'mylib'
+    src_dir = provider_dir / '_repolish.github'
+    src_dir.mkdir(parents=True)
+    (src_dir / 'ci.yml').write_text('from provider ci\n')
+    (src_dir / 'release.yml').write_text('from provider release\n')
+
+    (tmp_path / '.github' / 'workflows').mkdir(parents=True)
+    (tmp_path / '.github' / 'workflows' / 'ci.yml').write_text(
+        'project owned\n',
+    )
+
+    copies = [
+        ProviderCopy(
+            source=Path('_repolish.github'),
+            target=Path('.github/workflows'),
+        ),
+    ]
+    create_provider_copies(
+        'mylib',
+        provider_dir,
+        copies,
+        disabled_copies=frozenset({'.github/workflows/ci.yml'}),
+    )
+
+    # disabled (project-owned) file: local content preserved
+    assert (tmp_path / '.github' / 'workflows' / 'ci.yml').read_text(
+        encoding='utf-8',
+    ) == 'project owned\n'
+    # sibling: copied normally
+    assert (tmp_path / '.github' / 'workflows' / 'release.yml').read_text(
+        encoding='utf-8',
+    ) == 'from provider release\n'
+
+
 def test_create_provider_copies_missing_source_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
