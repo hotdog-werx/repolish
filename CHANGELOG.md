@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.13.0] <a name="1.13.0" href="#1.13.0">-</a> September 10, 2026
+
+### 🚀 Features
+
+- Directory and glob entries in paused_files (#94) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#94](https://github.com/hotdog-werx/repolish/pull/94)
+
+[1.13.0]: https://github.com/hotdog-werx/repolish/compare/1.12.1...1.13.0
+
 ## [1.12.1] <a name="1.12.1" href="#1.12.1">-</a> September 09, 2026
 
 ### 🐛 Bug Fixes
