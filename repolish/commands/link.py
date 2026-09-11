@@ -69,11 +69,13 @@ def _copy_tree_node(
     if target in paused_paths:
         node.append('⏸ ', style='yellow')
         node.append(str(copy.target), style='yellow')
-        node.append(f'  ← {copy.source} (paused)', style='dim')
+        node.append(f'  ← {copy.source} ', style='dim')
+        node.append('(paused)', style='dim yellow')
     elif any(p.startswith(f'{target}/') for p in paused_paths):
         node.append('◐ ', style='yellow')
         node.append(str(copy.target), style='yellow')
-        node.append(f'  ← {copy.source} (partially paused)', style='dim')
+        node.append(f'  ← {copy.source} ', style='dim')
+        node.append('(partially paused)', style='dim yellow')
     else:
         node.append('📋 ', style='yellow')
         node.append(str(copy.target))
