@@ -109,6 +109,11 @@ For each alias (in `providers_order` order, or config key order if not set):
    exists, check that the paths it records still exist on disk.
 2. **Cache hit** - paths are valid and `force` is not set → provider is ready,
    nothing else happens. This is the normal fast path for `repolish apply`.
+   `repolish link` goes one step further: it probes each CLI provider with
+   `<cli> --info` and re-registers only when the package moved (dev ↔ release
+   switch) or the `.repolish/<name>` link is broken; static providers are
+   compared against the paths implied by the YAML. This costs one subprocess per
+   CLI provider instead of a full re-link.
 3. **Cache miss or stale** - the cached paths are gone (e.g. after a clean
    checkout, a `pip install -e`, or a directory rename). repolish attempts
    re-registration using the same rules as `repolish link`:
@@ -120,8 +125,8 @@ For each alias (in `providers_order` order, or config key order if not set):
    The alias is recorded as failed, a warning is logged, and the provider is
    absent from the run. Other providers are unaffected.
 
-`repolish link` always uses `force=True`, so it re-registers every provider
-unconditionally regardless of what the cache contains.
+`repolish link --force` re-registers every provider unconditionally regardless
+of what the cache contains.
 
 ### Behaviour when a provider fails
 
@@ -169,14 +174,14 @@ schema:
 
 Field reference:
 
-| Field              | Required | Description                                                                                                                                                    |
-| ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resources_dir`    | yes      | Absolute path to the directory where provider resources are linked into the project (e.g. `.repolish/myprovider/`).                                            |
-| `provider_root`    | no       | Absolute path to the directory containing `repolish.py` and the `repolish/` template tree. Empty string or omit to mean the same directory as `resources_dir`. |
-| `site_package_dir` | no       | Absolute path to the provider resources inside its installed package. Informational only.                                                                      |
-| `package_name`     | no       | Python import name of the provider package (e.g. `my_provider`).                                                                                               |
-| `project_name`     | no       | Distribution name of the provider package (e.g. `my-provider`).                                                                                                |
-| `symlinks`         | no       | Default symlinks the provider wants created. Each entry has a `source` (relative to `resources_dir`) and a `target` (relative to project root).                |
+| Field              | Required | Description                                                                                                                                                                                               |
+| ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resources_dir`    | yes      | Absolute path to the directory where provider resources are linked into the project (e.g. `.repolish/myprovider/`).                                                                                       |
+| `provider_root`    | no       | Absolute path to the directory containing `repolish.py` and the `repolish/` template tree. Empty string or omit to mean the same directory as `resources_dir`.                                            |
+| `site_package_dir` | no       | Absolute path to the provider resources inside its installed package. Used by `repolish link` to detect dev ↔ release switches and to check that the `.repolish/<name>` link still points at the package. |
+| `package_name`     | no       | Python import name of the provider package (e.g. `my_provider`).                                                                                                                                          |
+| `project_name`     | no       | Distribution name of the provider package (e.g. `my-provider`).                                                                                                                                           |
+| `symlinks`         | no       | Default symlinks the provider wants created. Each entry has a `source` (relative to `resources_dir`) and a `target` (relative to project root).                                                           |
 
 When called **without** `--info` the CLI performs the actual linking (e.g.
 symlinking the package resources into `.repolish/<name>/`).

@@ -11,6 +11,7 @@ from typing import cast
 from hotlog import get_logger
 
 from repolish.config import ProviderConfig
+from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.models.provider import (
     ProviderCopy,
     ProviderSymlink,
@@ -29,12 +30,13 @@ from repolish.providers.models import (
 logger = get_logger(__name__)
 
 
-def _dir_copy_ignore(
+def _dir_copy_ignore(  # noqa: PLR0913 - filter inputs plus the collector for paused destinations
     provider_name: str,
     source_path: Path,
     target_path: Path,
     paused_files: frozenset[str],
     disabled_copies: frozenset[str],
+    paused_dests: list[str],
 ) -> Callable[[str, list[str]], list[str]]:
     """Build a copytree ``ignore`` callable that skips paused/owned files.
 
@@ -43,6 +45,8 @@ def _dir_copy_ignore(
     target is a folder, so the files *inside* it would never match. This
     filter maps each walked entry to its destination path under the copy
     target and drops the ones the project paused or took ownership of.
+    Paused destinations are appended to *paused_dests* so callers can report
+    exactly which files inside the folder were held back.
     """
 
     def _ignore(directory: str, names: list[str]) -> list[str]:
@@ -58,6 +62,7 @@ def _dir_copy_ignore(
                     suggestion='remove the entry from paused_files once the local fix is no longer needed',
                     _display_level=1,
                 )
+                paused_dests.append(dest)
                 skipped.append(name)
             elif dest in disabled_copies:
                 logger.debug(
@@ -77,8 +82,12 @@ def _materialize_one_copy(
     copy: ProviderCopy,
     paused_files: frozenset[str],
     disabled_copies: frozenset[str],
-) -> None:
-    """Copy a single resource file or directory tree into the project root."""
+) -> list[str]:
+    """Copy a single resource file or directory tree into the project root.
+
+    Returns the POSIX destination paths inside a directory copy that were
+    held back because they are paused.
+    """
     source_path = resources_dir / copy.source
     target_path = Path(copy.target)
     logger.debug(
@@ -90,6 +99,7 @@ def _materialize_one_copy(
         msg = f'Copy source does not exist: {source_path}'
         raise FileNotFoundError(msg)
     target_path.parent.mkdir(parents=True, exist_ok=True)
+    paused_dests: list[str] = []
     if source_path.is_dir():
         _copy_directory(
             provider_name,
@@ -97,6 +107,7 @@ def _materialize_one_copy(
             target_path,
             paused_files,
             disabled_copies,
+            paused_dests,
         )
     else:
         shutil.copy2(source_path, target_path)
@@ -106,14 +117,16 @@ def _materialize_one_copy(
         target=str(copy.target),
         _display_level=1,
     )
+    return paused_dests
 
 
-def _copy_directory(
+def _copy_directory(  # noqa: PLR0913 - filter inputs plus the collector for paused destinations
     provider_name: str,
     source_path: Path,
     target_path: Path,
     paused_files: frozenset[str],
     disabled_copies: frozenset[str],
+    paused_dests: list[str],
 ) -> None:
     """Copy a directory tree, filtering paused/owned files out of the walk."""
     ignore = (
@@ -123,6 +136,7 @@ def _copy_directory(
             target_path,
             paused_files,
             disabled_copies,
+            paused_dests,
         )
         if paused_files or disabled_copies
         else None
@@ -142,7 +156,7 @@ def create_provider_copies(
     *,
     paused_files: frozenset[str] = frozenset(),
     disabled_copies: frozenset[str] = frozenset(),
-) -> None:
+) -> list[str]:
     """Copy files for a provider from its resources into the project root.
 
     Copy targets listed in ``paused_files`` are skipped — including
@@ -158,9 +172,16 @@ def create_provider_copies(
         paused_files: POSIX destination paths that must not be overwritten.
         disabled_copies: POSIX destination paths disabled via
             ``overrides.copies``; the project owns these files outright.
+
+    Returns:
+        POSIX destination paths that were held back because they are paused
+        (whole-entry filtering happens in :func:`apply_copies`; these are the
+        files skipped *inside* directory copies). Empty when nothing is
+        paused.
     """
+    paused_dests: list[str] = []
     if not copies:
-        return
+        return paused_dests
 
     logger.info(
         'creating_provider_copies',
@@ -170,12 +191,14 @@ def create_provider_copies(
     )
 
     for copy in copies:
-        _materialize_one_copy(
-            provider_name,
-            resources_dir,
-            copy,
-            paused_files,
-            disabled_copies,
+        paused_dests.extend(
+            _materialize_one_copy(
+                provider_name,
+                resources_dir,
+                copy,
+                paused_files,
+                disabled_copies,
+            ),
         )
 
     logger.info(
@@ -184,6 +207,7 @@ def create_provider_copies(
         count=len(copies),
         _display_level=1,
     )
+    return paused_dests
 
 
 def create_provider_symlinks(
@@ -470,6 +494,7 @@ def process_provider(
     config_dir: Path,
     *,
     location_context: str | None = None,
+    fresh_info: ProviderFileInfo | None = None,
 ) -> int:
     """Run the provider's link CLI to materialise resources under ``.repolish/``.
 
@@ -484,6 +509,9 @@ def process_provider(
         location_context: Optional context string for monorepo awareness
             (e.g., 'root', 'packages/package_a'). Passed to provider CLIs
             via REPOLISH_LINK_CONTEXT environment variable.
+        fresh_info: Info from an already-run ``--info`` probe, when the
+            caller probed the CLI before deciding to register; avoids running
+            the probe a second time.
 
     Returns:
         0 on success, 1 on failure.
@@ -501,6 +529,7 @@ def process_provider(
             provider_name,
             provider_config.cli,
             location_context=location_context,
+            fresh_info=fresh_info,
         )
     except subprocess.CalledProcessError as e:
         logger.exception(

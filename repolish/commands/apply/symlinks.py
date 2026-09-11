@@ -83,46 +83,69 @@ def _disabled_copy_targets(info: ResolvedProviderInfo) -> frozenset[str]:
     return frozenset(target for target, enabled in overrides.copies.items() if not enabled)
 
 
+def _split_paused_copies(
+    alias: str,
+    copies: list[ProviderCopy],
+    paused_files: frozenset[str],
+) -> tuple[list[ProviderCopy], list[str]]:
+    """Split copies into active ones and the POSIX targets paused as a whole."""
+    active_copies = []
+    paused_targets = []
+    for copy in copies:
+        if is_paused(copy.target.as_posix(), paused_files):
+            logger.info(
+                'copy_paused',
+                provider=alias,
+                target=str(copy.target),
+                suggestion='remove the entry from paused_files once the local fix is no longer needed',
+                _display_level=1,
+            )
+            paused_targets.append(copy.target.as_posix())
+            continue
+        active_copies.append(copy)
+    return active_copies, paused_targets
+
+
 def apply_copies(
     resolved_copies: dict[str, list[ProviderCopy]],
     providers: dict[str, ResolvedProviderInfo],
     *,
     paused_files: frozenset[str] = frozenset(),
-) -> None:
+) -> dict[str, list[str]]:
     """Materialise all resolved resource copies for every provider.
 
     Delegates to `create_provider_copies` for each alias that appears in
     both `resolved_copies` and `providers`. Providers absent from the
     current config are silently skipped.
 
-    Copy targets listed in `paused_files` are skipped: unlike symlinks,
+    Copy targets listed in ``paused_files`` are skipped: unlike symlinks,
     copies are committed project files, so pausing one must stop repolish
     from re-copying the provider version over local fixes. Targets disabled
     via `overrides.copies` (project-owned files) are dropped silently. For
     directory copies both sets are forwarded so `create_provider_copies` can
     also skip individual files *inside* the copied tree.
+
+    Returns a map of alias → POSIX destination paths that were held back
+    because they are paused, including individual files inside directory
+    copies. Callers use it to annotate their summaries with the paused
+    (or partially paused) state instead of re-deriving it.
     """
+    paused_by_alias: dict[str, list[str]] = {}
     for alias, copies in resolved_copies.items():
         info = providers.get(alias)
         if not info:
             continue
         disabled_copies = _disabled_copy_targets(info)
-        active_copies = []
-        for copy in copies:
-            if is_paused(copy.target.as_posix(), paused_files):
-                logger.info(
-                    'copy_paused',
-                    provider=alias,
-                    target=str(copy.target),
-                    suggestion='remove the entry from paused_files once the local fix is no longer needed',
-                    _display_level=1,
-                )
-                continue
-            active_copies.append(copy)
-        create_provider_copies(
-            alias,
-            info.resources_dir,
-            active_copies,
-            paused_files=paused_files,
-            disabled_copies=disabled_copies,
+        active_copies, paused_targets = _split_paused_copies(alias, copies, paused_files)
+        paused_targets.extend(
+            create_provider_copies(
+                alias,
+                info.resources_dir,
+                active_copies,
+                paused_files=paused_files,
+                disabled_copies=disabled_copies,
+            ),
         )
+        if paused_targets:
+            paused_by_alias[alias] = sorted(paused_targets)
+    return paused_by_alias

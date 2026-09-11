@@ -6,7 +6,7 @@ from rich.tree import Tree
 
 from repolish.commands.apply.debug import debug_file_slug
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
-from repolish.config import ProviderSymlink
+from repolish.config import ProviderCopy, ProviderSymlink
 from repolish.config.paused import is_paused
 from repolish.console import console, supports_hyperlinks
 from repolish.providers._log import logger
@@ -218,6 +218,37 @@ def _symlink_node(sl: ProviderSymlink) -> Text:
     node.append('↗ ', style='blue')
     node.append(str(sl.target))
     node.append(f'  → {sl.source}', style='dim')
+    return node
+
+
+def _copy_node(
+    copy: ProviderCopy,
+    paused_paths: frozenset[str],
+    paused_files: frozenset[str],
+) -> Text:
+    """Build the tree node for one copy entry: active, paused, or partial.
+
+    *paused_paths* comes from ``apply_copies`` — the destinations it actually
+    held back. In check-only runs it is empty, so whole-entry pauses are
+    still detected via ``is_paused``; paths under ``<target>/`` mean files
+    inside a directory copy were skipped (partially paused folder).
+    """
+    target = copy.target.as_posix()
+    node = Text()
+    if target in paused_paths or is_paused(target, paused_files):
+        node.append('⏸ ', style='yellow')
+        node.append(str(copy.target), style='yellow')
+        node.append(f'  ← {copy.source} ', style='dim')
+        node.append('(paused)', style='dim yellow')
+    elif any(p.startswith(f'{target}/') for p in paused_paths):
+        node.append('◐ ', style='yellow')
+        node.append(str(copy.target), style='yellow')
+        node.append(f'  ← {copy.source} ', style='dim')
+        node.append('(partially paused)', style='dim yellow')
+    else:
+        node.append('📋 ', style='yellow')
+        node.append(str(copy.target))
+        node.append(f'  ← {copy.source}', style='dim')
     return node
 
 
@@ -530,9 +561,10 @@ def _append_applied_stats(
     label: Text,
     records: list[FileRecord],
     syms: list[ProviderSymlink],
+    copies: list[ProviderCopy],
     session: ResolvedSession,
 ) -> None:
-    """Append post-apply counts (written/unchanged/deleted/skipped/symlinks) to *label*."""
+    """Append post-apply counts (written/unchanged/deleted/skipped/copies) to *label*."""
     record_paths = {r.path for r in records}
     written = sum(1 for p in record_paths if session.apply_result.get(p) == 'written')
     unchanged = sum(1 for p in record_paths if session.apply_result.get(p) == 'unchanged')
@@ -546,6 +578,7 @@ def _append_applied_stats(
         (drift, '[red]{n} drift[/red]'),
         (skipped, '[yellow]{n} skipped[/yellow]'),
         (len(syms), '[blue]{n} symlinks[/blue]'),
+        (len(copies), '[yellow]{n} copies[/yellow]'),
     ]
     parts = [fmt.format(n=n) for n, fmt in stat_items if n]
     if parts:
@@ -556,39 +589,43 @@ def _append_pending_count(
     label: Text,
     records: list[FileRecord],
     syms: list[ProviderSymlink],
+    copies: list[ProviderCopy],
     session: ResolvedSession,
 ) -> None:
     """Append a simple applied/not-applied count to *label* (pre-apply display)."""
     skipped = sum(1 for r in records if _file_skip_reason(r, session) is not None)
     total = len(records) + len(syms)
     applied = total - skipped
+    copy_note = f', {len(copies)} copies' if copies else ''
     if skipped:
         label.append(
-            f'  [{applied} applied, {skipped} not applied]',
+            f'  [{applied} applied, {skipped} not applied{copy_note}]',
             style='dim yellow',
         )
     else:
         noun = 'file' if total == 1 else 'files'
-        label.append(f'  [{total} {noun}]', style='dim')
+        label.append(f'  [{total} {noun}{copy_note}]', style='dim')
 
 
 def _append_provider_stat_suffix(
     label: Text,
     records: list[FileRecord],
     syms: list[ProviderSymlink],
+    copies: list[ProviderCopy],
     session: ResolvedSession,
 ) -> None:
     """Append a compact file-count stats suffix to *label* in-place."""
     if session.apply_result:
-        _append_applied_stats(label, records, syms, session)
+        _append_applied_stats(label, records, syms, copies, session)
     else:
-        _append_pending_count(label, records, syms, session)
+        _append_pending_count(label, records, syms, copies, session)
 
 
-def _provider_label(
+def _provider_label(  # noqa: PLR0913 - mirrors the summary row inputs
     alias: str,
     records: list[FileRecord],
     syms: list[ProviderSymlink],
+    copies: list[ProviderCopy],
     session: ResolvedSession,
     debug_dir: Path,
 ) -> Text:
@@ -603,7 +640,7 @@ def _provider_label(
     )
     if ctx is not None and isinstance(ctx, BaseContext):
         label.append(f'@{ctx.repolish.provider.version}', style='dim')
-    _append_provider_stat_suffix(label, records, syms, session)
+    _append_provider_stat_suffix(label, records, syms, copies, session)
     return label
 
 
@@ -616,13 +653,18 @@ def _add_provider_branch(
 ) -> None:
     records = records_by_owner.get(alias, [])
     syms = session.resolved_symlinks.get(alias, [])
+    copies = session.resolved_copies.get(alias, [])
     provider_node = group_branch.add(
-        _provider_label(alias, records, syms, session, debug_dir),
+        _provider_label(alias, records, syms, copies, session, debug_dir),
     )
     for record in records:
         provider_node.add(_file_node(record, session, debug_dir))
     for sl in syms:
         provider_node.add(_symlink_node(sl))
+    paused_paths = frozenset(session.paused_copies.get(alias, ()))
+    paused_files = frozenset(session.config.paused_files)
+    for cp in copies:
+        provider_node.add(_copy_node(cp, paused_paths, paused_files))
 
 
 def _classify_aliases(

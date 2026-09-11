@@ -510,3 +510,73 @@ def test_link_resources_updates_outdated_copy_without_symlinks(
     (source_a / 'file.txt').write_text('version 3')
     result = link_resources(source_a, target, force=False)
     assert (target / 'file.txt').read_text() == 'version 3'  # Always fresh!
+
+
+def test_create_additional_link_replaces_broken_symlink_with_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A broken symlink target must be removed and re-created, not crash.
+
+    ``Path.exists()`` follows symlinks, so a dangling link reports as absent.
+    The removal guard must therefore also check ``is_symlink()`` — otherwise
+    ``symlink_to`` raises FileExistsError and the whole link run dies.
+    """
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+
+    monkeypatch.chdir(tmp_path)
+    resources = create_test_dir(
+        tmp_path,
+        'resources',
+        filename='res.txt',
+        content='fresh',
+    )
+    target = tmp_path / 'res.txt'
+    target.symlink_to(tmp_path / 'gone' / 'res.txt')  # dangling link
+
+    result = create_additional_link(
+        resources,
+        'lib',
+        'res.txt',
+        'res.txt',
+        force=True,
+    )
+
+    assert result is True
+    assert target.is_symlink()
+    assert target.read_text() == 'fresh'
+
+
+def test_create_additional_link_heals_broken_symlink_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A broken symlink holds no user data, so it is replaced even without force.
+
+    Mirrors ``link_resources``, which auto-fixes dangling targets regardless
+    of the force flag.
+    """
+    if not supports_symlinks():
+        pytest.skip('Symlinks not supported on this system')
+
+    monkeypatch.chdir(tmp_path)
+    resources = create_test_dir(
+        tmp_path,
+        'resources',
+        filename='res.txt',
+        content='fresh',
+    )
+    target = tmp_path / 'res.txt'
+    target.symlink_to(tmp_path / 'gone' / 'res.txt')  # dangling link
+
+    result = create_additional_link(
+        resources,
+        'lib',
+        'res.txt',
+        'res.txt',
+        force=False,
+    )
+
+    assert result is True
+    assert target.read_text() == 'fresh'

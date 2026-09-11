@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pytest_mock import MockerFixture
 
 import pytest
@@ -20,7 +19,7 @@ from repolish.commands.apply.display import (
 )
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config.models import RepolishConfig
-from repolish.config.models.provider import ProviderSymlink
+from repolish.config.models.provider import ProviderCopy, ProviderSymlink
 from repolish.providers.models import (
     FileMode,
     FileRecord,
@@ -30,13 +29,15 @@ from repolish.providers.models import (
 )
 
 
-def _make_session(
+def _make_session(  # noqa: PLR0913 - per-aspect session overrides for tree tests
     tmp_path: Path,
     *,
     mode: Literal['root', 'member', 'standalone'] = 'standalone',
     file_records: list[FileRecord] | None = None,
     file_mappings: dict | None = None,
     paused_files: list[str] | None = None,
+    resolved_copies: dict | None = None,
+    paused_copies: dict | None = None,
 ) -> ResolvedSession:
     config = RepolishConfig(
         config_dir=tmp_path,
@@ -57,6 +58,8 @@ def _make_session(
         alias_to_pid={'my-provider': str(tmp_path / 'my-provider')},
         pid_to_alias={str(tmp_path / 'my-provider'): 'my-provider'},
         resolved_symlinks={},
+        resolved_copies=resolved_copies or {},
+        paused_copies=paused_copies or {},
     )
 
 
@@ -201,6 +204,65 @@ def test_summary_tree_paused_file_shows_reason(
     output = _capture(mocker, [session])
     assert 'managed.txt' in output
     assert 'paused' in output
+
+
+def test_summary_tree_shows_copy_entries(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Resource copies appear under their provider in the summary tree."""
+    session = _make_session(
+        tmp_path,
+        resolved_copies={
+            'my-provider': [
+                ProviderCopy(source=Path('src/a.json'), target=Path('a.json')),
+            ],
+        },
+    )
+    output = _capture(mocker, [session])
+    assert 'a.json' in output
+
+
+def test_summary_tree_marks_paused_copy(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A copy whose target is paused shows the paused marker."""
+    session = _make_session(
+        tmp_path,
+        resolved_copies={
+            'my-provider': [
+                ProviderCopy(source=Path('src/owned.json'), target=Path('owned.json')),
+            ],
+        },
+        paused_files=['owned.json'],
+    )
+    output = _capture(mocker, [session])
+    assert 'owned.json' in output
+    assert '(paused)' in output
+
+
+def test_summary_tree_marks_partially_paused_directory_copy(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A directory copy with paused files inside shows the partial marker.
+
+    ``paused_copies`` is what ``apply_copies`` actually held back; check-only
+    runs leave it empty, so the partial state is asserted directly here.
+    """
+    session = _make_session(
+        tmp_path,
+        resolved_copies={
+            'my-provider': [
+                ProviderCopy(source=Path('configs'), target=Path('configs')),
+            ],
+        },
+        paused_copies={'my-provider': ['configs/b.txt']},
+    )
+    output = _capture(mocker, [session])
+    assert 'configs' in output
+    assert '(partially paused)' in output
 
 
 def test_summary_tree_root_mode_count_label(

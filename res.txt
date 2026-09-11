@@ -1,0 +1,1 @@
+/tmp/pytest-of-jmlopez/pytest-35/test_create_additional_link_re0/resources/res.txt

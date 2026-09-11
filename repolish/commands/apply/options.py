@@ -156,3 +156,12 @@ class ResolvedSession:
         repr=False,
     )
     """Per-provider per-file insertion results: provider_id -> file_path -> result."""
+    paused_copies: dict[str, list[str]] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    """POSIX copy destinations held back because of ``paused_files``, per
+    alias — including individual files inside directory copies.  Populated
+    by :func:`~repolish.commands.apply.symlinks.apply_copies` during apply;
+    empty in check-only runs (whole-entry pauses are still derivable from
+    the session's ``paused_files``)."""

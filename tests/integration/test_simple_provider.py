@@ -155,3 +155,25 @@ def test_repolish_link_monorepo_output_format(
     assert 'in "root"' in output or 'in "packages/' in output
     # Verify no duplicate messages
     assert '✓' not in output
+
+
+def test_repolish_link_second_run_is_cached(
+    installed_providers: InstalledProviders,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second ``repolish link`` probes ``--info`` and skips the link command.
+
+    The first link registers the provider (probe + link). The second probes
+    the CLI again, sees the package still lives where the cache records, and
+    skips the link subprocess — the provider shows up as ``(cached)``.
+    """
+    repo = fixtures.simple_repo.stage(tmp_path)
+    monkeypatch.chdir(repo)
+
+    first = run_repolish(['link'])
+    assert '- .repolish/simple-provider from simple-provider are now available' in first.output
+
+    second = run_repolish(['link'])
+    assert '(cached)' in second.output
+    assert 'are now available' not in second.output

@@ -60,7 +60,11 @@ This includes individual files inside a **directory copy**: pausing
 re-copies the whole `.github/workflows/` folder. Directory and glob entries
 cover copies the same way — pausing `.github` protects every copied file under
 it. Provider **symlinks** are not affected: they stay links to provider
-resources and are not meant to be edited locally in the first place.
+resources and are not meant to be edited locally in the first place. Both
+`repolish link` and `repolish apply` keep paused copies visible in their
+summaries: a fully paused target gets a `⏸ (paused)` marker, and a directory
+copy with paused files inside gets `◐ (partially paused)` — so the tree always
+reflects what was materialised and what was held back.
 
 Pausing a file does **not** remove the provider's template. When you unpause the
 file, repolish will resume comparing and applying it on the next run.

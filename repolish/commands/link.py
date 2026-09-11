@@ -13,7 +13,6 @@ from repolish.config import (
     RepolishConfigFile,
     load_config_file,
 )
-from repolish.config.paused import is_paused
 from repolish.config.resolution import resolve_config
 from repolish.config.topology import (
     detect_workspace,
@@ -54,24 +53,57 @@ def _print_link_tree(
     console.print(tree)
 
 
+def _copy_tree_node(
+    copy: ProviderCopy,
+    paused_paths: frozenset[str],
+) -> Text:
+    """Build the tree node for one copy entry: active, paused, or partial.
+
+    *paused_paths* holds the POSIX destinations ``apply_copies`` actually held
+    back. A top-level target present in it is fully paused; paths starting
+    with ``<target>/`` are files inside a directory copy that were skipped,
+    making the folder only partially copied.
+    """
+    target = copy.target.as_posix()
+    node = Text()
+    if target in paused_paths:
+        node.append('⏸ ', style='yellow')
+        node.append(str(copy.target), style='yellow')
+        node.append(f'  ← {copy.source} ', style='dim')
+        node.append('(paused)', style='dim yellow')
+    elif any(p.startswith(f'{target}/') for p in paused_paths):
+        node.append('◐ ', style='yellow')
+        node.append(str(copy.target), style='yellow')
+        node.append(f'  ← {copy.source} ', style='dim')
+        node.append('(partially paused)', style='dim yellow')
+    else:
+        node.append('📋 ', style='yellow')
+        node.append(str(copy.target))
+        node.append(f'  ← {copy.source}', style='dim')
+    return node
+
+
 def _print_copy_tree(
-    sections: list[tuple[str, dict[str, list[ProviderCopy]]]],
+    sections: list[tuple[str, dict[str, list[ProviderCopy]], dict[str, list[str]]]],
 ) -> None:
-    """Print a Rich tree summarising copies created per provider."""
-    total = sum(len(copies) for _, copy_map in sections for copies in copy_map.values())
+    """Print a Rich tree summarising copies created per provider.
+
+    Paused targets are rendered with a ``⏸`` marker instead of being hidden,
+    and directory copies with paused files inside get ``◐``. The summary
+    should reflect what repolish *would* do, including the copies it skipped
+    because the project paused them.
+    """
+    total = sum(len(copies) for _, copy_map, _ in sections for copies in copy_map.values())
     if not total:
         return
     tree = Tree('[bold]copy summary[/bold]')
-    for label, copy_map in sections:
+    for label, copy_map, paused_by_alias in sections:
         branch = tree.add(f'[bold]{label}[/bold]')
         for alias, copies in copy_map.items():
             provider_node = branch.add(alias)
+            paused_paths = frozenset(paused_by_alias.get(alias, ()))
             for cp in copies:
-                node = Text()
-                node.append('📋 ', style='yellow')
-                node.append(str(cp.target))
-                node.append(f'  ← {cp.source}', style='dim')
-                provider_node.add(node)
+                provider_node.add(_copy_tree_node(cp, paused_paths))
     console.print(tree)
 
 
@@ -151,14 +183,19 @@ def _link_config(
     int,
     dict[str, list[ProviderSymlink]],
     dict[str, list[ProviderCopy]],
+    dict[str, list[str]],
 ]:
     """Run ensure_providers_ready for the config at *config_path*.
 
-    Returns (exit_code, resolved_symlinks, resolved_copies).
+    Returns (exit_code, resolved_symlinks, resolved_copies, paused_by_alias).
+    The copy map is returned unfiltered — paused targets stay in it so the
+    summary tree can mark them, while ``apply_copies`` skips (and warns
+    about) their materialisation and reports exactly which destinations
+    were held back.
     """
     config = load_config_file(config_path)
     if not config.providers:
-        return 0, {}, {}
+        return 0, {}, {}, {}
     provider_names = _get_provider_names(config)
     logger.info('linking_providers', providers=provider_names, _display_level=1)
     result = ensure_providers_ready(
@@ -167,6 +204,7 @@ def _link_config(
         config_path.resolve().parent,
         force=force,
         location_context=location_context,
+        verify_locations=True,
     )
     if result.failed:
         logger.warning(
@@ -174,7 +212,7 @@ def _link_config(
             failed=result.failed,
             _display_level=1,
         )
-        return 1, {}, {}
+        return 1, {}, {}, {}
     _print_link_success(result, config, location_context)
     resolved = resolve_config(config)
     resolved_symlinks = collect_provider_symlinks(
@@ -188,21 +226,12 @@ def _link_config(
         config.providers,
         mode=mode,
     )
-    paused_files = frozenset(resolved.paused_files)
-    if paused_files:
-        # Drop paused targets before display so the copy summary tree only
-        # lists files that were actually materialised; apply_copies logs a
-        # `copy_paused` warning for each dropped entry.
-        resolved_copies = {
-            alias: [copy for copy in copies if not is_paused(copy.target.as_posix(), paused_files)]
-            for alias, copies in resolved_copies.items()
-        }
-    apply_copies(
+    paused_by_alias = apply_copies(
         resolved_copies,
         resolved.providers,
-        paused_files=paused_files,
+        paused_files=frozenset(resolved.paused_files),
     )
-    return 0, resolved_symlinks, resolved_copies
+    return 0, resolved_symlinks, resolved_copies, paused_by_alias
 
 
 def _detect_workspace(
@@ -222,14 +251,16 @@ def _link_members(
 ) -> tuple[
     int,
     list[tuple[str, dict[str, list[ProviderSymlink]]]],
-    list[tuple[str, dict[str, list[ProviderCopy]]]],
+    list[tuple[str, dict[str, list[ProviderCopy]], dict[str, list[str]]]],
 ]:
     """Link providers in every member directory.
 
-    Returns (exit_code, list of (label, resolved_symlinks), list of (label, resolved_copies)).
+    Returns (exit_code, symlink sections, copy sections). Copy sections
+    carry the member's held-back destinations so the summary tree can mark
+    paused (and partially paused) targets.
     """
     sym_sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
-    copy_sections: list[tuple[str, dict[str, list[ProviderCopy]]]] = []
+    copy_sections: list[tuple[str, dict[str, list[ProviderCopy]], dict[str, list[str]]]] = []
     for m in mono_ctx.members:
         member_dir = (config_dir / m.path).resolve()
         member_config = member_dir / 'repolish.yaml'
@@ -240,7 +271,7 @@ def _link_members(
         logger.info('linking_member', member=m.name, _display_level=1)
         location_context = str(m.path)
         with chdir(member_dir):
-            rc, syms, copies = _link_config(
+            rc, syms, copies, paused = _link_config(
                 member_config,
                 mode='member',
                 location_context=location_context,
@@ -251,7 +282,7 @@ def _link_members(
         if syms:
             sym_sections.append((f'Member: {m.name}', syms))
         if copies:
-            copy_sections.append((f'Member: {m.name}', copies))
+            copy_sections.append((f'Member: {m.name}', copies, paused))
     return 0, sym_sections, copy_sections
 
 
@@ -267,7 +298,7 @@ def _command_monorepo(
     Returns exit code (0 for success, 1 for failure).
     """
     console.print('[bold]Monorepo detected[/bold]')
-    rc, root_syms, root_copies = _link_config(
+    rc, root_syms, root_copies, root_paused = _link_config(
         config_path,
         mode='root',
         location_context='root',
@@ -276,11 +307,11 @@ def _command_monorepo(
     if rc != 0:
         return rc
     sym_sections: list[tuple[str, dict[str, list[ProviderSymlink]]]] = []
-    copy_sections: list[tuple[str, dict[str, list[ProviderCopy]]]] = []
+    copy_sections: list[tuple[str, dict[str, list[ProviderCopy]], dict[str, list[str]]]] = []
     if root_syms:
         sym_sections.append(('Root', root_syms))
     if root_copies:
-        copy_sections.append(('Root', root_copies))
+        copy_sections.append(('Root', root_copies, root_paused))
     rc, member_sym_sections, member_copy_sections = _link_members(
         mono_ctx,
         config_dir,
@@ -304,11 +335,11 @@ def _command_standalone(config_path: Path, *, force: bool = False) -> int:
     if not config.providers:
         logger.warning('no_providers_configured', _display_level=1)
         return 0
-    rc, syms, copies = _link_config(config_path, mode='standalone', force=force)
+    rc, syms, copies, paused = _link_config(config_path, mode='standalone', force=force)
     if rc != 0:
         return rc
     _print_link_tree([('Standalone', syms)])
-    _print_copy_tree([('Standalone', copies)])
+    _print_copy_tree([('Standalone', copies, paused)])
     return 0
 
 

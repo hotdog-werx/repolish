@@ -200,8 +200,18 @@ def create_additional_link(
         msg = f'Source does not exist: {source_path}'
         raise FileNotFoundError(msg)
 
-    # Handle existing target
-    if target_path.exists():
+    # Handle existing target. A *broken* symlink reports as absent to
+    # Path.exists() (it follows the link), so it must be checked explicitly —
+    # and since a dangling link holds no user data, it is always replaced
+    # instead of erroring, mirroring link_resources.
+    if target_path.is_symlink() and not target_path.exists():
+        logger.info(
+            'removing_broken_symlink',
+            target=str(target_path),
+            _display_level=1,
+        )
+        target_path.unlink()
+    elif target_path.exists():
         if force:
             logger.info(
                 'removing_existing_target',
