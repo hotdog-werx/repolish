@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.13.1] <a name="1.13.1" href="#1.13.1">-</a> September 11, 2026
+
+### ⚡ Performance
+
+- _(link)_ Stop force-relinking on every run and show paused copies in the
+  summaries (#96) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#96](https://github.com/hotdog-werx/repolish/pull/96)
+
+[1.13.1]: https://github.com/hotdog-werx/repolish/compare/1.13.0...1.13.1
+
 ## [1.13.0] <a name="1.13.0" href="#1.13.0">-</a> September 10, 2026
 
 ### 🚀 Features
