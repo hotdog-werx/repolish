@@ -297,13 +297,24 @@ def apply_session(
         session.apply_result = check_result
         return rc
 
-    # Apply insertions before post-process so formatter runs on insertion files
+    # Post-process the staged tree before it is copied out so the project
+    # receives the same content check compares against. Run it before
+    # apply_generated_output, not after: post-formating a staged tree that was
+    # already copied leaves the project with the unformatted content while
+    # check reports drift against the formatted staged copy on every run.
+    _run_post_process_if_needed(
+        config,
+        setup_output,
+        skip_post_process=skip_post_process,
+    )
     session.apply_result = apply_generated_output(
         setup_output,
         providers,
         base_dir,
         disable_auto_staging=is_root_pass,
     )
+    # Insertion files are written straight into the project, so the formatter
+    # needs a second pass on base_dir for their content.
     file_results, provider_results = apply_registered_insertions(
         providers,
         base_dir,
@@ -311,14 +322,6 @@ def apply_session(
     )
     session.insertion_results = file_results
     session.provider_insertion_results = provider_results
-
-    # Run post-process on staged templates
-    _run_post_process_if_needed(
-        config,
-        setup_output,
-        skip_post_process=skip_post_process,
-    )
-    # Run post-process on base_dir only if insertions were applied (so insertion files get formatted)
     if file_results and config.post_process:
         _run_post_process_on_base_dir(
             config,
