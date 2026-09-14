@@ -146,6 +146,14 @@ class ResolvedSession:
         repr=False,
     )
     """Per-file per-validator results keyed by destination path."""
+    validation_reports: dict[str, str] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    """Per-file path to the JSON validator report written under
+    ``.repolish/_/validators/``.  Populated by
+    :func:`~repolish.commands.apply.validators._collect_validation` during
+    apply; the summary tree links each ``validators:`` row to its report."""
     insertion_results: dict[str, InsertionFileResult] = field(
         default_factory=dict,
         repr=False,

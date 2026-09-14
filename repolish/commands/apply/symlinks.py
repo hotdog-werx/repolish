@@ -136,7 +136,11 @@ def apply_copies(
         if not info:
             continue
         disabled_copies = _disabled_copy_targets(info)
-        active_copies, paused_targets = _split_paused_copies(alias, copies, paused_files)
+        active_copies, paused_targets = _split_paused_copies(
+            alias,
+            copies,
+            paused_files,
+        )
         paused_targets.extend(
             create_provider_copies(
                 alias,

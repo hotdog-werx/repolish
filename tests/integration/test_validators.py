@@ -720,3 +720,117 @@ def test_validator_missing_file_without_mapping_fails_with_error(
     assert 'lint' in output
     assert 'missing' in output
     assert '✗' in output
+
+
+def _make_crashing_validator_provider(directory: Path) -> None:
+    """Provider whose `lint` validator raises; `schema` passes."""
+    _write(directory / 'repolish' / 'config.toml', 'name = "demo"\n')
+    _write(
+        directory / 'repolish.py',
+        dedent("""\
+        from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import ValidationResult, ValidationStatus
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, ctx):
+                return {'config.toml': 'config.toml'}
+
+            def create_file_validators(self, ctx):
+                def lint(context, path):
+                    raise RuntimeError('boom')
+
+                def schema(context, path):
+                    return ValidationResult(
+                        status=ValidationStatus.PASS,
+                        path=str(path),
+                        validator_name='schema',
+                    )
+
+                return {'config.toml': {'lint': lint, 'schema': schema}}
+        """),
+    )
+
+
+def test_validator_report_written_with_crash_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A crashing validator gets a JSON report with its stack trace.
+
+    The report under ``.repolish/_/validators/`` records every validator that
+    ran — passes included — and carries the crash traceback as a list of lines.
+    """
+    _make_crashing_validator_provider(tmp_path / 'p')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=1)
+
+    reports = list(
+        (tmp_path / '.repolish' / '_' / 'validators').glob('validators.*.json'),
+    )
+    assert len(reports) == 1
+    report = json.loads(reports[0].read_text(encoding='utf-8'))
+    assert report['file'] == 'config.toml'
+    assert report['provider_alias'] == 'p'
+    assert report['total_validators'] == 2
+    assert report['failed'] == 1
+
+    by_name = {entry['name']: entry for entry in report['entries']}
+    lint = by_name['lint']
+    assert lint['status'] == 'error'
+    assert 'boom' in lint['message']
+    assert isinstance(lint['traceback'], list)
+    assert any('RuntimeError' in line for line in lint['traceback'])
+    assert by_name['schema']['status'] == 'pass'
+    assert by_name['schema']['traceback'] is None
+
+
+def test_validator_report_includes_disabled_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validators disabled via overrides show up in the report as disabled."""
+    _make_validator_provider(tmp_path / 'p')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {
+                    'p': {
+                        'provider_root': './p',
+                        'overrides': {
+                            'validators': {'config.toml': {'lint': False}},
+                        },
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'])
+
+    reports = list(
+        (tmp_path / '.repolish' / '_' / 'validators').glob('validators.*.json'),
+    )
+    assert len(reports) == 1
+    report = json.loads(reports[0].read_text(encoding='utf-8'))
+    assert report['disabled'] == 1
+
+    by_name = {entry['name']: entry for entry in report['entries']}
+    assert by_name['lint']['kind'] == 'disabled'
+    assert by_name['schema']['status'] == 'pass'

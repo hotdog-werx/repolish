@@ -26,7 +26,7 @@ from repolish.commands.apply.staging import (
     create_staged_template,
 )
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
-from repolish.commands.apply.validators import _collect_file_validation_messages
+from repolish.commands.apply.validators import _collect_validation
 from repolish.config.models.project import RepolishConfig
 from repolish.directives import (
     DirectivePhase,
@@ -335,10 +335,12 @@ def apply_session(
         paused_files=providers.paused_files,
     )
 
-    session.validation_results = _collect_file_validation_messages(
+    session.validation_results, session.validation_reports = _collect_validation(
         providers,
         config.config_dir,
         setup_output / 'repolish',
+        reports_dir=base_dir / '.repolish' / '_' / 'validators',
+        pid_to_alias=pid_to_alias,
     )
 
     if _validation_has_errors(session):
