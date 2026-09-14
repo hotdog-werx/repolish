@@ -105,7 +105,7 @@ def _run_post_process_if_needed(
     if not skip_post_process:
         post_cwd = setup_output / 'repolish'
         if post_cwd.exists() and any(post_cwd.iterdir()):
-            run_post_process(config.post_process, post_cwd)
+            run_post_process(config.post_process, post_cwd, config.config_dir)
 
 
 def _validation_has_errors(session: ResolvedSession) -> bool:

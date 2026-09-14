@@ -1,6 +1,8 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from hotlog import configure_logging, resolve_verbosity
@@ -107,7 +109,7 @@ def test_run_post_process_ci_mode(
     cmds = [
         [sys.executable, '-c', f"open('{target.as_posix()}','w').write('ci')"],
     ]
-    utils.run_post_process(cmds, tmp_path)
+    utils.run_post_process(cmds, tmp_path, tmp_path)
     assert target.read_text() == 'ci'
 
 
@@ -120,6 +122,184 @@ def test_run_post_process_combination(tmp_path: Path):
         [sys.executable, '-c', f"open('{target.as_posix()}','w').write('x')"],
         [sys.executable, '-c', f"open('{target.as_posix()}','w').write('y')"],
     ]
-    utils.run_post_process(cmds, tmp_path)
+    utils.run_post_process(cmds, tmp_path, tmp_path)
     # file should exist and contain 'y' (last writer)
     assert target.read_text() == 'y'
+
+
+def test_resolve_placeholders_substitutes_known() -> None:
+    values = {'render_dir': '/r', 'render_dir_rel': 'r', 'config_dir': '/c'}
+    assert utils._resolve_placeholders(
+        ['ruff', 'format', '{render_dir}', '--config={config_dir}/ruff.toml'],
+        values,
+    ) == ('ruff', 'format', '/r', '--config=/c/ruff.toml')
+
+
+def test_resolve_placeholders_leaves_non_identifier_braces() -> None:
+    # awk's field references are not placeholders: no match, left as-is
+    values = {'render_dir': '/r', 'config_dir': '/c'}
+    assert utils._resolve_placeholders(["awk '{print $1}'"], values) == ("awk '{print $1}'",)
+
+
+def test_resolve_placeholders_unknown_token_raises() -> None:
+    values = {'render_dir': '/r', 'config_dir': '/c'}
+    with pytest.raises(ValueError, match='renderdir'):
+        utils._resolve_placeholders(['ruff', 'format', '{renderdir}'], values)
+
+
+def test_run_post_process_substitutes_placeholders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Placeholders: absolute render/config dirs plus a config-relative path."""
+    monkeypatch.setenv('CI', '1')
+    config_dir = tmp_path / 'project'
+    render_dir = config_dir / '.repolish' / '_' / 'render' / 'repolish'
+    render_dir.mkdir(parents=True)
+    target = tmp_path / 'paths.txt'
+    script = (
+        'import os, sys; '
+        f"open({str(target)!r}, 'w').write('\\n'.join("
+        "[sys.argv[1], sys.argv[2], sys.argv[3], "
+        "os.environ['REPOLISH_RENDER_DIR'], os.environ['REPOLISH_CONFIG_DIR']]))"
+    )
+    cmds = [
+        [sys.executable, '-c', script, '{render_dir}', '{render_dir_rel}', '{config_dir}/x'],
+    ]
+    utils.run_post_process(cmds, render_dir, config_dir)
+    lines = target.read_text().splitlines()
+    # {render_dir} and {config_dir} are absolute; {render_dir_rel} is the
+    # render tree relative to the config directory.
+    assert Path(lines[0]).is_absolute()
+    assert lines[0] == str(render_dir)
+    assert not Path(lines[1]).is_absolute()
+    assert lines[1] == os.path.relpath(render_dir, config_dir)
+    assert Path(lines[2]).is_absolute()
+    assert lines[2] == f'{config_dir}/x'
+    assert lines[3] == str(render_dir)
+    assert lines[4] == str(config_dir)
+
+
+def test_run_post_process_absolutizes_relative_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """{render_dir}/{config_dir} stay absolute even from relative inputs.
+
+    The absolute-placeholder promise is enforced by the runner itself, not
+    left to caller discipline.
+    """
+    monkeypatch.setenv('CI', '1')
+    monkeypatch.chdir(tmp_path)
+    render_dir = tmp_path / '.repolish' / '_' / 'render' / 'repolish'
+    render_dir.mkdir(parents=True)
+    target = tmp_path / 'paths.txt'
+    script = (
+        'import sys; '
+        f"open({str(target)!r}, 'w').write('\\n'.join([sys.argv[1], sys.argv[2]]))"
+    )
+    cmds = [[sys.executable, '-c', script, '{render_dir}', '{render_dir_rel}']]
+
+    utils.run_post_process(cmds, Path('.repolish/_/render/repolish'), Path('.'))
+
+    lines = target.read_text().splitlines()
+    assert lines[0] == str(render_dir.resolve())
+    assert lines[1] == os.path.relpath(render_dir.resolve(), tmp_path.resolve())
+
+
+def test_run_post_process_logs_only_applied_placeholders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each command log carries only the substitutions that shaped it.
+
+    The logger is patched (not pytest's caplog) because hotlog is
+    structlog-based and never reaches the handlers caplog listens on.
+    """
+    monkeypatch.setenv('CI', '1')
+    mock_info = mock.MagicMock()
+    monkeypatch.setattr(utils.logger, 'info', mock_info)
+    render_dir = tmp_path / '.repolish' / '_' / 'render' / 'repolish'
+    render_dir.mkdir(parents=True)
+    config_dir = tmp_path
+
+    utils.run_post_process(
+        [[sys.executable, '-c', 'pass', '{render_dir}']],
+        render_dir,
+        config_dir,
+    )
+    command_logs = [
+        call.kwargs
+        for call in mock_info.call_args_list
+        if call.args[0] == 'post_process_command'
+    ]
+    assert command_logs == [
+        {
+            'command': [sys.executable, '-c', 'pass', str(render_dir.resolve())],
+            'cwd': str(render_dir),
+            'render_dir': str(render_dir.resolve()),
+        },
+    ]
+
+    # A run that references no placeholder logs no substitution fields.
+    mock_info.reset_mock()
+    utils.run_post_process(
+        [[sys.executable, '-c', 'pass']],
+        render_dir,
+        config_dir,
+    )
+    command_logs = [
+        call.kwargs
+        for call in mock_info.call_args_list
+        if call.args[0] == 'post_process_command'
+    ]
+    assert command_logs == [
+        {'command': [sys.executable, '-c', 'pass'], 'cwd': str(render_dir)},
+    ]
+
+
+def test_run_post_process_unknown_placeholder_fails_before_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown placeholder aborts the run before any command starts."""
+    monkeypatch.setenv('CI', '1')
+    target = tmp_path / 'out.txt'
+    cmds = [
+        [sys.executable, '-c', f"open('{target.as_posix()}','w').write('x')"],
+        ['ruff', 'format', '{renderdir}'],
+    ]
+    with pytest.raises(ValueError, match='renderdir'):
+        utils.run_post_process(cmds, tmp_path, tmp_path)
+    assert not target.exists()
+
+
+def test_run_post_process_env_var_runs_from_config_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REPOLISH_NO_POST_PROCESS_CD executes commands from the config directory.
+
+    A wrapper (poe, mise) that locates its own config via cwd cannot run from
+    inside the render tree — with the env var set the command runs from the
+    config dir while {render_dir} still names the rendered tree, so the
+    script gets both: a workable cwd and the files' location.
+    """
+    monkeypatch.setenv('CI', '1')
+    monkeypatch.setenv('REPOLISH_NO_POST_PROCESS_CD', '1')
+    render_dir = tmp_path / '.repolish' / '_' / 'render' / 'repolish'
+    render_dir.mkdir(parents=True)
+    config_dir = tmp_path / 'project'
+    config_dir.mkdir(parents=True)
+    target = tmp_path / 'paths.txt'
+    script = (
+        'import os, sys; '
+        f"open({str(target)!r}, 'w').write('\\n'.join("
+        "[sys.argv[1], os.getcwd(), os.environ['REPOLISH_RENDER_DIR']]))"
+    )
+    cmds = [[sys.executable, '-c', script, '{render_dir}']]
+    utils.run_post_process(cmds, render_dir, config_dir)
+    lines = target.read_text().splitlines()
+    assert lines[0] == str(render_dir)
+    assert lines[1] == str(config_dir)
+    assert lines[2] == str(render_dir)

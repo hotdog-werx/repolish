@@ -10,6 +10,9 @@ Scenarios covered:
   the render tree, before anything is copied into the project (regression:
   insertion output used to be applied in-place to project files after the
   copy, forcing a second post_process run over the whole project root)
+- The {render_dir}/{config_dir} placeholders hand commands the absolute paths
+  they need when a wrapper resets the working directory or a tool respects
+  .gitignore and would skip the render tree
 """
 
 from __future__ import annotations
@@ -306,4 +309,73 @@ def test_mapped_file_with_insertions_gets_fresh_rendered_content(
     assert 'old insertion' not in content
 
     # Check agrees: the staged insertion file matches the project file.
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Simulates Unix-style installed CLI execution from PATH.',
+)
+def test_post_process_placeholders_point_at_render_and_config_dirs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """{render_dir}/{config_dir} let commands target the render tree explicitly.
+
+    Tools invoked through wrappers (mise, task runners) may reset the working
+    directory to the project root, and gitignore-respecting tools like ruff
+    skip `.repolish/` entirely — the placeholders hand them the absolute
+    path instead: the script lives next to `repolish.yaml` ({config_dir})
+    and formats the render tree ({render_dir}).
+    """
+    # written directly (not via _write) so textwrap.dedent cannot strip the tabs
+    template = tmp_path / 'p' / 'repolish' / 'tabbed.txt'
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text('\tline one\n\tline two\n', encoding='utf-8')
+    _make_provider(tmp_path / 'p', files={})
+
+    # the script is invoked through {config_dir} and formats {render_dir}
+    script = tmp_path / 'record_and_untab.py'
+    records = tmp_path / 'argv.txt'
+    script.write_text(
+        '#!/usr/bin/env python3\n'
+        'import os, pathlib, sys\n'
+        'render_dir = sys.argv[1]\n'
+        f'records = pathlib.Path({str(records)!r})\n'
+        "records.write_text('\\n'.join([render_dir, os.getcwd()]))\n"
+        'for f in pathlib.Path(render_dir).glob("*.txt"):\n'
+        '    f.write_text(f.read_text().replace("\\t", "  "))\n',
+        encoding='utf-8',
+    )
+    script.chmod(0o755)
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'post_process': [
+                    '{config_dir}/record_and_untab.py {render_dir}',
+                ],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    # The command ran with the render dir it was handed: substitution
+    # resolved to the same tree repolish uses as cwd.
+    lines = records.read_text(encoding='utf-8').splitlines()
+    expected = str(tmp_path / '.repolish' / '_' / 'render' / 'repolish')
+    assert lines[0] == expected
+    assert lines[1] == expected
+
+    # The render tree was formatted through the explicit dir argument, so
+    # the project received the formatted content.
+    content = (tmp_path / 'tabbed.txt').read_text(encoding='utf-8')
+    assert content == '  line one\n  line two\n'
+
     run_repolish(['apply', '--check'], exit_code=0)

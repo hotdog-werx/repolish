@@ -173,10 +173,49 @@ where formatters live — running `ruff --fix .` or `prettier --write .` here
 ensures the diff and apply steps always operate on correctly formatted output,
 so formatting-only changes never cause spurious diffs.
 
-Commands are run in order. If any exits non-zero, repolish stops immediately.
-The render directory is the working directory for every command, so reference
-project-root scripts with an absolute path (or install the command on your
-`PATH`) rather than a project-relative one.
+### The render tree is a sandbox
+
+`post_process` is a hook: the project tells repolish how it likes its files
+formatted. The catch is that the hook runs against the sandbox, not the
+working tree — and a formatter expects more than a list of files. It looks
+for repository context: configuration files, ignore rules, plugin
+resolution. The render tree deliberately lacks that context — `.repolish/` is
+gitignored scratch space — so a formatter can quietly misbehave in a few
+ways, each with an answer:
+
+- **A tool respects `.gitignore`.** The render tree lives under `.repolish/`,
+  so ruff and friends skip it entirely — `ruff format .` formats nothing and
+  the run looks broken. Name the tree explicitly instead:
+  `ruff format --no-respect-gitignore {render_dir}`.
+- **A wrapper resets the working directory.** mise and task runners re-run
+  commands from the project root, discarding the sandbox cwd. Passing
+  `{render_dir}` as an argument makes the command work from anywhere.
+- **A wrapper cannot leave the project root.** poe and mise tasks find their
+  own configuration through the working directory and break when run from
+  inside the render tree. Set `REPOLISH_NO_POST_PROCESS_CD` and commands
+  execute from the config directory instead, with `{render_dir}` still
+  naming the tree — `poe format-python {render_dir}` works either way.
+
+The other half of that context — configuration — usually solves itself: the
+sandbox sits inside your project, so tools that walk up for config (ruff,
+prettier) find your root files already. For tools that do not walk up,
+prefer the tool's `--config` flag pointing at `{config_dir}` — in
+repolish-managed projects the config file itself is provider output, so
+referencing it by path works no matter where the command runs from.
+
+### Placeholders
+
+Commands may reference three placeholders, substituted before execution:
+
+- `{render_dir}` — absolute path to the render tree
+- `{render_dir_rel}` — the same tree relative to the config directory
+- `{config_dir}` — absolute path to the directory containing `repolish.yaml`
+
+The absolute ones are also exported as `REPOLISH_RENDER_DIR` /
+`REPOLISH_CONFIG_DIR` in the command's environment, and the applied
+substitutions are logged alongside each command. An unrecognized
+`{placeholder}` fails the run listing the supported names. Commands run in
+order; if any exits non-zero, repolish stops immediately.
 
 ---
 

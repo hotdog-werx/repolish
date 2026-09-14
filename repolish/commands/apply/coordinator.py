@@ -434,7 +434,7 @@ def _post_process_promoted_files(
             tmp_root,
         )
 
-        run_post_process(post_process, tmp_root)
+        run_post_process(post_process, tmp_root, root_session.config.config_dir)
         _sync_post_processed_promoted_files(
             candidate_paths,
             root_base_dir,
