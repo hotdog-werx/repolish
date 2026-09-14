@@ -8,6 +8,19 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.14.0] <a name="1.14.0" href="#1.14.0">-</a> September 14, 2026
+
+### 🚀 Features
+
+- Validator reports with stack traces under .repolish/_/validators (#99) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#99](https://github.com/hotdog-werx/repolish/pull/99)
+- Placeholder substitution in post_process commands (#100) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#100](https://github.com/hotdog-werx/repolish/pull/100)
+
+[1.14.0]: https://github.com/hotdog-werx/repolish/compare/1.13.2...1.14.0
+
 ## [1.13.2] <a name="1.13.2" href="#1.13.2">-</a> September 14, 2026
 
 ### 🐛 Bug Fixes
