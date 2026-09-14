@@ -213,7 +213,12 @@ def run_post_process(
         logger.info('post_process', label=label)
     with ctx:
         for raw_argv, argv in zip(normalised, resolved, strict=True):
-            _run_argv(argv, process_cwd, env, _applied_placeholders(raw_argv, values))
+            _run_argv(
+                argv,
+                process_cwd,
+                env,
+                _applied_placeholders(raw_argv, values),
+            )
 
 
 def ensure_dot_repolish(base_dir: Path) -> Path:

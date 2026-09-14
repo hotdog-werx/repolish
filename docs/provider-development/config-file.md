@@ -43,17 +43,16 @@ Repolish cannot run without at least one provider configured.
   Commands run in order, once per session, with the render directory as their
   working directory. Three placeholders are substituted before execution:
 
-  - `{render_dir}` — absolute path to the render tree holding the final
-    content before it is copied into the project (normally also the working
-    directory)
+  - `{render_dir}` — absolute path to the render tree holding the final content
+    before it is copied into the project (normally also the working directory)
   - `{render_dir_rel}` — the same tree relative to the config directory
   - `{config_dir}` — absolute path to the directory containing `repolish.yaml`
 
   The absolute ones are also exported as `REPOLISH_RENDER_DIR` /
   `REPOLISH_CONFIG_DIR` in the command's environment, and the applied
-  substitutions are logged next to the command. Reach for the placeholders
-  when a wrapper (mise, a task runner) resets the working directory, or when
-  a tool respects `.gitignore` and would otherwise skip the render tree:
+  substitutions are logged next to the command. Reach for the placeholders when
+  a wrapper (mise, a task runner) resets the working directory, or when a tool
+  respects `.gitignore` and would otherwise skip the render tree:
 
   ```yaml
   post_process:
@@ -61,19 +60,26 @@ Repolish cannot run without at least one provider configured.
     - python {config_dir}/scripts/tidy.py {render_dir}
   ```
 
-  When a tool does not find its configuration by walking up from the
-  working directory, prefer its `--config` flag (ruff, dprint, and most
-  formatters offer one) pointing at `{config_dir}` — in repolish-managed
-  projects the config file itself is provider output, so referencing it by
-  path works no matter where the command runs from. The inverse problem — a
-  wrapper (poe, a mise task) that finds its own config through the working
-  directory and breaks when run from inside the render tree — has an escape
-  hatch: set `REPOLISH_NO_POST_PROCESS_CD` and commands execute from the
-  config directory instead, with `{render_dir}` still naming the rendered
-  tree.
+  When a tool does not find its configuration by walking up from the working
+  directory, prefer its `--config` flag (ruff, dprint, and most formatters offer
+  one) pointing at `{config_dir}` — in repolish-managed projects the config file
+  itself is provider output, so referencing it by path works no matter where the
+  command runs from. The inverse problem — a wrapper (poe, a mise task) that
+  finds its own config through the working directory and breaks when run from
+  inside the render tree — has an escape hatch: set
+  `REPOLISH_NO_POST_PROCESS_CD` and commands execute from the config directory
+  instead, with `{render_dir}` still naming the rendered tree.
 
-  An unrecognized `{placeholder}` fails the run listing the supported names.
-  If any command exits non-zero repolish stops immediately.
+  Tools that scope rules to file paths (ruff's `per-file-ignores`, dprint's
+  `includes`) match against sandbox paths, not project paths: files sit under
+  `.repolish/_/render/repolish/` and mapped files carry the `_repolish.` prefix
+  there. A pattern matching `src/models.py` matches nothing in the render tree —
+  widen it with globs (`"**/*/src/**/*models.py"`) or the rule silently applies
+  to no file. See [How Repolish Works](../concepts/overview.md#post-process) for
+  the full pattern pair.
+
+  An unrecognized `{placeholder}` fails the run listing the supported names. If
+  any command exits non-zero repolish stops immediately.
 
 - **`paused_files`** _(list of strings)_ - paths that repolish should
   temporarily ignore. Each entry may be an exact path, a directory (everything

@@ -160,11 +160,18 @@ def test_run_post_process_substitutes_placeholders(
     script = (
         'import os, sys; '
         f"open({str(target)!r}, 'w').write('\\n'.join("
-        "[sys.argv[1], sys.argv[2], sys.argv[3], "
+        '[sys.argv[1], sys.argv[2], sys.argv[3], '
         "os.environ['REPOLISH_RENDER_DIR'], os.environ['REPOLISH_CONFIG_DIR']]))"
     )
     cmds = [
-        [sys.executable, '-c', script, '{render_dir}', '{render_dir_rel}', '{config_dir}/x'],
+        [
+            sys.executable,
+            '-c',
+            script,
+            '{render_dir}',
+            '{render_dir_rel}',
+            '{config_dir}/x',
+        ],
     ]
     utils.run_post_process(cmds, render_dir, config_dir)
     lines = target.read_text().splitlines()
@@ -194,13 +201,14 @@ def test_run_post_process_absolutizes_relative_paths(
     render_dir = tmp_path / '.repolish' / '_' / 'render' / 'repolish'
     render_dir.mkdir(parents=True)
     target = tmp_path / 'paths.txt'
-    script = (
-        'import sys; '
-        f"open({str(target)!r}, 'w').write('\\n'.join([sys.argv[1], sys.argv[2]]))"
-    )
+    script = f"import sys; open({str(target)!r}, 'w').write('\\n'.join([sys.argv[1], sys.argv[2]]))"
     cmds = [[sys.executable, '-c', script, '{render_dir}', '{render_dir_rel}']]
 
-    utils.run_post_process(cmds, Path('.repolish/_/render/repolish'), Path('.'))
+    utils.run_post_process(
+        cmds,
+        Path('.repolish/_/render/repolish'),
+        Path.cwd(),
+    )
 
     lines = target.read_text().splitlines()
     assert lines[0] == str(render_dir.resolve())
@@ -228,14 +236,15 @@ def test_run_post_process_logs_only_applied_placeholders(
         render_dir,
         config_dir,
     )
-    command_logs = [
-        call.kwargs
-        for call in mock_info.call_args_list
-        if call.args[0] == 'post_process_command'
-    ]
+    command_logs = [call.kwargs for call in mock_info.call_args_list if call.args[0] == 'post_process_command']
     assert command_logs == [
         {
-            'command': [sys.executable, '-c', 'pass', str(render_dir.resolve())],
+            'command': [
+                sys.executable,
+                '-c',
+                'pass',
+                str(render_dir.resolve()),
+            ],
             'cwd': str(render_dir),
             'render_dir': str(render_dir.resolve()),
         },
@@ -248,11 +257,7 @@ def test_run_post_process_logs_only_applied_placeholders(
         render_dir,
         config_dir,
     )
-    command_logs = [
-        call.kwargs
-        for call in mock_info.call_args_list
-        if call.args[0] == 'post_process_command'
-    ]
+    command_logs = [call.kwargs for call in mock_info.call_args_list if call.args[0] == 'post_process_command']
     assert command_logs == [
         {'command': [sys.executable, '-c', 'pass'], 'cwd': str(render_dir)},
     ]
