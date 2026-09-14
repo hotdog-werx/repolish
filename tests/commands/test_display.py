@@ -25,6 +25,8 @@ from repolish.providers.models import (
     FileRecord,
     GlobalContext,
     SessionBundle,
+    ValidationResult,
+    ValidationStatus,
     WorkspaceContext,
 )
 
@@ -232,7 +234,10 @@ def test_summary_tree_marks_paused_copy(
         tmp_path,
         resolved_copies={
             'my-provider': [
-                ProviderCopy(source=Path('src/owned.json'), target=Path('owned.json')),
+                ProviderCopy(
+                    source=Path('src/owned.json'),
+                    target=Path('owned.json'),
+                ),
             ],
         },
         paused_files=['owned.json'],
@@ -575,3 +580,71 @@ def test_summary_tree_insertion_row_owned_by_other_provider_shows_hollow_marker(
 
     output = _capture(mocker, [session])
     assert '◌ README.md  owned by other-provider' in output
+
+
+def _noop_validator(ctx: object, path: object) -> ValidationResult:
+    """Stand-in validator entry matching the FileValidatorEntry shape."""
+    return ValidationResult(status=ValidationStatus.PASS, validator_name='noop')
+
+
+def _make_validator_session(
+    tmp_path: Path,
+    **overrides: object,
+) -> ResolvedSession:
+    """Session with one file that has a single registered validator."""
+    session = _make_session(
+        tmp_path,
+        mode='standalone',
+        file_records=[
+            FileRecord(
+                path='config.toml',
+                mode=FileMode.REGULAR,
+                owner='my-provider',
+            ),
+        ],
+    )
+    session.providers.file_validators = {
+        'config.toml': {'lint': _noop_validator},
+    }
+    for key, value in overrides.items():
+        setattr(session, key, value)
+    return session
+
+
+def test_summary_tree_validator_report_details_link(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """The validators row links to the file's JSON report via [details]."""
+    session = _make_validator_session(
+        tmp_path,
+        validation_results={
+            'config.toml': {
+                'lint': ValidationResult(
+                    status=ValidationStatus.ERROR,
+                    message='bad',
+                    path='config.toml',
+                    validator_name='lint',
+                ),
+            },
+        },
+        validation_reports={'config.toml': str(tmp_path / 'report.json')},
+    )
+    mocker.patch(
+        'repolish.commands.apply.display.supports_hyperlinks',
+        new=True,
+    )
+    output = _capture(mocker, [session])
+    assert 'validators:' in output
+    assert '[details]' in output
+
+
+def test_summary_tree_validator_report_link_absent_without_report(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """No [details] link when the session has no report (e.g. check-only runs)."""
+    session = _make_validator_session(tmp_path)
+    output = _capture(mocker, [session])
+    assert 'validators:' in output
+    assert '[details]' not in output

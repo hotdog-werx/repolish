@@ -743,7 +743,13 @@ def test_print_copy_tree_marks_paused_copies(
         source=tmp_path / 'src' / '.editorconfig',
         target=Path('.editorconfig'),
     )
-    sections = [('Standalone', {'my-provider': [active, paused]}, {'my-provider': ['.editorconfig']})]
+    sections = [
+        (
+            'Standalone',
+            {'my-provider': [active, paused]},
+            {'my-provider': ['.editorconfig']},
+        ),
+    ]
     _print_copy_tree(sections)
 
     output = out.getvalue()

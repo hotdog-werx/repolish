@@ -521,7 +521,11 @@ def test_no_cache_file_registers_from_scratch(
     provider_root.mkdir()
 
     providers = {'lib': ProviderConfig(provider_root=str(provider_root))}
-    result = ensure_providers_ready(['lib'], providers, tmp_path)  # no force, no cache
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+    )  # no force, no cache
 
     assert result.ready == ['lib']
     assert result.cached == []

@@ -335,7 +335,11 @@ def _command_standalone(config_path: Path, *, force: bool = False) -> int:
     if not config.providers:
         logger.warning('no_providers_configured', _display_level=1)
         return 0
-    rc, syms, copies, paused = _link_config(config_path, mode='standalone', force=force)
+    rc, syms, copies, paused = _link_config(
+        config_path,
+        mode='standalone',
+        force=force,
+    )
     if rc != 0:
         return rc
     _print_link_tree([('Standalone', syms)])

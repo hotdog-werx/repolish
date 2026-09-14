@@ -199,6 +199,36 @@ This keeps the signal explicit:
 - yellow cross: validator exists but is disabled by config
 - hollow marker: the file is provider-owned but no file was staged for it
 
+## Validator reports
+
+For each validated file, repolish writes a report artifact:
+
+```text
+.repolish/_/validators/validators.<path-slug>.<provider-alias>.json
+```
+
+Report fields include:
+
+- `file`
+- `provider_alias`
+- `total_validators`
+- `failed`
+- `warnings`
+- `disabled`
+- `entries`
+
+Every registered validator gets an entry — passes included — with its `name`,
+`status`, and `message`. When a validator raises an exception instead of
+returning a result, the entry also carries the `traceback` as `list[str]` (one
+line per entry) for easier reading in JSON. Validators disabled before running
+appear with `kind: disabled`.
+
+The summary tree links each `validators:` block to its report via a `[details]`
+hyperlink (when the terminal supports them), so a failing run can be debugged
+from the report without re-running with a debugger attached.
+
+These files are the detailed record behind the compact summary tree output.
+
 ## Related pages
 
 - [Provider Setup](config-file.md)

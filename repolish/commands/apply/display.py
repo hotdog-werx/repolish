@@ -422,8 +422,28 @@ def _validator_summary_node(
             result,
         )
         node.append(f'\n    - {marker} {text}', style=style)
+    _append_validator_report_link(node, record, session)
     _append_insertion_summary_line(node, record, session)
     return node
+
+
+def _append_validator_report_link(
+    node: Text,
+    record: FileRecord,
+    session: ResolvedSession,
+) -> None:
+    """Append a hyperlink to the file's validator report, if one exists.
+
+    The report lives under ``.repolish/_/validators/`` and carries the full
+    per-validator outcome, including stack traces when a validator raised.
+    Without hyperlink support the link is dropped, mirroring the insertion
+    report's ``[details]`` link.
+    """
+    report_path = session.validation_reports.get(record.path)
+    if not report_path:
+        return
+    details_style = f'link file://{Path(report_path).absolute()}' if supports_hyperlinks else ''
+    node.append(' [details]' if details_style else '', style=details_style)
 
 
 def _format_insertion_status(
