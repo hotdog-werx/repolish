@@ -8,6 +8,15 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.13.2] <a name="1.13.2" href="#1.13.2">-</a> September 14, 2026
+
+### 🐛 Bug Fixes
+
+- Post-process staged files before copying them into the project by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.13.2]: https://github.com/hotdog-werx/repolish/compare/1.13.1...1.13.2
+
 ## [1.13.1] <a name="1.13.1" href="#1.13.1">-</a> September 11, 2026
 
 ### ⚡ Performance
