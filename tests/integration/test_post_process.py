@@ -6,6 +6,13 @@ Scenarios covered:
   (regression: the phases refactor moved the staged post-process after the
   copy into the project, so the project received unformatted content while
   check compared against the formatted staged tree)
+- With insertions in play, post_process runs exactly once per session — over
+  the render tree, before anything is copied into the project (regression:
+  insertion output used to be applied in-place to project files after the
+  copy, forcing a second post_process run over the whole project root)
+- The {render_dir}/{config_dir} placeholders hand commands the absolute paths
+  they need when a wrapper resets the working directory or a tool respects
+  .gitignore and would skip the render tree
 """
 
 from __future__ import annotations
@@ -45,6 +52,38 @@ def _make_provider(directory: Path, files: dict[str, str]) -> None:
             def create_context(self):
                 return Ctx()
         """,
+    )
+
+
+def _make_insertion_provider(
+    directory: Path,
+    body: str,
+    extra_methods: str = '',
+) -> None:
+    """Create a provider whose create_file_insertions body is *body*."""
+    directory.mkdir(parents=True, exist_ok=True)
+    body_dedented = textwrap.dedent(body).strip()
+    body_indented = '\n'.join(f'        {line}' for line in body_dedented.splitlines())
+    methods_text = ''
+    if extra_methods:
+        methods_dedented = textwrap.dedent(extra_methods).strip()
+        methods_text = '\n'.join(f'    {line}' for line in methods_dedented.splitlines())
+    (directory / 'repolish.py').write_text(
+        f"""\
+from repolish import BaseContext, Provider, BaseInputs
+
+class Ctx(BaseContext):
+    pass
+
+class P(Provider[Ctx, BaseInputs]):
+    def create_context(self):
+        return Ctx()
+
+    def create_file_insertions(self, context):
+{body_indented}
+{methods_text}
+""",
+        encoding='utf-8',
     )
 
 
@@ -106,4 +145,237 @@ def test_check_agrees_with_apply_after_post_process(
 
     # Check compares the same post-processed staged tree against the project,
     # so a successful apply must leave nothing to report.
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Simulates Unix-style installed CLI execution from PATH.',
+)
+def test_post_process_runs_exactly_once_with_insertions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """post_process runs once per session even when insertions are present.
+
+    Insertions are staged into the render tree and post-processed there, so a
+    single run covers template output and insertion output alike (regression:
+    insertion output used to be applied in-place to project files after the
+    copy, forcing a second post_process pass over the whole project root).
+    The provider also maps a plain template file so the render tree is
+    non-empty — with the old in-place insertion flow both the staged and the
+    project-root post_process runs fired, counting 2 invocations.
+    """
+    _write(
+        tmp_path / 'test.txt',
+        """\
+        # Header
+        <!-- repolish:on:tabs insert-tabs -->
+        <!-- repolish:off:tabs -->
+        """,
+    )
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def insert_tabs():
+            return '\\tindented by tabs'
+        return {'test.txt': {'insert-tabs': insert_tabs}}""",
+        extra_methods="""\
+        def create_file_mappings(self, context):
+            return {'plain.txt': 'plain.txt'}
+        """,
+    )
+    template_dir = tmp_path / 'p' / 'repolish'
+    template_dir.mkdir(parents=True, exist_ok=True)
+    (template_dir / 'plain.txt').write_text(
+        '\tplain template\n',
+        encoding='utf-8',
+    )
+
+    # Post-process counts invocations, then rewrites tabs as two spaces.
+    script = tmp_path / 'count_and_untab.py'
+    counter = tmp_path / 'invocations.txt'
+    script.write_text(
+        '#!/usr/bin/env python3\n'
+        'import pathlib, sys\n'
+        f'counter = pathlib.Path({str(counter)!r})\n'
+        'count = int(counter.read_text()) if counter.exists() else 0\n'
+        'counter.write_text(str(count + 1))\n'
+        'for f in pathlib.Path(".").glob("*.txt"):\n'
+        '    f.write_text(f.read_text().replace("\\t", "  "))\n',
+        encoding='utf-8',
+    )
+    script.chmod(0o755)
+    old_path = os.environ.get('PATH', '')
+    monkeypatch.setenv('PATH', f'{tmp_path}{os.pathsep}{old_path}')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'post_process': ['count_and_untab.py'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    # Exactly one post_process invocation for the whole session.
+    assert counter.read_text(encoding='utf-8') == '1'
+
+    # Both the mapped template and the insertion output were formatted.
+    plain = (tmp_path / 'plain.txt').read_text(encoding='utf-8')
+    assert plain == '  plain template\n'
+
+    # The insertion content made it into the project file, post-processed.
+    content = (tmp_path / 'test.txt').read_text(encoding='utf-8')
+    assert '  indented by tabs' in content
+    assert '\tindented by tabs' not in content
+
+    # And check agrees with what apply produced.
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Simulates Unix-style installed CLI execution from PATH.',
+)
+def test_mapped_file_with_insertions_gets_fresh_rendered_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A destination that is both mapped and an insertion target keeps both.
+
+    The insertion render must start from the freshly rendered template output
+    (not the stale project file), and the final copy must carry the insertion
+    content on top of the new template content.
+    """
+    # The template itself carries the insertion marker.
+    template = tmp_path / 'p' / 'repolish' / 'doc.txt.jinja'
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text(
+        'template header\n<!-- repolish:on:extra insert-extra -->\n<!-- repolish:off:extra -->\n',
+        encoding='utf-8',
+    )
+    (tmp_path / 'p' / 'repolish.py').write_text(
+        textwrap.dedent(
+            """\
+            from repolish import BaseContext, Provider, BaseInputs
+            from repolish.providers.models import TemplateMapping
+
+            class Ctx(BaseContext):
+                pass
+
+            class P(Provider[Ctx, BaseInputs]):
+                def create_context(self):
+                    return Ctx()
+
+                def create_file_mappings(self, context):
+                    return {'doc.txt': 'doc.txt.jinja'}
+
+                def create_file_insertions(self, context):
+                    def insert_extra():
+                        return 'inserted body'
+                    return {'doc.txt': {'insert-extra': insert_extra}}
+            """,
+        ),
+        encoding='utf-8',
+    )
+
+    # Stale project copy that must NOT be the base for the insertion render.
+    (tmp_path / 'doc.txt').write_text(
+        'stale content\n<!-- repolish:on:extra insert-extra -->\nold insertion\n<!-- repolish:off:extra -->\n',
+        encoding='utf-8',
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    content = (tmp_path / 'doc.txt').read_text(encoding='utf-8')
+    assert 'template header' in content
+    assert 'inserted body' in content
+    assert 'stale content' not in content
+    assert 'old insertion' not in content
+
+    # Check agrees: the staged insertion file matches the project file.
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Simulates Unix-style installed CLI execution from PATH.',
+)
+def test_post_process_placeholders_point_at_render_and_config_dirs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """{render_dir}/{config_dir} let commands target the render tree explicitly.
+
+    Tools invoked through wrappers (mise, task runners) may reset the working
+    directory to the project root, and gitignore-respecting tools like ruff
+    skip `.repolish/` entirely — the placeholders hand them the absolute
+    path instead: the script lives next to `repolish.yaml` ({config_dir})
+    and formats the render tree ({render_dir}).
+    """
+    # written directly (not via _write) so textwrap.dedent cannot strip the tabs
+    template = tmp_path / 'p' / 'repolish' / 'tabbed.txt'
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text('\tline one\n\tline two\n', encoding='utf-8')
+    _make_provider(tmp_path / 'p', files={})
+
+    # the script is invoked through {config_dir} and formats {render_dir}
+    script = tmp_path / 'record_and_untab.py'
+    records = tmp_path / 'argv.txt'
+    script.write_text(
+        '#!/usr/bin/env python3\n'
+        'import os, pathlib, sys\n'
+        'render_dir = sys.argv[1]\n'
+        f'records = pathlib.Path({str(records)!r})\n'
+        "records.write_text('\\n'.join([render_dir, os.getcwd()]))\n"
+        'for f in pathlib.Path(render_dir).glob("*.txt"):\n'
+        '    f.write_text(f.read_text().replace("\\t", "  "))\n',
+        encoding='utf-8',
+    )
+    script.chmod(0o755)
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'post_process': [
+                    '{config_dir}/record_and_untab.py {render_dir}',
+                ],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+
+    run_repolish(['apply'], exit_code=0)
+
+    # The command ran with the render dir it was handed: substitution
+    # resolved to the same tree repolish uses as cwd.
+    lines = records.read_text(encoding='utf-8').splitlines()
+    expected = str(tmp_path / '.repolish' / '_' / 'render' / 'repolish')
+    assert lines[0] == expected
+    assert lines[1] == expected
+
+    # The render tree was formatted through the explicit dir argument, so
+    # the project received the formatted content.
+    content = (tmp_path / 'tabbed.txt').read_text(encoding='utf-8')
+    assert content == '  line one\n  line two\n'
+
     run_repolish(['apply', '--check'], exit_code=0)

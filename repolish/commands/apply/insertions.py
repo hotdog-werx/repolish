@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.options import InsertionFileResult
 from repolish.config.paused import is_paused
+from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.insertions import (
     DisabledDiagnosticEntry,
     DisabledInsertionEntry,
@@ -20,17 +23,14 @@ from repolish.insertions import (
     is_provider_owner,
 )
 from repolish.insertions.files import (
-    apply_insertions_file,
     render_insertions_file,
     render_insertions_text,
 )
 from repolish.insertions.parser import InsertionBlock, parse_text
-from repolish.marker_kit import read_text_or_none
+from repolish.marker_kit import read_text_or_none, write_mode_preserved
 from repolish.utils import build_unified_diff, path_slug
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from repolish.directives import InsertZoneDeclaration
     from repolish.insertions.writer import WriteBackResult
     from repolish.providers import SessionBundle
@@ -44,7 +44,6 @@ class _ProviderInsertionContext:
 
     rel_path: str
     registry: dict
-    base_dir: Path
     provider_ids: list[str]
     pid_to_alias: dict[str, str] | None
     reports_dir: Path
@@ -238,46 +237,38 @@ def _process_provider_insertions(
     return aggregated, provider_results
 
 
-def _apply_file_insertions(
+def _stage_file_insertions(
     ctx: _ProviderInsertionContext,
-    *,
-    persist_changes: bool,
+    staged_root: Path,
+    source_text: str,
 ) -> tuple[InsertionFileResult, dict[str, dict[str, InsertionFileResult]]]:
-    """Apply insertions for a single file and return results."""
-    target = ctx.base_dir / ctx.rel_path
-    drive = apply_insertions_file if persist_changes else render_insertions_file
-    outcome = drive(
-        target,
+    """Render *ctx*'s file insertions and write the result into the render tree."""
+    rendered, zone_blocks = render_insertions_text(
+        source_text,
         ctx.registry,
         file_path=ctx.rel_path,
         zone_declarations=ctx.zone_declarations,
         zone_registry=ctx.zone_registry,
     )
-    if outcome is None:
-        return (
-            InsertionFileResult(
-                total_blocks=0,
-                failed_blocks=0,
-                functions=(),
-                diagnostics=(),
-            ),
-            {ctx.rel_path: {}},
-        )
+    staged_file = staged_root / ctx.rel_path
+    staged_file.parent.mkdir(parents=True, exist_ok=True)
+    if staged_file.exists():
+        write_mode_preserved(staged_file, rendered.text)
+    else:
+        staged_file.write_text(rendered.text, encoding='utf-8')
+    ctx.zone_blocks = zone_blocks
 
-    original_text = outcome.original
-    result = outcome.result
-    ctx.zone_blocks = outcome.zone_blocks
-    parsed = parse_text(original_text, file_path=ctx.rel_path)
-    all_blocks = [*parsed.blocks, *outcome.zone_blocks]
+    parsed = parse_text(source_text, file_path=ctx.rel_path)
+    all_blocks = [*parsed.blocks, *zone_blocks]
     # Zones resolve (and can be disabled) through the session-wide registry;
     # developer-authored markers stay on the file's allowlist.
     zone_registry = ctx.zone_registry or ctx.registry
     disabled_entries = [
         *collect_disabled_entries(parsed.blocks, ctx.registry),
-        *collect_disabled_entries(outcome.zone_blocks, zone_registry),
+        *collect_disabled_entries(zone_blocks, zone_registry),
     ]
 
-    if result.total_blocks == 0:
+    if rendered.total_blocks == 0:
         return (
             InsertionFileResult(
                 total_blocks=0,
@@ -291,8 +282,8 @@ def _apply_file_insertions(
     tag_to_func = _build_tag_to_func_map(all_blocks)
     aggregated, per_provider = _process_provider_insertions(
         ctx,
-        original_text,
-        result,
+        source_text,
+        rendered,
         tag_to_func,
         disabled_entries,
     )
@@ -358,140 +349,138 @@ def _zone_registry(
     }
 
 
-def apply_registered_insertions(
+def _mapped_staged_source(
     providers: SessionBundle,
-    base_dir: Path,
-    pid_to_alias: dict[str, str] | None = None,
-) -> tuple[
-    dict[str, InsertionFileResult],
-    dict[str, dict[str, InsertionFileResult]],
-]:
-    """Render provider-registered insertion blocks into target files in-place.
+    staged_root: Path,
+    rel_path: str,
+) -> Path | None:
+    """Return the staged render of *rel_path*'s mapped source, when mapped.
 
-    When multiple providers target the same file, each provider's insertions
-    are tracked separately for reporting. Reports are written per-provider.
-
-    Files carrying template-declared insert zones are processed even when no
-    provider registered ``repolish:on`` insertions for them — the union of
-    ``providers.file_insertions`` and the ferried zone declarations drives
-    the loop.
+    Mirrors the staged-source lookup the apply copy uses (including the
+    ``_repolish.`` filename-prefix fallback), so a mapped destination's
+    insertions render on fresh template output rather than the stale project
+    file.
     """
-    results: dict[str, InsertionFileResult] = {}
-    provider_results: dict[str, dict[str, InsertionFileResult]] = {}
-    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    paused_files = providers.paused_files
-    zone_map = _zone_map(providers)
+    source = providers.file_mappings.get(rel_path)
+    if source is None:
+        return None
+    source_str = get_source_str_from_mapping(source)
+    if not source_str:
+        return None
 
-    for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
-        registry = providers.file_insertions.get(rel_path, {})
-        provider_ids = providers.insertion_sources.get(rel_path, [])
-        if not _should_skip_file(rel_path, base_dir, paused_files):
-            ctx = _ProviderInsertionContext(
-                rel_path=rel_path,
-                registry=registry,
-                base_dir=base_dir,
-                provider_ids=provider_ids,
-                pid_to_alias=pid_to_alias,
-                reports_dir=reports_dir,
-                zone_declarations=zone_map.get(rel_path, ()),
-                zone_registry=_zone_registry(providers, rel_path),
-            )
-
-            aggregated, file_provider_results = _apply_file_insertions(
-                ctx,
-                persist_changes=True,
-            )
-            results[rel_path] = aggregated
-            _merge_provider_results(
-                provider_results,
-                rel_path,
-                file_provider_results[ctx.rel_path],
-            )
-
-    return results, provider_results
+    source_file = staged_root / source_str
+    if source_file.exists():
+        return source_file
+    cand = Path(source_str)
+    prefixed = staged_root / cand.parent / ('_repolish.' + cand.name)
+    if prefixed.exists():
+        return prefixed
+    return None
 
 
-def summarize_registered_insertions(
+def _staged_source_text(
     providers: SessionBundle,
     base_dir: Path,
-    pid_to_alias: dict[str, str] | None = None,
-) -> tuple[
-    dict[str, InsertionFileResult],
-    dict[str, dict[str, InsertionFileResult]],
-]:
-    """Collect insertion summaries without mutating project files."""
-    results: dict[str, InsertionFileResult] = {}
-    provider_results: dict[str, dict[str, InsertionFileResult]] = {}
-    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    paused_files = providers.paused_files
-    zone_map = _zone_map(providers)
+    staged_root: Path,
+    rel_path: str,
+) -> str | None:
+    """Return the base text for staging *rel_path*'s insertions.
 
-    for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
-        registry = providers.file_insertions.get(rel_path, {})
-        provider_ids = providers.insertion_sources.get(rel_path, [])
-        if not _should_skip_file(rel_path, base_dir, paused_files):
-            ctx = _ProviderInsertionContext(
-                rel_path=rel_path,
-                registry=registry,
-                base_dir=base_dir,
-                provider_ids=provider_ids,
-                pid_to_alias=pid_to_alias,
-                reports_dir=reports_dir,
-                zone_declarations=zone_map.get(rel_path, ()),
-                zone_registry=_zone_registry(providers, rel_path),
-            )
+    Mapped destinations start from their freshly rendered staged source;
+    auto-staged files start from their staged copy. A developer-owned file is
+    copied into the render tree first so insertions and post-process commands
+    operate on the staged copy, never the project file.
+    """
+    staged_file = staged_root / rel_path
 
-            aggregated, file_provider_results = _apply_file_insertions(
-                ctx,
-                persist_changes=False,
-            )
-            results[rel_path] = aggregated
-            _merge_provider_results(
-                provider_results,
-                rel_path,
-                file_provider_results[ctx.rel_path],
-            )
+    mapped_source = _mapped_staged_source(providers, staged_root, rel_path)
+    if mapped_source is not None:
+        mapped_text = read_text_or_none(mapped_source)
+        if mapped_text is not None:
+            return mapped_text
 
-    return results, provider_results
+    staged_text = read_text_or_none(staged_file)
+    if staged_text is not None:
+        return staged_text
+
+    project_file = base_dir / rel_path
+    project_text = read_text_or_none(project_file)
+    if project_text is None:
+        return None
+    staged_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(project_file, staged_file)
+    return project_text
 
 
 def stage_registered_insertions(
     providers: SessionBundle,
     base_dir: Path,
     setup_output: Path,
-) -> None:
-    """Render insertion targets into staged output for apply/check parity.
+    pid_to_alias: dict[str, str] | None = None,
+) -> tuple[
+    dict[str, InsertionFileResult],
+    dict[str, dict[str, InsertionFileResult]],
+    frozenset[str],
+]:
+    """Render insertion targets into the render tree for apply/check parity.
 
-    For files that already exist in the staged tree, render insertions on top of
-    staged content. Otherwise render from the developer-owned file in ``base_dir``
-    and materialize the result in staged output.
+    Every insertion target is materialized under the render tree — mapped
+    destinations from their freshly rendered staged source, developer-owned
+    files copied in from the project tree — so post-process commands run once
+    over final content and the project tree is only ever touched by the final
+    copy. Files carrying template-declared insert zones are processed even
+    when no provider registered ``repolish:on`` insertions for them.
+
+    Returns ``(file_results, provider_results, staged_dests)``.
+    *staged_dests* lists the destinations materialized in the render tree;
+    callers pass it to ``apply_generated_output`` so the copy step knows
+    which staged files are insertion output.
     """
     staged_root = setup_output / 'repolish'
+    results: dict[str, InsertionFileResult] = {}
+    provider_results: dict[str, dict[str, InsertionFileResult]] = {}
+    reports_dir = base_dir / '.repolish' / '_' / 'insertions'
+    reports_dir.mkdir(parents=True, exist_ok=True)
     paused_files = providers.paused_files
     zone_map = _zone_map(providers)
+    staged_dests: set[str] = set()
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
-        registry = providers.file_insertions.get(rel_path, {})
-        target = base_dir / rel_path
-        if _should_skip_file(rel_path, base_dir, paused_files):
+        if paused_files and is_paused(rel_path, paused_files):
+            continue
+        source_text = _staged_source_text(
+            providers,
+            base_dir,
+            staged_root,
+            rel_path,
+        )
+        if source_text is None:
             continue
 
-        staged_file = staged_root / rel_path
-        source_text = read_text_or_none(staged_file)
-        if source_text is None:
-            source_text = target.read_text(encoding='utf-8')
-
-        rendered, _zone_blocks = render_insertions_text(
-            source_text,
-            registry,
-            file_path=rel_path,
+        ctx = _ProviderInsertionContext(
+            rel_path=rel_path,
+            registry=providers.file_insertions.get(rel_path, {}),
+            provider_ids=providers.insertion_sources.get(rel_path, []),
+            pid_to_alias=pid_to_alias,
+            reports_dir=reports_dir,
             zone_declarations=zone_map.get(rel_path, ()),
             zone_registry=_zone_registry(providers, rel_path),
         )
-        staged_file.parent.mkdir(parents=True, exist_ok=True)
-        staged_file.write_text(rendered.text, encoding='utf-8')
+
+        aggregated, file_provider_results = _stage_file_insertions(
+            ctx,
+            staged_root,
+            source_text,
+        )
+        results[rel_path] = aggregated
+        _merge_provider_results(
+            provider_results,
+            rel_path,
+            file_provider_results[ctx.rel_path],
+        )
+        staged_dests.add(rel_path)
+
+    return results, provider_results, frozenset(staged_dests)
 
 
 def check_registered_insertions(

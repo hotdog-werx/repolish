@@ -707,7 +707,14 @@ def test_post_process_promoted_files_updates_changed_outputs(
     out = tmp_path / 'out.md'
     out.write_text('before\n', encoding='utf-8')
 
-    def _fake_run_post_process(_commands: object, cwd: Path) -> None:
+    seen_config_dirs: list[Path] = []
+
+    def _fake_run_post_process(
+        _commands: object,
+        cwd: Path,
+        config_dir: Path,
+    ) -> None:
+        seen_config_dirs.append(config_dir)
         (cwd / 'out.md').write_text('after\n', encoding='utf-8')
 
     mocker.patch(
@@ -719,6 +726,8 @@ def test_post_process_promoted_files_updates_changed_outputs(
 
     assert out.read_text(encoding='utf-8') == 'after\n'
     assert root_session.promoted_apply_result == {'out.md': 'written'}
+    # {config_dir} resolves to the directory holding repolish.yaml
+    assert seen_config_dirs == [tmp_path]
 
 
 def test_run_root_pass_triggers_promoted_post_process_in_apply_mode(

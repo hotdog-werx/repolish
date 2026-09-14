@@ -2040,9 +2040,18 @@ def test_provider_insertion_with_post_process_formatting(
         "    open(f, 'w').write(''.join(line.lstrip() for line in lines))\n",
         encoding='utf-8',
     )
-    # Create repolish.yaml with post_process that runs the script
+    # Create repolish.yaml with post_process that runs the script. Reference
+    # the script by absolute path: post-process commands run with the render
+    # tree (.repolish/_/render/repolish) as cwd, not the project root.
     (tmp_path / 'repolish.yaml').write_text(
-        '{"providers": {"p": {"provider_root": "./p"}}, "post_process": ["python strip_spaces.py test.txt"]}',
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'post_process': [
+                    f'python {tmp_path / "strip_spaces.py"} test.txt',
+                ],
+            },
+        ),
         encoding='utf-8',
     )
 

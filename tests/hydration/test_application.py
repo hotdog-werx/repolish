@@ -373,3 +373,61 @@ def test_apply_skips_regular_file_used_as_mapping_source(
 
     assert (base_dir / 'final-config.yml').read_text() == 'template content'
     assert not (base_dir / 'template-config.yml').exists()
+
+
+def test_apply_copies_insertion_dests_even_with_auto_staging_disabled(
+    tmp_path: Path,
+):
+    """Insertion-materialized staged files copy out even in root passes.
+
+    Auto-staged files are skipped when auto staging is disabled (monorepo
+    root passes), but insertion targets are explicit provider declarations
+    and must still land in the project.
+    """
+    setup_output = tmp_path / 'setup-output'
+    repolish_dir = setup_output / 'repolish'
+    (repolish_dir / 'docs').mkdir(parents=True)
+    (repolish_dir / 'auto.txt').write_text('auto-staged output')
+    (repolish_dir / 'docs' / 'README.md').write_text(
+        'insertion-rendered content',
+    )
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+    (base_dir / 'docs').mkdir()
+    (base_dir / 'docs' / 'README.md').write_text('developer-owned original')
+
+    providers = SessionBundle(
+        anchors={},
+        delete_files=[],
+        file_mappings={},
+        delete_history={},
+    )
+    insertion_dests = frozenset({'docs/README.md'})
+
+    status = apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        disable_auto_staging=True,
+        insertion_dests=insertion_dests,
+    )
+
+    # Auto-staged file skipped in a root pass...
+    assert not (base_dir / 'auto.txt').exists()
+    assert 'auto.txt' not in status
+    # ...while the insertion target still lands, without a status entry —
+    # insertion targets render as developer-owned in the summary tree.
+    readme = base_dir / 'docs' / 'README.md'
+    assert readme.read_text() == 'insertion-rendered content'
+    assert 'docs/README.md' not in status
+
+    # A second pass with identical content leaves the project file alone.
+    apply_generated_output(
+        setup_output,
+        providers,
+        base_dir,
+        disable_auto_staging=True,
+        insertion_dests=insertion_dests,
+    )
+    assert readme.read_text() == 'insertion-rendered content'

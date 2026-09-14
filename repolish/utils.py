@@ -1,6 +1,7 @@
 import contextlib
 import difflib
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -15,6 +16,12 @@ from hotlog.live import live_logging
 V = TypeVar('V')
 
 logger = get_logger(__name__)
+
+# Placeholder pattern for post_process commands: a braced lowercase identifier.
+# The conservative character class leaves argument text such as awk's
+# '{print $1}' untouched — a bare braced identifier is either one of
+# repolish's documented placeholders or a mistake worth failing on.
+_PLACEHOLDER_RE = re.compile(r'\{[a-z][a-z0-9_]*\}')
 
 
 def _normalize_command(raw: object) -> Sequence[str]:
@@ -37,16 +44,37 @@ def _normalize_command(raw: object) -> Sequence[str]:
     raise TypeError(msg)
 
 
+def _applied_placeholders(
+    argv: Sequence[str],
+    values: Mapping[str, str],
+) -> dict[str, str]:
+    """Return the ``{placeholder: value}`` entries *argv* references.
+
+    Only names actually used in *argv* are returned, so the command log
+    shows the substitutions that shaped it — values a developer never
+    referenced are noise.
+    """
+    names: set[str] = set()
+    for token in argv:
+        names.update(m[1:-1] for m in _PLACEHOLDER_RE.findall(token))
+    return {name: values[name] for name in sorted(names)}
+
+
 def _run_argv(
     argv: Sequence[str],
     cwd: Path,
+    env: Mapping[str, str] | None = None,
+    placeholders: Mapping[str, str] | None = None,
 ) -> None:
     """Run an argv command in cwd, raise CalledProcessError on non-zero exit.
 
     Output (stdout + stderr) is captured and only printed when the current
     verbosity level is >= 1 (-v) or the command exits non-zero.
     """
-    logger.info('post_process_command', command=list(argv), cwd=str(cwd))
+    fields: dict[str, object] = {'command': list(argv), 'cwd': str(cwd)}
+    if placeholders:
+        fields.update(placeholders)
+    logger.info('post_process_command', **fields)
     # Run the tokenized argv without a shell. This avoids shell=True based
     # injection risk while keeping behavior simple and convenient for
     # developers. If you need complex shell pipelines, commit a script and
@@ -58,6 +86,7 @@ def _run_argv(
         argv,
         check=False,
         cwd=str(cwd),
+        env=dict(env) if env is not None else None,
         stdout=None if verbose else subprocess.PIPE,
         stderr=None if verbose else subprocess.STDOUT,
     )
@@ -76,7 +105,47 @@ def _run_argv(
         )
 
 
-def run_post_process(commands: Iterable[object], cwd: Path) -> None:
+def _resolve_placeholders(
+    argv: Sequence[str],
+    values: Mapping[str, str],
+) -> tuple[str, ...]:
+    """Substitute ``{placeholder}`` tokens in argv against *values*.
+
+    Runs after tokenization, so a substituted path containing spaces stays a
+    single argv element. Any braced identifier that is not a known placeholder
+    raises ``ValueError`` — a typo should fail loudly here rather than
+    confusingly inside the command.
+    """
+
+    def _sub(match: re.Match[str]) -> str:
+        name = match[0][1:-1]
+        value = values.get(name)
+        if value is None:
+            msg = f'unknown post_process placeholder {{{name}}}; supported: {", ".join(sorted(values))}'
+            raise ValueError(msg)
+        return value
+
+    return tuple(_PLACEHOLDER_RE.sub(_sub, token) for token in argv)
+
+
+def _post_process_runs_from_config_dir() -> bool:
+    """Return True when REPOLISH_NO_POST_PROCESS_CD is truthy in env.
+
+    Escape hatch for wrappers (poe, mise tasks) that locate their own config
+    through the working directory and cannot run from inside the render tree.
+    When set, commands execute from the config directory instead — with
+    ``{render_dir}`` still pointing at the rendered tree, so a command like
+    ``poe format-python {render_dir}`` keeps working.
+    """
+    val = os.getenv('REPOLISH_NO_POST_PROCESS_CD', '')
+    return str(val).lower() in ('1', 'true', 'yes')
+
+
+def run_post_process(
+    commands: Iterable[object],
+    cwd: Path,
+    config_dir: Path,
+) -> None:
     """Run post-processing commands safely.
 
     Supports either:
@@ -89,26 +158,67 @@ def run_post_process(commands: Iterable[object], cwd: Path) -> None:
     script and reference that script as an argv list or as a single
     executable.
 
+    Commands may reference three placeholders, substituted before execution:
+    - ``{render_dir}`` — absolute path to the rendered tree holding the final
+      content before it is copied to the project (normally also the working
+      directory)
+    - ``{render_dir_rel}`` — the same tree relative to the config directory
+    - ``{config_dir}`` — absolute path to the directory containing
+      `repolish.yaml`
+    The absolute ones are also exported as ``REPOLISH_RENDER_DIR`` /
+    ``REPOLISH_CONFIG_DIR`` in the command's environment. Setting
+    ``REPOLISH_NO_POST_PROCESS_CD`` executes commands from the config
+    directory instead of the render tree (for wrappers that find their config
+    via cwd); ``{render_dir}`` keeps pointing at the files either way.
+
     Args:
         commands: Iterable of command specifications (str or Sequence[str]).
-        cwd: Working directory to run the commands in.
+        cwd: Rendered tree to process ({render_dir}); made absolute here.
+        config_dir: Directory containing `repolish.yaml` ({config_dir});
+            made absolute here.
 
     Raises:
-        ValueError: when a string command contains shell metacharacters.
+        ValueError: when a command contains an unknown ``{placeholder}``.
         subprocess.CalledProcessError: when a command exits non-zero.
     """
+    # Absolutize both paths here so the documented placeholder promise holds
+    # for any caller — the config layer already resolves config_dir
+    # (config_file.resolve().parent) and staging builds the render tree from
+    # it, but this is a shared utility and the absolute-vs-relative contract
+    # is a public promise, not a caller's discipline to maintain.
+    render_dir = cwd.resolve()
+    config_dir = config_dir.resolve()
+    values = {
+        'render_dir': str(render_dir),
+        'render_dir_rel': os.path.relpath(render_dir, config_dir),
+        'config_dir': str(config_dir),
+    }
     normalised = [_normalize_command(raw) for raw in commands if raw is not None]
     normalised = [argv for argv in normalised if argv]
     if not normalised:
         return
-    label = f'post-process ({len(normalised)} command{"s" if len(normalised) != 1 else ""})'
+    # Resolve every command before starting any of them so an unknown
+    # placeholder fails the run up front instead of mid-sequence.
+    resolved = [_resolve_placeholders(argv, values) for argv in normalised]
+    label = f'post-process ({len(resolved)} command{"s" if len(resolved) != 1 else ""})'
     in_ci = os.environ.get('CI', '').strip().lower() in ('1', 'true', 'yes')
     ctx = contextlib.nullcontext() if in_ci else live_logging(label)
+    env = {
+        **os.environ,
+        'REPOLISH_RENDER_DIR': values['render_dir'],
+        'REPOLISH_CONFIG_DIR': values['config_dir'],
+    }
+    process_cwd = config_dir if _post_process_runs_from_config_dir() else cwd
     if in_ci:
         logger.info('post_process', label=label)
     with ctx:
-        for argv in normalised:
-            _run_argv(argv, cwd)
+        for raw_argv, argv in zip(normalised, resolved, strict=True):
+            _run_argv(
+                argv,
+                process_cwd,
+                env,
+                _applied_placeholders(raw_argv, values),
+            )
 
 
 def ensure_dot_repolish(base_dir: Path) -> Path:
