@@ -162,13 +162,21 @@ provider's file mapping selects them for the current context.
 
 ## Post-process
 
+Before post-processing, insertion output is staged too: files that carry
+provider insertions (developer-owned or template output alike) are rendered into
+`.repolish/_/render/` — a developer-owned file is copied there first — so the
+render tree always holds the complete final content.
+
 If `post_process` commands are configured, repolish runs them now inside the
-`.repolish/_/render/` directory. This is where formatters live — running
-`ruff --fix .` or `prettier --write .` here ensures the diff and apply steps
-always operate on correctly formatted output, so formatting-only changes never
-cause spurious diffs.
+`.repolish/_/render/` directory — exactly once, for the whole tree. This is
+where formatters live — running `ruff --fix .` or `prettier --write .` here
+ensures the diff and apply steps always operate on correctly formatted output,
+so formatting-only changes never cause spurious diffs.
 
 Commands are run in order. If any exits non-zero, repolish stops immediately.
+The render directory is the working directory for every command, so reference
+project-root scripts with an absolute path (or install the command on your
+`PATH`) rather than a project-relative one.
 
 ---
 

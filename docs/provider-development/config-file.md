@@ -40,7 +40,10 @@ Repolish cannot run without at least one provider configured.
   rendering, inside the `.repolish/_/render/` directory. This is where
   formatters live — running `ruff format .` or `prettier --write .` here ensures
   the diff and apply steps always operate on correctly formatted output.
-  Commands run in order; if any exits non-zero repolish stops immediately.
+  Commands run in order, once per session, with the render directory as their
+  working directory — reference project-root scripts with an absolute path (or
+  install the command on your `PATH`). If any exits non-zero repolish stops
+  immediately.
 
   ```yaml
   post_process:

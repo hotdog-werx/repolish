@@ -27,10 +27,13 @@ Quick checklist:
 ## Where insertions fit in apply
 
 Insertions run after template rendering and the
-[after-render directive phase](../markers/phases.md#the-full-pipeline), once the
-generated files exist on disk. They are applied before post-processing so
-formatters can see the final inserted content, and then the per-file insertion
-status is reported in the summary.
+[after-render directive phase](../markers/phases.md#the-full-pipeline). Every
+insertion target is materialized in the render tree (`.repolish/_/render/`) — a
+developer-owned file is copied there first, and a mapped destination starts from
+its freshly rendered template output — before post-processing, so formatters see
+the final inserted content. The project tree is only touched by the final copy
+of the rendered files, and the per-file insertion status is reported in the
+summary.
 
 In check mode, insertion output is also checked for drift. If insertion-managed
 content is stale, `repolish apply --check` fails just like template drift.

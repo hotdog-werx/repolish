@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 def _auto_stage_skip_reason(
     skip_sources: set[str],
     paused_files: frozenset[str],
+    insertion_dests: frozenset[str] = frozenset(),
 ) -> Callable[[str], str | None]:
     """Build the auto-stage skip predicate used by :func:`_apply_regular_files`.
 
@@ -30,6 +31,8 @@ def _auto_stage_skip_reason(
             return 'paused'
         if rel_str in skip_sources:
             return 'in_skip_sources'
+        if rel_str in insertion_dests:
+            return 'insertion_target'
         return None
 
     return _reason
@@ -219,6 +222,7 @@ def apply_generated_output(
     base_dir: Path,
     *,
     disable_auto_staging: bool = False,
+    insertion_dests: frozenset[str] = frozenset(),
 ) -> dict[str, str]:
     """Copy generated files into the project root and apply deletions.
 
@@ -238,6 +242,10 @@ def apply_generated_output(
             ``create_file_mappings`` are written.  Auto-staged files (those
             present in the provider's ``repolish/`` tree but not explicitly
             mapped) are silently skipped.  Set this for monorepo root passes.
+        insertion_dests: Destinations materialized in the render tree by the
+            insertion staging pass. Copied out after file mappings so
+            insertion content wins, and copied even when auto-staging is
+            disabled — insertion targets are explicit provider declarations.
     """
     resolution = resolve_mappings(providers)
     paused_files = resolution.paused_dests
@@ -254,6 +262,8 @@ def apply_generated_output(
 
     # Build skip set: include create-only files that already exist in the project
     # Also skip sources that providers explicitly suppressed via a None mapping.
+    # Insertion destinations carry their own copy pass below, so keep them out
+    # of the auto-staged copy.
     # Paused paths are checked with the pause matcher separately — they may be
     # directory or glob entries, not just exact paths.
     skip_sources = mapped_sources | resolution.suppressed_sources
@@ -279,7 +289,7 @@ def apply_generated_output(
     file_status = _apply_regular_files(
         output_files,
         setup_output,
-        _auto_stage_skip_reason(skip_sources, paused_files),
+        _auto_stage_skip_reason(skip_sources, paused_files, insertion_dests),
         base_dir,
         disable_auto_staging=disable_auto_staging,
     )
@@ -294,6 +304,16 @@ def apply_generated_output(
         paused_files,
     )
 
+    # Copy insertion-materialized files after mappings so insertion content
+    # wins over the plain mapped copy. These copies deliberately do not feed
+    # the returned status dict: an insertion target is developer-owned, and
+    # the summary tree marks it as such rather than as a template write.
+    _apply_insertion_files(
+        insertion_dests,
+        setup_output,
+        base_dir,
+    )
+
     # Now apply deletions at the project root as the final step
     file_status |= _apply_deletions(
         providers.delete_files,
@@ -301,6 +321,35 @@ def apply_generated_output(
         paused_files,
     )
     return file_status
+
+
+def _apply_insertion_files(
+    insertion_dests: frozenset[str],
+    setup_output: Path,
+    base_dir: Path,
+) -> None:
+    """Copy insertion-materialized staged files into the project root.
+
+    These files were staged (and post-processed) by the insertion pass; this
+    copy is the only step that touches the project copy of a developer-owned
+    insertion target. Mapped destinations may already have been copied by
+    :func:`_apply_file_mappings`; the insertion content wins by running after.
+    """
+    staged_root = setup_output / 'repolish'
+    for rel_str in insertion_dests:
+        source = staged_root / rel_str
+        dest = base_dir / rel_str
+        if dest.exists() and filecmp.cmp(str(source), str(dest), shallow=False):
+            continue
+        logger.info(
+            'copying_insertion_file',
+            source=str(source),
+            dest=str(dest),
+            rel=rel_str,
+            _display_level=1,
+        )
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
 
 
 def _apply_deletions(

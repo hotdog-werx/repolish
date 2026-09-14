@@ -16,9 +16,7 @@ from repolish.commands.apply.display import (
     print_summary_tree,
 )
 from repolish.commands.apply.insertions import (
-    apply_registered_insertions,
     stage_registered_insertions,
-    summarize_registered_insertions,
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
@@ -108,18 +106,6 @@ def _run_post_process_if_needed(
         post_cwd = setup_output / 'repolish'
         if post_cwd.exists() and any(post_cwd.iterdir()):
             run_post_process(config.post_process, post_cwd)
-
-
-def _run_post_process_on_base_dir(
-    config: RepolishConfig,
-    base_dir: Path,
-    *,
-    skip_post_process: bool,
-) -> None:
-    """Run post-process on the project root (base_dir) for insertion files."""
-    if skip_post_process:
-        return
-    run_post_process(config.post_process, base_dir)
 
 
 def _validation_has_errors(session: ResolvedSession) -> bool:
@@ -268,15 +254,29 @@ def apply_session(
     )
 
     is_root_pass = session.global_context.workspace.mode == 'root'
+
+    # Stage insertions into the render tree in both modes so check compares and
+    # apply copy the identical content, then post-process the render tree
+    # exactly once. The project tree is only ever touched by the final copy.
+    (
+        session.insertion_results,
+        session.provider_insertion_results,
+        staged_insertion_dests,
+    ) = stage_registered_insertions(
+        providers,
+        base_dir,
+        setup_output,
+        pid_to_alias,
+    )
+    _run_post_process_if_needed(
+        config,
+        setup_output,
+        skip_post_process=skip_post_process,
+    )
+
     if check_only:
         # In check mode, we compare staged output against base_dir without modifying files.
         # Do NOT apply_generated_output here - that would overwrite local changes!
-        stage_registered_insertions(providers, base_dir, setup_output)
-        _run_post_process_if_needed(
-            config,
-            setup_output,
-            skip_post_process=skip_post_process,
-        )
         rc, check_result = finish_check(
             CheckContext(
                 setup_output=setup_output,
@@ -287,47 +287,20 @@ def apply_session(
                 disable_auto_staging=is_root_pass,
             ),
         )
-        file_results, provider_results = summarize_registered_insertions(
-            providers,
-            base_dir,
-            pid_to_alias,
-        )
-        session.insertion_results = file_results
-        session.provider_insertion_results = provider_results
         session.apply_result = check_result
         return rc
 
-    # Post-process the staged tree before it is copied out so the project
-    # receives the same content check compares against. Run it before
-    # apply_generated_output, not after: post-formating a staged tree that was
-    # already copied leaves the project with the unformatted content while
-    # check reports drift against the formatted staged copy on every run.
-    _run_post_process_if_needed(
-        config,
-        setup_output,
-        skip_post_process=skip_post_process,
-    )
+    # Copy the post-processed render tree out to the project. Post-process
+    # runs before this copy, never after: formatting a tree that was already
+    # copied leaves the project with unformatted content while check reports
+    # drift against the formatted staged copy on every run.
     session.apply_result = apply_generated_output(
         setup_output,
         providers,
         base_dir,
         disable_auto_staging=is_root_pass,
+        insertion_dests=staged_insertion_dests,
     )
-    # Insertion files are written straight into the project, so the formatter
-    # needs a second pass on base_dir for their content.
-    file_results, provider_results = apply_registered_insertions(
-        providers,
-        base_dir,
-        pid_to_alias,
-    )
-    session.insertion_results = file_results
-    session.provider_insertion_results = provider_results
-    if file_results and config.post_process:
-        _run_post_process_on_base_dir(
-            config,
-            base_dir,
-            skip_post_process=skip_post_process,
-        )
     apply_symlinks(resolved_symlinks, config.providers)
     session.paused_copies = apply_copies(
         session.resolved_copies,
