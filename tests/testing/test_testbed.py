@@ -17,6 +17,13 @@ import pytest
 from pydantic import BaseModel
 
 from repolish import BaseContext, BaseInputs, Provider, TemplateMapping
+from repolish.providers.models import (
+    FileValidatorOptions,
+    FileValidatorSpec,
+    ValidationResult,
+    ValidationStatus,
+    ValidatorMapping,
+)
 from repolish.testing import ProviderTestBed, assert_snapshots, make_context
 
 if TYPE_CHECKING:
@@ -61,6 +68,49 @@ class _TestProvider(Provider[_Ctx, _Inputs]):
 
     def provide_inputs(self, opt: ProvideInputsOptions[_Ctx]) -> list[_Inputs]:
         return [_Inputs(extra_msg='hey')]
+
+
+def _header_validator(context: _Ctx, path: Path) -> ValidationResult:
+    """Pass when the file starts with ``'ok'``, error otherwise."""
+    text = path.read_text(encoding='utf-8')
+    return ValidationResult(
+        status=ValidationStatus.PASS if text.startswith('ok') else ValidationStatus.ERROR,
+        message='missing ok header',
+        path=str(path),
+        validator_name='header',
+    )
+
+
+class _ValidatorProvider(Provider[_Ctx, _Inputs]):
+    """Provider exercising validator registration and execution."""
+
+    def create_context(self) -> _Ctx:
+        return _Ctx()
+
+    def create_file_validators(self, context: _Ctx) -> dict[str, ValidatorMapping[_Ctx]]:
+        def boom(context: _Ctx, path: Path) -> ValidationResult:
+            msg = 'boom'
+            raise RuntimeError(msg)
+
+        def unnamed(context: _Ctx, path: Path) -> ValidationResult:
+            return ValidationResult(status=ValidationStatus.PASS)
+
+        return {
+            'config.txt': {
+                'header': _header_validator,
+                'crash': boom,
+                'unnamed': unnamed,
+                'guarded': FileValidatorSpec(fn=_header_validator),
+                'off': FileValidatorSpec(
+                    fn=_header_validator,
+                    options=FileValidatorOptions(enabled=False),
+                ),
+                'muted': FileValidatorSpec(
+                    fn=_header_validator,
+                    options=FileValidatorOptions(validators={'muted': False}),
+                ),
+            },
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +607,184 @@ class TestPromoteFileMappings:
             templates_root=templates_root,
         )
         assert bed.promote_file_mappings() == {}
+
+
+# ===================================================================
+# ProviderTestBed - validators, insertions, copies
+# ===================================================================
+
+
+class TestProviderTestBedHookAccess:
+    """Registry accessors for hooks the testbed previously did not expose."""
+
+    def test_validators_returns_registry(self, templates_root: Path) -> None:
+        bed = ProviderTestBed(
+            provider_class=_ValidatorProvider,
+            templates_root=templates_root,
+        )
+        registry = bed.validators()
+        assert set(registry) == {'config.txt'}
+        assert registry['config.txt']['header'] is _header_validator
+        off = registry['config.txt']['off']
+        assert isinstance(off, FileValidatorSpec)
+        assert off.options.enabled is False
+
+    def test_validators_default_empty(self, templates_root: Path) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=templates_root,
+        )
+        assert bed.validators() == {}
+
+    def test_insertions_default_empty(self, templates_root: Path) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=templates_root,
+        )
+        assert bed.insertions() == {}
+
+    def test_insertion_registry_default_empty(self, templates_root: Path) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=templates_root,
+        )
+        assert bed.insertion_registry() == {}
+
+    def test_copies_default_empty(self, templates_root: Path) -> None:
+        bed = ProviderTestBed(
+            provider_class=_TestProvider,
+            templates_root=templates_root,
+        )
+        assert bed.copies() == []
+
+
+class TestProviderTestBedRunValidators:
+    """run_validators() executes registered validators against materialized files."""
+
+    def test_run_validators_reports_all_enabled_results(
+        self,
+        templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_ValidatorProvider,
+            templates_root=templates_root,
+        )
+        results = bed.run_validators({'config.txt': 'ok content\n'})
+        per_file = results['config.txt']
+        # Disabled entries (enabled=False and per-name validators map) are skipped
+        assert set(per_file) == {'header', 'crash', 'unnamed', 'guarded'}
+        assert per_file['header'].status == ValidationStatus.PASS
+        # An enabled FileValidatorSpec with default options runs like a bare callable
+        assert per_file['guarded'].status == ValidationStatus.PASS
+        # A validator that raises becomes an ERROR with the pipeline's crash shape
+        crash = per_file['crash']
+        assert crash.status == ValidationStatus.ERROR
+        assert crash.message == "Validator 'crash' for 'config.txt' crashed: boom"
+        assert crash.path == 'config.txt'
+        # A result without validator_name gets the registered name filled in
+        assert per_file['unnamed'].status == ValidationStatus.PASS
+        assert per_file['unnamed'].validator_name == 'unnamed'
+
+    def test_run_validators_preserves_returned_validator_name(
+        self,
+        templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_ValidatorProvider,
+            templates_root=templates_root,
+        )
+        results = bed.run_validators({'config.txt': 'nope\n'})
+        header = results['config.txt']['header']
+        assert header.status == ValidationStatus.ERROR
+        assert header.message == 'missing ok header'
+        assert header.validator_name == 'header'
+
+    def test_run_validators_defaults_to_render_all(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tpl = tmp_path / 'resources' / 'templates' / 'repolish'
+        tpl.mkdir(parents=True)
+        (tpl / 'config.txt').write_text('ok template\n')
+        templates_root = tmp_path / 'resources' / 'templates'
+
+        class _RenderedValidatorProvider(_ValidatorProvider):
+            def create_file_mappings(
+                self,
+                context: _Ctx,
+            ) -> dict[str, str | TemplateMapping | None]:
+                return {'config.txt': 'config.txt'}
+
+        bed = ProviderTestBed(
+            provider_class=_RenderedValidatorProvider,
+            templates_root=templates_root,
+        )
+        results = bed.run_validators()
+        assert results['config.txt']['header'].status == ValidationStatus.PASS
+
+    def test_run_validators_writes_files_into_base_dir(
+        self,
+        templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_ValidatorProvider,
+            templates_root=templates_root,
+        )
+        base_dir = tmp_path / 'project'
+        results = bed.run_validators(
+            {'config.txt': 'ok\n'},
+            base_dir=base_dir,
+        )
+        assert (base_dir / 'config.txt').read_text(encoding='utf-8') == 'ok\n'
+        assert results['config.txt']['header'].status == ValidationStatus.PASS
+
+    def test_run_validators_accepts_bytes_content(
+        self,
+        templates_root: Path,
+    ) -> None:
+        bed = ProviderTestBed(
+            provider_class=_ValidatorProvider,
+            templates_root=templates_root,
+        )
+        results = bed.run_validators({'config.txt': b'ok bytes\n'})
+        assert results['config.txt']['header'].status == ValidationStatus.PASS
+
+    def test_run_validators_materializes_nested_paths(
+        self,
+        templates_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        class _NestedProvider(_ValidatorProvider):
+            def create_file_validators(self, context: _Ctx) -> dict[str, ValidatorMapping[_Ctx]]:
+                return {'nested/deep/config.txt': {'header': _header_validator}}
+
+        nested_bed = ProviderTestBed(
+            provider_class=_NestedProvider,
+            templates_root=templates_root,
+        )
+        base_dir = tmp_path / 'project'
+        results = nested_bed.run_validators(
+            {'nested/deep/config.txt': 'ok\n'},
+            base_dir=base_dir,
+        )
+        assert (base_dir / 'nested' / 'deep' / 'config.txt').exists()
+        assert results['nested/deep/config.txt']['header'].status == ValidationStatus.PASS
+
+    def test_run_validators_crash_when_file_missing(
+        self,
+        templates_root: Path,
+    ) -> None:
+        """A validator for an unmaterialized file crashes into an ERROR result."""
+        bed = ProviderTestBed(
+            provider_class=_ValidatorProvider,
+            templates_root=templates_root,
+        )
+        results = bed.run_validators({})
+        crash = results['config.txt']['crash']
+        assert crash.status == ValidationStatus.ERROR
+        # header reads the (nonexistent) file first, so it crashes as well
+        assert results['config.txt']['header'].status == ValidationStatus.ERROR
 
 
 # ===================================================================
