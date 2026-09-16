@@ -330,6 +330,47 @@ def test_stage_project_git_init(tmp_path: Path) -> None:
     assert (project / '.git').is_dir()
 
 
+def test_copies_resolve_from_resources_root(tmp_path: Path) -> None:
+    """Copy sources resolve from the resources root, not the templates dir.
+
+    Mirrors a linked provider's registration: `resources_dir` is the package's
+    `resources/` directory, and `create_default_copies` sources are relative
+    to it. The copy file deliberately lives outside the templates tree.
+    """
+    provider_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+        from repolish.providers.models import ResourceCopy
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_default_copies(self):
+                return [ResourceCopy(source='configs/app.toml', target='app.toml')]
+        """
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        provider_code,
+        templates={'README.md.jinja': 'hello\n'},
+    )
+    # The copy source sits under resources/, a sibling of templates/
+    copy_source = tmp_path / 'pkg' / 'resources' / 'configs' / 'app.toml'
+    copy_source.parent.mkdir(parents=True)
+    copy_source.write_text('copied content\n', encoding='utf-8')
+    project = tmp_path / 'project'
+    project.mkdir()
+
+    result = apply_provider(provider_cls, project)
+
+    assert result.exit_code == 0
+    assert (project / 'app.toml').read_text(
+        encoding='utf-8',
+    ) == 'copied content\n'
+
+
 def test_hand_edit_drift_is_detected_then_healed(tmp_path: Path) -> None:
     """A hand edit surfaces as check drift; assert_idempotent heals it."""
     provider_cls = _make_provider_pkg(

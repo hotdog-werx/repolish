@@ -27,6 +27,13 @@ applies, and validates: everything `repolish apply` does, with one difference:
 the `repolish.yaml` is written by the harness, pointing at your provider
 package. No link CLI, no installed wheels, no real repository.
 
+Resource copies and symlinks work as in production: the harness registers
+`resources_dir` at the package's `resources/` root (the parent of the templates
+directory), which is what the provider's link CLI records, so sources outside
+the templates tree resolve correctly. The run is also anchored to the project
+directory, so relative copy and symlink targets land inside the fixture, not
+your test process's working directory.
+
 The made-up project is a **fixture**: a checked-in directory holding the
 simplified state of a repo you want to simulate: developer-owned files,
 insertion markers, values for `repolish-regex` capture, an old config file your

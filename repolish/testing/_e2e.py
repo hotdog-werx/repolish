@@ -11,6 +11,7 @@ repository.
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -179,7 +180,10 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
     validators all execute against *project_dir* — with one difference: the
     ``repolish.yaml`` is written by the harness, pointing the configured alias
     at the provider package found from *provider_class*. Provider registration
-    is written from that path (no link CLI, no installed wheel).
+    is written from that path (no link CLI, no installed wheel), with
+    ``resources_dir`` set to the package's resources root (the parent of the
+    templates directory), so copies and symlinks resolve their sources exactly
+    as a linked provider's registration would.
 
     Args:
         provider_class: The concrete ``Provider`` subclass to test. Its
@@ -209,7 +213,16 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
     """
     provider_root = _locate_templates_root(provider_class)
     config_data: dict[str, Any] = dict(config) if config else {}
-    config_data['providers'] = {alias: {'provider_root': str(provider_root)}}
+    # `_locate_templates_root` only ever finds `<pkg>/resources/templates`, so
+    # its parent is the resources root the linker CLI would register. Copies
+    # and symlinks resolve their sources against `resources_dir`; leaving it
+    # unset would default it to the templates directory and break them.
+    config_data['providers'] = {
+        alias: {
+            'provider_root': str(provider_root),
+            'resources_dir': str(provider_root.parent),
+        },
+    }
     config_path = project_dir / 'repolish.yaml'
     config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8')
 
@@ -225,13 +238,17 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
         fail_on_warnings=fail_on_warnings,
         global_context=global_context,
     )
-    session = resolve_session(options)
-    exit_code = apply_session(
-        session,
-        check_only=check_only,
-        skip_post_process=skip_post_process,
-        fail_on_warnings=fail_on_warnings,
-    )
+    # `repolish apply` runs as a CLI with the project as the working directory;
+    # resource copies and symlinks anchor their targets to the cwd. Run the
+    # pipeline the same way so relative targets land inside *project_dir*.
+    with contextlib.chdir(project_dir):
+        session = resolve_session(options)
+        exit_code = apply_session(
+            session,
+            check_only=check_only,
+            skip_post_process=skip_post_process,
+            fail_on_warnings=fail_on_warnings,
+        )
     return ApplyResult(
         exit_code=exit_code,
         session=session,
