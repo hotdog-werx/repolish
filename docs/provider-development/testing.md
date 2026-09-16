@@ -84,6 +84,35 @@ Two views over the result, both `{rel_path: content}` and both ready for
 Both return plain dicts, so `include_paths` / `exclude_paths` shape them further
 before `assert_snapshots` when a test needs to focus on a subset.
 
+### Narrowing the snapshot scope
+
+Filtering with `include_paths` / `exclude_paths` has a sharp edge worth stating
+plainly: **a filtered snapshot is blind to anything it was not handed**. If a
+test narrows the view to certain files and a new template later writes outside
+that set, the comparison passes and the new output goes unseen. The full
+`managed_files()` snapshot has no blind spot: adding a template lights up every
+fixture's snapshot diff, and reviewing that diff once with
+`REPOLISH_UPDATE_SNAPSHOTS=1` is the test doing its job, not a chore. Prefer
+paying that review cost over filtering it away.
+
+Reach for a filter only when the full view cannot work, and make determinism the
+first attempt: the harness freezes `year=`, `repo_owner=`, and `repo_name=`
+precisely so snapshot content never drifts between runs. The cases that justify
+filtering:
+
+- a generated file whose content your provider genuinely cannot reproduce
+  deterministically (a lockfile with resolved hashes, a file embedding a
+  wall-clock timestamp produced by `post_process`), and
+- a file that exists only to exercise a side effect (a validator target, scratch
+  output of a `post_process` step) whose content carries no information worth
+  pinning.
+
+Exclude the single offending path, not the whole category, and keep the
+exclusion next to the test with a comment saying why. A comment like
+`# lockfile: resolved hashes differ per run` is self-documenting; a bare
+`exclude_paths(result.managed_files(), {'generated/'})` in a helper far from the
+test is how blind spots accumulate quietly.
+
 ### The workflow never changes
 
 The first run is the only setup you ever do:
@@ -133,7 +162,69 @@ def test_no_drift(tmp_path: Path) -> None:
     assert_idempotent(MyProvider, project)
 ```
 
-### Configuring the run
+### Testing validators: bad data belongs in the fixture
+
+Validators generate nothing; they inspect. That is exactly why they pair
+naturally with fixtures: the pipeline resolves each validator's target by
+preferring the real project file and falling back to the render tree, so a
+validator registered for a developer-owned file (`config.toml` the repo already
+had, not a template) validates the fixture's copy directly. A fixture with bad
+data is just a fixture: check in the broken state you want the validator to
+catch, apply, and assert on the records.
+
+Two fixtures, one validator, both sides of the check:
+
+```python
+from repolish.providers.models import ValidationStatus
+
+
+def test_catches_missing_api_key(tmp_path: Path) -> None:
+    """The bad fixture fails validation exactly as a real repo would."""
+    project = stage_project(FIXTURES / 'config-missing-key', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    # 1 = validator failure, distinct from 2 (drift) and 0 (clean run)
+    assert result.exit_code == 1
+    failure = result.validation_results['config.toml']['has-api-key']
+    assert failure.status == ValidationStatus.ERROR
+    assert 'api_key' in failure.message
+
+
+def test_accepts_valid_config(tmp_path: Path) -> None:
+    """The good fixture passes: nothing lands in validation_results."""
+    project = stage_project(FIXTURES / 'config-valid', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    assert result.exit_code == 0
+    assert 'config.toml' not in result.validation_results
+```
+
+`validation_results` holds **failures and warnings only**, keyed
+`{dest_path: {validator_name: ValidationResult}}`. Passes never appear: a clean
+run is already proven by `exit_code == 0` and the empty dict. A validator that
+crashes is reported as `ValidationStatus.ERROR` with the same
+`"Validator 'name' for 'dest' crashed: ..."` message shape production prints, so
+a crash test asserts on exactly what a real run would report. Validators
+disabled through `FileValidatorOptions` are skipped entirely, just as in
+production.
+
+Warnings are the one nuance: a `ValidationStatus.WARNING` leaves
+`exit_code == 0` by default, matching `repolish apply`. Pass
+`fail_on_warnings=True` to the harness to test the strict behavior:
+
+```python
+result = apply_provider(MyProvider, project, fail_on_warnings=True)
+assert result.exit_code == 1
+warned = result.validation_results['docs/README.md']['stale-links']
+assert warned.status == ValidationStatus.WARNING
+```
+
+When a test needs the full picture (passes and disables included, not just
+failures), `result.session.validation_reports` maps each destination path to the
+JSON report the pipeline wrote under `.repolish/_/validators/`: open it and read
+every registered validator's outcome from the run.
 
 `apply_provider` writes the `repolish.yaml` for you; the `config=` mapping
 carries everything else you'd put in that file, with the harness's provider
