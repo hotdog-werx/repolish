@@ -23,12 +23,12 @@ from repolish.testing import (
 The most faithful way to test a provider is to run the **real `repolish apply`
 pipeline** against a made-up project and assert on what it produces:
 `apply_provider()` stages, preprocesses, renders, inserts, post-processes,
-applies, and validates — everything `repolish apply` does, with one difference:
+applies, and validates: everything `repolish apply` does, with one difference:
 the `repolish.yaml` is written by the harness, pointing at your provider
 package. No link CLI, no installed wheels, no real repository.
 
 The made-up project is a **fixture**: a checked-in directory holding the
-simplified state of a repo you want to simulate — developer-owned files,
+simplified state of a repo you want to simulate: developer-owned files,
 insertion markers, values for `repolish-regex` capture, an old config file your
 provider is about to delete. Stage it into a per-test copy, apply, and assert or
 snapshot the result:
@@ -60,7 +60,7 @@ def test_full_apply(tmp_path: Path) -> None:
 ```
 
 `result.project_files()` returns `{rel_path: content}` for the applied project
-tree — fixture state plus provider output — excluding `.repolish/`, `.git/`, and
+tree (fixture state plus provider output), excluding `.repolish/`, `.git/`, and
 the harness-written `repolish.yaml`. It feeds `assert_snapshots` directly, so
 the golden files are exactly what your provider will generate.
 
@@ -74,21 +74,35 @@ REPOLISH_UPDATE_SNAPSHOTS=1 pytest tests/
 
 Snapshots are written for you; review the git diff and commit. There is no
 "first run without local files" dance: preprocessor directives read the
-**fixture files** — the same files the real repo would have — so the test code
-is identical on the first and every later run.
+**fixture files** (the same files the real repo would have), so the test code is
+identical on the first and every later run.
+
+The same command is the natural response to **template changes**. As you work on
+the provider and edit templates, the generated output, and therefore the
+snapshots, changes with it. Re-run the tests with the environment variable set,
+then review the diff to see exactly what the change produces across every
+fixture project:
+
+```bash
+REPOLISH_UPDATE_SNAPSHOTS=1 pytest tests/
+```
+
+If a snapshot diff surprises you, that is the test earning its keep: the
+template change did something you didn't intend, and you found out before a real
+project did.
 
 ### Assert the project, not just the render
 
 `ApplyResult` exposes what the pipeline collected:
 
-- `exit_code` — `0` success; `1` validator failure; `2` drift in check mode
-- `apply_result` — per-file status: `'written'`, `'unchanged'`, `'deleted'`
-- `validation_results` — validator **failures** per destination path (passes
-  don't need asserting — the exit code already covers them)
-- `insertion_results` — per-file insertion execution summaries
-- `render_tree` — the staged render tree, open it to debug a diff
+- `exit_code`: `0` success; `1` validator failure; `2` drift in check mode
+- `apply_result`: per-file status: `'written'`, `'unchanged'`, `'deleted'`
+- `validation_results`: validator **failures** per destination path (passes
+  don't need asserting; the exit code already covers them)
+- `insertion_results`: per-file insertion execution summaries
+- `render_tree`: the staged render tree, open it to debug a diff
 
-Use `check_only=True` to compare without writing — and `assert_idempotent` for
+Use `check_only=True` to compare without writing, and `assert_idempotent` for
 the test that pays for itself: apply, then check, expecting no drift. A provider
 that produces output it can't reproduce on the second pass is the classic
 spurious-drift bug, and this catches it:
@@ -117,7 +131,7 @@ result = apply_provider(
 )
 ```
 
-Context values are deterministic by default — `repolish.repo.owner` is
+Context values are deterministic by default: `repolish.repo.owner` is
 `test-owner`, `repolish.repo.name` is `test-repo`, and nothing is derived from
 your cwd or git. Override with `repo_owner` / `repo_name`, freeze
 `repolish.year` with `year=` for license headers, and pass `git_init=True` to
@@ -128,9 +142,8 @@ wired through the harness.
 
 ### Choosing a tier
 
-- **End-to-end** (`apply_provider`): behavior, output, drift — the tier this
-  page recommends; it cannot drift from the pipeline because it _is_ the
-  pipeline.
+- **End-to-end** (`apply_provider`): behavior, output, drift, the tier this page
+  recommends; it cannot drift from the pipeline because it _is_ the pipeline.
 - **Hook-level** (`ProviderTestBed`): fast unit tests for context, mappings,
   inputs, and validators in isolation. See below.
 - **`run_snapshot_case`**: the earlier snapshot pattern, retained as-is. It may
@@ -234,7 +247,7 @@ filtered = exclude_paths(
 
 ### Snapshot workflow: first run vs subsequent runs
 
-**First run** — snapshots don't exist yet:
+**First run** (snapshots don't exist yet):
 
 ```python
 def test_standalone_snapshot() -> None:
@@ -250,10 +263,10 @@ def test_standalone_snapshot() -> None:
     )
 ```
 
-The test fails with missing snapshot errors — the assertion prints the rendered
+The test fails with missing snapshot errors: the assertion prints the rendered
 content so you can copy it into `SNAPSHOT_DIR`.
 
-**Subsequent runs** — feed snapshot content back as local files:
+**Subsequent runs** (feed snapshot content back as local files):
 
 ```python
 def test_standalone_snapshot() -> None:
@@ -287,11 +300,11 @@ existing snapshot files, exactly as `repolish apply` reads from the real repo.
 
 Providers can communicate in two ways:
 
-1. **Push pattern** — via `provide_inputs()` / `finalize_context()`: One
+1. **Push pattern** (via `provide_inputs()` / `finalize_context()`): One
    provider emits typed inputs that another receives. Test this by passing
    `received_inputs` to `SnapshotRunOptions`.
 
-2. **Read pattern** — via `get_provider_context()`: A provider reads another
+2. **Read pattern** (via `get_provider_context()`): A provider reads another
    provider's context directly from `opt.all_providers`. Test this by
    constructing mock provider entries with `mock_provider_entry()`.
 
@@ -592,7 +605,7 @@ prefixed files appear only when explicitly mapped.
 
 `render_all()` also respects `TemplateMapping.extra_context`. When a mapping
 entry carries per-file extra context, it is merged on top of the provider
-context for that destination only — exactly as `repolish apply` does. This means
+context for that destination only, exactly as `repolish apply` does. This means
 a single template can fan out to multiple files with different content:
 
 ```python
@@ -692,7 +705,7 @@ assert_snapshots(rendered, 'tests/snapshots/my_provider')
 2. Create a `tests/snapshots/` directory with expected files matching each key.
 3. Call `assert_snapshots(rendered, snapshot_dir)`.
 4. On first run (empty snapshot dir), the assertion fails with the rendered
-   content printed — copy it into the snapshot directory.
+   content printed; copy it into the snapshot directory.
 5. On subsequent runs, any drift produces a readable unified diff.
 
 ```

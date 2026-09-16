@@ -1,4 +1,4 @@
-# Part 4 — Going Monorepo
+# Part 4: Going Monorepo
 
 Moving the two providers into a single repository solves the sync problem and
 enables something better: you can use repolish to manage the provider repo
@@ -50,7 +50,7 @@ Before anything else, bootstrap the repo so that `uv` is available:
     ```
 
     Run `mise trust && mise install` after creating this file. This is the
-    same bootstrap step used in Part 1 — the devkit repo needs its own
+    same bootstrap step used in Part 1: the devkit repo needs its own
     environment just like any consumer project does.
 
     Note that this `mise.toml` is a bootstrap file you create manually. The
@@ -66,8 +66,8 @@ Before anything else, bootstrap the repo so that `uv` is available:
     Once your workspace provider is managing `mise.toml`, it will create
     the file for you on `repolish apply`.
 
-The root `pyproject.toml` declares the workspace and shared dev dependencies —
-it is not a package itself:
+The root `pyproject.toml` declares the workspace and shared dev dependencies. It
+is not a package itself:
 
 ```toml
 [tool.uv]
@@ -92,10 +92,10 @@ single `uv lock` at the root resolves all dependencies together.
 The two providers you built in Parts 1 and 2 handle a single deployment mode
 (`standalone`). Inside a monorepo a provider can be invoked three ways:
 
-- **root** — running against the repo root (assembles contributions from all
+- **root**: running against the repo root (assembles contributions from all
   members)
-- **member** — running against one member package
-- **standalone** — the classic single-project case
+- **member**: running against one member package
+- **standalone**: the classic single-project case
 
 Re-scaffold each package with `--monorepo` to get the split structure:
 
@@ -126,11 +126,11 @@ packages/workspace/devkit/workspace/repolish/
 
 **What you need to do:**
 
-> **Important:** The scaffold generates empty stubs — every
+> **Important:** The scaffold generates empty stubs. Every
 > `create_file_mappings`, `provide_inputs`, and `finalize_context` returns `{}`
 > or `[]` by default. You must fill them in with the actual logic described in
 > the "Final provider shapes" section below. Mapping values may include or omit
-> the `.jinja` extension — repolish strips it automatically, so both
+> the `.jinja` extension. repolish strips it automatically, so both
 > `'_repolish.mise.toml'` and `'_repolish.mise.toml.jinja'` resolve correctly.
 
 1. Create `packages/workspace/` and `packages/python/` and run the scaffold
@@ -139,7 +139,7 @@ packages/workspace/devkit/workspace/repolish/
    `packages/workspace/devkit/workspace/resources/templates/`, **renaming each
    template with a `_repolish.` prefix** (e.g. `mise.toml.jinja` →
    `_repolish.mise.toml.jinja`).
-3. Copy your existing `resources/configs/` files similarly (no renaming needed —
+3. Copy your existing `resources/configs/` files similarly (no renaming needed;
    configs are referenced as symlinks, not discovered automatically).
 4. Copy the contents of `models.py` from each old repo into the corresponding
    `models.py` in the new package.
@@ -197,7 +197,7 @@ devkit-workspace = { workspace = true }
 
 `{ workspace = true }` tells `uv` to resolve `devkit-workspace` from the local
 workspace member rather than PyPI or a git remote. No version pinning, no
-publish cycle — changes in `devkit-workspace` are immediately visible to
+publish cycle: changes in `devkit-workspace` are immediately visible to
 `devkit-python`.
 
 After updating both files, run from the repo root:
@@ -224,7 +224,7 @@ providers:
 ```
 
 The Python provider adds ruff tasks, but the devkit repo itself is a tooling
-library rather than a Python application — so only the workspace provider is
+library rather than a Python application, so only the workspace provider is
 wired in at the root. Run `repolish apply` and the workspace provider generates
 `mise.toml` and `poe_tasks.toml` for the devkit repo itself.
 
@@ -262,7 +262,7 @@ once. It runs separately for each place that has a `repolish.yaml`:
 - Once for the root itself
 - Once for each member package that has its own `repolish.yaml`
 
-Each of these runs is a **session** — a group of providers loaded and executed
+Each of these runs is a **session**: a group of providers loaded and executed
 together. Member sessions run first. The root session runs last, and it can see
 what every member session contributed.
 
@@ -270,7 +270,7 @@ what every member session contributed.
 
 Every provider has access to two related but distinct objects:
 
-**`repolish.workspace`** — the global monorepo topology, identical for all
+**`repolish.workspace`**: the global monorepo topology, identical for all
 providers in a session:
 
 ```python
@@ -279,7 +279,7 @@ ctx.repolish.workspace.root_dir    # absolute path to the monorepo root
 ctx.repolish.workspace.members     # list of all member packages
 ```
 
-**`repolish.provider.session`** — this specific run's identity:
+**`repolish.provider.session`**: this specific run's identity:
 
 ```python
 ctx.repolish.provider.session.mode         # same as workspace.mode
@@ -295,7 +295,7 @@ particular run_ is targeting.
 ### The `mise.toml` problem
 
 `mise.toml` installs tools for the whole repo. It belongs at the root, not
-inside every package. But the workspace provider managed it in Part 1 — so when
+inside every package. But the workspace provider managed it in Part 1, so when
 it runs as a member session inside `packages/workspace/`, it would write
 `packages/workspace/mise.toml`, which is wrong.
 
@@ -325,14 +325,14 @@ delivered via symlink, not a template, so it is not listed in mappings.
 
 > **Don't do this in practice.** Once `provide_inputs`, `finalize_context`, and
 > `create_context` also diverge by mode, this single-function approach becomes a
-> wall of conditionals. That is exactly what `ModeHandler` was designed to avoid
-> — see the next section.
+> wall of conditionals. That is exactly what `ModeHandler` was designed to
+> avoid. See the next section.
 
 ### Cross-session inputs: members talk to root
 
-Member sessions run first. Each member's `provide_inputs` can emit payloads —
-and those payloads are forwarded to the root session's providers. The root
-session's `finalize_context` sees inputs from **all** member sessions combined.
+Member sessions run first. Each member's `provide_inputs` can emit payloads, and
+those payloads are forwarded to the root session's providers. The root session's
+`finalize_context` sees inputs from **all** member sessions combined.
 
 This is the mechanism that makes aggregation possible. A member says "here are
 my tasks" by emitting a `WorkspaceInputs` payload. The root's workspace provider
@@ -341,7 +341,7 @@ that contains every member's contribution.
 
 Within a session, inputs flow in load order (provider A → provider B). Across
 sessions, member inputs flow to root. Members cannot see each other's inputs and
-cannot see root session inputs — the boundary is one-directional.
+cannot see root session inputs: the boundary is one-directional.
 
 The session identity fields make this useful:
 
@@ -391,25 +391,25 @@ class WorkspaceProvider(Provider[WorkspaceContext, WorkspaceInputs]):
 
 Repolish dispatches to the right handler automatically based on the workspace
 mode. If a mode has no handler set (e.g. `standalone_mode` is not assigned), the
-provider falls back to its own methods directly — the same as if no
-`ModeHandler` were involved at all.
+provider falls back to its own methods directly, the same as if no `ModeHandler`
+were involved at all.
 
 ## What you gain
 
-- **One lock file** — `uv lock` resolves both packages and all their shared
+- **One lock file**: `uv lock` resolves both packages and all their shared
   dependencies together.
-- **Atomic changes** — a commit that updates the workspace provider's input
+- **Atomic changes**: a commit that updates the workspace provider's input
   schema and the python provider's `provide_inputs` in the same PR is safe,
   reviewable, and bisectable.
-- **Single CI pipeline** — one workflow runs all provider tests, including the
+- **Single CI pipeline**: one workflow runs all provider tests, including the
   integration tests that need both providers installed.
-- **Self-managing** — `repolish apply` keeps the devkit repo's own tooling up to
+- **Self-managing**: `repolish apply` keeps the devkit repo's own tooling up to
   date from the same templates the providers ship to consumers.
 
 ## Final provider shapes
 
 Here is the complete structure for both providers once the monorepo migration is
-done. This is the target state — what you are building toward.
+done. This is the target state: what you are building toward.
 
 The devkit monorepo is both a provider repo and a consumer of itself (root +
 member sessions). `my-project` is an external standalone consumer.
@@ -438,7 +438,7 @@ class WorkspaceProvider(Provider[WorkspaceProviderContext, WorkspaceProviderInpu
 ```
 
 ```python
-# root.py — runs at the devkit repo root
+# root.py: runs at the devkit repo root
 class WorkspaceRootHandler(ModeHandler[WorkspaceProviderContext, WorkspaceProviderInputs]):
     @override
     def provide_inputs(
@@ -488,7 +488,7 @@ format-dprint.cmd = "dprint fmt --config .repolish/devkit-workspace/configs/dpri
 ```
 
 ```python
-# member.py — runs inside packages/workspace/ and packages/python/
+# member.py: runs inside packages/workspace/ and packages/python/
 class WorkspaceMemberHandler(ModeHandler[WorkspaceProviderContext, WorkspaceProviderInputs]):
     def create_file_mappings(self, context):
         # no mise.toml at the member level
@@ -499,7 +499,7 @@ class WorkspaceMemberHandler(ModeHandler[WorkspaceProviderContext, WorkspaceProv
 ```
 
 ```python
-# standalone.py — runs in my-project (the classic case from Parts 1–2)
+# standalone.py: runs in my-project (the classic case from Parts 1–2)
 class WorkspaceStandaloneHandler(ModeHandler[WorkspaceProviderContext, WorkspaceProviderInputs]):
     def create_file_mappings(self, context):
         return {
@@ -529,7 +529,7 @@ format-dprint.cmd = "dprint fmt --config .repolish/devkit-workspace/configs/dpri
 
 ### `devkit-python`
 
-The Python provider has no file mappings of its own — it only emits inputs. All
+The Python provider has no file mappings of its own. It only emits inputs. All
 three modes do the same thing, so `StandaloneHandler` covers the `my-project`
 case and the flat `provider.py` from Part 2 can be reused as-is for standalone.
 In the monorepo, the member handler emits ruff tasks upward to the root session:
@@ -551,7 +551,7 @@ every other member's contribution and renders a unified `poe_tasks.toml`.
 > **Simplification opportunity.** `WorkspaceRootHandler` and
 > `WorkspaceStandaloneHandler` share identical `provide_inputs` and
 > `finalize_context` logic. Once everything is working you can extract that into
-> a shared helper module and import it from both — keeping each handler class
+> a shared helper module and import it from both, keeping each handler class
 > thin. That refactor is left as an exercise for the reader.
 
 ## Checkpoint
@@ -582,4 +582,4 @@ git tag v1.0.0
 
 ---
 
-Next: [Part 5 — Everything Together](05-using-all-providers.md)
+Next: [Part 5: Everything Together](05-using-all-providers.md)
