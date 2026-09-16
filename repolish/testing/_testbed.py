@@ -14,7 +14,11 @@ from pydantic import BaseModel
 from repolish.directives import process_text
 from repolish.misc import ctx_to_dict
 from repolish.pkginfo import resolve_package_identity
-from repolish.providers.models.context import BaseContext, BaseInputs, ResourceCopy
+from repolish.providers.models.context import (
+    BaseContext,
+    BaseInputs,
+    ResourceCopy,
+)
 from repolish.providers.models.files import (
     FileInsertionContribution,
     FileValidatorEntry,
@@ -237,7 +241,7 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         Like :meth:`symlinks`, this is a no-argument hook called directly on
         the provider; it is not routed through mode-handler dispatch.
         """
-        return cast('list[ResourceCopy]', self._instance.create_default_copies())
+        return self._instance.create_default_copies()
 
     # -- Validator execution --
 
@@ -302,7 +306,10 @@ class ProviderTestBed(Generic[CtxT, InpT]):
         """Return whether a registered validator should run."""
         if not isinstance(entry, FileValidatorSpec):
             return True
-        return entry.options.enabled and entry.options.validators.get(name, True)
+        return entry.options.enabled and entry.options.validators.get(
+            name,
+            True,
+        )
 
     def _run_validator(
         self,

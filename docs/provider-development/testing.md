@@ -18,7 +18,127 @@ from repolish.testing import (
 
 ---
 
-## Quick Start: Snapshot Tests (Recommended Pattern)
+## Quick Start: End-to-End Fixture Testing (Recommended)
+
+The most faithful way to test a provider is to run the **real `repolish apply`
+pipeline** against a made-up project and assert on what it produces:
+`apply_provider()` stages, preprocesses, renders, inserts, post-processes,
+applies, and validates — everything `repolish apply` does, with one difference:
+the `repolish.yaml` is written by the harness, pointing at your provider
+package. No link CLI, no installed wheels, no real repository.
+
+The made-up project is a **fixture**: a checked-in directory holding the
+simplified state of a repo you want to simulate — developer-owned files,
+insertion markers, values for `repolish-regex` capture, an old config file your
+provider is about to delete. Stage it into a per-test copy, apply, and assert or
+snapshot the result:
+
+```python
+from pathlib import Path
+
+from repolish.testing import (
+    apply_provider,
+    assert_idempotent,
+    assert_snapshots,
+    stage_project,
+)
+
+from my_provider.resources.templates.repolish import MyProvider
+
+FIXTURES = Path(__file__).parent / 'fixtures'
+SNAPSHOT_DIR = Path(__file__).parent / 'snapshots' / 'my_provider'
+
+
+def test_full_apply(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    assert result.exit_code == 0
+    assert result.apply_result['README.md'] == 'written'
+    assert_snapshots(result.project_files(), SNAPSHOT_DIR)
+```
+
+`result.project_files()` returns `{rel_path: content}` for the applied project
+tree — fixture state plus provider output — excluding `.repolish/`, `.git/`, and
+the harness-written `repolish.yaml`. It feeds `assert_snapshots` directly, so
+the golden files are exactly what your provider will generate.
+
+### The workflow never changes
+
+The first run is the only setup you ever do:
+
+```bash
+REPOLISH_UPDATE_SNAPSHOTS=1 pytest tests/
+```
+
+Snapshots are written for you; review the git diff and commit. There is no
+"first run without local files" dance: preprocessor directives read the
+**fixture files** — the same files the real repo would have — so the test code
+is identical on the first and every later run.
+
+### Assert the project, not just the render
+
+`ApplyResult` exposes what the pipeline collected:
+
+- `exit_code` — `0` success; `1` validator failure; `2` drift in check mode
+- `apply_result` — per-file status: `'written'`, `'unchanged'`, `'deleted'`
+- `validation_results` — validator **failures** per destination path (passes
+  don't need asserting — the exit code already covers them)
+- `insertion_results` — per-file insertion execution summaries
+- `render_tree` — the staged render tree, open it to debug a diff
+
+Use `check_only=True` to compare without writing — and `assert_idempotent` for
+the test that pays for itself: apply, then check, expecting no drift. A provider
+that produces output it can't reproduce on the second pass is the classic
+spurious-drift bug, and this catches it:
+
+```python
+def test_no_drift(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+    assert_idempotent(MyProvider, project)
+```
+
+### Configuring the run
+
+`apply_provider` writes the `repolish.yaml` for you; the `config=` mapping
+carries everything else you'd put in that file, with the harness's provider
+entry always winning over anything you supply there:
+
+```python
+result = apply_provider(
+    MyProvider,
+    project,
+    alias='my-provider',
+    config={
+        'post_process': [f'{sys.executable} -c "..."'],
+        'paused_files': ['legacy/old.py'],
+    },
+)
+```
+
+Context values are deterministic by default — `repolish.repo.owner` is
+`test-owner`, `repolish.repo.name` is `test-repo`, and nothing is derived from
+your cwd or git. Override with `repo_owner` / `repo_name`, freeze
+`repolish.year` with `year=` for license headers, and pass `git_init=True` to
+`stage_project` when your provider code itself reads git.
+
+Standalone projects are supported; monorepo (root/member) fixtures are not yet
+wired through the harness.
+
+### Choosing a tier
+
+- **End-to-end** (`apply_provider`): behavior, output, drift — the tier this
+  page recommends; it cannot drift from the pipeline because it _is_ the
+  pipeline.
+- **Hook-level** (`ProviderTestBed`): fast unit tests for context, mappings,
+  inputs, and validators in isolation. See below.
+- **`run_snapshot_case`**: the earlier snapshot pattern, retained as-is. It may
+  be deprecated in a future release as the end-to-end tier covers its use cases.
+
+---
+
+## Snapshot Tests with `run_snapshot_case`
 
 For most snapshot tests, use `run_snapshot_case()` with `SnapshotRunOptions`.
 This captures the common flow in a single call:
@@ -434,10 +554,10 @@ assert header.status == ValidationStatus.PASS
 - The files are materialized under `base_dir` when given, otherwise a throwaway
   temporary directory that is removed after the run. Validators receive a real
   path to read from, just like in `repolish apply`.
-- The return value is `{dest_path: {validator_name: ValidationResult}}` with
-  one entry per **enabled** validator that ran, passes included. Validators
-  disabled through `FileValidatorOptions` (either `enabled=False` or the
-  per-name `validators` map) are skipped.
+- The return value is `{dest_path: {validator_name: ValidationResult}}` with one
+  entry per **enabled** validator that ran, passes included. Validators disabled
+  through `FileValidatorOptions` (either `enabled=False` or the per-name
+  `validators` map) are skipped.
 - A validator that raises is reported as `ValidationStatus.ERROR` with the same
   `"Validator 'name' for 'dest' crashed: ..."` message shape the apply pipeline
   produces, so a crash test asserts on exactly what production would report.

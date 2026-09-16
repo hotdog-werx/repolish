@@ -3,7 +3,9 @@
 Provides :class:`ProviderTestBed` to exercise provider lifecycle hooks
 (context creation, input exchange, file mappings, anchors, and template
 rendering) without requiring a full CLI pipeline, git repo, or installed
-wheels.
+wheels. For end-to-end coverage, :func:`apply_provider` runs the real apply
+pipeline against a fixture project and returns the applied tree for
+assertions — see :mod:`repolish.testing._e2e`.
 
 Typical usage::
 
@@ -17,6 +19,12 @@ Typical usage::
 
 from repolish.providers.models.template_path import RepolishTemplatePath
 from repolish.testing._context import make_context
+from repolish.testing._e2e import (
+    ApplyResult,
+    apply_provider,
+    assert_idempotent,
+    stage_project,
+)
 from repolish.testing._snapshot import assert_snapshots
 from repolish.testing._snapshot_filters import exclude_paths, include_paths
 from repolish.testing._snapshot_runner import (
@@ -27,13 +35,17 @@ from repolish.testing._snapshot_runner import (
 from repolish.testing._testbed import ProviderTestBed
 
 __all__ = [
+    'ApplyResult',
     'ProviderTestBed',
     'RepolishTemplatePath',
     'SnapshotRunOptions',
+    'apply_provider',
+    'assert_idempotent',
     'assert_snapshots',
     'exclude_paths',
     'include_paths',
     'make_context',
     'mock_provider_entry',
     'run_snapshot_case',
+    'stage_project',
 ]

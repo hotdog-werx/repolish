@@ -87,7 +87,10 @@ class _ValidatorProvider(Provider[_Ctx, _Inputs]):
     def create_context(self) -> _Ctx:
         return _Ctx()
 
-    def create_file_validators(self, context: _Ctx) -> dict[str, ValidatorMapping[_Ctx]]:
+    def create_file_validators(
+        self,
+        context: _Ctx,
+    ) -> dict[str, ValidatorMapping[_Ctx]]:
         def boom(context: _Ctx, path: Path) -> ValidationResult:
             msg = 'boom'
             raise RuntimeError(msg)
@@ -643,7 +646,10 @@ class TestProviderTestBedHookAccess:
         )
         assert bed.insertions() == {}
 
-    def test_insertion_registry_default_empty(self, templates_root: Path) -> None:
+    def test_insertion_registry_default_empty(
+        self,
+        templates_root: Path,
+    ) -> None:
         bed = ProviderTestBed(
             provider_class=_TestProvider,
             templates_root=templates_root,
@@ -756,7 +762,10 @@ class TestProviderTestBedRunValidators:
         tmp_path: Path,
     ) -> None:
         class _NestedProvider(_ValidatorProvider):
-            def create_file_validators(self, context: _Ctx) -> dict[str, ValidatorMapping[_Ctx]]:
+            def create_file_validators(
+                self,
+                context: _Ctx,
+            ) -> dict[str, ValidatorMapping[_Ctx]]:
                 return {'nested/deep/config.txt': {'header': _header_validator}}
 
         nested_bed = ProviderTestBed(
