@@ -14,13 +14,22 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import Field
 
+from repolish import BaseInputs
 from repolish.providers.models import ValidationStatus
 from repolish.testing import (
     apply_provider,
     assert_idempotent,
     stage_project,
 )
+
+
+class CiInputsFixture(BaseInputs):
+    """Structurally identical to the fixture provider's inputs model."""
+
+    ci_tasks: list[str] = Field(default_factory=list)
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,6 +62,8 @@ def _make_provider_pkg(
     base: Path,
     provider_code: str,
     templates: dict[str, str],
+    *,
+    pkg: str = 'pkg',
 ) -> type[Provider]:
     """Write a provider package under *base* and import its Provider class.
 
@@ -60,7 +71,7 @@ def _make_provider_pkg(
     to find: ``<pkg>/resources/templates/`` containing ``repolish.py`` and a
     ``repolish/`` template directory.
     """
-    provider_root = base / 'pkg' / 'resources' / 'templates'
+    provider_root = base / pkg / 'resources' / 'templates'
     (provider_root / 'repolish').mkdir(parents=True)
     (provider_root / 'repolish.py').write_text(
         textwrap.dedent(provider_code),
@@ -283,8 +294,10 @@ def test_config_merge_post_process_and_paused_files(
                 f"{sys.executable} -c \"from pathlib import Path; Path('stamped.txt').write_text('stamped\\n')\"",
             ],
             'paused_files': ['legacy.txt'],
-            # The harness provider entry always wins over anything here
-            'providers': {'bogus': {'provider_root': '/definitely/not/here'}},
+            # The harness entry for its alias always wins over anything here
+            'providers': {
+                'test-provider': {'provider_root': '/definitely/not/here'},
+            },
         },
     )
 
@@ -294,6 +307,154 @@ def test_config_merge_post_process_and_paused_files(
     assert result.apply_result['stamped.txt'] == 'written'
     # paused files are never written
     assert not (project / 'legacy.txt').exists()
+
+
+def test_emitted_inputs_recorded(tmp_path: Path) -> None:
+    """What the run's providers emitted for peers is visible on the result."""
+    provider_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class CiInputs(BaseInputs):
+            ci_tasks: list[str] = []
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def provide_inputs(self, opt):
+                return [CiInputs(ci_tasks=['lint', 'test'])]
+    """
+    provider_cls = _make_provider_pkg(tmp_path, provider_code, templates={})
+    project = tmp_path / 'project'
+    project.mkdir()
+
+    result = apply_provider(provider_cls, project)
+
+    assert result.exit_code == 0
+    assert [inp.model_dump() for inp in result.emitted_inputs] == [
+        {'ci_tasks': ['lint', 'test']},
+    ]
+
+
+def test_extra_inputs_reach_finalize(tmp_path: Path) -> None:
+    """extra_inputs are routed to the provider before finalization.
+
+    The injected model is defined in this test module, not the provider's
+    package: routing matches by schema, so structurally identical models are
+    accepted exactly as cross-module payloads are in production.
+    """
+    provider_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class CiInputs(BaseInputs):
+            ci_tasks: list[str] = []
+
+        class Ctx(BaseContext):
+            ci_tasks: list[str] = []
+
+        class P(Provider[Ctx, CiInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def finalize_context(self, opt):
+                for inp in opt.received_inputs:
+                    opt.own_context.ci_tasks = inp.ci_tasks
+                return opt.own_context
+
+            def create_file_mappings(self, context):
+                return {'ci-workflows.toml': 'ci-workflows.toml.jinja'}
+    """
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        provider_code,
+        templates={
+            'ci-workflows.toml.jinja': 'tasks = {{ ci_tasks | join(", ") }}\n',
+        },
+    )
+    project = tmp_path / 'project'
+    project.mkdir()
+
+    result = apply_provider(
+        provider_cls,
+        project,
+        extra_inputs=[CiInputsFixture(ci_tasks=['lint', 'test'])],
+    )
+
+    assert result.exit_code == 0
+    assert result.emitted_inputs == []
+    assert (project / 'ci-workflows.toml').read_text(encoding='utf-8') == ('tasks = lint, test\n')
+
+
+def test_peer_provider_registered_via_config(tmp_path: Path) -> None:
+    """Provider entries in config other than the harness alias are kept.
+
+    Two real provider packages run in one session: the peer emits inputs, the
+    provider under test receives them, and routing happens for real.
+    """
+    peer_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class CiInputs(BaseInputs):
+            ci_tasks: list[str] = []
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def provide_inputs(self, opt):
+                return [CiInputs(ci_tasks=['ci'])]
+    """
+    receiver_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+
+        class CiInputs(BaseInputs):
+            ci_tasks: list[str] = []
+
+        class Ctx(BaseContext):
+            ci_tasks: list[str] = []
+
+        class P(Provider[Ctx, CiInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def finalize_context(self, opt):
+                for inp in opt.received_inputs:
+                    opt.own_context.ci_tasks = inp.ci_tasks
+                return opt.own_context
+
+            def create_file_mappings(self, context):
+                return {'ci-workflows.toml': 'ci-workflows.toml.jinja'}
+    """
+    _make_provider_pkg(tmp_path, peer_code, templates={}, pkg='peer-pkg')
+    peer_root = tmp_path / 'peer-pkg' / 'resources' / 'templates'
+    receiver_cls = _make_provider_pkg(
+        tmp_path,
+        receiver_code,
+        templates={
+            'ci-workflows.toml.jinja': 'tasks = {{ ci_tasks | join(", ") }}\n',
+        },
+    )
+    project = tmp_path / 'project'
+    project.mkdir()
+
+    result = apply_provider(
+        receiver_cls,
+        project,
+        config={'providers': {'peer': {'provider_root': str(peer_root)}}},
+    )
+
+    assert result.exit_code == 0
+    assert (project / 'ci-workflows.toml').read_text(encoding='utf-8') == ('tasks = ci\n')
+    # The peer's emission is visible on the session alongside the receiver's
+    assert [inp.model_dump() for inp in result.emitted_inputs] == [
+        {'ci_tasks': ['ci']},
+    ]
 
 
 def test_global_context_is_deterministic_without_git(

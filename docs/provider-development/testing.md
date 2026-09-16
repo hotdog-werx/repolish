@@ -226,9 +226,73 @@ failures), `result.session.validation_reports` maps each destination path to the
 JSON report the pipeline wrote under `.repolish/_/validators/`: open it and read
 every registered validator's outcome from the run.
 
+### Cross-provider inputs: sending and receiving
+
+Providers talk through inputs: one provider's `provide_inputs()` emits payloads,
+and every provider whose `get_inputs_schema()` matches receives them in
+`finalize_context()`. The end-to-end harness covers both directions without a
+second installed provider.
+
+**Sending**: everything the run emitted is recorded on the result.
+`result.emitted_inputs` lists each payload, captured before local routing, so a
+provider consuming its own output cannot hide what it sent:
+
+```python
+def test_emits_ci_tasks(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    assert [inp.model_dump() for inp in result.emitted_inputs] == [
+        {'ci_tasks': ['lint', 'test']},
+    ]
+```
+
+**Receiving**: pass `extra_inputs=` to inject payloads into the run. They join
+the routing pool before finalization and are delivered by schema match exactly
+as a peer provider's outputs would be, so a dependency test needs no real peer:
+
+```python
+def test_receives_ci_tasks(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_provider(
+        MyProvider,
+        project,
+        extra_inputs=[CiProviderInputs(ci_tasks=['lint', 'test'])],
+    )
+
+    assert result.exit_code == 0
+    assert result.apply_result['.github/workflows/ci.yml'] == 'written'
+```
+
+Routing matches by schema, not by class identity: a payload from a separate
+module is accepted when it validates against the provider's inputs model. Import
+the peer provider's inputs class when the peer is installed; define a
+structurally identical model in the test when it is not.
+
+For the read pattern (`get_provider_context`) or a full two-provider run,
+register the peer through `config=`. Provider entries other than the harness's
+alias are kept as written, so both providers load and the pipeline routes inputs
+between them for real:
+
+```python
+result = apply_provider(
+    MyProvider,
+    project,
+    alias='my-provider',
+    config={'providers': {
+        'ci': {'provider_root': str(CI_TEMPLATES_ROOT)},
+    }},
+)
+```
+
+`assert_idempotent` accepts `extra_inputs` too and forwards it to both runs, so
+a dependency-driven provider gets the same drift guarantee.
+
 `apply_provider` writes the `repolish.yaml` for you; the `config=` mapping
-carries everything else you'd put in that file, with the harness's provider
-entry always winning over anything you supply there:
+carries everything else you'd put in that file, with the harness's entry for its
+own alias always winning over anything you supply there:
 
 ```python
 result = apply_provider(

@@ -16,19 +16,24 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import yaml
+from pydantic import BaseModel
 
 from repolish.commands.apply.options import ApplyOptions
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import apply_session
-from repolish.providers.models.context import GithubRepo, GlobalContext
+from repolish.providers.models.context import (
+    BaseContext,
+    GithubRepo,
+    GlobalContext,
+)
 from repolish.providers.models.workspace import WorkspaceContext
 from repolish.testing._testbed import _locate_templates_root
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from repolish.commands.apply.options import (
@@ -36,8 +41,11 @@ if TYPE_CHECKING:
         ResolvedSession,
     )
     from repolish.providers.models import ValidationResult
-    from repolish.providers.models.context import BaseContext, BaseInputs
+    from repolish.providers.models.context import BaseInputs
     from repolish.providers.models.provider import Provider
+
+CtxT = TypeVar('CtxT', bound=BaseContext)
+InpT = TypeVar('InpT', bound=BaseModel)
 
 _IGNORED_DIRS = frozenset({'.repolish', '.git', '__pycache__'})
 _IGNORED_FILES = frozenset({'repolish.yaml'})
@@ -71,6 +79,16 @@ class ApplyResult:
     def insertion_results(self) -> dict[str, InsertionFileResult]:
         """Per-file insertion execution summaries, keyed by destination path."""
         return self.session.insertion_results
+
+    @property
+    def emitted_inputs(self) -> list[BaseInputs]:
+        """Inputs the run's providers emitted for other providers to receive.
+
+        Recorded before any local routing, so a provider consuming its own
+        output does not hide what it sent. Assert on the payloads to verify
+        what a provider hands its peers.
+        """
+        return self.session.emitted_inputs
 
     @property
     def render_tree(self) -> Path:
@@ -211,7 +229,7 @@ def _init_git_repo(path: Path, *, owner: str, repo: str) -> None:
 
 
 def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
-    provider_class: type[Provider[BaseContext, BaseInputs]],
+    provider_class: type[Provider[CtxT, InpT]],
     project_dir: Path,
     *,
     alias: str = 'test-provider',
@@ -219,6 +237,7 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
     skip_post_process: bool = False,
     fail_on_warnings: bool = False,
     config: Mapping[str, Any] | None = None,
+    extra_inputs: Sequence[BaseInputs] | None = None,
     repo_owner: str = 'test-owner',
     repo_name: str = 'test-repo',
     year: int | None = None,
@@ -250,8 +269,15 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
         fail_on_warnings: Exit non-zero when validators report warnings.
         config: Additional ``repolish.yaml`` keys (``post_process``,
             ``paused_files``, ``delete_files``, provider ``overrides``, ...)
-            merged into the written config. The harness's ``providers`` entry
-            is applied last and always wins.
+            merged into the written config. Provider entries under
+            ``providers`` other than *alias* are kept, so a test can register
+            peer providers for two-provider runs; the harness's entry for
+            *alias* always wins.
+        extra_inputs: Payloads delivered to this run's providers before
+            finalization, exactly as a peer provider's outputs would be.
+            Routing matches by schema (``get_inputs_schema``), so inject the
+            provider's expected inputs model to test dependency handling
+            without the peer provider installed.
         repo_owner: Owner for the injected ``repolish.repo`` context values —
             fixed by default so runs are deterministic without a git repo.
         repo_name: Repository name for the injected context values.
@@ -263,16 +289,19 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
     """
     provider_root = _locate_templates_root(provider_class)
     config_data: dict[str, Any] = dict(config) if config else {}
+    # Provider entries from `config` are kept so a test can register peer
+    # providers (two-provider runs, read-pattern context access); only the
+    # harness's own alias is forced, so it always wins.
+    providers_config: dict[str, Any] = dict(config_data.get('providers') or {})
     # `_locate_templates_root` only ever finds `<pkg>/resources/templates`, so
     # its parent is the resources root the linker CLI would register. Copies
     # and symlinks resolve their sources against `resources_dir`; leaving it
     # unset would default it to the templates directory and break them.
-    config_data['providers'] = {
-        alias: {
-            'provider_root': str(provider_root),
-            'resources_dir': str(provider_root.parent),
-        },
+    providers_config[alias] = {
+        'provider_root': str(provider_root),
+        'resources_dir': str(provider_root.parent),
     }
+    config_data['providers'] = providers_config
     config_path = project_dir / 'repolish.yaml'
     config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8')
 
@@ -287,6 +316,7 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
         skip_post_process=skip_post_process,
         fail_on_warnings=fail_on_warnings,
         global_context=global_context,
+        extra_inputs=list(extra_inputs) if extra_inputs else None,
     )
     # `repolish apply` runs as a CLI with the project as the working directory;
     # resource copies and symlinks anchor their targets to the cwd. Run the
@@ -307,13 +337,14 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
 
 
 def assert_idempotent(  # noqa: PLR0913 - mirrors apply_provider on purpose
-    provider_class: type[Provider[BaseContext, BaseInputs]],
+    provider_class: type[Provider[CtxT, InpT]],
     project_dir: Path,
     *,
     alias: str = 'test-provider',
     skip_post_process: bool = False,
     fail_on_warnings: bool = False,
     config: Mapping[str, Any] | None = None,
+    extra_inputs: Sequence[BaseInputs] | None = None,
     repo_owner: str = 'test-owner',
     repo_name: str = 'test-repo',
     year: int | None = None,
@@ -335,6 +366,7 @@ def assert_idempotent(  # noqa: PLR0913 - mirrors apply_provider on purpose
         skip_post_process=skip_post_process,
         fail_on_warnings=fail_on_warnings,
         config=config,
+        extra_inputs=extra_inputs,
         repo_owner=repo_owner,
         repo_name=repo_name,
         year=year,
@@ -349,6 +381,7 @@ def assert_idempotent(  # noqa: PLR0913 - mirrors apply_provider on purpose
         skip_post_process=skip_post_process,
         fail_on_warnings=fail_on_warnings,
         config=config,
+        extra_inputs=extra_inputs,
         repo_owner=repo_owner,
         repo_name=repo_name,
         year=year,
