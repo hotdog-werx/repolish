@@ -39,8 +39,9 @@ if TYPE_CHECKING:
     from repolish.providers.models.context import BaseContext, BaseInputs
     from repolish.providers.models.provider import Provider
 
-_IGNORED_DIRS = frozenset({'.repolish', '.git'})
+_IGNORED_DIRS = frozenset({'.repolish', '.git', '__pycache__'})
 _IGNORED_FILES = frozenset({'repolish.yaml'})
+_IGNORED_SUFFIXES = frozenset({'.pyc'})
 
 
 @dataclass(frozen=True)
@@ -79,20 +80,69 @@ class ApplyResult:
     def project_files(self) -> dict[str, str]:
         """Return ``{rel_path: content}`` for the applied project tree.
 
-        Scratch directories (``.repolish/``, ``.git/``) and the harness-written
+        Scratch directories (``.repolish/``, ``.git/``, ``__pycache__/`` at any
+        depth), byte-compiled ``*.pyc`` files, and the harness-written
         ``repolish.yaml`` are excluded, so the result feeds
         :func:`~repolish.testing.assert_snapshots` directly and reflects only
-        the fixture state plus what the provider wrote.
+        the fixture state plus what the provider wrote. Python tooling invoked
+        by ``post_process`` can leave ``__pycache__`` directories behind; they
+        are build junk, not project output.
         """
         files: dict[str, str] = {}
         for path in sorted(self.project_dir.rglob('*')):
             if not path.is_file():
                 continue
             rel = path.relative_to(self.project_dir)
-            if rel.parts[0] in _IGNORED_DIRS or rel.as_posix() in _IGNORED_FILES:
+            if rel.as_posix() in _IGNORED_FILES:
+                continue
+            if any(part in _IGNORED_DIRS for part in rel.parts):
+                continue
+            if rel.suffix in _IGNORED_SUFFIXES:
                 continue
             files[rel.as_posix()] = path.read_text(encoding='utf-8')
         return files
+
+    def managed_files(self) -> dict[str, str]:
+        """Return ``{rel_path: content}`` for exactly the files this run handled.
+
+        The file set comes from the run's own records, not from a directory
+        walk: every file the pipeline applied (``session.apply_result``, so
+        template output and post-process output, minus deletions), every
+        insertion target it staged (``session.insertion_results``, which the
+        insertion pass applies outside ``apply_result``), plus every resource
+        copy materialised on disk (minus paused targets). Build junk such as
+        ``__pycache__/`` cannot appear because the session never lists it, and
+        fixture files the run did not touch are absent because they are
+        checked in with the fixture.
+
+        Prefer this over :meth:`project_files` for snapshots: it is immune to
+        stray files by construction. Symlink targets are not included (they
+        are links into provider resources, not content). In ``check_only``
+        runs nothing is written, so files recorded as applied are absent.
+        """
+        files: dict[str, str] = {}
+        for dest, status in self.session.apply_result.items():
+            if status not in ('written', 'unchanged'):
+                continue
+            files[dest] = (self.project_dir / dest).read_text(encoding='utf-8')
+        for dest in self.session.insertion_results:
+            path = self.project_dir / dest
+            if path.is_file():
+                files[dest] = path.read_text(encoding='utf-8')
+        self._record_copies(files)
+        return files
+
+    def _record_copies(self, files: dict[str, str]) -> None:
+        """Add materialised, unpaused copy targets to *files* in place."""
+        paused = {target for targets in self.session.paused_copies.values() for target in targets}
+        for copies in self.session.resolved_copies.values():
+            for copy in copies:
+                target = copy.target.as_posix()
+                if target in paused:
+                    continue
+                path = self.project_dir / target
+                if path.is_file():
+                    files[target] = path.read_text(encoding='utf-8')
 
 
 def stage_project(

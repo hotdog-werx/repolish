@@ -63,13 +63,26 @@ def test_full_apply(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert result.apply_result['README.md'] == 'written'
-    assert_snapshots(result.project_files(), SNAPSHOT_DIR)
+    assert_snapshots(result.managed_files(), SNAPSHOT_DIR)
 ```
 
-`result.project_files()` returns `{rel_path: content}` for the applied project
-tree (fixture state plus provider output), excluding `.repolish/`, `.git/`, and
-the harness-written `repolish.yaml`. It feeds `assert_snapshots` directly, so
-the golden files are exactly what your provider will generate.
+Two views over the result, both `{rel_path: content}` and both ready for
+`assert_snapshots`:
+
+- `result.managed_files()` is the one to snapshot: exactly the files this run
+  applied, staged insertions into, or copied, taken from the run's own records
+  (`apply_result`, `insertion_results`, `resolved_copies`). Because the file set
+  comes from the session rather than a directory walk, nothing can leak in: no
+  `__pycache__/`, no `*.pyc`, no exclusion list to maintain. Untouched fixture
+  files are absent; they are checked in with the fixture.
+- `result.project_files()` is the whole applied project tree (fixture state plus
+  provider output) when you also want to assert the surrounding project: scratch
+  dirs (`.repolish/`, `.git/`, `__pycache__/` at any depth), `*.pyc` files, and
+  the harness-written `repolish.yaml` are excluded. Byte caches left behind by
+  `post_process` commands that invoke python are build junk, not project output.
+
+Both return plain dicts, so `include_paths` / `exclude_paths` shape them further
+before `assert_snapshots` when a test needs to focus on a subset.
 
 ### The workflow never changes
 

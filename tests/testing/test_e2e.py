@@ -130,6 +130,30 @@ def test_project_files_excludes_scratch_dirs(tmp_path: Path) -> None:
     assert result.render_tree.joinpath('README.md').is_file()
 
 
+def test_project_files_excludes_byte_cache_junk(tmp_path: Path) -> None:
+    """`__pycache__/` at any depth and stray `.pyc` files stay out of snapshots.
+
+    Post-process commands that invoke python on the applied files leave byte
+    caches behind; project_files() must read them neither (they are binary)
+    nor include them.
+    """
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        _BASE_PROVIDER,
+        templates={'README.md.jinja': 'hello\n'},
+    )
+    project = tmp_path / 'project'
+    project.mkdir()
+    result = apply_provider(provider_cls, project)
+    # Simulate python tooling leaving byte caches behind, nested and top level
+    pycache = project / 'src' / '__pycache__'
+    pycache.mkdir(parents=True)
+    (pycache / 'mod.cpython-312.pyc').write_bytes(b'\x00\x01binary')
+    (project / 'top.pyc').write_bytes(b'\x00\x01binary')
+
+    assert result.project_files() == {'README.md': 'hello\n'}
+
+
 def test_check_only_reports_drift_then_idempotent(tmp_path: Path) -> None:
     provider_cls = _make_provider_pkg(
         tmp_path,
@@ -369,6 +393,151 @@ def test_copies_resolve_from_resources_root(tmp_path: Path) -> None:
     assert (project / 'app.toml').read_text(
         encoding='utf-8',
     ) == 'copied content\n'
+
+
+def test_managed_files_tracks_only_what_repolish_handled(
+    tmp_path: Path,
+) -> None:
+    """The managed view comes from session records, not a directory walk."""
+    provider_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+        from repolish.providers.models import ResourceCopy
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def display_year():
+                    return '2026'
+                return {'README.md': {'display-year': display_year}}
+
+            def create_default_copies(self):
+                return [
+                    ResourceCopy(source='configs/app.toml', target='app.toml'),
+                    ResourceCopy(source='configs/paused.toml', target='paused.toml'),
+                ]
+        """
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        provider_code,
+        templates={
+            'generated.md.jinja': 'generated\n',
+            'paused.txt.jinja': 'paused template\n',
+        },
+    )
+    for name in ('app.toml', 'paused.toml'):
+        source = tmp_path / 'pkg' / 'resources' / 'configs' / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(f'copied {name}\n', encoding='utf-8')
+    project = tmp_path / 'project'
+    project.mkdir()
+    (project / 'README.md').write_text(
+        'intro\n\n<!-- repolish:on:year display-year -->\n<!-- repolish:off:year -->\n',
+        encoding='utf-8',
+    )
+    (project / 'notes.txt').write_text(
+        'developer-owned, never touched\n',
+        encoding='utf-8',
+    )
+
+    result = apply_provider(
+        provider_cls,
+        project,
+        config={'paused_files': ['paused.txt', 'paused.toml']},
+    )
+
+    assert result.exit_code == 0
+    # Template output, the insertion target, and the live copy: nothing else
+    assert result.managed_files() == {
+        'generated.md': 'generated\n',
+        'README.md': ('intro\n\n<!-- repolish:on:year display-year -->\n2026\n<!-- repolish:off:year -->\n'),
+        'app.toml': 'copied app.toml\n',
+    }
+    # Byte-cache junk is invisible to the managed view by construction
+    pycache = project / '__pycache__'
+    pycache.mkdir()
+    (pycache / 'mod.pyc').write_bytes(b'\x00\x01')
+    assert 'notes.txt' not in result.managed_files()
+
+
+def test_managed_files_exclude_deleted_and_check_only(tmp_path: Path) -> None:
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        _BASE_PROVIDER,
+        templates={'README.md.jinja': 'hello\n'},
+    )
+    project = tmp_path / 'project'
+    project.mkdir()
+    (project / 'legacy.txt').write_text('stale\n', encoding='utf-8')
+
+    result = apply_provider(
+        provider_cls,
+        project,
+        config={'delete_files': ['legacy.txt']},
+    )
+
+    assert result.apply_result['legacy.txt'] == 'deleted'
+    assert 'legacy.txt' not in result.managed_files()
+
+    check = apply_provider(provider_cls, project, check_only=True)
+    # Nothing is written in check mode and there is no drift, so the run
+    # recorded no applied files at all
+    assert check.apply_result == {}
+    assert check.managed_files() == {}
+
+
+def test_managed_files_is_empty_when_check_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    """A check run stages insertions and resolves copies but writes nothing.
+
+    The insertion target and the copy target both exist only in the render
+    tree; the managed view reads the project, so both come back empty.
+    """
+    provider_code = """\
+        from repolish import BaseContext, BaseInputs, Provider
+        from repolish.providers.models import ResourceCopy
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_insertions(self, context):
+                def display_year():
+                    return '2026'
+                return {'README.md': {'display-year': display_year}}
+
+            def create_default_copies(self):
+                return [ResourceCopy(source='configs/app.toml', target='app.toml')]
+        """
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        provider_code,
+        templates={
+            'README.md.jinja': 'head\n\n<!-- repolish:on:year display-year -->\n<!-- repolish:off:year -->\n',
+        },
+    )
+    copy_source = tmp_path / 'pkg' / 'resources' / 'configs' / 'app.toml'
+    copy_source.parent.mkdir(parents=True)
+    copy_source.write_text('copied\n', encoding='utf-8')
+    project = tmp_path / 'project'
+    project.mkdir()
+
+    check = apply_provider(provider_cls, project, check_only=True)
+
+    assert check.exit_code == 2
+    # Staged in the render tree, recorded by the session, absent from disk
+    assert 'README.md' in check.insertion_results
+    copy_targets = [c.target.as_posix() for c in check.session.resolved_copies['test-provider']]
+    assert copy_targets == ['app.toml']
+    assert check.managed_files() == {}
 
 
 def test_hand_edit_drift_is_detected_then_healed(tmp_path: Path) -> None:
