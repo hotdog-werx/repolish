@@ -10,7 +10,12 @@ selectively if desired.
 """
 
 from .metadata import AliasRegistry, ProviderFileInfo
-from .project import RepolishConfig, RepolishConfigFile, WorkspaceConfig
+from .project import (
+    FastLaneResolution,
+    RepolishConfig,
+    RepolishConfigFile,
+    WorkspaceConfig,
+)
 from .provider import (
     ProviderConfig,
     ProviderCopy,
@@ -20,6 +25,7 @@ from .provider import (
 
 __all__ = [
     'AliasRegistry',
+    'FastLaneResolution',
     'ProviderConfig',
     'ProviderCopy',
     'ProviderFileInfo',

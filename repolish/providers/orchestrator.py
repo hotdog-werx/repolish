@@ -147,6 +147,7 @@ def _run_provider_pipeline(
         insertion_registry=accum.insertion_registry,
         insertion_sources=accum.insertion_sources,
         promoted_file_mappings=accum.promoted_file_mappings,
+        fast_lanes=accum.fast_lanes,
     )
 
 

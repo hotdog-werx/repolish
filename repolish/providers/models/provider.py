@@ -31,6 +31,7 @@ from repolish.providers.models.context import (
     Symlink,
 )
 from repolish.providers.models.files import (
+    FastLaneSpec,
     FileInsertionContribution,
     FileMode,
     InsertionRegistry,
@@ -559,6 +560,30 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Default implementation returns an empty list (no copies).
         """
         return []
+
+    def create_fast_lanes(
+        self,
+    ) -> dict[str, FastLaneSpec]:
+        """Optional: declare fast lanes for quick, scoped apply runs.
+
+        Returns ``{lane_name: FastLaneSpec}`` where each spec holds the same
+        shapes the regular hooks return: ``file_mappings``,
+        ``file_insertions``, ``file_validators``.
+
+        The hook is **no-arg on purpose**: nothing it returns can depend on
+        peer-provider context, so a lane's file set is identical whether it
+        runs alone (``<alias>-cli <lane>``) or merged into a full
+        ``repolish apply``. Declare context-dependent work in the regular
+        hooks instead.
+
+        Merging rules (full apply folds every lane's contributions into the
+        session bundle): a dest declared by both a regular hook and a lane
+        raises, unless the project config carries a ``fast_lane_resolutions``
+        entry for it; the same dest in two lanes always raises.
+
+        Default implementation returns an empty mapping (no lanes).
+        """
+        return {}
 
     def promote_file_mappings(
         self,

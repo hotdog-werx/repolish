@@ -46,6 +46,7 @@ def resolve_config(config: RepolishConfigFile) -> RepolishConfig:
         providers_order=config.providers_order,
         template_overrides=config.template_overrides,
         paused_files=config.paused_files,
+        fast_lane_resolutions=config.fast_lane_resolutions,
     )
 
 

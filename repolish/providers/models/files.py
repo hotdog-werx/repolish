@@ -429,6 +429,32 @@ class FileRecord:
     overridden_by: str | None = None
 
 
+class FastLaneSpec(BaseModel):
+    """One fast lane's contributions, in the same shapes the regular hooks use.
+
+    Returned by :meth:`Provider.create_fast_lanes` keyed by lane name. The hook
+    is no-arg on purpose: nothing here can depend on peer-provider context, so
+    the lane's file set is identical in a lane run and a full apply. Full
+    `repolish apply` merges every lane's contributions into the session bundle;
+    a lane run executes exactly one lane's contributions and nothing else.
+    """
+
+    file_mappings: dict[str, str | TemplateMapping] = Field(
+        default_factory=dict,
+    )
+    """Destination path → source path or `TemplateMapping`, as in `create_file_mappings`."""
+    file_insertions: InsertionRegistryByPath = Field(default_factory=dict)
+    """Destination path → insertion-function name → callable, as in
+    `create_file_insertions` (the explicit per-file map form)."""
+    file_validators: FileValidatorsByPath = Field(default_factory=dict)
+    """Destination path → validator name → validator callable or spec, as in
+    `create_file_validators`."""
+    source_provider: str | None = None
+    """Provider id that declared this lane. Not something the provider sets;
+    populated during collection so merge bookkeeping can attribute the
+    contributions (insertion registry keys, source maps)."""
+
+
 class SessionBundle(BaseModel):
     """All contributions collected from providers during one session run.
 
@@ -520,6 +546,11 @@ class SessionBundle(BaseModel):
     by the apply session after both directive phases, with dests relativized
     to the project root where possible; consumers read the families they know.
     Empty when no family ferries data."""
+    fast_lanes: dict[str, FastLaneSpec] = Field(default_factory=dict)
+    """``f'{provider_id}:{lane_name}'`` → that lane's `FastLaneSpec`
+    contributions. Collected from ``create_fast_lanes()``; merged into the
+    regular bundle fields for full runs, or executed alone for lane runs
+    (see ``repolish.fastlane``)."""
 
 
 def _records_from_template_sources(
@@ -775,3 +806,8 @@ class Accumulators:
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(
         default_factory=dict,
     )
+    # fast lanes collected from create_fast_lanes(), keyed
+    # ``f'{provider_id}:{lane_name}'`` so lane names stay unique across
+    # providers in multi-provider sessions. Values are normalized specs
+    # (string sources wrapped, insertions bound to the provider context).
+    fast_lanes: dict[str, FastLaneSpec] = field(default_factory=dict)

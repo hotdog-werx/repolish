@@ -1,3 +1,4 @@
+from enum import Enum
 from pathlib import Path
 
 from pydantic import (
@@ -20,6 +21,13 @@ class WorkspaceConfig(BaseModel):
 
     members: list[str] | None = None
     """Explicit repo-relative member paths. Overrides uv workspace detection."""
+
+
+class FastLaneResolution(str, Enum):
+    """Which side wins when a regular hook and a fast lane declare one dest."""
+
+    FAST_LANE = 'fast_lane'
+    REGULAR = 'regular'
 
 
 class RepolishConfigFile(BaseModel):
@@ -61,6 +69,15 @@ class RepolishConfigFile(BaseModel):
             'ignore. Use this to opt out of provider management for specific '
             'files while a provider is being fixed or updated. Remove entries '
             'once the underlying provider issue is resolved.'
+        ),
+    )
+    fast_lane_resolutions: dict[str, FastLaneResolution] = Field(
+        default_factory=dict,
+        description=(
+            'Resolves a dest declared by both a regular provider hook and a '
+            "fast lane. 'fast_lane' keeps the lane's contribution everywhere; "
+            "'regular' keeps the regular hook's entry (lane runs then skip "
+            'the dest). Without an entry here, such a collision is an error.'
         ),
     )
     providers: dict[str, ProviderConfig] = Field(
@@ -174,5 +191,12 @@ class RepolishConfig(BaseModel):
         description=(
             'Temporary list of files repolish will not touch. '
             'Inherited directly from `RepolishConfigFile.paused_files`.'
+        ),
+    )
+    fast_lane_resolutions: dict[str, FastLaneResolution] = Field(
+        default_factory=dict,
+        description=(
+            'Dest paths resolved for fast lane collisions. '
+            'Inherited directly from `RepolishConfigFile.fast_lane_resolutions`.'
         ),
     )

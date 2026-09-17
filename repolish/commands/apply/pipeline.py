@@ -5,6 +5,7 @@ from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.config.models.provider import (
     ProviderOverrides,
 )
+from repolish.fastlane import merge_fast_lanes, restrict_to_lane
 from repolish.hydration import build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import (
@@ -136,11 +137,16 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
 
     # Dry pass: capture what this session contributes outward for cross-session
     # routing (provider entries + emitted inputs before local consumption).
-    provider_entries, emitted_inputs = _collect_session_outputs(
-        config,
-        alias_to_pid,
-        effective_global_context,
-    )
+    # Single-provider standalone runs (fast lanes) never consume that data, so
+    # they can skip the pass entirely.
+    if options.skip_dry_pass:
+        provider_entries, emitted_inputs = [], []
+    else:
+        provider_entries, emitted_inputs = _collect_session_outputs(
+            config,
+            alias_to_pid,
+            effective_global_context,
+        )
 
     providers = build_final_providers(
         config,
@@ -159,6 +165,23 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         mode=effective_global_context.workspace.mode,
     )
     ordered_aliases = _ordered_aliases(config)
+
+    # Fast lanes: fold every lane's contributions into the bundle (full runs)
+    # or cut the bundle down to exactly one lane (lane runs). Both paths run
+    # duplicate detection against the project's fast_lane_resolutions.
+    if options.lane is not None:
+        restrict_to_lane(
+            providers,
+            options.lane,
+            resolutions=config.fast_lane_resolutions,
+            pid_to_alias=pid_to_alias,
+        )
+    else:
+        merge_fast_lanes(
+            providers,
+            resolutions=config.fast_lane_resolutions,
+            pid_to_alias=pid_to_alias,
+        )
 
     return ResolvedSession(
         config_path=config_path,

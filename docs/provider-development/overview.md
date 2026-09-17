@@ -21,6 +21,7 @@ Every provider passes through the same rough pipeline:
 5. [Validators](validators.md) — enforce correctness after rendering
 6. [Monorepo](monorepo.md) — handle root/member behavior and session wiring
 7. [Testing Providers](testing.md) — verify provider behavior in isolation
+8. [Fast Lanes](fast-lanes.md) — per-provider CLIs for quick, scoped apply runs
 
 ## Common tasks
 
@@ -46,6 +47,11 @@ schema enforcement, file headers, and warnings vs hard failures.
 ### I need to test the provider without the full CLI pipeline
 
 See [Testing Providers](testing.md).
+
+### I need a fast edit loop for a few generated files
+
+Declare a lane in [Fast Lanes](fast-lanes.md) and use the provider's generated
+CLI.
 
 ## Start here
 

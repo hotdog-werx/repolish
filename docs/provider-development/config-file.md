@@ -95,6 +95,18 @@ Repolish cannot run without at least one provider configured.
     - .github/workflows/ci.yml # provider#42 pending
   ```
 
+- **`fast_lane_resolutions`** _(mapping of path to string)_ - resolves a dest
+  declared by both a regular provider hook and a fast lane. Each value is
+  `fast_lane` (the lane's contribution wins everywhere) or `regular` (the
+  regular hook's contribution wins; lane runs skip the dest). Without an entry
+  here, such a collision stops the run naming both declaration sites. See
+  [Fast Lanes](fast-lanes.md).
+
+  ```yaml
+  fast_lane_resolutions:
+    action1/action.yaml: fast_lane
+  ```
+
 - **`workspace`** _(optional mapping)_ - enables workspace (monorepo) mode. When
   present, repolish runs a session for the root and one for each discovered
   member. Accepts one optional sub-key:

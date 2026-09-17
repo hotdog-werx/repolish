@@ -1,0 +1,199 @@
+# Fast Lanes
+
+A fast lane is a named slice of a provider's work with its own CLI subcommand.
+While `repolish apply -p <alias>` already scopes a run to one provider, it still
+builds the full session: every mapping the provider declares is staged and
+rendered, and the pipeline runs its dry pass. A lane run stops earlier. It loads
+exactly one provider, skips the dry pass, and stages only the templates the lane
+declares. For a day-to-day edit loop over a handful of generated files, that is
+the difference between a quick gate and a short coffee break.
+
+Lanes are a quick-development tool. The full system remains the source of truth:
+run `repolish apply` (or the provider's `all` subcommand) before committing, and
+CI should keep checking the full tree.
+
+## Declaring lanes
+
+Implement `create_fast_lanes` on the provider. It returns
+`{lane_name: FastLaneSpec}`, where each spec holds the same shapes the regular
+hooks return:
+
+```python
+from repolish import FastLaneSpec, Provider, TemplateMapping
+
+
+class ActionsProvider(Provider[Ctx, BaseInputs]):
+    def create_file_mappings(self, context):
+        # context-fed work that needs the full pipeline (peers may feed it)
+        return {'.github/workflows/ci.yml': 'ci.yml.jinja'}
+
+    def create_fast_lanes(self):
+        # no context argument: nothing here can depend on other providers
+        return {
+            'actions': FastLaneSpec(
+                file_mappings={
+                    f'{f.stem}/action.yaml': TemplateMapping(
+                        '_repolish.action.yaml.jinja',
+                        extra_context={'module': f'{f.stem}.main'},
+                    )
+                    for f in ACTIONS_SRC.glob('*.py')
+                },
+            ),
+            'docs': FastLaneSpec(
+                file_insertions={
+                    'README.md': {'usage': _usage_block},
+                    'docs/usage.md': {'usage': _usage_block},
+                },
+            ),
+        }
+```
+
+The hook takes no arguments on purpose. Nothing a lane declares can depend on
+peer-provider context, so the lane's file set is identical whether it runs alone
+or merged into a full apply. That is what makes lanes safe to run in isolation.
+A dest whose content genuinely needs data from another provider belongs in the
+regular hooks, not in a lane.
+
+One rule follows from the same reasoning: lane templates must live off
+`TemplateMapping.extra_context`. Rendering still flattens the provider's
+finalized context into the template namespace, so a lane template that reads a
+peer-derived variable renders differently in a lane run than in a full apply.
+Keep lane templates self-contained and the parity guarantee holds: a lane run
+writes the same bytes a full apply would write for those files.
+
+## The provider CLI
+
+`provider_cli` builds a cyclopts app with one subcommand per lane plus an `all`
+subcommand that runs the provider's full pass (still fast: single provider load,
+no dry pass). New lanes need no `pyproject.toml` edits because the subcommands
+are generated from the hook.
+
+Each subcommand takes the apply flags: `--config`, `--check`,
+`--skip-post-process`, `--fail-on-warnings`, and `-v`. The flag set lives in the
+parameter model the `repolish apply` command itself uses, so a flag added there
+shows up on lane subcommands too; the two CLIs cannot drift apart.
+
+The CLI reads the project's real `repolish.yaml`, resolving its own alias by
+matching the config entry whose `provider_root` points at the package's
+`resources/templates` directory (or pass `alias=` to `provider_cli` to pin it).
+That means `paused_files` and this alias's `overrides` are honored exactly as in
+a full run. If the provider is not registered in the project config, the CLI
+says so and points at `repolish link`.
+
+### Wiring the CLI into a provider
+
+`repolish scaffold` generates this wiring for new providers. An established
+provider adds it by hand once: one small module, one script entry, one
+reinstall.
+
+1. Create `mylib/repolish/cli.py` next to `linker.py`, exporting `main`:
+
+```python
+from repolish.fastlane import provider_cli
+
+from mylib.repolish import MyProvider
+
+main = provider_cli(MyProvider)
+```
+
+2. Register it as a console script in `pyproject.toml`, next to the linker
+   entry:
+
+```toml
+[project.scripts]
+mylib-link = 'mylib.repolish.linker:main'
+mylib-cli = 'mylib.repolish.cli:main'
+```
+
+3. Reinstall the package the way the environment normally gets its console
+   scripts (`uv pip install -e .`, `uv sync`, or the equivalent) so `mylib-cli`
+   lands on `PATH`.
+
+After that the CLI never needs touching again: subcommands come from
+`create_fast_lanes`, so adding a lane later is a provider-code change only.
+
+### Trying a lane out
+
+The smallest possible lane needs one template, one spec entry, and nothing else.
+Add a template that lives entirely off `extra_context`, so it satisfies the
+self-containment rule by construction:
+
+```text
+{{ message }}
+```
+
+The template lives at `mylib/resources/templates/repolish/hello.txt.jinja`,
+alongside the provider's other templates. Declare the lane on the provider:
+
+```python
+def create_fast_lanes(self):
+    return {
+        'hello': FastLaneSpec(
+            file_mappings={
+                'hello.txt': TemplateMapping(
+                    'hello.txt.jinja',
+                    extra_context={'message': 'hi from the lane'},
+                ),
+            },
+        ),
+    }
+```
+
+From a project that has the provider in its `repolish.yaml` (no re-link or
+config change needed; the new template is picked up from disk):
+
+```
+$ mylib-cli hello # writes hello.txt into the project
+$ mylib-cli hello --check # exit 0: the lane output is stable
+$ repolish apply --check # no drift on hello.txt: the full run agrees
+```
+
+If more than one config entry points at the same `resources/templates`
+directory, the CLI resolves the first match; pass `alias=` in `cli.py` to pin
+the provider's identity.
+
+## Run semantics
+
+What a lane run does:
+
+- only the lane's `file_mappings`, `file_insertions`, and `file_validators` run;
+  regular-hook content does not run in a lane
+- copies and symlinks still materialize (they are context-free declarations and
+  cheap to honor)
+- lanes never delete: provider deletes and the config's `delete_files` key are
+  skipped in lane runs
+
+What a full `repolish apply` does with lanes: every lane's contributions are
+merged into the session bundle, so lane files render, insert, and validate in
+the full run too. The same declarations run either way, which is why lane output
+cannot drift from a full apply for lane files.
+
+## Collisions and resolutions
+
+Duplicate dests are load-time errors, never silent overrides:
+
+- The same dest in two lane specs raises, always. Two no-arg specs are a static
+  authoring mistake the provider author can fix; there is no config escape hatch
+  for it.
+- The same dest in a regular hook and a lane spec raises, naming the dest and
+  both declaration sites. Regular mappings can be conditional on context, so a
+  collision may surface only in some project states, through no authoring
+  mistake the provider can fix. The project owner resolves it in
+  `repolish.yaml`:
+
+```yaml
+fast_lane_resolutions:
+  'action1/action.yaml': fast_lane # the lane's version wins, everywhere
+  'other/generated.txt': regular # the regular hook's version wins
+```
+
+`fast_lane` means the lane's contribution wins in full runs and lane runs alike;
+`regular` means the regular contribution wins and lane runs skip the dest.
+Whichever side wins does so consistently, so the parity guarantee holds either
+way. The values are validated when the config is read, so a typo fails at
+configuration loading, not mid-run.
+
+The resolution is the project owner's choice because they own their files.
+Repolish is meant to help, not to add friction: if a conditional mapping in an
+upstream provider starts colliding with a lane, the project can decide locally
+which version it wants without waiting on a provider release.

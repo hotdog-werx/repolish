@@ -4,6 +4,7 @@ from .pkginfo import get_package_version
 from .providers.models import (
     BaseContext,
     BaseInputs,
+    FastLaneSpec,
     FileMode,
     FileValidatorOptions,
     FileValidatorSpec,
@@ -30,6 +31,7 @@ __all__ = [
     'BaseContext',
     'BaseInputs',
     'BlockContext',
+    'FastLaneSpec',
     'FileMode',
     'FileValidatorOptions',
     'FileValidatorSpec',

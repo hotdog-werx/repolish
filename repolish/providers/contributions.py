@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
@@ -16,6 +17,7 @@ from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,
+    FastLaneSpec,
     FileInsertionContribution,
     FileMappingOptions,
     FileMode,
@@ -603,6 +605,67 @@ def _handle_provider_insertions(
         accum.insertion_sources.setdefault(path, []).append(provider_id)
 
 
+def _normalize_lane_mapping(
+    src: str | TemplateMapping,
+    provider_id: str,
+) -> str | TemplateMapping:
+    """Annotate one lane mapping source the way regular mappings are collected."""
+    if isinstance(src, str):
+        return TemplateMapping(
+            source_template=RepolishTemplatePath.from_string(src).logical_name,
+            source_provider=provider_id,
+        )
+    # Strip .jinja to match what is on disk after staging, the same
+    # re-annotation _process_provider_fm performs.
+    logical = RepolishTemplatePath.from_string(src.source_template).logical_name if src.source_template else None
+    return replace(src, source_template=logical, source_provider=provider_id)
+
+
+def _normalize_lane_spec(
+    spec: FastLaneSpec,
+    own_ctx: BaseContext,
+    provider_id: str,
+) -> FastLaneSpec:
+    """Normalize one lane spec's contributions to their collected forms.
+
+    Plain-string mapping sources are wrapped in a ``TemplateMapping``
+    (``.jinja`` stripped, ``source_provider`` set) and insertion functions are
+    bound to the provider's own context, so the merge step in
+    ``repolish.fastlane`` is pure dict work with identical output either way
+    it runs.
+    """
+    return FastLaneSpec(
+        file_mappings={dest: _normalize_lane_mapping(src, provider_id) for dest, src in spec.file_mappings.items()},
+        file_insertions={
+            path: _bind_insertions_with_context(functions, own_ctx) for path, functions in spec.file_insertions.items()
+        },
+        file_validators={path: dict(fns) for path, fns in spec.file_validators.items()},
+        source_provider=provider_id,
+    )
+
+
+def _handle_provider_fast_lanes(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Collect fast lane declarations for one provider.
+
+    Lanes are keyed ``f'{provider_id}:{lane_name}'`` so two providers may
+    declare lanes with the same name without clobbering each other's
+    bookkeeping; dest-level collisions between them stay an error.
+    """
+    lanes = inst.create_fast_lanes()
+
+    for lane_name, spec in lanes.items():
+        accum.fast_lanes[f'{provider_id}:{lane_name}'] = _normalize_lane_spec(
+            spec,
+            own_ctx,
+            provider_id,
+        )
+
+
 def _extend_provider_insertions(
     insertions: dict[str, InsertionRegistry],
     *,
@@ -873,6 +936,7 @@ def _collect_provider_contribution(
     if provider_overrides:
         _apply_validator_overrides(provider_overrides.validators or {}, accum)
         _apply_insertion_overrides(provider_overrides.insertions or {}, accum)
+    _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 

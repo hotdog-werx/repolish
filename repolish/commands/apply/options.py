@@ -41,6 +41,12 @@ class ApplyOptions:
         repr=False,
     )
     extra_inputs: list[BaseInputs] | None = field(default=None, repr=False)
+    lane: str | None = None
+    """Execute only the contributions of this fast lane (see ``repolish.fastlane``)."""
+    skip_dry_pass: bool = False
+    """Skip the dry provider pass in ``resolve_session``. Only safe for
+    single-provider standalone runs that never consume cross-session
+    routing data (``provider_entries``/``emitted_inputs``)."""
 
 
 @dataclass
