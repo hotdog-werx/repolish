@@ -2,9 +2,10 @@
 
 A fast lane is a named slice of a provider's work, declared via
 :meth:`~repolish.providers.models.Provider.create_fast_lanes` as
-``{lane_name: FastLaneSpec}``. The hook is no-arg on purpose: nothing it
-returns can depend on peer-provider context, so a lane's file set is
-identical whether it runs alone or merged into a full ``repolish apply``.
+``{lane_name: FastLaneSpec}``. The hook receives only the ``repolish``
+namespace (repo info plus the provider's own identity) on purpose: those
+values are identical whether a lane runs alone or merged into a full
+``repolish apply``, so the lane's file set is stable either way.
 
 This package exposes only what other parts of the system use:
 

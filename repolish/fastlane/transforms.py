@@ -34,9 +34,10 @@ def _spec_dests(spec: FastLaneSpec) -> set[str]:
 def _detect_lane_lane_collisions(bundle: SessionBundle) -> None:
     """Fail when the same dest is declared by two different lanes.
 
-    This is a static authoring mistake (two no-arg specs, no state involved)
-    so it always raises, in full runs and lane runs alike, and cannot be
-    resolved away via ``fast_lane_resolutions``.
+    This is a static authoring mistake (two specs fed identical inputs in
+    every run mode, no state involved) so it always raises, in full runs and
+    lane runs alike, and cannot be resolved away via
+    ``fast_lane_resolutions``.
     """
     seen: dict[str, str] = {}
     for lane_key, spec in bundle.fast_lanes.items():

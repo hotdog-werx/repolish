@@ -150,7 +150,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
 
     providers = build_final_providers(
         config,
-        global_context=options.global_context,
+        global_context=effective_global_context,
         extra_provider_entries=options.extra_provider_entries,
         extra_inputs=options.extra_inputs,
     )

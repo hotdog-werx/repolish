@@ -433,10 +433,12 @@ class FastLaneSpec(BaseModel):
     """One fast lane's contributions, in the same shapes the regular hooks use.
 
     Returned by :meth:`Provider.create_fast_lanes` keyed by lane name. The hook
-    is no-arg on purpose: nothing here can depend on peer-provider context, so
-    the lane's file set is identical in a lane run and a full apply. Full
-    `repolish apply` merges every lane's contributions into the session bundle;
-    a lane run executes exactly one lane's contributions and nothing else.
+    receives only the ``repolish`` namespace (repo info plus the provider's
+    own identity), whose values are identical in a lane run and a full apply,
+    so the lane's file set is stable either way; the peer-fed provider context
+    stays out on purpose. Full `repolish apply` merges every lane's
+    contributions into the session bundle; a lane run executes exactly one
+    lane's contributions and nothing else.
     """
 
     file_mappings: dict[str, str | TemplateMapping] = Field(

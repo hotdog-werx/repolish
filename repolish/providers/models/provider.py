@@ -27,6 +27,7 @@ from repolish.providers._log import logger
 from repolish.providers.models.context import (
     BaseContext,
     BaseInputs,
+    RepolishContext,
     ResourceCopy,
     Symlink,
 )
@@ -563,6 +564,7 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
     def create_fast_lanes(
         self,
+        repolish: RepolishContext,  # noqa: ARG002 - parameter may be unused
     ) -> dict[str, FastLaneSpec]:
         """Optional: declare fast lanes for quick, scoped apply runs.
 
@@ -570,11 +572,14 @@ class Provider(ABC, Generic[ContextT, InputT]):
         shapes the regular hooks return: ``file_mappings``,
         ``file_insertions``, ``file_validators``.
 
-        The hook is **no-arg on purpose**: nothing it returns can depend on
-        peer-provider context, so a lane's file set is identical whether it
-        runs alone (``<alias>-cli <lane>``) or merged into a full
-        ``repolish apply``. Declare context-dependent work in the regular
-        hooks instead.
+        The hook receives the ``repolish`` namespace (repo info, year, and
+        this provider's own name and version) and **nothing else** on
+        purpose: those values are identical whether the lane runs alone
+        (``<alias>-cli <lane>``) or merged into a full ``repolish apply``,
+        while the provider context may carry peer-provider input that is
+        only complete in a full run. Declare peer-dependent work in the
+        regular hooks instead; use *repolish* for values lanes genuinely
+        need, like ``{{ repolish.provider.alias }}`` file headers.
 
         Merging rules (full apply folds every lane's contributions into the
         session bundle): a dest declared by both a regular hook and a lane

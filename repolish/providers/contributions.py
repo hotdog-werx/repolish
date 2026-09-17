@@ -652,11 +652,14 @@ def _handle_provider_fast_lanes(
 ) -> None:
     """Collect fast lane declarations for one provider.
 
-    Lanes are keyed ``f'{provider_id}:{lane_name}'`` so two providers may
-    declare lanes with the same name without clobbering each other's
-    bookkeeping; dest-level collisions between them stay an error.
+    The hook receives the provider's ``repolish`` namespace (repo info plus
+    its own identity), the same values a full run injects, so lane
+    declarations can embed them (file headers) without touching the
+    peer-fed provider context. Lanes are keyed ``f'{provider_id}:{lane_name}'``
+    so two providers may declare lanes with the same name without clobbering
+    each other's bookkeeping; dest-level collisions between them stay an error.
     """
-    lanes = inst.create_fast_lanes()
+    lanes = inst.create_fast_lanes(own_ctx.repolish)
 
     for lane_name, spec in lanes.items():
         accum.fast_lanes[f'{provider_id}:{lane_name}'] = _normalize_lane_spec(

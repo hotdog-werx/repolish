@@ -22,6 +22,7 @@ from hotlog import configure_logging, get_logger, resolve_verbosity
 from repolish.cli.apply import ApplyCommonParams
 from repolish.cli.utils import run_cli_command
 from repolish.exceptions import ConfigValidationError
+from repolish.providers.models import ProviderInfo, RepolishContext
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -230,7 +231,12 @@ def provider_cli(
     inst = provider_class()
     inst.templates_root = provider_root
     inst.alias = alias or ''
-    lanes = inst.create_fast_lanes()
+    # Enumeration only: just lane names matter here, and no session context
+    # exists yet, so the hook gets a minimal namespace (placeholder repo info,
+    # the known alias). Runtime subcommands re-collect with the real one.
+    lanes = inst.create_fast_lanes(
+        RepolishContext(provider=ProviderInfo(alias=inst.alias)),
+    )
 
     provider_name = type(inst).__name__
     app = cyclopts.App(
