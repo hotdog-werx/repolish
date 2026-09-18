@@ -1,6 +1,6 @@
 # Provider anatomy
 
-This is the page to start with when you are building or extending a provider. It
+This is the page to start with when you are authoring or extending a provider. It
 walks through the same shape repolish uses internally: configure the provider,
 resolve it, build context, stage templates, render output, validate the final
 files, and handle monorepo-specific behavior.
@@ -21,7 +21,8 @@ Every provider passes through the same rough pipeline:
 5. [Validators](validators.md) — enforce correctness after rendering
 6. [Monorepo](monorepo.md) — handle root/member behavior and session wiring
 7. [Testing Providers](testing.md) — verify provider behavior in isolation
-8. [Fast Lanes](fast-lanes.md) — per-provider CLIs for quick, scoped apply runs
+8. [Fast Lanes](fast-lanes.md) — per-provider CLIs for quick updates,
+   scaffolding, and utility workflows
 
 ## Common tasks
 
@@ -52,6 +53,12 @@ See [Testing Providers](testing.md).
 
 Declare a lane in [Fast Lanes](fast-lanes.md) and use the provider's generated
 CLI.
+
+### I want provider-owned scaffolding without a separate CLI project
+
+Use [Fast Lanes](fast-lanes.md). Lanes let the provider expose focused commands
+for things like component scaffolds, doc generation, or selective updates while
+keeping templates, standards, and maintenance inside the same provider package.
 
 ## Start here
 

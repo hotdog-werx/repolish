@@ -8,9 +8,39 @@ exactly one provider, skips the dry pass, and stages only the templates the lane
 declares. For a day-to-day edit loop over a handful of generated files, that is
 the difference between a quick gate and a short coffee break.
 
+That shorter loop is only half the story. Fast lanes also let a provider ship
+its own focused project utilities without forcing the team to build and maintain
+another CLI. If a React provider already owns the templates and conventions for
+components, hooks, or route modules, the same provider can expose commands like
+`react-provider-cli component` or `react-provider-cli route` and generate those
+files directly. The team gets scaffolding, standards, and repo-health automation
+from one package instead of spreading the same logic across repolish templates,
+ad hoc scripts, and a second command-line tool.
+
 Lanes are a quick-development tool. The full system remains the source of truth:
 run `repolish apply` (or the provider's `all` subcommand) before committing, and
 CI should keep checking the full tree.
+
+## Why they matter
+
+- They give a provider an ergonomic developer-facing CLI "for free" once the
+  provider already exists.
+- They keep scaffolding logic next to the templates and standards it depends on,
+  instead of duplicating that logic in a second tool.
+- They let teams skip expensive full-provider runs when they only need a narrow
+  update, especially when `post_process` work is the dominant cost.
+- They still preserve a path back to the full system: the same provider can
+  offer quick lane commands for local work and a complete `repolish apply` pass
+  for repo-wide consistency.
+
+In practice that means a provider can serve two roles at once:
+
+- repo maintenance through full repolish runs, and
+- day-to-day developer workflows through small, provider-owned commands.
+
+If you are already paying the cost to define provider templates and standards,
+lanes let you reuse that investment instead of rebuilding it in a separate
+scaffolding tool.
 
 ## Declaring lanes
 
@@ -77,6 +107,13 @@ writes the same bytes a full apply would write for those files.
 subcommand that runs the provider's full pass (still fast: single provider load,
 no dry pass). New lanes need no `pyproject.toml` edits because the subcommands
 are generated from the hook.
+
+That generated CLI is the feature worth noticing. A provider author does not
+need a second package, separate parser setup, or hand-maintained subcommand
+table just to expose useful project commands. The provider already owns the
+templates, knows the standards, and has a place to declare lane-specific
+context. `provider_cli` turns that into a real project tool with almost no extra
+surface area.
 
 Each subcommand takes the apply flags: `--config`, `--check`,
 `--skip-post-process`, `--fail-on-warnings`, and `-v`. The flag set lives in the
@@ -145,6 +182,11 @@ mylib-cli = 'mylib.repolish.cli:main'
 After that the CLI never needs touching again: subcommands come from
 `create_fast_lanes`, so adding a lane later is a provider-code change only.
 
+This is what makes lanes attractive even when the lane is not about "apply but
+faster". A team can expose component generators, documentation updaters,
+workflow bootstrappers, or one-off maintenance commands through the same
+provider package they already ship for repolish.
+
 ### Trying a lane out
 
 The smallest possible lane needs one template, one spec entry, and nothing else.
@@ -184,6 +226,22 @@ $ repolish apply --check # no drift on hello.txt: the full run agrees
 If more than one config entry points at the same `resources/templates`
 directory, the CLI resolves the first match; pass `alias=` in `cli.py` to pin
 the provider's identity.
+
+### Example: a provider-owned scaffold command
+
+Imagine a provider that carries the team's React conventions. The team may not
+want repolish to own every component file after creation, but they still want a
+standard way to create new component modules. A lane is a good fit:
+
+- the provider already has the canonical templates,
+- the generated CLI already exists,
+- and the command can stay narrow to the developer workflow.
+
+That looks like `react-provider-cli component`, not a separate bespoke tool.
+The provider can render `Component.tsx`, `Component.test.tsx`, `Component.css`,
+or any supporting files from the same template set the team already trusts. If
+the provider also defines full-run templates for repo maintenance, both use
+cases stay in one package rather than diverging across two systems.
 
 ## Run semantics
 

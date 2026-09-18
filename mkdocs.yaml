@@ -5,15 +5,12 @@ repo_url: https://github.com/hotdog-werx/repolish
 repo_name: hotdog-werx/repolish
 
 nav:
-  - Home:
-      - index.md
-      - AI Agent Reference: llms.md
-
-  - Getting Started:
+  - Learn:
+    - Overview: index.md
+    - Get Started:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quick-start.md
-
-  - Tutorial:
+    - Tutorial:
       - Introduction: tutorial/index.md
       - 1. Workspace Provider: tutorial/01-workspace-provider.md
       - 2. Python Provider: tutorial/02-python-provider.md
@@ -30,31 +27,38 @@ nav:
       - File Modes: concepts/file-modes.md
 
   - Markers:
-      - Overview: markers/index.md
-      - Grammar: markers/grammar.md
-      - Directives:
-          - Phases: markers/phases.md
-          - Tag Blocks & Anchors: markers/tag-blocks.md
-          - Regex: markers/regex.md
-          - Multiregex: markers/multiregex.md
-          - Keep Blocks: markers/keep-block.md
-          - Keep the Rest: markers/keep-rest.md
-          - Keep the Header: markers/keep-header.md
-      - Insertions: markers/insertions.md
-      - Insertion Zones: markers/insert-zones.md
+    - Overview: markers/index.md
+    - Grammar: markers/grammar.md
+    - Directives:
+        - Phases: markers/phases.md
+        - Tag Blocks & Anchors: markers/tag-blocks.md
+        - Regex: markers/regex.md
+        - Multiregex: markers/multiregex.md
+        - Keep Blocks: markers/keep-block.md
+        - Keep the Rest: markers/keep-rest.md
+        - Keep the Header: markers/keep-header.md
+    - Insertions: markers/insertions.md
+    - Insertion Zones: markers/insert-zones.md
 
-  - Provider Anatomy:
-      - Overview: provider-development/overview.md
+  - Authoring Providers:
+    - Overview: provider-development/overview.md
+    - Configuration:
       - Provider Setup: provider-development/config-file.md
       - Provider Resolution: provider-development/providers.md
+    - Implementation:
       - Context & Inputs: provider-development/context.md
       - Templates: provider-development/templates.md
       - Validators: provider-development/validators.md
       - Insertions: provider-development/insertions.md
       - Preprocessors: provider-development/preprocessors.md
+      - Fast Lanes: provider-development/fast-lanes.md
+    - Verification:
+      - Testing Providers: provider-development/testing.md
+    - Advanced:
       - Monorepo: provider-development/monorepo.md
       - Mode Handlers: provider-development/mode-handler.md
-      - Testing Providers: provider-development/testing.md
+      - Resource Linker: provider-development/linker.md
+      - Provider Migration: provider-development/provider-migration.md
 
   - Project Controls:
       - You Are in Charge: project-controls/index.md
@@ -64,12 +68,9 @@ nav:
       - Local Providers: project-controls/local-providers.md
       - Preserve Your Edits: project-controls/anchors.md
 
-  - Provider Development:
-      - Resource Linker: provider-development/linker.md
-      - Provider Migration: provider-development/provider-migration.md
-
   - Reference:
       - reference/index.md
+      - AI Agent Reference: llms.md
       - apply: reference/apply.md
       - link: reference/link.md
       - lint: reference/lint.md

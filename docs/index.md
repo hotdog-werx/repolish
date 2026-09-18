@@ -62,23 +62,27 @@ paused_files:
 ```
 
 That is the quick escape hatch. The
-[Developer Control](project-controls/index.md) section documents every tool
+[Project Controls](project-controls/index.md) section documents every tool
 available to you: pausing files, overriding templates, patching context, and
 running a fully local provider when you need total independence from upstream.
 
 ## Where to go next
 
-- [Installation](getting-started/installation.md) — get repolish installed
-- [Quick Start](getting-started/quick-start.md) — run your first check and apply
-- [Tutorial](tutorial/index.md) — build two providers from scratch and discover
-  why each feature exists
+- [Learn / Installation](getting-started/installation.md) — get repolish
+  installed
+- [Learn / Quick Start](getting-started/quick-start.md) — run your first check
+  and apply
+- [Learn / Tutorial](tutorial/index.md) — build two providers from scratch and
+  discover why each feature exists
 - [How It Works](concepts/overview.md) — deeper look at the pipeline
-- [Developer Control](project-controls/index.md) — all your escape hatches
+- [Authoring Providers](provider-development/overview.md) — author providers,
+  fast lanes, and tests
+- [Project Controls](project-controls/index.md) — all your escape hatches
 
 ## Working with an AI assistant
 
 If you are using an AI coding assistant to help configure or extend repolish,
-point it at the [AI Agent Reference](llms.md) page first. That single page gives
+point it at the [AI Agent Reference](llms.md) page in the reference section first. That single page gives
 the assistant a complete map of what repolish does, how the config file is
 structured, and where to look for deeper detail — so it can help you without
 guessing.
