@@ -59,11 +59,12 @@ def print_run_header(parts: Sequence[str]) -> None:
     text = Text(f'repolish {__version__}')
     for part in parts:
         text.append(f' · {part}', style='dim')
-    console.print(text)
+    console.print(text, end='\n\n')
 
 
 def print_completed_footer(total_ms: int, timings_path: Path) -> None:
     """Print the one-line run footer with a details link to the timings file."""
-    text = Text(f'completed in {format_duration(total_ms)}')
+    text = Text('\ncompleted in ')
+    text.append(f'{format_duration(total_ms)}', style='dim')
     details_link(text, timings_path)
     console.print(text)

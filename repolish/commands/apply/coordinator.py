@@ -36,9 +36,9 @@ from repolish.postprocess.runner import run_post_process
 from repolish.providers.models import (
     TemplateMapping,
 )
-from repolish.reporting import print_run_header
 from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.providers.models.files import FileMode, FileRecord
+from repolish.reporting import print_run_header
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING, Annotated, Any
 
 import cyclopts
@@ -81,7 +82,10 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     """
     # Deferred imports: repolish.fastlane is imported by the apply pipeline,
     # so the session modules must not be pulled in at import time.
-    from repolish.commands.apply.display import print_run_summary  # noqa: PLC0415
+    from repolish.commands.apply.display import (  # noqa: PLC0415
+        print_run_footer,
+        print_run_summary,
+    )
     from repolish.commands.apply.options import ApplyOptions  # noqa: PLC0415
     from repolish.commands.apply.pipeline import resolve_session  # noqa: PLC0415
     from repolish.commands.apply.session import apply_session  # noqa: PLC0415
@@ -89,6 +93,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     from repolish.reporting import print_run_header  # noqa: PLC0415
 
     configure_logging(verbosity=resolve_verbosity(verbose=verbose))
+    started = perf_counter()
     config_path = config.resolve()
     prepared = prepare_lane_config(
         provider_root,
@@ -129,6 +134,11 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         fail_on_warnings=fail_on_warnings,
     )
     print_run_summary([session])
+    print_run_footer(
+        [session],
+        (perf_counter() - started) * 1000,
+        config_path.parent,
+    )
     return rc
 
 

@@ -92,9 +92,11 @@ def test_print_completed_footer_shows_duration_without_link_by_default(
     print_completed_footer(4210, tmp_path / 'phase-timings.json')
     rendered = out.getvalue()
     assert 'completed in 4.2s' in rendered
-    # no hyperlink support: the [details] suffix is absent, the line is still one line
+    # no hyperlink support: the [details] suffix is absent
     assert '[details]' not in rendered
-    assert rendered.count('\n') == 1
+    # the footer opens with a blank line so it sits apart from the trees
+    assert rendered.startswith('\ncompleted in')
+    assert rendered.count('\n') == 2
 
 
 def test_print_run_header_shows_version_and_dim_parts(
@@ -110,7 +112,8 @@ def test_print_run_header_shows_version_and_dim_parts(
     assert 'provider demo' in rendered
     assert 'repolish.yaml' in rendered
     assert ' · ' in rendered
-    assert rendered.count('\n') == 1
+    # the header closes with a blank line so the trees start clear of it
+    assert rendered.count('\n') == 2
 
 
 def test_print_run_header_without_parts_is_just_the_version(
@@ -123,4 +126,4 @@ def test_print_run_header_without_parts_is_just_the_version(
     rendered = out.getvalue()
     assert f'repolish {__version__}' in rendered
     assert ' · ' not in rendered
-    assert rendered.count('\n') == 1
+    assert rendered.count('\n') == 2
