@@ -15,6 +15,7 @@ from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,
 )
+from repolish.phases import PhaseTimer
 from repolish.providers.models import (
     BaseInputs,
     GlobalContext,
@@ -96,6 +97,7 @@ def _collect_session_outputs(
 def _load_session_config(
     options: ApplyOptions,
     config_dir: Path,
+    timer: PhaseTimer,
 ) -> tuple[RepolishConfig, dict[str, ProviderConfig]]:
     """Read the config file and run the readiness check for a full session.
 
@@ -103,36 +105,39 @@ def _load_session_config(
     symlink/copy collectors need). Readiness failures only warn: the
     providers in question are absent from the run, never fatal on their own.
     """
-    raw_config = load_config_file(options.config_path)
-    if options.provider_filter is not None:
-        aliases = [
-            alias
-            for alias in (raw_config.providers_order or list(raw_config.providers.keys()))
-            if alias in options.provider_filter
-        ]
-        filtered_raw_providers = {
-            alias: raw_config.providers[alias] for alias in aliases if alias in raw_config.providers
-        }
-    else:
-        aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
-        filtered_raw_providers = raw_config.providers
-    readiness = ensure_providers_ready(
-        aliases,
-        filtered_raw_providers,
-        config_dir,
-        strict=options.strict,
-        location_context=None,
-    )
+    with timer.phase('config_load'):
+        raw_config = load_config_file(options.config_path)
+        if options.provider_filter is not None:
+            aliases = [
+                alias
+                for alias in (raw_config.providers_order or list(raw_config.providers.keys()))
+                if alias in options.provider_filter
+            ]
+            filtered_raw_providers = {
+                alias: raw_config.providers[alias] for alias in aliases if alias in raw_config.providers
+            }
+        else:
+            aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
+            filtered_raw_providers = raw_config.providers
+    with timer.phase('providers_ready'):
+        readiness = ensure_providers_ready(
+            aliases,
+            filtered_raw_providers,
+            config_dir,
+            strict=options.strict,
+            location_context=None,
+        )
     if readiness.failed:
         logger.warning(
             'providers_not_ready',
             failed=readiness.failed,
             note='these providers will be absent from the run',
         )
-    config = load_config(
-        options.config_path,
-        provider_filter=options.provider_filter,
-    )
+    with timer.phase('config_load'):
+        config = load_config(
+            options.config_path,
+            provider_filter=options.provider_filter,
+        )
     return config, raw_config.providers
 
 
@@ -148,6 +153,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     """
     config_path = options.config_path
     config_dir = config_path.resolve().parent
+    timer = PhaseTimer()
 
     if options.lane_config is not None:
         # Prepared lane run (repolish.fastlane.config): the provider's
@@ -156,7 +162,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         config = options.lane_config.config
         raw_providers = options.lane_config.raw_providers
     else:
-        config, raw_providers = _load_session_config(options, config_dir)
+        config, raw_providers = _load_session_config(options, config_dir, timer)
 
     effective_global_context = options.global_context or get_global_context()
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
@@ -168,18 +174,20 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     if options.skip_dry_pass:
         provider_entries, emitted_inputs = [], []
     else:
-        provider_entries, emitted_inputs = _collect_session_outputs(
-            config,
-            alias_to_pid,
-            effective_global_context,
-        )
+        with timer.phase('dry_pass'):
+            provider_entries, emitted_inputs = _collect_session_outputs(
+                config,
+                alias_to_pid,
+                effective_global_context,
+            )
 
-    providers = build_final_providers(
-        config,
-        global_context=effective_global_context,
-        extra_provider_entries=options.extra_provider_entries,
-        extra_inputs=options.extra_inputs,
-    )
+    with timer.phase('provider_pipeline'):
+        providers = build_final_providers(
+            config,
+            global_context=effective_global_context,
+            extra_provider_entries=options.extra_provider_entries,
+            extra_inputs=options.extra_inputs,
+        )
     resolved_symlinks = collect_provider_symlinks(
         config.providers,
         raw_providers,
@@ -224,4 +232,5 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         extra_inputs=options.extra_inputs or [],
         provider_entries=provider_entries,
         emitted_inputs=emitted_inputs,
+        phase_timer=timer,
     )

@@ -3,6 +3,8 @@ from pathlib import Path
 
 from repolish.config import ProviderSymlink, RepolishConfig
 from repolish.config.models.provider import ProviderConfig, ProviderCopy
+from repolish.phases import PhaseTimer
+from repolish.postprocess.models import PostProcessRun
 from repolish.providers.models import (
     BaseInputs,
     GlobalContext,
@@ -199,3 +201,19 @@ class ResolvedSession:
     by :func:`~repolish.commands.apply.symlinks.apply_copies` during apply;
     empty in check-only runs (whole-entry pauses are still derivable from
     the session's ``paused_files``)."""
+    post_process_runs: list[tuple[str, PostProcessRun]] = field(
+        default_factory=list,
+        repr=False,
+    )
+    """Post-process runs executed for this session as ``(label, run)`` pairs
+    (label: ``'session'`` or ``'promoted files'``).  Populated by
+    :func:`~repolish.commands.apply.session._run_post_process_if_needed` and
+    the coordinator's promoted-files pass; the post-process summary tree
+    groups by these."""
+    post_process_reports: list[Path] = field(default_factory=list, repr=False)
+    """Text report paths written for the entries in ``post_process_runs``,
+    parallel to that list; each tree node links to its report."""
+    phase_timer: PhaseTimer = field(default_factory=PhaseTimer, repr=False)
+    """Phase durations recorded while resolving and applying this session.
+    Emitted as structured debug events at the end of the run and appended
+    to the post-process report's timings section."""

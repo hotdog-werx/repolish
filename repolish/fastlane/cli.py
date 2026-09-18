@@ -81,7 +81,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     """
     # Deferred imports: repolish.fastlane is imported by the apply pipeline,
     # so the session modules must not be pulled in at import time.
-    from repolish.commands.apply.display import print_summary_tree  # noqa: PLC0415
+    from repolish.commands.apply.display import print_run_summary  # noqa: PLC0415
     from repolish.commands.apply.options import ApplyOptions  # noqa: PLC0415
     from repolish.commands.apply.pipeline import resolve_session  # noqa: PLC0415
     from repolish.commands.apply.session import apply_session  # noqa: PLC0415
@@ -120,7 +120,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         skip_post_process=skip_post_process,
         fail_on_warnings=fail_on_warnings,
     )
-    print_summary_tree([session])
+    print_run_summary([session])
     return rc
 
 

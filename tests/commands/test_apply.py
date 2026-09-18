@@ -26,6 +26,7 @@ from repolish.config.models.provider import (
     ProviderSymlink,
 )
 from repolish.linker.health import ProviderReadinessResult
+from repolish.postprocess.models import CommandOutcome, PostProcessRun
 from repolish.providers import SessionBundle
 from repolish.providers.models import (
     Action,
@@ -324,6 +325,89 @@ def test_apply_session_returns_1_when_render_fails(
 
     rc = apply_session(session)
     assert rc == 1
+
+
+def test_apply_session_returns_1_when_post_process_fails(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """apply_session returns 1 and logs the report path when post-process fails.
+
+    Nothing after post-process (check, apply copy) may run, but the summary
+    tree and report still do, so the failure notice points at the report.
+    """
+    config = RepolishConfig(config_dir=tmp_path, post_process=['false'])
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+        providers=SessionBundle(provider_contexts={}),
+        aliases=[],
+        alias_to_pid={},
+        pid_to_alias={},
+        resolved_symlinks={},
+    )
+
+    setup_output = tmp_path / 'out'
+    render_tree = setup_output / 'repolish'
+    render_tree.mkdir(parents=True)
+    (render_tree / 'staged.txt').write_text('rendered')
+
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+        return_value=(tmp_path, tmp_path / 'in', setup_output),
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={},
+    )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch(
+        'repolish.commands.apply.session.write_file_context_debug_files',
+    )
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
+    mocker.patch(
+        'repolish.commands.apply.session.render_templates',
+        return_value=0,
+    )
+    mocker.patch('repolish.commands.apply.session._run_after_render_directives')
+    mocker.patch('repolish.commands.apply.session._merge_ferries', return_value={})
+    mocker.patch(
+        'repolish.commands.apply.session._relativize_ferry_dests',
+        return_value={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.stage_registered_insertions',
+        return_value=({}, {}, set()),
+    )
+    failed_run = PostProcessRun(
+        cwd=render_tree,
+        outcomes=[
+            CommandOutcome(
+                raw=('false',),
+                argv=('false',),
+                status='failed',
+                returncode=1,
+            ),
+        ],
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.run_post_process',
+        return_value=failed_run,
+    )
+    logger = mocker.patch('repolish.commands.apply.session.logger')
+
+    rc = apply_session(session)
+
+    assert rc == 1
+    assert session.post_process_runs == [('session', failed_run)]
+    logger.error.assert_called_once_with(
+        'post_process_run_failed',
+        report=str(tmp_path / '.repolish' / '_' / 'post-process.txt'),
+        note='see the post-process summary tree for per-command details',
+    )
 
 
 def test_finish_check_returns_2_when_diffs_found(

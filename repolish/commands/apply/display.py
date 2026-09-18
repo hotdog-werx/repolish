@@ -1,8 +1,8 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 from rich.table import Table
 from rich.text import Text
-from rich.tree import Tree
 
 from repolish.commands.apply.debug import debug_file_slug
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
@@ -20,6 +20,13 @@ from repolish.providers.models import (
     ValidationStatus,
 )
 from repolish.providers.models.files import ValidationResult
+from repolish.reporting import (
+    SummaryNode,
+    details_link,
+    post_process_nodes,
+    print_summary_trees,
+    stat_suffix,
+)
 from repolish.utils import path_slug
 from repolish.version import __version__
 
@@ -213,19 +220,19 @@ def _file_skip_reason(
     return None
 
 
-def _symlink_node(sl: ProviderSymlink) -> Text:
-    node = Text()
-    node.append('↗ ', style='blue')
-    node.append(str(sl.target))
-    node.append(f'  → {sl.source}', style='dim')
-    return node
+def _symlink_node(sl: ProviderSymlink) -> SummaryNode:
+    label = Text()
+    label.append('↗ ', style='blue')
+    label.append(str(sl.target))
+    label.append(f'  → {sl.source}', style='dim')
+    return SummaryNode(label=label)
 
 
 def _copy_node(
     copy: ProviderCopy,
     paused_paths: frozenset[str],
     paused_files: frozenset[str],
-) -> Text:
+) -> SummaryNode:
     """Build the tree node for one copy entry: active, paused, or partial.
 
     *paused_paths* comes from ``apply_copies`` — the destinations it actually
@@ -234,44 +241,44 @@ def _copy_node(
     inside a directory copy were skipped (partially paused folder).
     """
     target = copy.target.as_posix()
-    node = Text()
+    label = Text()
     if target in paused_paths or is_paused(target, paused_files):
-        node.append('⏸ ', style='yellow')
-        node.append(str(copy.target), style='yellow')
-        node.append(f'  ← {copy.source} ', style='dim')
-        node.append('(paused)', style='dim yellow')
+        label.append('⏸ ', style='yellow')
+        label.append(str(copy.target), style='yellow')
+        label.append(f'  ← {copy.source} ', style='dim')
+        label.append('(paused)', style='dim yellow')
     elif any(p.startswith(f'{target}/') for p in paused_paths):
-        node.append('◐ ', style='yellow')
-        node.append(str(copy.target), style='yellow')
-        node.append(f'  ← {copy.source} ', style='dim')
-        node.append('(partially paused)', style='dim yellow')
+        label.append('◐ ', style='yellow')
+        label.append(str(copy.target), style='yellow')
+        label.append(f'  ← {copy.source} ', style='dim')
+        label.append('(partially paused)', style='dim yellow')
     else:
-        node.append('📋 ', style='yellow')
-        node.append(str(copy.target))
-        node.append(f'  ← {copy.source}', style='dim')
-    return node
+        label.append('📋 ', style='yellow')
+        label.append(str(copy.target))
+        label.append(f'  ← {copy.source}', style='dim')
+    return SummaryNode(label=label)
 
 
 def _promoted_file_node(
     record: FileRecord,
     promoted_apply_result: dict[str, str],
-) -> Text:
-    node = Text()
+) -> SummaryNode:
+    label = Text()
     promo_status = promoted_apply_result.get(record.path) if promoted_apply_result else None
     prefix, pfx_style, annot_fmt, annot_style = _PROMO_STATUS_FMT.get(
         promo_status,
         _PROMO_DEFAULT_FMT,
     )
-    node.append(prefix, style=pfx_style)
-    node.append(record.path)
-    node.append(
+    label.append(prefix, style=pfx_style)
+    label.append(record.path)
+    label.append(
         annot_fmt.format(
             owner=record.overridden_by or 'root',
             from_=record.promoted_from,
         ),
         style=annot_style,
     )
-    return node
+    return SummaryNode(label=label)
 
 
 def _validator_entry_enabled(entry: FileValidatorEntry) -> bool:
@@ -399,7 +406,7 @@ def _validator_row_display(
 def _validator_summary_node(
     record: FileRecord,
     session: ResolvedSession,
-) -> Text:
+) -> SummaryNode:
     """Render per-validator success/failure lines beneath a file node."""
     node = Text()
     validation_results = session.validation_results.get(record.path, {}) if session.validation_results else {}
@@ -424,7 +431,7 @@ def _validator_summary_node(
         node.append(f'\n    - {marker} {text}', style=style)
     _append_validator_report_link(node, record, session)
     _append_insertion_summary_line(node, record, session)
-    return node
+    return SummaryNode(label=node)
 
 
 def _append_validator_report_link(
@@ -442,8 +449,7 @@ def _append_validator_report_link(
     report_path = session.validation_reports.get(record.path)
     if not report_path:
         return
-    details_style = f'link file://{Path(report_path).absolute()}' if supports_hyperlinks else ''
-    node.append(' [details]' if details_style else '', style=details_style)
+    details_link(node, Path(report_path))
 
 
 def _format_insertion_status(
@@ -470,11 +476,8 @@ def _append_insertion_details(
     """Append insertion status line and optional details link to node."""
     marker, style, status_text = _format_insertion_status(result)
     node.append(f'\n  insertions: {marker} {status_text}', style=style)
-    # Always append, but use empty style when no hyperlink (avoids uncovered branch)
-    details_style = (
-        f'link file://{Path(result.report_path).absolute()}' if result.report_path and supports_hyperlinks else ''
-    )
-    node.append(' [details]' if details_style else '', style=details_style)
+    if result.report_path:
+        details_link(node, Path(result.report_path))
 
 
 def _append_insertion_summary_line(
@@ -509,7 +512,7 @@ def _file_status_node(
     record: FileRecord,
     session: ResolvedSession,
     debug_dir: Path,
-) -> Text:
+) -> SummaryNode:
     """Render a normal file node when there are no validator entries to display."""
     node = Text()
     prefix, pfx_style = _insertion_display_prefix(record, session)
@@ -538,21 +541,21 @@ def _file_status_node(
         node.append(f'  {_insertion_only_label(session)}', style='dim yellow')
 
     _append_insertion_summary_line(node, record, session)
-    return node
+    return SummaryNode(label=node)
 
 
 def _file_node(
     record: FileRecord,
     session: ResolvedSession,
     debug_dir: Path,
-) -> Text:
+) -> SummaryNode:
     reason = _file_skip_reason(record, session)
     if reason:
         node = Text()
         node.append('✗ ', style='yellow')
         node.append(record.path)
         node.append(f'  {reason}', style='dim yellow')
-        return node
+        return SummaryNode(label=node)
     file_validators = session.providers.file_validators.get(record.path, {})
     if file_validators:
         validator_provider = session.providers.validator_sources.get(
@@ -566,15 +569,6 @@ def _file_node(
         if validator_alias is None or validator_alias == record.owner:
             return _validator_summary_node(record, session)
     return _file_status_node(record, session, debug_dir)
-
-
-def _append_stat_parts(label: Text, parts: list[str]) -> None:
-    """Append formatted stat parts to *label* separated by dim · dots."""
-    label.append('  ')
-    for i, part in enumerate(parts):
-        if i:
-            label.append(' · ', style='dim')
-        label.append_text(Text.from_markup(part))
 
 
 def _append_applied_stats(
@@ -602,7 +596,7 @@ def _append_applied_stats(
     ]
     parts = [fmt.format(n=n) for n, fmt in stat_items if n]
     if parts:
-        _append_stat_parts(label, parts)
+        stat_suffix(label, parts)
 
 
 def _append_pending_count(
@@ -664,27 +658,24 @@ def _provider_label(  # noqa: PLR0913 - mirrors the summary row inputs
     return label
 
 
-def _add_provider_branch(
-    group_branch: Tree,
+def _provider_node(
     alias: str,
     records_by_owner: dict[str, list[FileRecord]],
     session: ResolvedSession,
     debug_dir: Path,
-) -> None:
+) -> SummaryNode:
     records = records_by_owner.get(alias, [])
     syms = session.resolved_symlinks.get(alias, [])
     copies = session.resolved_copies.get(alias, [])
-    provider_node = group_branch.add(
-        _provider_label(alias, records, syms, copies, session, debug_dir),
-    )
-    for record in records:
-        provider_node.add(_file_node(record, session, debug_dir))
-    for sl in syms:
-        provider_node.add(_symlink_node(sl))
+    children = [_file_node(record, session, debug_dir) for record in records]
+    children.extend(_symlink_node(sl) for sl in syms)
     paused_paths = frozenset(session.paused_copies.get(alias, ()))
     paused_files = frozenset(session.config.paused_files)
-    for cp in copies:
-        provider_node.add(_copy_node(cp, paused_paths, paused_files))
+    children.extend(_copy_node(cp, paused_paths, paused_files) for cp in copies)
+    return SummaryNode(
+        label=_provider_label(alias, records, syms, copies, session, debug_dir),
+        children=children,
+    )
 
 
 def _classify_aliases(
@@ -708,31 +699,26 @@ def _classify_aliases(
     return root_aliases, member_aliases, standalone_aliases
 
 
-def _add_root_branch_to_tree(
-    tree: Tree,
+def _root_node(
     root_aliases: list[str],
     records_by_owner: dict[str, list[FileRecord]],
     session: ResolvedSession,
     debug_dir: Path,
-) -> None:
-    """Add a Root branch (with promoted-file sub-branch) to *tree* when applicable."""
+) -> SummaryNode | None:
+    """Build the Root group (with promoted-file subgroup) when applicable."""
     if not root_aliases:
-        return
-    branch = tree.add('[bold]Root[/bold]')
-    for alias in root_aliases:
-        _add_provider_branch(
-            branch,
-            alias,
-            records_by_owner,
-            session,
-            debug_dir,
-        )
+        return None
+    children = [_provider_node(alias, records_by_owner, session, debug_dir) for alias in root_aliases]
     if session.promoted_records:
-        promo_branch = branch.add('[bold]Promoted[/bold]')
-        for record in session.promoted_records:
-            promo_branch.add(
-                _promoted_file_node(record, session.promoted_apply_result),
-            )
+        children.append(
+            SummaryNode(
+                label=Text('Promoted', style='bold'),
+                children=[
+                    _promoted_file_node(record, session.promoted_apply_result) for record in session.promoted_records
+                ],
+            ),
+        )
+    return SummaryNode(label=Text('Root', style='bold'), children=children)
 
 
 def _records_by_owner(session: ResolvedSession) -> dict[str, list[FileRecord]]:
@@ -796,8 +782,8 @@ def _attach_insertion_owner_records(
                 )
 
 
-def _build_summary_tree(session: ResolvedSession) -> Tree:
-    """Build a Tree summarising providers grouped by role with per-file status."""
+def _session_nodes(session: ResolvedSession) -> list[SummaryNode]:
+    """Build one summary node group set for a session, grouped by provider role."""
     debug_dir = session.config.config_dir / '.repolish' / '_'
     records_by_owner = _records_by_owner(session)
     _attach_validator_owner_records(records_by_owner, session)
@@ -806,52 +792,46 @@ def _build_summary_tree(session: ResolvedSession) -> Tree:
         session,
     )
 
-    tree = Tree('[bold]apply summary[/bold]')
-    _add_root_branch_to_tree(
-        tree,
-        root_aliases,
-        records_by_owner,
-        session,
-        debug_dir,
-    )
+    nodes: list[SummaryNode] = []
+    root_node = _root_node(root_aliases, records_by_owner, session, debug_dir)
+    if root_node is not None:
+        nodes.append(root_node)
 
     for member_name, m_aliases in member_aliases.items():
-        branch = tree.add(f'[bold]Member: {member_name}[/bold]')
-        for alias in m_aliases:
-            _add_provider_branch(
-                branch,
-                alias,
-                records_by_owner,
-                session,
-                debug_dir,
-            )
+        nodes.append(
+            SummaryNode(
+                label=Text(f'Member: {member_name}', style='bold'),
+                children=[_provider_node(alias, records_by_owner, session, debug_dir) for alias in m_aliases],
+            ),
+        )
 
     if standalone_aliases:
-        branch = tree.add('[bold]Standalone[/bold]')
-        for alias in standalone_aliases:
-            _add_provider_branch(
-                branch,
-                alias,
-                records_by_owner,
-                session,
-                debug_dir,
-            )
-    return tree
+        nodes.append(
+            SummaryNode(
+                label=Text('Standalone', style='bold'),
+                children=[_provider_node(alias, records_by_owner, session, debug_dir) for alias in standalone_aliases],
+            ),
+        )
+    return nodes
 
 
-def print_summary_tree(sessions: list[ResolvedSession]) -> None:
-    """Print a combined Tree summary across all sessions."""
-    # Merge all sessions into a single tree rooted at 'apply summary'.
-    # Each session contributes its groups (Root / Member / Standalone).
-    # When there is only one session the groups are added directly.
-    tree = Tree('[bold]apply summary[/bold]')
-    if len(sessions) == 1:
-        sub = _build_summary_tree(sessions[0])
-        for branch in sub.children:
-            tree.add(branch)
-    else:
-        for session in sessions:
-            sub = _build_summary_tree(session)
-            for branch in sub.children:
-                tree.add(branch)
-    console.print(tree)
+def apply_summary_nodes(
+    sessions: Sequence[ResolvedSession],
+) -> list[SummaryNode]:
+    """Merge every session's groups (Root / Member / Standalone) into one node list."""
+    return [node for session in sessions for node in _session_nodes(session)]
+
+
+def print_run_summary(sessions: Sequence[ResolvedSession]) -> None:
+    """Print the run's summary trees: post-process first, apply summary last.
+
+    Sessions that ran no post-process commands contribute nothing, so the
+    post-process tree is simply absent for runs without a ``post_process``
+    config.
+    """
+    print_summary_trees(
+        [
+            ('post-process summary', post_process_nodes(sessions)),
+            ('apply summary', apply_summary_nodes(sessions)),
+        ],
+    )

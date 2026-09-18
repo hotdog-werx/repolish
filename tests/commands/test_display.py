@@ -15,7 +15,7 @@ from rich.console import Console
 
 from repolish.commands.apply.display import (
     print_files_summary,
-    print_summary_tree,
+    print_run_summary,
 )
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config.models import RepolishConfig
@@ -68,8 +68,8 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for tree test
 def _capture(mocker: MockerFixture, sessions: list[ResolvedSession]) -> str:
     out = io.StringIO()
     test_console = Console(file=out, force_terminal=False, no_color=True)
-    mocker.patch('repolish.commands.apply.display.console', test_console)
-    print_summary_tree(sessions)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    print_run_summary(sessions)
     return out.getvalue()
 
 
@@ -631,7 +631,7 @@ def test_summary_tree_validator_report_details_link(
         validation_reports={'config.toml': str(tmp_path / 'report.json')},
     )
     mocker.patch(
-        'repolish.commands.apply.display.supports_hyperlinks',
+        'repolish.reporting.nodes.supports_hyperlinks',
         new=True,
     )
     output = _capture(mocker, [session])
