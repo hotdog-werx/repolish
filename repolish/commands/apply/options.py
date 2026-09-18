@@ -215,5 +215,6 @@ class ResolvedSession:
     parallel to that list; each tree node links to its report."""
     phase_timer: PhaseTimer = field(default_factory=PhaseTimer, repr=False)
     """Phase durations recorded while resolving and applying this session.
-    Emitted as structured debug events at the end of the run and appended
-    to the post-process report's timings section."""
+    Emitted as structured debug events at the end of the run and written to
+    the run's `.repolish/_/phase-timings.json`, linked from the completion
+    footer."""

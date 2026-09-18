@@ -1,9 +1,9 @@
 """Write the human-readable text report for a post-process run.
 
 The report is the `[details]` target behind the summary tree: one block per
-command with the user's raw argv, the substituted argv, the outcome, and the
-captured output — everything needed to debug a failure without scrolling
-back through the terminal.
+command with the user's raw argv, the substituted argv, the directory it
+executed from, the outcome, and the captured output — everything needed to
+debug a failure without scrolling back through the terminal.
 """
 
 from pathlib import Path
@@ -20,8 +20,12 @@ def format_duration(ms: int) -> str:
     return f'{ms}ms'
 
 
-def _outcome_lines(outcome: CommandOutcome) -> list[str]:
-    lines = [f'$ {" ".join(outcome.raw)}', f'  -> {" ".join(outcome.argv)}']
+def _outcome_lines(outcome: CommandOutcome, cwd: Path) -> list[str]:
+    lines = [
+        f'$ {" ".join(outcome.raw)}',
+        f'  -> {" ".join(outcome.argv)}',
+        f'  in {cwd}',
+    ]
     if outcome.status == 'ok':
         lines.append(f'  ok ({format_duration(outcome.duration_ms)})')
     elif outcome.status == 'not_run':
@@ -42,23 +46,17 @@ def _outcome_lines(outcome: CommandOutcome) -> list[str]:
     return lines
 
 
-def render_report(run: PostProcessRun, timings: str = '') -> str:
-    """Render the report text for *run* with an optional *timings* section."""
-    lines = ['post-process report', f'working directory: {run.cwd}', '']
+def render_report(run: PostProcessRun) -> str:
+    """Render the report text for *run*."""
+    lines = ['post-process report', '']
     for outcome in run.outcomes:
-        lines.extend(_outcome_lines(outcome))
+        lines.extend(_outcome_lines(outcome, run.cwd))
         lines.append('')
-    if timings:
-        lines.extend(['--- timings ---', timings, ''])
     return '\n'.join(lines)
 
 
-def write_post_process_report(
-    report_path: Path,
-    run: PostProcessRun,
-    timings: str = '',
-) -> Path:
+def write_post_process_report(report_path: Path, run: PostProcessRun) -> Path:
     """Write the report for *run* to *report_path* (parents created)."""
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(render_report(run, timings), encoding='utf-8')
+    report_path.write_text(render_report(run), encoding='utf-8')
     return report_path

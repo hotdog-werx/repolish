@@ -1,8 +1,10 @@
-"""PhaseTimer tests: recording, accumulation, events, and the report section."""
+"""PhaseTimer tests: recording, accumulation, events, and the timings JSON."""
 
+import json
+from pathlib import Path
 from unittest import mock
 
-from repolish.phases import PhaseTimer
+from repolish.phases import PhaseTimer, write_phase_timings
 
 
 def test_phase_records_positive_duration():
@@ -29,15 +31,45 @@ def test_phase_accumulates_repeat_names():
     assert timer._durations['post_process'] >= 0
 
 
-def test_section_formats_ms_and_seconds_in_record_order():
+def test_durations_returns_recorded_phases():
     timer = PhaseTimer()
     timer.record('render', 183.0)
     timer.record('post_process', 1400.0)
-    assert timer.section() == 'render 183ms · post-process 1.4s'
+    assert timer.durations == {'render': 183.0, 'post_process': 1400.0}
 
 
-def test_section_empty_when_nothing_recorded():
-    assert PhaseTimer().section() == ''
+def test_durations_is_a_copy():
+    timer = PhaseTimer()
+    timer.record('render', 183.0)
+    timer.durations['render'] = 0.0
+    assert timer.durations['render'] == 183.0
+
+
+def test_write_phase_timings_writes_json_payload(tmp_path: Path):
+    timer = PhaseTimer()
+    timer.record('render', 183.4)
+    timer.record('post_process', 1400.6)
+    path = tmp_path / '.repolish' / '_' / 'phase-timings.json'
+    result = write_phase_timings(path, 4210.4, [('pkg-alpha', timer)])
+    assert result == path
+    payload = json.loads(path.read_text(encoding='utf-8'))
+    assert payload == {
+        'total_ms': 4210,
+        'sessions': [
+            {
+                'name': 'pkg-alpha',
+                'phases': {'render': 183, 'post_process': 1401},
+            },
+        ],
+    }
+
+
+def test_write_phase_timings_accepts_empty_sessions(tmp_path: Path):
+    path = write_phase_timings(tmp_path / 'timings.json', 12.0, [])
+    assert json.loads(path.read_text(encoding='utf-8')) == {
+        'total_ms': 12,
+        'sessions': [],
+    }
 
 
 def test_emit_logs_one_debug_event_per_phase():

@@ -646,6 +646,7 @@ def _normalize_lane_spec(
             path: _bind_insertions_with_context(functions, own_ctx) for path, functions in spec.file_insertions.items()
         },
         file_validators={path: dict(fns) for path, fns in spec.file_validators.items()},
+        file_copies=list(spec.file_copies),
         source_provider=provider_id,
         decoupled=spec.decoupled if decoupled is None else decoupled,
     )

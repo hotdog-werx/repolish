@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from time import perf_counter
 
 from hotlog import get_logger
 
@@ -13,6 +14,7 @@ from repolish.commands.apply.debug import (
     write_provider_debug_files,
 )
 from repolish.commands.apply.display import (
+    print_run_footer,
     print_run_summary,
 )
 from repolish.commands.apply.insertions import (
@@ -131,11 +133,7 @@ def _write_post_process_reports(session: ResolvedSession) -> None:
         session.post_process_reports,
         strict=True,
     ):
-        write_post_process_report(
-            report_path,
-            run,
-            timings=session.phase_timer.section(),
-        )
+        write_post_process_report(report_path, run)
 
 
 def _validation_has_errors(session: ResolvedSession) -> bool:
@@ -421,6 +419,7 @@ def run_session(options: ApplyOptions) -> int:
     before any files are written.
     """
     logger.info('repolish_started', version=__version__)
+    started = perf_counter()
     session = resolve_session(options)
     rc = apply_session(
         session,
@@ -429,4 +428,9 @@ def run_session(options: ApplyOptions) -> int:
         fail_on_warnings=options.fail_on_warnings,
     )
     print_run_summary([session])
+    print_run_footer(
+        [session],
+        (perf_counter() - started) * 1000,
+        options.config_path.resolve().parent,
+    )
     return rc

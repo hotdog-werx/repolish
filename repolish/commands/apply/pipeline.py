@@ -6,6 +6,7 @@ from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.config.models.provider import (
     ProviderConfig,
+    ProviderCopy,
     ProviderOverrides,
 )
 from repolish.fastlane import merge_fast_lanes, restrict_to_lane
@@ -18,6 +19,7 @@ from repolish.linker.orchestrator import (
 from repolish.phases import PhaseTimer
 from repolish.providers.models import (
     BaseInputs,
+    FastLaneSpec,
     GlobalContext,
     ProviderEntry,
     get_global_context,
@@ -141,6 +143,55 @@ def _load_session_config(
     return config, raw_config.providers
 
 
+def _lane_copy_entries(
+    spec: FastLaneSpec,
+    pid_to_alias: dict[str, str],
+    fallback_alias: str,
+) -> dict[str, list[ProviderCopy]]:
+    """Return the copy set *spec* declares, keyed by its provider alias.
+
+    Normalization stamps every collected spec with its declaring provider's
+    id, so the alias lookup resolves; the alias-empty case is a safety net
+    for a spec that skipped normalization, and such a spec copies nothing.
+    """
+    alias = pid_to_alias.get(spec.source_provider or '') or fallback_alias
+    if not spec.file_copies or not alias:
+        return {}
+    return {
+        alias: [ProviderCopy(source=Path(copy.source), target=Path(copy.target)) for copy in spec.file_copies],
+    }
+
+
+def _lane_copies(
+    spec: FastLaneSpec,
+    pid_to_alias: dict[str, str],
+    *,
+    fallback_alias: str,
+) -> dict[str, list[ProviderCopy]]:
+    """Build the whole copy set for a lane run: the lane's own copies only."""
+    return _lane_copy_entries(spec, pid_to_alias, fallback_alias)
+
+
+def _fold_lane_copies(
+    resolved_copies: dict[str, list[ProviderCopy]],
+    specs: list[FastLaneSpec],
+    pid_to_alias: dict[str, str],
+) -> None:
+    """Extend *resolved_copies* with what the merged lane specs declare.
+
+    Full runs collect the provider's own copy set and the merged lanes' copies
+    side by side, so a lane's copies materialize in a full apply exactly as
+    they do when the lane runs alone.
+    """
+    for spec in specs:
+        for alias, entries in _lane_copy_entries(
+            spec,
+            pid_to_alias,
+            '',
+        ).items():
+            resolved_copies.setdefault(alias, []).extend(entries)
+
+
 def resolve_session(options: ApplyOptions) -> ResolvedSession:
     """Run the provider pipeline and return a fully-resolved session snapshot.
 
@@ -193,28 +244,39 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         raw_providers,
         mode=effective_global_context.workspace.mode,
     )
-    resolved_copies = collect_provider_copies(
-        config.providers,
-        raw_providers,
-        mode=effective_global_context.workspace.mode,
-    )
     ordered_aliases = _ordered_aliases(config)
 
     # Fast lanes: fold every lane's contributions into the bundle (full runs)
     # or cut the bundle down to exactly one lane (lane runs). Both paths run
     # duplicate detection against the project's fast_lanes.resolutions.
     if options.lane is not None:
-        restrict_to_lane(
+        # A lane run copies exactly what the lane declares in file_copies:
+        # the provider's own copy set never collects (or executes) here.
+        lane_spec = restrict_to_lane(
             providers,
             options.lane,
             resolutions=config.fast_lanes.resolutions,
             pid_to_alias=pid_to_alias,
         )
+        resolved_copies = _lane_copies(
+            lane_spec,
+            pid_to_alias,
+            fallback_alias=next(iter(config.providers), ''),
+        )
     else:
-        merge_fast_lanes(
-            providers,
-            resolutions=config.fast_lanes.resolutions,
-            pid_to_alias=pid_to_alias,
+        resolved_copies = collect_provider_copies(
+            config.providers,
+            raw_providers,
+            mode=effective_global_context.workspace.mode,
+        )
+        _fold_lane_copies(
+            resolved_copies,
+            merge_fast_lanes(
+                providers,
+                resolutions=config.fast_lanes.resolutions,
+                pid_to_alias=pid_to_alias,
+            ),
+            pid_to_alias,
         )
 
     return ResolvedSession(

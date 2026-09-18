@@ -280,13 +280,16 @@ def merge_fast_lanes(
     *,
     resolutions: dict[str, FastLaneResolution],
     pid_to_alias: dict[str, str] | None = None,
-) -> None:
+) -> list[FastLaneSpec]:
     """Fold every merged lane's contributions into *bundle* (full apply).
 
     Mutates the bundle in place so lane-declared dests render, insert, and
     validate exactly as they would in a lane run: parity is guaranteed because
     both run modes consume the same collected specs. Duplicate detection runs
     first; see the module docstring for the error and resolution rules.
+
+    Returns the merged specs so the caller can fold their copies into the
+    run's resolved copy set (copies live outside the bundle).
 
     Decoupled lanes are skipped without being evaluated: their factories
     stay uncalled, so the one-off work behind them never triggers in a full
@@ -295,7 +298,7 @@ def merge_fast_lanes(
     the run logs a warning pointing at the wrapper.
     """
     if not bundle.fast_lanes:
-        return
+        return []
     merged: dict[str, FastLaneSpec] = {}
     for lane_key, entry in bundle.fast_lanes.items():
         if _entry_decoupled(entry):
@@ -310,7 +313,7 @@ def merge_fast_lanes(
             continue
         merged[lane_key] = spec
     if not merged:
-        return
+        return []
     _detect_lane_lane_collisions(merged)
     lane_drops, regular_drops = _resolve_regular_collisions(
         bundle,
@@ -325,6 +328,7 @@ def merge_fast_lanes(
             skip=lane_drops[lane_key],
             pid_to_alias=pid_to_alias,
         )
+    return list(merged.values())
 
 
 def restrict_to_lane(
@@ -333,14 +337,19 @@ def restrict_to_lane(
     *,
     resolutions: dict[str, FastLaneResolution],
     pid_to_alias: dict[str, str] | None = None,
-) -> None:
+) -> FastLaneSpec:
     """Cut *bundle* down to exactly one lane's contributions (lane runs).
 
     Regular-hook content never runs in a lane run: the mapping, insertion,
     and validator fields are replaced with the lane's own declarations
     (config-level ``delete_files`` is not honored either; lanes never delete
-    outside their own ``FileMode.DELETE`` mappings). Copies and symlinks are
-    no-arg, context-free declarations and still materialize.
+    outside their own ``FileMode.DELETE`` mappings). The provider's copy set
+    is the same: a lane run copies exactly what the lane declares in
+    ``file_copies`` and never collects (or executes) the provider's defaults;
+    symlinks are still materialized as declared.
+
+    Returns the selected lane's evaluated spec so the caller can derive the
+    run's copy set from it.
 
     Only the selected lane is evaluated: a run selecting one lazy lane
     leaves every other lane's factory uncalled. Lane-vs-lane collisions are
@@ -391,3 +400,4 @@ def restrict_to_lane(
         skip=skip,
         pid_to_alias=pid_to_alias,
     )
+    return spec

@@ -18,7 +18,7 @@ from typing import Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
-from repolish.providers.models.context import BaseContext
+from repolish.providers.models.context import BaseContext, ResourceCopy
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
@@ -451,6 +451,12 @@ class FastLaneSpec(BaseModel):
     file_validators: FileValidatorsByPath = Field(default_factory=dict)
     """Destination path → validator name → validator callable or spec, as in
     `create_file_validators`."""
+    file_copies: list[ResourceCopy] = Field(default_factory=list)
+    """Plain resource copies this lane materializes, as in
+    `create_default_copies`: files copied verbatim from provider resources
+    into the project, never run through the template pipeline. A lane run
+    copies exactly this list (the provider's full copy set never executes);
+    a full run folds it in with the provider's other copies."""
     source_provider: str | None = None
     """Provider id that declared this lane. Not something the provider sets;
     populated during collection so merge bookkeeping can attribute the

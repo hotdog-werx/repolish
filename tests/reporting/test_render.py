@@ -2,6 +2,7 @@
 
 import io
 from collections.abc import Sequence
+from pathlib import Path
 
 from pytest_mock import MockerFixture
 from rich.console import Console
@@ -9,6 +10,7 @@ from rich.text import Text
 
 from repolish.reporting import (
     SummaryNode,
+    print_completed_footer,
     print_summary_trees,
     render_summary_tree,
 )
@@ -76,3 +78,18 @@ def test_print_summary_trees_separates_sections_with_blank_line(
 
 def test_print_summary_trees_nothing_to_print(mocker: MockerFixture):
     assert _capture(mocker, [('a', []), ('b', [])]) == ''
+
+
+def test_print_completed_footer_shows_duration_without_link_by_default(
+    mocker: MockerFixture,
+    tmp_path: Path,
+):
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    print_completed_footer(4210, tmp_path / 'phase-timings.json')
+    rendered = out.getvalue()
+    assert 'completed in 4.2s' in rendered
+    # no hyperlink support: the [details] suffix is absent, the line is still one line
+    assert '[details]' not in rendered
+    assert rendered.count('\n') == 1

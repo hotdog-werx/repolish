@@ -373,7 +373,10 @@ def test_apply_session_returns_1_when_post_process_fails(
         return_value=0,
     )
     mocker.patch('repolish.commands.apply.session._run_after_render_directives')
-    mocker.patch('repolish.commands.apply.session._merge_ferries', return_value={})
+    mocker.patch(
+        'repolish.commands.apply.session._merge_ferries',
+        return_value={},
+    )
     mocker.patch(
         'repolish.commands.apply.session._relativize_ferry_dests',
         return_value={},

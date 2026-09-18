@@ -607,3 +607,104 @@ class TestDecoupledAndLazy:
         assert result.exit_code == 0, result.output
         assert (project / 'report.txt').exists()
         assert not (project / 'factory.marker').exists()  # only the selected lane evaluates
+
+
+_COPIES_PROVIDER = """\
+    from repolish import BaseContext, BaseInputs, FastLaneSpec, Provider, ResourceCopy
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        def create_fast_lanes(self, repolish):
+            return {
+                'assets': FastLaneSpec(
+                    file_mappings={'gen/asset.txt': 'plain.txt.jinja'},
+                    file_copies=[
+                        ResourceCopy(source='static/lane.bin', target='gen/lane.bin'),
+                    ],
+                ),
+            }
+    """
+
+_COPIES_TEMPLATES = {'plain.txt.jinja': 'plain output\n'}
+
+
+@pytest.fixture
+def copies_cli(tmp_path: Path):
+    """A provider whose lane declares its own copy.
+
+    The project config declares one regular copy for the same provider.
+    """
+    provider_cls = _make_provider_pkg(
+        tmp_path,
+        _COPIES_PROVIDER,
+        templates=_COPIES_TEMPLATES,
+    )
+    static = tmp_path / 'pkg' / 'resources' / 'static'
+    static.mkdir(parents=True)
+    (static / 'lane.bin').write_bytes(b'lane static\n')
+    (static / 'defaults.json').write_text('{}\n', encoding='utf-8')
+    provider_root = tmp_path / 'pkg' / 'resources' / 'templates'
+    project = tmp_path / 'project'
+    project.mkdir()
+    (project / 'repolish.yaml').write_text(
+        yaml.safe_dump(
+            {
+                'providers': {
+                    'demo': {
+                        'provider_root': str(provider_root),
+                        'copies': [
+                            {
+                                'source': 'static/defaults.json',
+                                'target': 'defaults.json',
+                            },
+                        ],
+                    },
+                },
+            },
+        ),
+        encoding='utf-8',
+    )
+    app = provider_cli(provider_cls)
+    return app, project
+
+
+class TestLaneCopies:
+    def test_named_lane_runs_only_lane_declared_copies(
+        self,
+        copies_cli: tuple[cyclopts.App, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app, project = copies_cli
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['assets'])
+
+        assert result.exit_code == 0, result.output
+        # the lane's own copy and mapping materialized
+        assert (project / 'gen' / 'lane.bin').read_bytes() == b'lane static\n'
+        assert (project / 'gen' / 'asset.txt').exists()
+        # the provider's configured copy set never collected or ran
+        assert not (project / 'defaults.json').exists()
+
+    def test_all_run_collects_config_copies_and_lane_copies(
+        self,
+        copies_cli: tuple[cyclopts.App, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app, project = copies_cli
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['all'])
+
+        assert result.exit_code == 0, result.output
+        # full pass: the provider's configured copies still materialize
+        assert (project / 'defaults.json').exists()
+        # merged-lane parity: the lane's copy runs in the full pass too
+        assert (project / 'gen' / 'lane.bin').exists()
+        assert (project / 'gen' / 'asset.txt').exists()

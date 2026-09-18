@@ -1,4 +1,4 @@
-"""Text report tests: outcome blocks, captured output, timings section."""
+"""Text report tests: outcome blocks with exec dir, statuses, captured output."""
 
 from pathlib import Path
 
@@ -24,9 +24,10 @@ def test_ok_block_shows_raw_and_substituted_argv(tmp_path: Path):
     )
     text = render_report(run)
     assert 'post-process report' in text
-    assert f'working directory: {tmp_path}' in text
     assert '$ ruff format {render_dir}' in text
     assert f'  -> ruff format {tmp_path / "render"}' in text
+    # the directory the command executed from, per command block
+    assert f'  in {tmp_path}' in text
     assert '  ok (1.2s)' in text
 
 
@@ -100,18 +101,12 @@ def test_not_run_block_notes_previous_failure(tmp_path: Path):
     assert '  not run (previous command failed)' in text
 
 
-def test_timings_section_appended(tmp_path: Path):
+def test_no_timings_section(tmp_path: Path):
+    """Timings live in phase-timings.json, never in the post-process report."""
     run = _run(
         tmp_path,
         CommandOutcome(raw=('true',), argv=('true',), status='ok'),
     )
-    text = render_report(run, timings='render 183ms · post-process 1.4s')
-    assert '--- timings ---' in text
-    assert 'render 183ms · post-process 1.4s' in text
-
-
-def test_no_timings_section_without_timings(tmp_path: Path):
-    run = _run(tmp_path)
     assert '--- timings ---' not in render_report(run)
 
 

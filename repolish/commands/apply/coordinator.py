@@ -5,12 +5,14 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.display import (
     error_unknown_member,
+    print_run_footer,
     print_run_summary,
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
@@ -452,11 +454,7 @@ def _post_process_promoted_files(
         report_path = root_session.config.config_dir / '.repolish' / '_' / 'post-process.promoted.txt'
         root_session.post_process_runs.append(('promoted files', run))
         root_session.post_process_reports.append(report_path)
-        write_post_process_report(
-            report_path,
-            run,
-            timings=root_session.phase_timer.section(),
-        )
+        write_post_process_report(report_path, run)
         if run.failed:
             logger.error(
                 'post_process_run_failed',
@@ -742,6 +740,7 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
     if opts.member and not _validate_member_filter(mono_ctx, opts.member):
         return 1
 
+    started = perf_counter()
     member_sessions = _resolve_member_sessions(mono_ctx, config_dir, opts)
     root_session = _resolve_root_session(
         config_path,
@@ -758,4 +757,9 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
         opts,
     )
     print_run_summary(completed_sessions)
+    print_run_footer(
+        completed_sessions,
+        (perf_counter() - started) * 1000,
+        config_dir,
+    )
     return rc

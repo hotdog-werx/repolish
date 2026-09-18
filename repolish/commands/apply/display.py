@@ -9,6 +9,7 @@ from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config import ProviderCopy, ProviderSymlink
 from repolish.config.paused import is_paused
 from repolish.console import console, supports_hyperlinks
+from repolish.phases import write_phase_timings
 from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
@@ -24,7 +25,9 @@ from repolish.reporting import (
     SummaryNode,
     details_link,
     post_process_nodes,
+    print_completed_footer,
     print_summary_trees,
+    session_label,
     stat_suffix,
 )
 from repolish.utils import path_slug
@@ -835,3 +838,22 @@ def print_run_summary(sessions: Sequence[ResolvedSession]) -> None:
             ('apply summary', apply_summary_nodes(sessions)),
         ],
     )
+
+
+def print_run_footer(
+    sessions: Sequence[ResolvedSession],
+    total_ms: float,
+    config_dir: Path,
+) -> None:
+    """Write the phase-timings JSON and print the `completed in ...` footer.
+
+    One file per command at *config_dir* (`.repolish/_/phase-timings.json`),
+    holding each session's phase durations; the footer links to it. Timings
+    live only here — the post-process report no longer repeats them.
+    """
+    timings_path = write_phase_timings(
+        config_dir / '.repolish' / '_' / 'phase-timings.json',
+        total_ms,
+        [(session_label(session), session.phase_timer) for session in sessions],
+    )
+    print_completed_footer(int(total_ms), timings_path)

@@ -5,11 +5,14 @@ for summaries: producers hand over plain node data, this module prints.
 """
 
 from collections.abc import Sequence
+from pathlib import Path
 
+from rich.text import Text
 from rich.tree import Tree
 
 from repolish.console import console, supports_hyperlinks
-from repolish.reporting.nodes import SummaryNode
+from repolish.postprocess.report import format_duration
+from repolish.reporting.nodes import SummaryNode, details_link
 
 
 def _add_nodes(tree: Tree, nodes: Sequence[SummaryNode]) -> None:
@@ -42,3 +45,10 @@ def print_summary_trees(
             console.print()
         console.print(render_summary_tree(title, nodes))
         printed = True
+
+
+def print_completed_footer(total_ms: int, timings_path: Path) -> None:
+    """Print the one-line run footer with a details link to the timings file."""
+    text = Text(f'completed in {format_duration(total_ms)}')
+    details_link(text, timings_path)
+    console.print(text)

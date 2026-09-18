@@ -319,7 +319,10 @@ def test_details_links_render_when_hyperlinks_supported(
             'session',
             PostProcessRun(
                 cwd=tmp_path,
-                outcomes=[_outcome('ruff format .', 'ok')],
+                outcomes=[
+                    _outcome('ruff format .', 'ok'),
+                    _outcome('dprint fmt .', 'ok'),
+                ],
             ),
         ),
     )
@@ -327,9 +330,14 @@ def test_details_links_render_when_hyperlinks_supported(
         tmp_path / '.repolish' / '_' / 'post-process.txt',
     )
     output = _render(mocker, [session])
-    # the [details] suffix renders; the link target itself is a hyperlink
-    # style, asserted in test_nodes.py
-    assert '[details]' in output
+    # one details link per group (the commands share one report file), not
+    # per command; the link target itself is a hyperlink style, asserted
+    # in test_nodes.py
+    assert output.count('[details]') == 1
+    group_row = next(line for line in output.splitlines() if tmp_path.name in line)
+    assert '[details]' in group_row
+    command_row = next(line for line in output.splitlines() if 'ruff format' in line)
+    assert '[details]' not in command_row
 
 
 def test_groups_per_session_in_order(mocker: MockerFixture, tmp_path: Path):
