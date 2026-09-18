@@ -46,6 +46,7 @@ from repolish.postprocess.report import write_post_process_report
 from repolish.postprocess.runner import run_post_process
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
+from repolish.reporting import print_run_header
 from repolish.version import __version__
 
 logger = get_logger(__name__)
@@ -418,7 +419,8 @@ def run_session(options: ApplyOptions) -> int:
     and :func:`apply_session` directly to gain visibility into all sessions
     before any files are written.
     """
-    logger.info('repolish_started', version=__version__)
+    logger.debug('repolish_started', version=__version__)
+    print_run_header(['check'] if options.check_only else [])
     started = perf_counter()
     session = resolve_session(options)
     rc = apply_session(

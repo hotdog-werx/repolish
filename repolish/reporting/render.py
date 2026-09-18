@@ -13,6 +13,7 @@ from rich.tree import Tree
 from repolish.console import console, supports_hyperlinks
 from repolish.postprocess.report import format_duration
 from repolish.reporting.nodes import SummaryNode, details_link
+from repolish.version import __version__
 
 
 def _add_nodes(tree: Tree, nodes: Sequence[SummaryNode]) -> None:
@@ -45,6 +46,20 @@ def print_summary_trees(
             console.print()
         console.print(render_summary_tree(title, nodes))
         printed = True
+
+
+def print_run_header(parts: Sequence[str]) -> None:
+    """Print the one-line run header above the summary trees.
+
+    The header names the run: the repolish version plus one dim part per
+    detail the entry point adds (a fast lane names its lane and provider,
+    a check run says ``check``). It carries the same weight as the
+    completion footer, so the trees stay the visual center of the output.
+    """
+    text = Text(f'repolish {__version__}')
+    for part in parts:
+        text.append(f' · {part}', style='dim')
+    console.print(text)
 
 
 def print_completed_footer(total_ms: int, timings_path: Path) -> None:

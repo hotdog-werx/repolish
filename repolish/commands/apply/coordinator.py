@@ -36,6 +36,7 @@ from repolish.postprocess.runner import run_post_process
 from repolish.providers.models import (
     TemplateMapping,
 )
+from repolish.reporting import print_run_header
 from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.providers.models.files import FileMode, FileRecord
 
@@ -740,6 +741,16 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
     if opts.member and not _validate_member_filter(mono_ctx, opts.member):
         return 1
 
+    # Conditional expressions keep every optional part on one covered line
+    # (branch coverage does not count ternaries).
+    print_run_header(
+        [
+            'monorepo',
+            *([f'member {opts.member}'] if opts.member is not None else []),
+            *(['root only'] if opts.root_only else []),
+            *(['check'] if opts.check_only else []),
+        ],
+    )
     started = perf_counter()
     member_sessions = _resolve_member_sessions(mono_ctx, config_dir, opts)
     root_session = _resolve_root_session(

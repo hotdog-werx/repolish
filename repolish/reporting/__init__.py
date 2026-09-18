@@ -10,6 +10,7 @@ from repolish.reporting.nodes import (
 from repolish.reporting.post_process import post_process_nodes, session_label
 from repolish.reporting.render import (
     print_completed_footer,
+    print_run_header,
     print_summary_trees,
     render_summary_tree,
 )
@@ -20,6 +21,7 @@ __all__ = [
     'details_link',
     'post_process_nodes',
     'print_completed_footer',
+    'print_run_header',
     'print_summary_trees',
     'render_summary_tree',
     'session_label',

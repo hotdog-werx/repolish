@@ -11,9 +11,11 @@ from rich.text import Text
 from repolish.reporting import (
     SummaryNode,
     print_completed_footer,
+    print_run_header,
     print_summary_trees,
     render_summary_tree,
 )
+from repolish.version import __version__
 
 
 def _capture(
@@ -92,4 +94,33 @@ def test_print_completed_footer_shows_duration_without_link_by_default(
     assert 'completed in 4.2s' in rendered
     # no hyperlink support: the [details] suffix is absent, the line is still one line
     assert '[details]' not in rendered
+    assert rendered.count('\n') == 1
+
+
+def test_print_run_header_shows_version_and_dim_parts(
+    mocker: MockerFixture,
+):
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    print_run_header(['lane assets', 'provider demo', 'repolish.yaml'])
+    rendered = out.getvalue()
+    assert f'repolish {__version__}' in rendered
+    assert 'lane assets' in rendered
+    assert 'provider demo' in rendered
+    assert 'repolish.yaml' in rendered
+    assert ' · ' in rendered
+    assert rendered.count('\n') == 1
+
+
+def test_print_run_header_without_parts_is_just_the_version(
+    mocker: MockerFixture,
+):
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    print_run_header([])
+    rendered = out.getvalue()
+    assert f'repolish {__version__}' in rendered
+    assert ' · ' not in rendered
     assert rendered.count('\n') == 1
