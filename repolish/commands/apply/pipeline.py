@@ -1,8 +1,11 @@
+from pathlib import Path
+
 from hotlog import get_logger
 
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.config.models.provider import (
+    ProviderConfig,
     ProviderOverrides,
 )
 from repolish.fastlane import merge_fast_lanes, restrict_to_lane
@@ -90,21 +93,17 @@ def _collect_session_outputs(
     return dry.all_providers_list, dry.emitted_inputs
 
 
-def resolve_session(options: ApplyOptions) -> ResolvedSession:
-    """Run the provider pipeline and return a fully-resolved session snapshot.
+def _load_session_config(
+    options: ApplyOptions,
+    config_dir: Path,
+) -> tuple[RepolishConfig, dict[str, ProviderConfig]]:
+    """Read the config file and run the readiness check for a full session.
 
-    Loads configuration, ensures providers are ready, builds the provider
-    pipeline (context creation -> input exchange -> finalization), and captures
-    the result as a :class:`~repolish.commands.apply.options.ResolvedSession`.
-
-    No files are written. The caller can use the returned object to drive the
-    apply/check steps, or to pass cross-session data to a root session.
+    Returns both the resolved config and the raw provider entries (what the
+    symlink/copy collectors need). Readiness failures only warn: the
+    providers in question are absent from the run, never fatal on their own.
     """
-    config_path = options.config_path
-    config_dir = config_path.resolve().parent
-
-    raw_config = load_config_file(config_path)
-    # Apply provider filter to raw config for readiness check
+    raw_config = load_config_file(options.config_path)
     if options.provider_filter is not None:
         aliases = [
             alias
@@ -130,8 +129,35 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
             failed=readiness.failed,
             note='these providers will be absent from the run',
         )
+    config = load_config(
+        options.config_path,
+        provider_filter=options.provider_filter,
+    )
+    return config, raw_config.providers
 
-    config = load_config(config_path, provider_filter=options.provider_filter)
+
+def resolve_session(options: ApplyOptions) -> ResolvedSession:
+    """Run the provider pipeline and return a fully-resolved session snapshot.
+
+    Loads configuration, ensures providers are ready, builds the provider
+    pipeline (context creation -> input exchange -> finalization), and captures
+    the result as a :class:`~repolish.commands.apply.options.ResolvedSession`.
+
+    No files are written. The caller can use the returned object to drive the
+    apply/check steps, or to pass cross-session data to a root session.
+    """
+    config_path = options.config_path
+    config_dir = config_path.resolve().parent
+
+    if options.lane_config is not None:
+        # Prepared lane run (repolish.fastlane.config): the provider's
+        # location comes from its own package, so config resolution and
+        # readiness registration are pure overhead here. Skip both.
+        config = options.lane_config.config
+        raw_providers = options.lane_config.raw_providers
+    else:
+        config, raw_providers = _load_session_config(options, config_dir)
+
     effective_global_context = options.global_context or get_global_context()
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
 
@@ -156,30 +182,30 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     )
     resolved_symlinks = collect_provider_symlinks(
         config.providers,
-        raw_config.providers,
+        raw_providers,
         mode=effective_global_context.workspace.mode,
     )
     resolved_copies = collect_provider_copies(
         config.providers,
-        raw_config.providers,
+        raw_providers,
         mode=effective_global_context.workspace.mode,
     )
     ordered_aliases = _ordered_aliases(config)
 
     # Fast lanes: fold every lane's contributions into the bundle (full runs)
     # or cut the bundle down to exactly one lane (lane runs). Both paths run
-    # duplicate detection against the project's fast_lane_resolutions.
+    # duplicate detection against the project's fast_lanes.resolutions.
     if options.lane is not None:
         restrict_to_lane(
             providers,
             options.lane,
-            resolutions=config.fast_lane_resolutions,
+            resolutions=config.fast_lanes.resolutions,
             pid_to_alias=pid_to_alias,
         )
     else:
         merge_fast_lanes(
             providers,
-            resolutions=config.fast_lane_resolutions,
+            resolutions=config.fast_lanes.resolutions,
             pid_to_alias=pid_to_alias,
         )
 

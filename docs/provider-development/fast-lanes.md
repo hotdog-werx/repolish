@@ -15,8 +15,9 @@ CI should keep checking the full tree.
 ## Declaring lanes
 
 Implement `create_fast_lanes` on the provider. It returns
-`{lane_name: FastLaneSpec}`, where each spec holds the same shapes the regular
-hooks return:
+`{lane_name: FastLaneSpec}` (or a factory returning one, see
+[Lane factories](#lazy-lane-factories)), where each spec holds the same shapes
+the regular hooks return:
 
 ```python
 from repolish import FastLaneSpec, Provider, TemplateMapping
@@ -82,12 +83,35 @@ Each subcommand takes the apply flags: `--config`, `--check`,
 parameter model the `repolish apply` command itself uses, so a flag added there
 shows up on lane subcommands too; the two CLIs cannot drift apart.
 
-The CLI reads the project's real `repolish.yaml`, resolving its own alias by
-matching the config entry whose `provider_root` points at the package's
-`resources/templates` directory (or pass `alias=` to `provider_cli` to pin it).
-That means `paused_files` and this alias's `overrides` are honored exactly as in
-a full run. If the provider is not registered in the project config, the CLI
-says so and points at `repolish link`.
+The CLI runs in any project, registered or not. When a `repolish.yaml` exists
+the lane run reads it, but only for the keys a lane run needs (the table below);
+provider loading, registration, and link commands never run, so no
+`repolish link` is ever required. Without a config file, or when the config does
+not list the provider, the run is built in memory around the package the CLI is
+running from.
+
+The provider's identity in `repolish.provider.alias` is provider-owned: pass
+`alias=` to `provider_cli` and that name is used everywhere, in rendered headers
+and logged events alike, whether or not the config lists it. Without an explicit
+alias, a config entry whose `provider_root` points at the package's
+`resources/templates` directory names the run. A run with no match falls back to
+the package name (the directory holding `resources/`): fine for bookkeeping, but
+it changes if the package is renamed, so `alias=` is the stable choice for
+headers. An alias like `kitkat-databricks-cli` is entirely up to the provider
+developer; repolish never invents one.
+
+### What a lane run reads from the config
+
+| key                                      | honored    | notes                                                         |
+| ---------------------------------------- | ---------- | ------------------------------------------------------------- |
+| `paused_files`                           | yes        | applies to lane dests and copies                              |
+| `fast_lanes.resolutions`                 | yes        | coupled and decoupled lanes alike                             |
+| `fast_lanes.config[<lane>].post_process` | yes        | replaces project post_process in named lane runs              |
+| own entry fields                         | yes        | symlinks, `overrides`, `resources_dir`; the located root wins |
+| `template_overrides`                     | yes        | keeps render parity                                           |
+| project `post_process`                   | `all` only | named lanes run their own commands, or none                   |
+| other providers                          | no         | never loaded, imported, or registered                         |
+| `delete_files`                           | no         | lanes never delete                                            |
 
 ### Wiring the CLI into a provider
 
@@ -148,8 +172,8 @@ def create_fast_lanes(self, repolish):
     }
 ```
 
-From a project that has the provider in its `repolish.yaml` (no re-link or
-config change needed; the new template is picked up from disk):
+From any project directory with the provider installed (no registration, link,
+or config change needed; the new template is picked up from disk):
 
 ```
 $ mylib-cli hello # writes hello.txt into the project
@@ -175,28 +199,104 @@ What a lane run does:
 - lanes never delete: provider deletes and the config's `delete_files` key are
   skipped in lane runs
 
-What a full `repolish apply` does with lanes: every lane's contributions are
-merged into the session bundle, so lane files render, insert, and validate in
-the full run too. The same declarations run either way, which is why lane output
-cannot drift from a full apply for lane files.
+What a full `repolish apply` does with lanes: every coupled lane's contributions
+are merged into the session bundle, so lane files render, insert, and validate
+in the full run too. The same declarations run either way, which is why lane
+output cannot drift from a full apply for lane files. Decoupled lanes (see
+[Decoupled lanes](#decoupled-lanes)) are the exception: they never run with
+repolish.
+
+## Lazy lane factories
+
+A provider with many lanes may want lane code loaded only when the lane actually
+runs. `create_fast_lanes` may return zero-argument factories instead of specs:
+
+```python
+def create_fast_lanes(self, repolish):
+    return {
+        'actions': FastLaneSpec(...),  # eager is still fine
+        'report': lambda: _build_report_spec(),  # imports deferred
+    }
+```
+
+Factories are evaluated only where needed. Never at CLI construction: the
+console script lists subcommands from lane names alone, so startup imports
+nothing the provider did not already import. In a named lane run only the
+selected lane's factory is evaluated. In a merged run (`repolish apply` or
+`all`) every coupled factory is evaluated, because the full run needs each
+lane's dests for collision detection.
+
+## Decoupled lanes
+
+Some lanes should not run with repolish at all: an HTTP fetch, a one-off
+generation process the developer runs by hand once in a while. Set
+`decoupled=True` on the spec and the lane drops out of every merged run:
+
+```python
+'fetch': FastLaneSpec(
+    file_mappings={'data.json': _fetch_template()},
+    decoupled=True,
+),
+```
+
+A decoupled lane never contributes to `repolish apply` or the CLI's `all`
+subcommand, and its dests are invisible to collision detection in merged runs.
+Only its explicit subcommand runs it. Side effects are the point, so decoupled
+lanes compose with lazy factories: wrap the factory in `DecoupledLane` and
+merged runs skip it without evaluating the factory at all.
+
+```python
+from repolish import DecoupledLane
+
+'fetch': DecoupledLane(lambda: _build_fetch_spec()),
+```
+
+If a decoupled lane's dests collide with a regular hook, the resolutions enum
+still governs the named run: without an entry the run stops, `regular` skips the
+dest in the lane run, `fast_lane` lets the lane write it. A full apply keeps
+writing the regular version; the project chose which side wins the quick run.
+
+## Per-lane post_process
+
+A lane may deal with one file family only, and the project's `post_process` may
+be wrong for it: a python-only lane has no business running dprint. Named lane
+runs never run the project's top-level `post_process`. Each lane runs the
+commands configured for it under `fast_lanes.config`, and a lane with no entry
+runs none at all. `all` (and a full `repolish apply`) runs the project's
+commands: content that is part of the apply abides by the global
+post-processing.
+
+```yaml
+fast_lanes:
+  config:
+    actions:
+      post_process:
+        - ruff format {render_dir}
+```
+
+The commands run against the lane's render tree, in apply and `--check` mode
+alike, so check still compares post-processed output.
 
 ## Collisions and resolutions
 
 Duplicate dests are load-time errors, never silent overrides:
 
-- The same dest in two lane specs raises, always. Two specs that receive
-  identical inputs in both run modes are a static authoring mistake the provider
-  author can fix; there is no config escape hatch for it.
-- The same dest in a regular hook and a lane spec raises, naming the dest and
-  both declaration sites. Regular mappings can be conditional on context, so a
-  collision may surface only in some project states, through no authoring
-  mistake the provider can fix. The project owner resolves it in
-  `repolish.yaml`:
+- The same dest in two coupled lane specs is a static authoring mistake: a
+  merged run (`repolish apply` or `all`) raises naming both lanes, and there is
+  no config escape hatch for it. Named lane runs do not pre-check it; only one
+  lane runs, and checking would mean evaluating every factory. The full run
+  catches the mistake.
+- The same dest in a regular hook and a lane spec raises in whichever run mode
+  hits it, naming the dest and both declaration sites. Regular mappings can be
+  conditional on context, so a collision may surface only in some project
+  states, through no authoring mistake the provider can fix. The project owner
+  resolves it in `repolish.yaml`:
 
 ```yaml
-fast_lane_resolutions:
-  'action1/action.yaml': fast_lane # the lane's version wins, everywhere
-  'other/generated.txt': regular # the regular hook's version wins
+fast_lanes:
+  resolutions:
+    'action1/action.yaml': fast_lane # the lane's version wins, everywhere
+    'other/generated.txt': regular # the regular hook's version wins
 ```
 
 `fast_lane` means the lane's contribution wins in full runs and lane runs alike;

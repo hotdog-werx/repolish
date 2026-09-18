@@ -15,8 +15,10 @@ import pytest
 from repolish.config.models import FastLaneResolution
 from repolish.fastlane import merge_fast_lanes, restrict_to_lane
 from repolish.providers.models import (
+    FastLaneEntry,
     FastLaneSpec,
     FileMode,
+    LazyLaneSpec,
     SessionBundle,
     TemplateMapping,
     ValidationResult,
@@ -58,14 +60,15 @@ def _mapping(
     return TemplateMapping(source, file_mode=mode, source_provider=PID)
 
 
-def _lane(
+def _lane(  # noqa: PLR0913 - builder options, not logic
     lane: str,
     *,
     mappings: dict[str, TemplateMapping] | None = None,
     insertions: dict[str, dict[str, object]] | None = None,
     validators: dict[str, dict[str, object]] | None = None,
     pid: str = PID,
-) -> dict[str, FastLaneSpec]:
+    decoupled: bool = False,
+) -> dict[str, FastLaneEntry]:
     """One lane keyed the way collection stores it on the bundle."""
     return {
         f'{pid}:{lane}': FastLaneSpec(
@@ -73,6 +76,7 @@ def _lane(
             file_insertions=insertions or {},
             file_validators=validators or {},
             source_provider=pid,
+            decoupled=decoupled,
         ),
     }
 
@@ -206,7 +210,7 @@ class TestCollisions:
         assert 'regular.txt' in message
         assert f'{PID}:actions' in message
         assert 'file mapping' in message
-        assert 'fast_lane_resolutions' in message
+        assert 'fast_lanes.resolutions' in message
 
     def test_lane_insertion_vs_regular_insertion_raises(self) -> None:
         bundle = _bundle()
@@ -331,7 +335,7 @@ class TestResolutions:
 
         with pytest.raises(
             ValueError,
-            match=r'fast lane collision.*fast_lane_resolutions',
+            match=r'fast lane collision.*fast_lanes\.resolutions',
         ):
             restrict_to_lane(bundle, 'actions', resolutions={})
 
@@ -398,7 +402,10 @@ class TestRestrict:
         with pytest.raises(ValueError, match='multiple providers'):
             restrict_to_lane(bundle, 'actions', resolutions={})
 
-    def test_lane_vs_lane_collision_detected_in_lane_runs(self) -> None:
+    def test_lane_vs_lane_collision_not_detected_in_lane_runs(self) -> None:
+        # Only the selected lane is evaluated in a lane run, so lane-vs-lane
+        # detection (which would need every lane's dests) does not run there.
+        # Full runs still catch the static mistake (see TestCollisions).
         bundle = self.setup_bundle()
         conflicting = _lane(
             'docs',
@@ -406,8 +413,9 @@ class TestRestrict:
         )
         bundle.fast_lanes.update(conflicting)
 
-        with pytest.raises(ValueError, match='fast lane collision'):
-            restrict_to_lane(bundle, 'actions', resolutions={})
+        restrict_to_lane(bundle, 'actions', resolutions={})  # does not raise
+
+        assert 'out/action.yaml' in bundle.file_mappings
 
     def test_unrelated_lane_regular_collision_ignored_in_lane_runs(
         self,
@@ -420,3 +428,169 @@ class TestRestrict:
         restrict_to_lane(bundle, 'actions', resolutions={})  # does not raise
 
         assert 'out/action.yaml' in bundle.file_mappings
+
+
+def _counting_factory(
+    spec: FastLaneSpec,
+    *,
+    decoupled: bool = False,
+) -> tuple[FastLaneEntry, list[int]]:
+    """A lane entry shaped like the collection wrapper around a factory.
+
+    Collection stores lazy lanes as `LazyLaneSpec` entries: memoized, with
+    the decoupled flag readable without evaluating the lane. Mirror that
+    state here. The list counts factory calls.
+    """
+    calls: list[int] = []
+
+    def factory() -> FastLaneSpec:
+        calls.append(1)
+        return spec
+
+    return LazyLaneSpec(factory, decoupled=decoupled), calls
+
+
+class TestDecoupled:
+    def test_decoupled_spec_never_merges(self) -> None:
+        bundle = _bundle()
+        bundle.fast_lanes = _lane(
+            'fetch',
+            mappings={'data.json': _mapping('data.json.jinja')},
+            decoupled=True,
+        )
+
+        merge_fast_lanes(bundle, resolutions={})
+
+        assert 'data.json' not in bundle.file_mappings
+        assert set(bundle.file_mappings) == {
+            'regular.txt',
+        }  # regular claims untouched
+
+    def test_decoupled_spec_runs_when_named(self) -> None:
+        bundle = _bundle()
+        bundle.fast_lanes = _lane(
+            'fetch',
+            mappings={'data.json': _mapping('data.json.jinja')},
+            decoupled=True,
+        )
+
+        restrict_to_lane(bundle, 'fetch', resolutions={})
+
+        assert set(bundle.file_mappings) == {'data.json'}
+        assert set(bundle.file_validators) == set()  # regular claims replaced as usual
+
+    def test_decoupled_factory_is_not_evaluated_by_merge(self) -> None:
+        bundle = _bundle()
+        entry, calls = _counting_factory(
+            FastLaneSpec(
+                file_mappings={'data.json': _mapping('data.json.jinja')},
+                source_provider=PID,
+            ),
+            decoupled=True,
+        )
+        bundle.fast_lanes[f'{PID}:fetch'] = entry
+
+        merge_fast_lanes(bundle, resolutions={})
+
+        assert calls == []  # never called: the whole point of the wrapper
+        assert 'data.json' not in bundle.file_mappings
+
+    def test_unmarked_factory_returning_decoupled_spec_is_skipped_after_evaluation(
+        self,
+    ) -> None:
+        # Without the wrapper the flag is only readable after the factory
+        # runs; merge still skips the lane but pays for the call.
+        bundle = _bundle()
+        entry, calls = _counting_factory(
+            FastLaneSpec(
+                file_mappings={'data.json': _mapping('data.json.jinja')},
+                source_provider=PID,
+                decoupled=True,
+            ),
+        )
+        bundle.fast_lanes[f'{PID}:fetch'] = entry
+
+        merge_fast_lanes(bundle, resolutions={})
+
+        assert calls == [1]
+        assert 'data.json' not in bundle.file_mappings
+
+    def test_decoupled_lane_run_honors_resolutions(self) -> None:
+        # The same regular-vs-lane rules as coupled lanes: 'regular' hands
+        # the dest back to the regular hook in the lane run.
+        bundle = _bundle()
+        bundle.fast_lanes = _lane(
+            'fetch',
+            mappings={'regular.txt': _mapping('lane.txt')},
+            decoupled=True,
+        )
+
+        restrict_to_lane(
+            bundle,
+            'fetch',
+            resolutions={'regular.txt': FastLaneResolution.REGULAR},
+        )
+
+        assert 'regular.txt' not in bundle.file_mappings
+
+
+class TestLazyFactories:
+    def test_merge_evaluates_coupled_factories(self) -> None:
+        bundle = _bundle()
+        entry, calls = _counting_factory(
+            FastLaneSpec(
+                file_mappings={
+                    'out/action.yaml': _mapping('action.yaml.jinja'),
+                },
+                source_provider=PID,
+            ),
+        )
+        bundle.fast_lanes[f'{PID}:actions'] = entry
+
+        merge_fast_lanes(bundle, resolutions={}, pid_to_alias=ALIASES)
+
+        assert calls == [1]  # evaluated exactly once per run
+        assert _tm(bundle, 'out/action.yaml').source_template == 'action.yaml.jinja'
+
+    def test_restrict_evaluates_only_the_selected_factory(self) -> None:
+        bundle = SessionBundle()
+        actions, actions_calls = _counting_factory(
+            FastLaneSpec(
+                file_mappings={'a.txt': _mapping('a.jinja')},
+                source_provider=PID,
+            ),
+        )
+        docs, docs_calls = _counting_factory(
+            FastLaneSpec(
+                file_insertions={'README.md': {'usage': _render}},
+                source_provider=PID,
+            ),
+        )
+        bundle.fast_lanes[f'{PID}:actions'] = actions
+        bundle.fast_lanes[f'{PID}:docs'] = docs
+
+        restrict_to_lane(bundle, 'actions', resolutions={})
+
+        assert actions_calls == [1]
+        assert docs_calls == []  # unselected lane's code never loads
+        assert set(bundle.file_mappings) == {'a.txt'}
+
+    def test_merge_detects_lane_vs_lane_across_coupled_factories(self) -> None:
+        bundle = SessionBundle()
+        first, _ = _counting_factory(
+            FastLaneSpec(
+                file_mappings={'shared.txt': _mapping('a.jinja')},
+                source_provider=PID,
+            ),
+        )
+        second, _ = _counting_factory(
+            FastLaneSpec(
+                file_mappings={'shared.txt': _mapping('b.jinja')},
+                source_provider=PID,
+            ),
+        )
+        bundle.fast_lanes[f'{PID}:actions'] = first
+        bundle.fast_lanes[f'{PID}:docs'] = second
+
+        with pytest.raises(ValueError, match=r"shared\.txt.*:actions'.*:docs'"):
+            merge_fast_lanes(bundle, resolutions={})

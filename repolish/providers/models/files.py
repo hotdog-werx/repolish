@@ -455,6 +455,77 @@ class FastLaneSpec(BaseModel):
     """Provider id that declared this lane. Not something the provider sets;
     populated during collection so merge bookkeeping can attribute the
     contributions (insertion registry keys, source maps)."""
+    decoupled: bool = False
+    """When True the lane never runs as part of `repolish apply` or the
+    provider CLI's `all` subcommand; only its explicit named subcommand
+    executes it. Meant for one-off generation processes (an HTTP fetch, a
+    data export) that a full apply must not trigger."""
+
+
+FastLaneFactory: TypeAlias = Callable[[], 'FastLaneSpec']
+"""Zero-arg factory for a lane spec, for lazy registration.
+
+Providers with many modules return factories from `create_fast_lanes` so
+lane code (and its imports) loads only when the lane actually runs. CLI
+enumeration iterates lane names only and never calls factories."""
+
+
+FastLaneEntry: TypeAlias = FastLaneSpec | FastLaneFactory
+"""A collected lane: a normalized spec or the unevaluated factory behind it."""
+
+
+class DecoupledLane:
+    """Marks a lane declaration as decoupled before any evaluation.
+
+    Wraps a spec or a factory: ``DecoupledLane(spec)`` or
+    ``DecoupledLane(factory)``. Wrapping is how a lane whose factory must not
+    be called just to read the flag declares its decoupling: merge skips a
+    wrapped lane without touching it, so `repolish apply` and the provider
+    CLI's `all` subcommand never trigger the one-off work behind it. For a
+    plain spec, `FastLaneSpec(decoupled=True)` says the same thing; a factory
+    that returns a decoupled spec without this wrapper is still skipped, but
+    only after the factory has run (defeating the point of laziness), so
+    lazy decoupled lanes should always be wrapped.
+    """
+
+    __slots__ = ('lane',)
+
+    def __init__(self, lane: FastLaneSpec | FastLaneFactory) -> None:
+        self.lane = lane
+
+
+FastLaneDeclaration: TypeAlias = FastLaneSpec | FastLaneFactory | DecoupledLane
+"""What `create_fast_lanes` may map a lane name to."""
+
+
+class LazyLaneSpec:
+    """A lane factory as collected into the session bundle.
+
+    The collection step stores factory lanes unevaluated, wrapped here so
+    the decoupled flag read from the declaration (`DecoupledLane`) is
+    visible without calling the factory. Calling the entry runs the factory
+    (the collection wrapper normalizes the result) and memoizes it: a run
+    that reads the lane twice (collision detection, then merge bookkeeping)
+    evaluates the factory once.
+    """
+
+    __slots__ = ('_factory', '_spec', 'decoupled')
+
+    def __init__(
+        self,
+        factory: FastLaneFactory,
+        *,
+        decoupled: bool = False,
+    ) -> None:
+        self._factory = factory
+        self.decoupled = decoupled
+        self._spec: FastLaneSpec | None = None
+
+    def __call__(self) -> FastLaneSpec:
+        """Return the lane spec, evaluating the factory once if needed."""
+        if self._spec is None:
+            self._spec = self._factory()
+        return self._spec
 
 
 class SessionBundle(BaseModel):
@@ -548,11 +619,12 @@ class SessionBundle(BaseModel):
     by the apply session after both directive phases, with dests relativized
     to the project root where possible; consumers read the families they know.
     Empty when no family ferries data."""
-    fast_lanes: dict[str, FastLaneSpec] = Field(default_factory=dict)
-    """``f'{provider_id}:{lane_name}'`` → that lane's `FastLaneSpec`
+    fast_lanes: dict[str, FastLaneEntry] = Field(default_factory=dict)
+    """``f'{provider_id}:{lane_name}'`` → that lane's `FastLaneEntry`
     contributions. Collected from ``create_fast_lanes()``; merged into the
     regular bundle fields for full runs, or executed alone for lane runs
-    (see ``repolish.fastlane``)."""
+    (see ``repolish.fastlane``). Factory lanes stay unevaluated here and
+    are resolved by the merge/restrict step, once, only when needed."""
 
 
 def _records_from_template_sources(
@@ -811,5 +883,6 @@ class Accumulators:
     # fast lanes collected from create_fast_lanes(), keyed
     # ``f'{provider_id}:{lane_name}'`` so lane names stay unique across
     # providers in multi-provider sessions. Values are normalized specs
-    # (string sources wrapped, insertions bound to the provider context).
-    fast_lanes: dict[str, FastLaneSpec] = field(default_factory=dict)
+    # (string sources wrapped, insertions bound to the provider context),
+    # or closures producing one on first use (lazy factory lanes).
+    fast_lanes: dict[str, FastLaneEntry] = field(default_factory=dict)

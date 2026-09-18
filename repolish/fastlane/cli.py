@@ -3,10 +3,12 @@
 :func:`provider_cli` builds a cyclopts app with one subcommand per lane
 declared by :meth:`~repolish.providers.models.Provider.create_fast_lanes`,
 plus an ``all`` subcommand for the provider's full pass. :func:`run_lane` is
-the runtime behind every subcommand: it reads the project's real
-``repolish.yaml`` (so ``paused_files`` and the provider's own ``overrides``
-are honored) and runs the single-provider pipeline with the dry pass
-skipped.
+the runtime behind every subcommand: it prepares the run's configuration
+from the project's ``repolish.yaml`` when one exists (honoring
+``paused_files``, the ``fast_lanes`` section, and the provider's own entry
+fields) and otherwise runs with an in-memory single-provider configuration,
+so the CLI works in any project, registered or not. No provider
+registration, readiness check, or link command ever runs.
 """
 
 from __future__ import annotations
@@ -21,13 +23,11 @@ from hotlog import configure_logging, get_logger, resolve_verbosity
 
 from repolish.cli.apply import ApplyCommonParams
 from repolish.cli.utils import run_cli_command
-from repolish.exceptions import ConfigValidationError
 from repolish.providers.models import ProviderInfo, RepolishContext
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from repolish.config.models import RepolishConfig
     from repolish.providers.models import Provider
 
 logger = get_logger(__name__)
@@ -57,35 +57,6 @@ def _locate_provider_root(provider_cls: type[Provider[Any, Any]]) -> Path:
     raise RuntimeError(msg)
 
 
-def _resolve_alias(
-    config: RepolishConfig,
-    provider_root: Path,
-    *,
-    alias: str | None,
-) -> str:
-    """Return the configured alias whose provider_root is *provider_root*.
-
-    An explicit *alias* always wins. Otherwise the config entry registered
-    for this package (what ``repolish link`` writes) is matched by its
-    resolved ``provider_root``; a miss means the provider is not linked into
-    the project yet.
-    """
-    if alias is not None:
-        if alias not in config.providers:
-            msg = f'alias {alias!r} is not defined in repolish.yaml providers'
-            raise ConfigValidationError(msg)
-        return alias
-    wanted = provider_root.resolve()
-    for name, info in config.providers.items():
-        if info.provider_root.resolve() == wanted:
-            return name
-    msg = (
-        f'no repolish.yaml provider entry points at {wanted}. Run '
-        f'repolish link (or add the provider to repolish.yaml) and try again.'
-    )
-    raise ConfigValidationError(msg)
-
-
 def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     provider_root: Path,
     lane: str | None,
@@ -99,10 +70,14 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
 ) -> int:
     """Run one lane (or the provider's full pass) against the real project.
 
-    Reads the project's ``repolish.yaml`` exactly like ``repolish apply``
-    would, so ``paused_files`` and this provider's ``overrides`` are
-    honored, then runs the single-provider pipeline with the dry pass
-    skipped and only the selected lane's contributions staged.
+    The configuration is prepared by
+    :func:`~repolish.fastlane.config.prepare_lane_config`: a single raw YAML
+    read when ``repolish.yaml`` exists (honoring ``paused_files``, the
+    ``fast_lanes`` section, and this provider's entry fields), an in-memory
+    configuration otherwise. The provider never has to be registered in the
+    project, and no readiness check or link command runs. A named lane runs
+    only its own ``fast_lanes.config`` post-process commands; ``all`` runs
+    the project's.
     """
     # Deferred imports: repolish.fastlane is imported by the apply pipeline,
     # so the session modules must not be pulled in at import time.
@@ -110,16 +85,17 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     from repolish.commands.apply.options import ApplyOptions  # noqa: PLC0415
     from repolish.commands.apply.pipeline import resolve_session  # noqa: PLC0415
     from repolish.commands.apply.session import apply_session  # noqa: PLC0415
-    from repolish.config import load_config  # noqa: PLC0415
+    from repolish.fastlane.config import prepare_lane_config  # noqa: PLC0415
 
     configure_logging(verbosity=resolve_verbosity(verbose=verbose))
     config_path = config.resolve()
-    if not config_path.is_file():
-        msg = f'config file not found: {config_path}. Run this command from the project root.'
-        raise ConfigValidationError(msg)
-
-    resolved = load_config(config_path)
-    lane_alias = _resolve_alias(resolved, provider_root, alias=alias)
+    prepared = prepare_lane_config(
+        provider_root,
+        lane,
+        alias=alias,
+        config_path=config_path,
+    )
+    lane_alias = next(iter(prepared.config.providers))
     logger.info(
         'lane_started',
         lane=lane or 'all',
@@ -133,6 +109,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         skip_post_process=skip_post_process,
         fail_on_warnings=fail_on_warnings,
         provider_filter=[lane_alias],
+        lane_config=prepared,
         lane=lane,
         skip_dry_pass=True,
     )

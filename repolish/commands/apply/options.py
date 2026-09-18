@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from repolish.config import ProviderSymlink, RepolishConfig
-from repolish.config.models.provider import ProviderCopy
+from repolish.config.models.provider import ProviderConfig, ProviderCopy
 from repolish.providers.models import (
     BaseInputs,
     GlobalContext,
@@ -10,6 +10,22 @@ from repolish.providers.models import (
     SessionBundle,
     ValidationResult,
 )
+
+
+@dataclass(frozen=True)
+class LaneSessionConfig:
+    """Prepared configuration for a fast-lane run.
+
+    Built by :func:`repolish.fastlane.config.prepare_lane_config`: a
+    single-provider :class:`~repolish.config.RepolishConfig` constructed in
+    memory (the provider's root located from its own class, not from
+    registration) plus the raw provider entry the symlink/copy collectors
+    read. Passing it on :class:`ApplyOptions` lets ``resolve_session`` skip
+    config loading, readiness registration, and link subprocesses entirely.
+    """
+
+    config: RepolishConfig
+    raw_providers: dict[str, ProviderConfig]
 
 
 @dataclass(frozen=True)
@@ -43,6 +59,10 @@ class ApplyOptions:
     extra_inputs: list[BaseInputs] | None = field(default=None, repr=False)
     lane: str | None = None
     """Execute only the contributions of this fast lane (see ``repolish.fastlane``)."""
+    lane_config: LaneSessionConfig | None = field(default=None, repr=False)
+    """Prepared single-provider config for a lane run. When set,
+    ``resolve_session`` uses it directly instead of loading ``repolish.yaml``
+    and registering providers (see ``repolish.fastlane.config``)."""
     skip_dry_pass: bool = False
     """Skip the dry provider pass in ``resolve_session``. Only safe for
     single-provider standalone runs that never consume cross-session

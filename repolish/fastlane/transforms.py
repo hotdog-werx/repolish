@@ -6,24 +6,56 @@
 contributions (lane runs). Lane contributions are collected and normalized
 by the provider pipeline like any other hook, so the transforms here are
 pure dict work: both run modes consume the same collected specs, which is
-what makes lane files safe to run in isolation.
+what makes lane files safe to run in isolation. Lazy lanes arrive as
+factories and are evaluated here, once, only when a run needs them.
 
 Duplicate dests are load-time errors, never silent overrides: the same dest
-in two lane specs always raises; the same dest in a regular hook and a lane
-spec raises unless the project's ``repolish.yaml`` carries a
-``fast_lane_resolutions`` entry for it (see
-:class:`~repolish.config.models.project.FastLaneResolution`).
+in two merged lane specs always raises; the same dest in a regular hook
+and a lane spec raises unless the project's ``repolish.yaml`` carries a
+``fast_lanes.resolutions`` entry for it (see
+:class:`~repolish.config.models.project.FastLanesSection`). Decoupled lanes
+never merge, so their dests are invisible to full runs; a named lane run
+still checks its own dests against the regular hooks and honors the same
+resolutions.
 """
 
 from pathlib import Path, PurePosixPath
 
+from hotlog import get_logger
+
 from repolish.config.models import FastLaneResolution
 from repolish.providers.models import (
+    FastLaneEntry,
     FastLaneSpec,
     FileMode,
+    LazyLaneSpec,
     SessionBundle,
     TemplateMapping,
 )
+
+logger = get_logger(__name__)
+
+
+def _eval_spec(entry: FastLaneEntry) -> FastLaneSpec:
+    """Resolve one collected lane entry to its normalized spec.
+
+    Eager lanes arrive as specs; lazy lanes as factories whose first call
+    normalizes the result (see ``_lazy_lane_spec`` in the collection code).
+    """
+    if isinstance(entry, FastLaneSpec):
+        return entry
+    return entry()
+
+
+def _entry_decoupled(entry: FastLaneEntry) -> bool:
+    """Return whether a lane entry is marked decoupled, without evaluating it.
+
+    Eager lanes carry the flag on the spec; lazy lanes marked at declaration
+    time (``DecoupledLane``) carry it on the collected entry. A lazy lane
+    that only sets ``decoupled`` on the spec it returns is still skipped by
+    the merge, but reading that flag requires calling the factory first.
+    """
+    return entry.decoupled if isinstance(entry, (FastLaneSpec, LazyLaneSpec)) else False
 
 
 def _spec_dests(spec: FastLaneSpec) -> set[str]:
@@ -31,16 +63,19 @@ def _spec_dests(spec: FastLaneSpec) -> set[str]:
     return set(spec.file_mappings) | set(spec.file_insertions) | set(spec.file_validators)
 
 
-def _detect_lane_lane_collisions(bundle: SessionBundle) -> None:
-    """Fail when the same dest is declared by two different lanes.
+def _detect_lane_lane_collisions(merged: dict[str, FastLaneSpec]) -> None:
+    """Fail when the same dest is declared by two different merged lanes.
 
     This is a static authoring mistake (two specs fed identical inputs in
-    every run mode, no state involved) so it always raises, in full runs and
-    lane runs alike, and cannot be resolved away via
-    ``fast_lane_resolutions``.
+    every run mode, no state involved) so it always raises in full runs and
+    cannot be resolved away via ``fast_lanes.resolutions``. Lane runs do not
+    run this check: evaluating every lane's factory there would defeat lazy
+    registration, and with one lane executing there is nothing to collide
+    with. Decoupled lanes never merge, so a dest shared by a decoupled lane
+    and another lane is not detectable here; each runs alone.
     """
     seen: dict[str, str] = {}
-    for lane_key, spec in bundle.fast_lanes.items():
+    for lane_key, spec in merged.items():
         for dest in sorted(_spec_dests(spec)):
             other = seen.get(dest)
             if other is not None and other != lane_key:
@@ -97,13 +132,14 @@ def _unresolved_collision_msg(
         f'fast lane collision on {dest!r}: lane {lane_key!r} declares it and so '
         f'does a regular hook ({", ".join(kinds)}) of provider {pid!r}. Regular '
         'hooks can be conditional on context, so this may surface only in some '
-        f'project states. Add a fast_lane_resolutions entry for {dest!r} in '
+        f'project states. Add a fast_lanes.resolutions entry for {dest!r} in '
         "repolish.yaml ('fast_lane' or 'regular') to choose which side owns the dest."
     )
 
 
 def _resolve_regular_collisions(
     bundle: SessionBundle,
+    merged: dict[str, FastLaneSpec],
     resolutions: dict[str, FastLaneResolution],
 ) -> tuple[dict[str, set[str]], set[str]]:
     """Decide every regular-vs-lane collision against the project config.
@@ -115,9 +151,9 @@ def _resolve_regular_collisions(
     bundle). Unresolved collisions raise.
     """
     mapping_claims, insertion_claims, validator_claims = _regular_claims(bundle)
-    lane_drops: dict[str, set[str]] = {key: set() for key in bundle.fast_lanes}
+    lane_drops: dict[str, set[str]] = {key: set() for key in merged}
     regular_drops: set[str] = set()
-    for lane_key, spec in bundle.fast_lanes.items():
+    for lane_key, spec in merged.items():
         for dest in sorted(_spec_dests(spec)):
             kinds = _collision_kinds(
                 dest,
@@ -245,19 +281,44 @@ def merge_fast_lanes(
     resolutions: dict[str, FastLaneResolution],
     pid_to_alias: dict[str, str] | None = None,
 ) -> None:
-    """Fold every lane's contributions into *bundle* (full ``repolish apply``).
+    """Fold every merged lane's contributions into *bundle* (full apply).
 
     Mutates the bundle in place so lane-declared dests render, insert, and
     validate exactly as they would in a lane run: parity is guaranteed because
     both run modes consume the same collected specs. Duplicate detection runs
     first; see the module docstring for the error and resolution rules.
+
+    Decoupled lanes are skipped without being evaluated: their factories
+    stay uncalled, so the one-off work behind them never triggers in a full
+    run. A factory lane that was not wrapped in ``DecoupledLane`` but returns
+    a decoupled spec is still skipped, but only after the factory has run;
+    the run logs a warning pointing at the wrapper.
     """
     if not bundle.fast_lanes:
         return
-    _detect_lane_lane_collisions(bundle)
-    lane_drops, regular_drops = _resolve_regular_collisions(bundle, resolutions)
+    merged: dict[str, FastLaneSpec] = {}
+    for lane_key, entry in bundle.fast_lanes.items():
+        if _entry_decoupled(entry):
+            continue
+        spec = _eval_spec(entry)
+        if spec.decoupled:
+            logger.warning(
+                'decoupled_lane_evaluated',
+                lane=lane_key,
+                suggestion=('wrap the factory in DecoupledLane so full runs skip it without evaluating it'),
+            )
+            continue
+        merged[lane_key] = spec
+    if not merged:
+        return
+    _detect_lane_lane_collisions(merged)
+    lane_drops, regular_drops = _resolve_regular_collisions(
+        bundle,
+        merged,
+        resolutions,
+    )
     _drop_regular_claims(bundle, regular_drops)
-    for lane_key, spec in bundle.fast_lanes.items():
+    for lane_key, spec in merged.items():
         _apply_lane_contributions(
             bundle,
             spec,
@@ -279,11 +340,15 @@ def restrict_to_lane(
     and validator fields are replaced with the lane's own declarations
     (config-level ``delete_files`` is not honored either; lanes never delete
     outside their own ``FileMode.DELETE`` mappings). Copies and symlinks are
-    no-arg, context-free declarations and still materialize. Regular-vs-lane
-    collisions are detected for the selected lane only; a resolution of
-    ``'regular'`` removes that dest from the run, ``'fast_lane'`` keeps it.
+    no-arg, context-free declarations and still materialize.
+
+    Only the selected lane is evaluated: a run selecting one lazy lane
+    leaves every other lane's factory uncalled. Lane-vs-lane collisions are
+    not detected here for that reason (full runs still catch them); the
+    regular-vs-lane check runs for the selected lane, whether it is coupled
+    or decoupled: a resolution of ``'regular'`` removes that dest from the
+    run, ``'fast_lane'`` keeps it.
     """
-    _detect_lane_lane_collisions(bundle)
     matches = [key for key in bundle.fast_lanes if key.split(':', 1)[1] == lane]
     if not matches:
         available = sorted({key.split(':', 1)[1] for key in bundle.fast_lanes})
@@ -294,7 +359,7 @@ def restrict_to_lane(
         msg = f'fast lane {lane!r} is declared by multiple providers ({owners}); rename one of the lanes'
         raise ValueError(msg)
 
-    spec = bundle.fast_lanes[matches[0]]
+    spec = _eval_spec(bundle.fast_lanes[matches[0]])
     mapping_claims, insertion_claims, validator_claims = _regular_claims(bundle)
     skip: set[str] = set()
     for dest in sorted(_spec_dests(spec)):

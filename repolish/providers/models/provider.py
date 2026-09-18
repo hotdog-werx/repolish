@@ -32,7 +32,7 @@ from repolish.providers.models.context import (
     Symlink,
 )
 from repolish.providers.models.files import (
-    FastLaneSpec,
+    FastLaneDeclaration,
     FileInsertionContribution,
     FileMode,
     InsertionRegistry,
@@ -565,12 +565,16 @@ class Provider(ABC, Generic[ContextT, InputT]):
     def create_fast_lanes(
         self,
         repolish: RepolishContext,  # noqa: ARG002 - parameter may be unused
-    ) -> dict[str, FastLaneSpec]:
+    ) -> dict[str, FastLaneDeclaration]:
         """Optional: declare fast lanes for quick, scoped apply runs.
 
         Returns ``{lane_name: FastLaneSpec}`` where each spec holds the same
         shapes the regular hooks return: ``file_mappings``,
-        ``file_insertions``, ``file_validators``.
+        ``file_insertions``, ``file_validators``. A value may instead be a
+        zero-arg factory returning the spec (:type:`FastLaneFactory`): the
+        factory is called only when the lane actually runs, so its module
+        imports (and any expensive work building the spec) stay out of CLI
+        startup and out of runs that do not select the lane.
 
         The hook receives the ``repolish`` namespace (repo info, year, and
         this provider's own name and version) and **nothing else** on
@@ -583,8 +587,12 @@ class Provider(ABC, Generic[ContextT, InputT]):
 
         Merging rules (full apply folds every lane's contributions into the
         session bundle): a dest declared by both a regular hook and a lane
-        raises, unless the project config carries a ``fast_lane_resolutions``
-        entry for it; the same dest in two lanes always raises.
+        raises, unless the project config carries a
+        ``fast_lanes.resolutions`` entry for it; the same dest in two lanes
+        always raises. A lane marked ``decoupled=True`` never merges: only
+        its named CLI subcommand executes it, so full applies never trigger
+        its (possibly expensive) work. Wrap a factory lane in
+        ``DecoupledLane`` so full runs skip it without calling the factory.
 
         Default implementation returns an empty mapping (no lanes).
         """
