@@ -7,6 +7,7 @@ from repolish.phases import PhaseTimer
 from repolish.postprocess.models import PostProcessRun
 from repolish.providers.models import (
     BaseInputs,
+    FastLaneSpec,
     GlobalContext,
     ProviderEntry,
     SessionBundle,
@@ -61,6 +62,13 @@ class ApplyOptions:
     extra_inputs: list[BaseInputs] | None = field(default=None, repr=False)
     lane: str | None = None
     """Execute only the contributions of this fast lane (see ``repolish.fastlane``)."""
+    lane_spec: FastLaneSpec | None = field(default=None, repr=False)
+    """Optional runtime lane spec for lane runs.
+
+    Used by provider standalone commands to execute a generated spec through the
+    same lane-restrict apply path without requiring declaration in
+    ``create_fast_lanes()``.
+    """
     lane_config: LaneSessionConfig | None = field(default=None, repr=False)
     """Prepared single-provider config for a lane run. When set,
     ``resolve_session`` uses it directly instead of loading ``repolish.yaml``

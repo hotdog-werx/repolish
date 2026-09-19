@@ -1,6 +1,7 @@
 import textwrap
 from pathlib import Path
 
+import pytest
 from pytest_mock import MockerFixture
 
 from repolish.commands.apply.check import (
@@ -11,7 +12,12 @@ from repolish.commands.apply.check import (
 from repolish.commands.apply.display import (
     print_files_summary as _print_files_summary,
 )
-from repolish.commands.apply.options import ApplyOptions, ResolvedSession
+from repolish.commands.apply.options import (
+    ApplyOptions,
+    LaneSessionConfig,
+    ResolvedSession,
+)
+from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import (
     apply_session,
 )
@@ -32,6 +38,7 @@ from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,
+    FastLaneSpec,
     FileMode,
     GlobalContext,
     TemplateMapping,
@@ -269,6 +276,35 @@ def test_apply_command_runs_with_valid_provider(
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
+
+
+def test_resolve_session_raises_when_lane_spec_set_without_lane(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A runtime lane spec is only valid when a lane name is also provided."""
+    mocker.patch(
+        'repolish.commands.apply.pipeline.build_final_providers',
+    ).return_value = SessionBundle(provider_contexts={})
+
+    options = ApplyOptions(
+        config_path=tmp_path / 'repolish.yaml',
+        lane_spec=FastLaneSpec(),
+        lane_config=LaneSessionConfig(
+            config=RepolishConfig(
+                config_dir=tmp_path,
+                providers={},
+            ),
+            raw_providers={},
+        ),
+        skip_dry_pass=True,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+    )
+
+    with pytest.raises(ValueError, match='lane_spec requires lane to be set'):
+        resolve_session(options)
 
 
 def test_render_templates_returns_1_on_runtime_error(

@@ -13,10 +13,7 @@ Duplicate dests are load-time errors, never silent overrides: the same dest
 in two merged lane specs always raises; the same dest in a regular hook
 and a lane spec raises unless the project's ``repolish.yaml`` carries a
 ``fast_lanes.resolutions`` entry for it (see
-:class:`~repolish.config.models.project.FastLanesSection`). Decoupled lanes
-never merge, so their dests are invisible to full runs; a named lane run
-still checks its own dests against the regular hooks and honors the same
-resolutions.
+:class:`~repolish.config.models.project.FastLanesSection`).
 """
 
 from pathlib import Path, PurePosixPath
@@ -28,7 +25,6 @@ from repolish.providers.models import (
     FastLaneEntry,
     FastLaneSpec,
     FileMode,
-    LazyLaneSpec,
     SessionBundle,
     TemplateMapping,
 )
@@ -47,17 +43,6 @@ def _eval_spec(entry: FastLaneEntry) -> FastLaneSpec:
     return entry()
 
 
-def _entry_decoupled(entry: FastLaneEntry) -> bool:
-    """Return whether a lane entry is marked decoupled, without evaluating it.
-
-    Eager lanes carry the flag on the spec; lazy lanes marked at declaration
-    time (``DecoupledLane``) carry it on the collected entry. A lazy lane
-    that only sets ``decoupled`` on the spec it returns is still skipped by
-    the merge, but reading that flag requires calling the factory first.
-    """
-    return entry.decoupled if isinstance(entry, (FastLaneSpec, LazyLaneSpec)) else False
-
-
 def _spec_dests(spec: FastLaneSpec) -> set[str]:
     """Return every dest path a lane spec claims, across all three kinds."""
     return set(spec.file_mappings) | set(spec.file_insertions) | set(spec.file_validators)
@@ -71,8 +56,7 @@ def _detect_lane_lane_collisions(merged: dict[str, FastLaneSpec]) -> None:
     cannot be resolved away via ``fast_lanes.resolutions``. Lane runs do not
     run this check: evaluating every lane's factory there would defeat lazy
     registration, and with one lane executing there is nothing to collide
-    with. Decoupled lanes never merge, so a dest shared by a decoupled lane
-    and another lane is not detectable here; each runs alone.
+    with.
     """
     seen: dict[str, str] = {}
     for lane_key, spec in merged.items():
@@ -290,28 +274,10 @@ def merge_fast_lanes(
 
     Returns the merged specs so the caller can fold their copies into the
     run's resolved copy set (copies live outside the bundle).
-
-    Decoupled lanes are skipped without being evaluated: their factories
-    stay uncalled, so the one-off work behind them never triggers in a full
-    run. A factory lane that was not wrapped in ``DecoupledLane`` but returns
-    a decoupled spec is still skipped, but only after the factory has run;
-    the run logs a warning pointing at the wrapper.
     """
     if not bundle.fast_lanes:
         return []
-    merged: dict[str, FastLaneSpec] = {}
-    for lane_key, entry in bundle.fast_lanes.items():
-        if _entry_decoupled(entry):
-            continue
-        spec = _eval_spec(entry)
-        if spec.decoupled:
-            logger.warning(
-                'decoupled_lane_evaluated',
-                lane=lane_key,
-                suggestion=('wrap the factory in DecoupledLane so full runs skip it without evaluating it'),
-            )
-            continue
-        merged[lane_key] = spec
+    merged = {lane_key: _eval_spec(entry) for lane_key, entry in bundle.fast_lanes.items()}
     if not merged:
         return []
     _detect_lane_lane_collisions(merged)
@@ -354,8 +320,8 @@ def restrict_to_lane(
     Only the selected lane is evaluated: a run selecting one lazy lane
     leaves every other lane's factory uncalled. Lane-vs-lane collisions are
     not detected here for that reason (full runs still catch them); the
-    regular-vs-lane check runs for the selected lane, whether it is coupled
-    or decoupled: a resolution of ``'regular'`` removes that dest from the
+    regular-vs-lane check runs for the selected lane: a resolution of
+    ``'regular'`` removes that dest from the
     run, ``'fast_lane'`` keeps it.
     """
     matches = [key for key in bundle.fast_lanes if key.split(':', 1)[1] == lane]

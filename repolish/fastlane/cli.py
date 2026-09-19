@@ -14,17 +14,26 @@ registration, readiness check, or link command ever runs.
 from __future__ import annotations
 
 import importlib
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import cyclopts
 from cyclopts import Parameter
 from hotlog import configure_logging, get_logger, resolve_verbosity
+from pydantic import BaseModel, create_model
 
 from repolish.cli.apply import ApplyCommonParams
 from repolish.cli.utils import run_cli_command
-from repolish.providers.models import ProviderInfo, RepolishContext
+from repolish.providers.models import (
+    FastLaneSpec,
+    ProviderCommandContext,
+    ProviderCommandExecutor,
+    ProviderInfo,
+    RepolishContext,
+    TemplateMapping,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -62,6 +71,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     provider_root: Path,
     lane: str | None,
     *,
+    lane_spec: FastLaneSpec | None = None,
     alias: str | None = None,
     config: Path = Path('repolish.yaml'),
     check: bool = False,
@@ -124,6 +134,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         provider_filter=[lane_alias],
         lane_config=prepared,
         lane=lane,
+        lane_spec=lane_spec,
         skip_dry_pass=True,
     )
     session = resolve_session(options)
@@ -163,6 +174,36 @@ class LaneParams(ApplyCommonParams):
     ] = 0
 
 
+def _normalize_command_spec(
+    spec: FastLaneSpec,
+    *,
+    provider_id: str,
+) -> FastLaneSpec:
+    """Return a lane spec normalized for pipeline lane execution.
+
+    Provider command executors return lane-like contributions directly, outside
+    the provider collection path. This helper mirrors lane normalization so
+    source-provider bookkeeping and plain-string mappings behave consistently.
+    """
+    normalized_mappings: dict[str, str | TemplateMapping] = {}
+    for dest, value in spec.file_mappings.items():
+        if isinstance(value, TemplateMapping):
+            normalized_mappings[dest] = value if value.source_provider else replace(value, source_provider=provider_id)
+        else:
+            normalized_mappings[dest] = TemplateMapping(
+                source_template=value,
+                source_provider=provider_id,
+            )
+
+    return FastLaneSpec(
+        file_mappings=normalized_mappings,
+        file_insertions={path: dict(funcs) for path, funcs in spec.file_insertions.items()},
+        file_validators={path: dict(funcs) for path, funcs in spec.file_validators.items()},
+        file_copies=list(spec.file_copies),
+        source_provider=provider_id,
+    )
+
+
 def _lane_command(
     provider_root: Path,
     lane: str | None,
@@ -193,6 +234,87 @@ def _lane_command(
         if lane
         else 'Run every lane merged with the regular provider pass (still fast: single provider, no dry pass).'
     )
+    return _run
+
+
+def _command_params_model(
+    command_name: str,
+    args_model: type[BaseModel],
+) -> type[BaseModel]:
+    """Build a merged params model containing lane flags and command args."""
+    safe_name = command_name.replace('-', '_').replace(':', '_').title().replace('_', '')
+    model_name = f'{safe_name}Params'
+    fields: dict[str, Any] = {}
+    for field_name, field_info in args_model.model_fields.items():
+        default = ... if field_info.is_required() else field_info.default
+        fields[field_name] = (field_info.annotation, default)
+    merged = create_model(
+        model_name,
+        __base__=cast('Any', LaneParams),
+        **fields,
+    )
+    return Parameter(name='*')(merged)
+
+
+def _provider_command(
+    provider_root: Path,
+    provider_alias: str,
+    command_name: str,
+    args_model: type[BaseModel],
+    executor: ProviderCommandExecutor,
+) -> Callable:
+    """Build one provider command subcommand function for :func:`provider_cli`."""
+    params_model = _command_params_model(command_name, args_model)
+
+    def _run(params: Any) -> None:  # noqa: ANN401 - params is dynamically typed
+        def _invoke() -> int:
+            from repolish.fastlane.config import prepare_lane_config  # noqa: PLC0415
+
+            prepared = prepare_lane_config(
+                provider_root,
+                f'command:{command_name}',
+                alias=provider_alias or None,
+                config_path=params.config.resolve(),
+            )
+            resolved_alias = next(
+                iter(prepared.config.providers),
+                provider_alias,
+            )
+            args_payload = {name: getattr(params, name) for name in args_model.model_fields if hasattr(params, name)}
+            command_args = args_model.model_validate(args_payload)
+            command_ctx = ProviderCommandContext(
+                repolish=RepolishContext(
+                    provider=ProviderInfo(alias=resolved_alias),
+                ),
+                provider_root=provider_root,
+                config_path=params.config.resolve(),
+                check=params.check,
+                skip_post_process=params.skip_post_process,
+                fail_on_warnings=params.fail_on_warnings,
+                verbose=params.verbose,
+            )
+            lane_key = f'command:{command_name}'
+            lane_spec = _normalize_command_spec(
+                executor(command_args, command_ctx),
+                provider_id=str(provider_root.resolve()),
+            )
+            return run_lane(
+                provider_root,
+                lane_key,
+                lane_spec=lane_spec,
+                alias=resolved_alias,
+                config=params.config,
+                check=params.check,
+                skip_post_process=params.skip_post_process,
+                fail_on_warnings=params.fail_on_warnings,
+                verbose=params.verbose,
+            )
+
+        run_cli_command(_invoke)
+
+    _run.__name__ = command_name.replace('-', '_').replace(':', '_')
+    _run.__annotations__['params'] = params_model
+    _run.__doc__ = f'Run provider command {command_name!r}.'
     return _run
 
 
@@ -232,6 +354,11 @@ def provider_cli(
     lanes = inst.create_fast_lanes(
         RepolishContext(provider=ProviderInfo(alias=inst.alias)),
     )
+    commands = provider_class.create_provider_commands()
+    collisions = sorted(set(lanes).intersection(commands))
+    if collisions:
+        msg = f'provider command names collide with fast lane names: {collisions}'
+        raise ValueError(msg)
 
     provider_name = type(inst).__name__
     app = cyclopts.App(
@@ -246,4 +373,16 @@ def provider_cli(
         _lane_command(provider_root, None, alias=alias),
         name='all',
     )
+    for command_name, contract in commands.items():
+        app.command(
+            _provider_command(
+                provider_root,
+                inst.alias,
+                str(command_name),
+                contract.args_model,
+                contract.executor,
+            ),
+            name=str(command_name),
+            help=contract.summary or None,
+        )
     return app

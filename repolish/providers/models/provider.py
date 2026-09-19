@@ -36,6 +36,7 @@ from repolish.providers.models.files import (
     FileInsertionContribution,
     FileMode,
     InsertionRegistry,
+    ProviderCommandDeclaration,
     TemplateMapping,
     ValidatorMapping,
 )
@@ -589,12 +590,25 @@ class Provider(ABC, Generic[ContextT, InputT]):
         session bundle): a dest declared by both a regular hook and a lane
         raises, unless the project config carries a
         ``fast_lanes.resolutions`` entry for it; the same dest in two lanes
-        always raises. A lane marked ``decoupled=True`` never merges: only
-        its named CLI subcommand executes it, so full applies never trigger
-        its (possibly expensive) work. Wrap a factory lane in
-        ``DecoupledLane`` so full runs skip it without calling the factory.
+        always raises.
 
         Default implementation returns an empty mapping (no lanes).
+        """
+        return {}
+
+    @classmethod
+    def create_provider_commands(
+        cls,
+    ) -> dict[str, ProviderCommandDeclaration]:
+        """Optional: declare standalone provider commands with typed args.
+
+        Returns ``{command_name: ProviderCommandContract}`` for commands that
+        should be exposed on the provider CLI but never merged into full
+        ``repolish apply`` runs.
+
+        The contract is intentionally static and class-level so the CLI can
+        build command help and argument parsing quickly without importing heavy
+        command execution modules.
         """
         return {}
 

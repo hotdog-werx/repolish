@@ -246,6 +246,14 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     )
     ordered_aliases = _ordered_aliases(config)
 
+    if options.lane_spec is not None:
+        if options.lane is None:
+            msg = 'lane_spec requires lane to be set'
+            raise ValueError(msg)
+        lane_alias = next(iter(config.providers), '')
+        lane_pid = alias_to_pid.get(lane_alias, lane_alias)
+        providers.fast_lanes[f'{lane_pid}:{options.lane}'] = options.lane_spec
+
     # Fast lanes: fold every lane's contributions into the bundle (full runs)
     # or cut the bundle down to exactly one lane (lane runs). Both paths run
     # duplicate detection against the project's fast_lanes.resolutions.

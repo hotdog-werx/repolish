@@ -82,7 +82,7 @@ running a fully local provider when you need total independence from upstream.
 ## Working with an AI assistant
 
 If you are using an AI coding assistant to help configure or extend repolish,
-point it at the [AI Agent Reference](llms.md) page in the reference section first. That single page gives
-the assistant a complete map of what repolish does, how the config file is
-structured, and where to look for deeper detail — so it can help you without
-guessing.
+point it at the [AI Agent Reference](llms.md) page in the reference section
+first. That single page gives the assistant a complete map of what repolish
+does, how the config file is structured, and where to look for deeper detail —
+so it can help you without guessing.

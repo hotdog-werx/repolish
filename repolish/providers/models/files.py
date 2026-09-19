@@ -18,7 +18,11 @@ from typing import Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
-from repolish.providers.models.context import BaseContext, ResourceCopy
+from repolish.providers.models.context import (
+    BaseContext,
+    RepolishContext,
+    ResourceCopy,
+)
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
@@ -461,11 +465,39 @@ class FastLaneSpec(BaseModel):
     """Provider id that declared this lane. Not something the provider sets;
     populated during collection so merge bookkeeping can attribute the
     contributions (insertion registry keys, source maps)."""
-    decoupled: bool = False
-    """When True the lane never runs as part of `repolish apply` or the
-    provider CLI's `all` subcommand; only its explicit named subcommand
-    executes it. Meant for one-off generation processes (an HTTP fetch, a
-    data export) that a full apply must not trigger."""
+
+
+@dataclass(frozen=True)
+class ProviderCommandContext:
+    """Runtime context passed to provider command executors.
+
+    Provider commands are standalone (never merged into full ``repolish apply``)
+    but still run through the apply pipeline once they return a spec. The
+    context exposes the provider identity, the current run flags, and the
+    global ``repolish`` namespace.
+    """
+
+    repolish: RepolishContext
+    provider_root: Path
+    config_path: Path
+    check: bool
+    skip_post_process: bool
+    fail_on_warnings: bool
+    verbose: int
+
+
+class ProviderCommandContract(BaseModel):
+    """Static contract for a standalone provider command.
+
+    Returned by ``Provider.create_provider_commands`` keyed by command name.
+    The contract is intentionally static so cyclopts can build help and
+    validation directly from the declared args model.
+    """
+
+    args_model: type[BaseModel]
+    executor: Callable[[BaseModel, ProviderCommandContext], FastLaneSpec]
+    summary: str = ''
+    description: str = ''
 
 
 FastLaneFactory: TypeAlias = Callable[[], 'FastLaneSpec']
@@ -478,53 +510,37 @@ enumeration iterates lane names only and never calls factories."""
 
 FastLaneEntry: TypeAlias = FastLaneSpec | FastLaneFactory
 """A collected lane: a normalized spec or the unevaluated factory behind it."""
-
-
-class DecoupledLane:
-    """Marks a lane declaration as decoupled before any evaluation.
-
-    Wraps a spec or a factory: ``DecoupledLane(spec)`` or
-    ``DecoupledLane(factory)``. Wrapping is how a lane whose factory must not
-    be called just to read the flag declares its decoupling: merge skips a
-    wrapped lane without touching it, so `repolish apply` and the provider
-    CLI's `all` subcommand never trigger the one-off work behind it. For a
-    plain spec, `FastLaneSpec(decoupled=True)` says the same thing; a factory
-    that returns a decoupled spec without this wrapper is still skipped, but
-    only after the factory has run (defeating the point of laziness), so
-    lazy decoupled lanes should always be wrapped.
-    """
-
-    __slots__ = ('lane',)
-
-    def __init__(self, lane: FastLaneSpec | FastLaneFactory) -> None:
-        self.lane = lane
-
-
-FastLaneDeclaration: TypeAlias = FastLaneSpec | FastLaneFactory | DecoupledLane
+FastLaneDeclaration: TypeAlias = FastLaneSpec | FastLaneFactory
 """What `create_fast_lanes` may map a lane name to."""
+
+
+ProviderCommandExecutor: TypeAlias = Callable[
+    [BaseModel, ProviderCommandContext],
+    FastLaneSpec,
+]
+"""Executor callable declared directly on a provider command contract."""
+
+
+ProviderCommandDeclaration: TypeAlias = ProviderCommandContract
+"""What ``create_provider_commands`` may map a command name to."""
 
 
 class LazyLaneSpec:
     """A lane factory as collected into the session bundle.
 
-    The collection step stores factory lanes unevaluated, wrapped here so
-    the decoupled flag read from the declaration (`DecoupledLane`) is
-    visible without calling the factory. Calling the entry runs the factory
-    (the collection wrapper normalizes the result) and memoizes it: a run
-    that reads the lane twice (collision detection, then merge bookkeeping)
-    evaluates the factory once.
+    The collection step stores factory lanes unevaluated. Calling the entry
+    runs the factory (the collection wrapper normalizes the result) and
+    memoizes it: a run that reads the lane twice (collision detection, then
+    merge bookkeeping) evaluates the factory once.
     """
 
-    __slots__ = ('_factory', '_spec', 'decoupled')
+    __slots__ = ('_factory', '_spec')
 
     def __init__(
         self,
         factory: FastLaneFactory,
-        *,
-        decoupled: bool = False,
     ) -> None:
         self._factory = factory
-        self.decoupled = decoupled
         self._spec: FastLaneSpec | None = None
 
     def __call__(self) -> FastLaneSpec:

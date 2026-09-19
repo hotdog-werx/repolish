@@ -60,14 +60,13 @@ def _mapping(
     return TemplateMapping(source, file_mode=mode, source_provider=PID)
 
 
-def _lane(  # noqa: PLR0913 - builder options, not logic
+def _lane(
     lane: str,
     *,
     mappings: dict[str, TemplateMapping] | None = None,
     insertions: dict[str, dict[str, object]] | None = None,
     validators: dict[str, dict[str, object]] | None = None,
     pid: str = PID,
-    decoupled: bool = False,
 ) -> dict[str, FastLaneEntry]:
     """One lane keyed the way collection stores it on the bundle."""
     return {
@@ -76,7 +75,6 @@ def _lane(  # noqa: PLR0913 - builder options, not logic
             file_insertions=insertions or {},
             file_validators=validators or {},
             source_provider=pid,
-            decoupled=decoupled,
         ),
     }
 
@@ -107,6 +105,20 @@ class TestMerge:
         assert bundle.file_mappings == before['mappings']
         assert bundle.file_insertions == before['insertions']
         assert bundle.file_validators == before['validators']
+
+    def test_merge_truthy_empty_fast_lanes_returns_empty(self) -> None:
+        """Defensive guard: handle a truthy mapping whose items() are empty."""
+
+        class _TruthyEmptyDict(dict[str, FastLaneEntry]):
+            def __bool__(self) -> bool:
+                return True
+
+        bundle = SessionBundle()
+        bundle.fast_lanes = _TruthyEmptyDict()
+
+        merged = merge_fast_lanes(bundle, resolutions={})
+
+        assert merged == []
 
     def test_merges_all_three_contribution_kinds_with_bookkeeping(self) -> None:
         bundle = _bundle()
@@ -432,14 +444,11 @@ class TestRestrict:
 
 def _counting_factory(
     spec: FastLaneSpec,
-    *,
-    decoupled: bool = False,
 ) -> tuple[FastLaneEntry, list[int]]:
     """A lane entry shaped like the collection wrapper around a factory.
 
-    Collection stores lazy lanes as `LazyLaneSpec` entries: memoized, with
-    the decoupled flag readable without evaluating the lane. Mirror that
-    state here. The list counts factory calls.
+    Collection stores lazy lanes as memoized `LazyLaneSpec` entries.
+    The list counts factory calls.
     """
     calls: list[int] = []
 
@@ -447,91 +456,7 @@ def _counting_factory(
         calls.append(1)
         return spec
 
-    return LazyLaneSpec(factory, decoupled=decoupled), calls
-
-
-class TestDecoupled:
-    def test_decoupled_spec_never_merges(self) -> None:
-        bundle = _bundle()
-        bundle.fast_lanes = _lane(
-            'fetch',
-            mappings={'data.json': _mapping('data.json.jinja')},
-            decoupled=True,
-        )
-
-        merge_fast_lanes(bundle, resolutions={})
-
-        assert 'data.json' not in bundle.file_mappings
-        assert set(bundle.file_mappings) == {
-            'regular.txt',
-        }  # regular claims untouched
-
-    def test_decoupled_spec_runs_when_named(self) -> None:
-        bundle = _bundle()
-        bundle.fast_lanes = _lane(
-            'fetch',
-            mappings={'data.json': _mapping('data.json.jinja')},
-            decoupled=True,
-        )
-
-        restrict_to_lane(bundle, 'fetch', resolutions={})
-
-        assert set(bundle.file_mappings) == {'data.json'}
-        assert set(bundle.file_validators) == set()  # regular claims replaced as usual
-
-    def test_decoupled_factory_is_not_evaluated_by_merge(self) -> None:
-        bundle = _bundle()
-        entry, calls = _counting_factory(
-            FastLaneSpec(
-                file_mappings={'data.json': _mapping('data.json.jinja')},
-                source_provider=PID,
-            ),
-            decoupled=True,
-        )
-        bundle.fast_lanes[f'{PID}:fetch'] = entry
-
-        merge_fast_lanes(bundle, resolutions={})
-
-        assert calls == []  # never called: the whole point of the wrapper
-        assert 'data.json' not in bundle.file_mappings
-
-    def test_unmarked_factory_returning_decoupled_spec_is_skipped_after_evaluation(
-        self,
-    ) -> None:
-        # Without the wrapper the flag is only readable after the factory
-        # runs; merge still skips the lane but pays for the call.
-        bundle = _bundle()
-        entry, calls = _counting_factory(
-            FastLaneSpec(
-                file_mappings={'data.json': _mapping('data.json.jinja')},
-                source_provider=PID,
-                decoupled=True,
-            ),
-        )
-        bundle.fast_lanes[f'{PID}:fetch'] = entry
-
-        merge_fast_lanes(bundle, resolutions={})
-
-        assert calls == [1]
-        assert 'data.json' not in bundle.file_mappings
-
-    def test_decoupled_lane_run_honors_resolutions(self) -> None:
-        # The same regular-vs-lane rules as coupled lanes: 'regular' hands
-        # the dest back to the regular hook in the lane run.
-        bundle = _bundle()
-        bundle.fast_lanes = _lane(
-            'fetch',
-            mappings={'regular.txt': _mapping('lane.txt')},
-            decoupled=True,
-        )
-
-        restrict_to_lane(
-            bundle,
-            'fetch',
-            resolutions={'regular.txt': FastLaneResolution.REGULAR},
-        )
-
-        assert 'regular.txt' not in bundle.file_mappings
+    return LazyLaneSpec(factory), calls
 
 
 class TestLazyFactories:

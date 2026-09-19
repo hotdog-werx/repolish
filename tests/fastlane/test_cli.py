@@ -73,20 +73,37 @@ _TEMPLATES = {
     'plain.txt.jinja': 'plain output\n',
 }
 
-_DECOUPLED_PROVIDER = """\
-    from pathlib import Path
+_COMMAND_PROVIDER = """\
+    from pydantic import BaseModel
 
     from repolish import (
         BaseContext,
         BaseInputs,
-        DecoupledLane,
         FastLaneSpec,
         Provider,
+        ProviderCommandContract,
+        ProviderCommandContext,
         TemplateMapping,
     )
 
     class Ctx(BaseContext):
         pass
+
+
+    class FetchArgs(BaseModel):
+        name: str
+        style: str = 'classic'
+
+
+    def run_fetch(args: FetchArgs, ctx: ProviderCommandContext) -> FastLaneSpec:
+        return FastLaneSpec(
+            file_mappings={
+                'data.json': TemplateMapping(
+                    '_repolish.data.json.jinja',
+                    extra_context={'name': args.name, 'style': args.style, 'alias': ctx.repolish.provider.alias},
+                ),
+            },
+        )
 
 
     class P(Provider[Ctx, BaseInputs]):
@@ -98,33 +115,113 @@ _DECOUPLED_PROVIDER = """\
                 'actions': FastLaneSpec(
                     file_mappings={'plain.txt': 'plain.txt.jinja'},
                 ),
-                # Decoupled and lazy: full runs skip it without evaluating the
-                # factory, so the marker file only appears when named.
-                'fetch': DecoupledLane(lambda: _fetch_spec()),
-                # Lazy but coupled: evaluated when merged or named.
                 'report': lambda: FastLaneSpec(
                     file_mappings={'report.txt': 'report.txt.jinja'},
                 ),
             }
 
-
-    def _fetch_spec():
-        Path('factory.marker').write_text('evaluated', encoding='utf-8')
-        return FastLaneSpec(
-            file_mappings={
-                'data.json': TemplateMapping(
-                    '_repolish.data.json.jinja',
-                    extra_context={'fetched': 'yes'},
+        @classmethod
+        def create_provider_commands(cls):
+            return {
+                'fetch': ProviderCommandContract(
+                    args_model=FetchArgs,
+                    executor=run_fetch,
+                    summary='Fetch remote metadata',
                 ),
-            },
-        )
+            }
 """
 
-_DECOUPLED_TEMPLATES = {
+_COMMAND_TEMPLATES = {
     'plain.txt.jinja': 'plain output\n',
-    '_repolish.data.json.jinja': 'fetched: {{ fetched }}\n',
+    '_repolish.data.json.jinja': 'fetched: yes\n',
     'report.txt.jinja': 'report output\n',
 }
+
+_STRING_MAPPING_COMMAND_PROVIDER = """\
+    from pydantic import BaseModel
+
+    from repolish import (
+        BaseContext,
+        BaseInputs,
+        FastLaneSpec,
+        Provider,
+        ProviderCommandContract,
+        ProviderCommandContext,
+    )
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class FetchArgs(BaseModel):
+        name: str
+
+
+    def run_fetch(args: FetchArgs, ctx: ProviderCommandContext) -> FastLaneSpec:
+        return FastLaneSpec(
+            file_mappings={
+                'data.txt': 'plain.txt.jinja',
+            },
+        )
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        @classmethod
+        def create_provider_commands(cls):
+            return {
+                'fetch': ProviderCommandContract(
+                    args_model=FetchArgs,
+                    executor=run_fetch,
+                    summary='String mapping command',
+                ),
+            }
+"""
+
+_COLLIDING_NAMES_PROVIDER = """\
+    from pydantic import BaseModel
+
+    from repolish import (
+        BaseContext,
+        BaseInputs,
+        FastLaneSpec,
+        Provider,
+        ProviderCommandContract,
+    )
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class FetchArgs(BaseModel):
+        name: str
+
+
+    def run_actions(args: FetchArgs, _ctx):
+        return FastLaneSpec()
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        def create_fast_lanes(self, repolish):
+            return {
+                'actions': FastLaneSpec(),
+            }
+
+        @classmethod
+        def create_provider_commands(cls):
+            return {
+                'actions': ProviderCommandContract(
+                    args_model=FetchArgs,
+                    executor=run_actions,
+                    summary='Intentional collision',
+                ),
+            }
+"""
 
 
 def _stage_project(
@@ -534,79 +631,135 @@ class TestParity:
         assert rc == 0
 
 
-class TestDecoupledAndLazy:
-    """Decoupled lanes never run with repolish; factory lanes load on demand."""
-
+class TestProviderCommands:
     @pytest.fixture
-    def decoupled_cli(
+    def command_cli(
         self,
         tmp_path: Path,
     ) -> tuple[cyclopts.App, Path]:
         provider_cls = _make_provider_pkg(
             tmp_path,
-            _DECOUPLED_PROVIDER,
-            templates=_DECOUPLED_TEMPLATES,
+            _COMMAND_PROVIDER,
+            templates=_COMMAND_TEMPLATES,
         )
         app = provider_cli(provider_cls)
         project = _stage_project(provider_cls, tmp_path)
         return app, project
 
-    def test_decoupled_lane_has_a_subcommand(
+    def test_command_subcommand_is_registered(
         self,
-        decoupled_cli: tuple[cyclopts.App, Path],
+        command_cli: tuple[cyclopts.App, Path],
     ) -> None:
-        # Subcommands are enumerated from lane names only; no factory runs at
-        # CLI construction time (no factory.marker left behind either).
-        app, _ = decoupled_cli
+        app, _ = command_cli
 
         result = runner.invoke(app, ['--help'])
 
         assert result.exit_code == 0, result.output
-        for name in ('actions', 'fetch', 'report', 'all'):
+        for name in ('actions', 'report', 'fetch', 'all'):
             assert name in result.output
 
-    def test_all_skips_decoupled_lane_and_never_evaluates_it(
+    def test_command_help_shows_typed_args_and_apply_flags(
         self,
-        decoupled_cli: tuple[cyclopts.App, Path],
+        command_cli: tuple[cyclopts.App, Path],
+    ) -> None:
+        app, _ = command_cli
+
+        result = runner.invoke(app, ['fetch', '--help'])
+
+        assert result.exit_code == 0, result.output
+        for flag in (
+            '--config',
+            '--check',
+            '--skip-post-process',
+            '--name',
+            '--style',
+        ):
+            assert flag in result.output
+
+    def test_command_requires_declared_args(
+        self,
+        command_cli: tuple[cyclopts.App, Path],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        app, project = decoupled_cli
+        app, project = command_cli
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['fetch'])
+
+        assert result.exit_code != 0
+        assert 'requires an argument' in result.output.lower()
+
+    def test_command_runs_standalone_spec(
+        self,
+        command_cli: tuple[cyclopts.App, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app, project = command_cli
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(
+            app,
+            ['fetch', '--name', 'drawer', '--style', 'modern'],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'data.json').read_text(
+            encoding='utf-8',
+        ) == 'fetched: yes\n'
+        # Standalone command run still excludes regular hook mappings.
+        assert not (project / '.github' / 'workflows' / 'ci.yml').exists()
+
+    def test_all_excludes_standalone_commands(
+        self,
+        command_cli: tuple[cyclopts.App, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app, project = command_cli
         monkeypatch.chdir(project)
 
         result = runner.invoke(app, ['all'])
 
         assert result.exit_code == 0, result.output
-        assert (project / 'plain.txt').exists()  # eager coupled lane merged
-        assert (project / 'report.txt').exists()  # lazy coupled lane evaluated and merged
-        assert not (project / 'data.json').exists()  # decoupled lane skipped
-        assert not (project / 'factory.marker').exists()  # ... without evaluating it
-
-    def test_named_decoupled_lane_runs(
-        self,
-        decoupled_cli: tuple[cyclopts.App, Path],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        app, project = decoupled_cli
-        monkeypatch.chdir(project)
-
-        result = runner.invoke(app, ['fetch'])
-
-        assert result.exit_code == 0, result.output
-        assert (project / 'data.json').read_text(encoding='utf-8') == ('fetched: yes\n')
-
-    def test_other_lane_run_does_not_evaluate_decoupled_factory(
-        self,
-        decoupled_cli: tuple[cyclopts.App, Path],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        app, project = decoupled_cli
-        monkeypatch.chdir(project)
-
-        result = runner.invoke(app, ['report'])
-
-        assert result.exit_code == 0, result.output
+        assert (project / 'plain.txt').exists()
         assert (project / 'report.txt').exists()
-        assert not (project / 'factory.marker').exists()  # only the selected lane evaluates
+        assert not (project / 'data.json').exists()
+
+    def test_command_string_mapping_is_normalized_and_rendered(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _STRING_MAPPING_COMMAND_PROVIDER,
+            templates={'plain.txt.jinja': 'plain output\n'},
+        )
+        app = provider_cli(provider_cls)
+        project = _stage_project(provider_cls, tmp_path)
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['fetch', '--name', 'drawer'])
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'data.txt').read_text(
+            encoding='utf-8',
+        ) == 'plain output\n'
+
+    def test_provider_command_name_collision_with_lane_raises(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _COLLIDING_NAMES_PROVIDER,
+            templates={},
+        )
+
+        with pytest.raises(
+            ValueError,
+            match='provider command names collide with fast lane names',
+        ):
+            provider_cli(provider_cls)
 
 
 _COPIES_PROVIDER = """\

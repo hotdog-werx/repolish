@@ -17,7 +17,6 @@ from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,
-    DecoupledLane,
     FastLaneFactory,
     FastLaneSpec,
     FileInsertionContribution,
@@ -628,8 +627,6 @@ def _normalize_lane_spec(
     spec: FastLaneSpec,
     own_ctx: BaseContext,
     provider_id: str,
-    *,
-    decoupled: bool | None = None,
 ) -> FastLaneSpec:
     """Normalize one lane spec's contributions to their collected forms.
 
@@ -637,8 +634,7 @@ def _normalize_lane_spec(
     (``.jinja`` stripped, ``source_provider`` set) and insertion functions are
     bound to the provider's own context, so the merge step in
     ``repolish.fastlane`` is pure dict work with identical output either way
-    it runs. *decoupled* forces the flag on (a ``DecoupledLane`` wrapper
-    around a spec whose own flag is unset).
+    it runs.
     """
     return FastLaneSpec(
         file_mappings={dest: _normalize_lane_mapping(src, provider_id) for dest, src in spec.file_mappings.items()},
@@ -648,7 +644,6 @@ def _normalize_lane_spec(
         file_validators={path: dict(fns) for path, fns in spec.file_validators.items()},
         file_copies=list(spec.file_copies),
         source_provider=provider_id,
-        decoupled=spec.decoupled if decoupled is None else decoupled,
     )
 
 
@@ -656,17 +651,13 @@ def _lazy_lane_spec(
     factory: FastLaneFactory,
     own_ctx: BaseContext,
     provider_id: str,
-    *,
-    decoupled: bool,
 ) -> LazyLaneSpec:
     """Wrap a lane factory so its first use returns the normalized spec.
 
     The wrapper defers both the factory call and the normalization after it,
     so lazy lanes load their modules only when a run actually selects them.
     The entry memoizes the result: a run that reads the lane twice (collision
-    detection, then merge bookkeeping) evaluates the factory once. A
-    ``decoupled`` wrapper (``DecoupledLane``) marks the entry itself, so
-    the merge step can skip the lane without calling the factory.
+    detection, then merge bookkeeping) evaluates the factory once.
     """
 
     def _evaluate() -> FastLaneSpec:
@@ -674,10 +665,9 @@ def _lazy_lane_spec(
             factory(),
             own_ctx,
             provider_id,
-            decoupled=decoupled or None,
         )
 
-    return LazyLaneSpec(_evaluate, decoupled=decoupled)
+    return LazyLaneSpec(_evaluate)
 
 
 def _handle_provider_fast_lanes(
@@ -696,33 +686,22 @@ def _handle_provider_fast_lanes(
     each other's bookkeeping; dest-level collisions between them stay an error.
     Factory lanes are stored unevaluated: the merge/restrict step resolves
     them, so a lane whose factory imports heavily costs nothing until a run
-    actually selects it. ``DecoupledLane`` wrappers are unwrapped here; the
-    flag they carry is visible without evaluating the lane.
+    actually selects it.
     """
     lanes = inst.create_fast_lanes(own_ctx.repolish)
 
     for lane_name, declaration in lanes.items():
-        decoupled = False
-        lane: FastLaneSpec | FastLaneFactory
-        if isinstance(declaration, DecoupledLane):
-            decoupled = True
-            lane = declaration.lane
-        else:
-            lane = declaration
-        entry: FastLaneSpec | FastLaneFactory
-        if isinstance(lane, FastLaneSpec):
+        if isinstance(declaration, FastLaneSpec):
             entry = _normalize_lane_spec(
-                lane,
+                declaration,
                 own_ctx,
                 provider_id,
-                decoupled=decoupled or None,
             )
         else:
             entry = _lazy_lane_spec(
-                lane,
+                declaration,
                 own_ctx,
                 provider_id,
-                decoupled=decoupled,
             )
         accum.fast_lanes[f'{provider_id}:{lane_name}'] = entry
 

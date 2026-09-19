@@ -1,9 +1,9 @@
 # Provider anatomy
 
-This is the page to start with when you are authoring or extending a provider. It
-walks through the same shape repolish uses internally: configure the provider,
-resolve it, build context, stage templates, render output, validate the final
-files, and handle monorepo-specific behavior.
+This is the page to start with when you are authoring or extending a provider.
+It walks through the same shape repolish uses internally: configure the
+provider, resolve it, build context, stage templates, render output, validate
+the final files, and handle monorepo-specific behavior.
 
 If you want the conceptual background before diving in, start with
 [How It Works](../concepts/overview.md).

@@ -237,11 +237,120 @@ standard way to create new component modules. A lane is a good fit:
 - the generated CLI already exists,
 - and the command can stay narrow to the developer workflow.
 
-That looks like `react-provider-cli component`, not a separate bespoke tool.
-The provider can render `Component.tsx`, `Component.test.tsx`, `Component.css`,
-or any supporting files from the same template set the team already trusts. If
-the provider also defines full-run templates for repo maintenance, both use
-cases stay in one package rather than diverging across two systems.
+That looks like `react-provider-cli component`, not a separate bespoke tool. The
+provider can render `Component.tsx`, `Component.test.tsx`, `Component.css`, or
+any supporting files from the same template set the team already trusts. If the
+provider also defines full-run templates for repo maintenance, both use cases
+stay in one package rather than diverging across two systems.
+
+## Provider commands
+
+Provider commands are the decoupled sibling of coupled fast lanes.
+
+- Coupled lane: merged into full `repolish apply` and also runnable via the
+  provider CLI.
+- Provider command: runnable via the provider CLI only; never merged into full
+  `repolish apply`.
+
+Use a provider command when the workflow is intentionally developer-invoked
+scaffolding rather than repository-wide maintenance.
+
+### Declaring a command
+
+Commands are declared with `create_provider_commands()` and backed by an
+executor function.
+
+1. Define a typed args model (Pydantic).
+2. Define an executor function with signature
+   `(args_model_instance, ProviderCommandContext) -> FastLaneSpec`.
+3. Return a `ProviderCommandContract` from `create_provider_commands()`.
+
+```python
+from pydantic import BaseModel
+
+from repolish import (
+  BaseContext,
+  BaseInputs,
+  FastLaneSpec,
+  Provider,
+  ProviderCommandContext,
+  ProviderCommandContract,
+  TemplateMapping,
+)
+
+
+class ReactComponentArgs(BaseModel):
+  name: str
+  style: str = 'css-module'
+
+
+def build_component(
+  args: ReactComponentArgs,
+  ctx: ProviderCommandContext,
+) -> FastLaneSpec:
+  pascal = ''.join(part.capitalize() for part in args.name.split('-'))
+  base = f'src/components/{pascal}'
+
+  # Optional provider-side debug output is allowed.
+  print(f'Generating React component: {pascal}')
+
+  return FastLaneSpec(
+    file_mappings={
+      f'{base}/{pascal}.tsx': TemplateMapping(
+        '_repolish.react-component.tsx.jinja',
+        extra_context={
+          'component_name': pascal,
+          'style_mode': args.style,
+          'provider_alias': ctx.repolish.provider.alias,
+        },
+      ),
+      f'{base}/{pascal}.test.tsx': TemplateMapping(
+        '_repolish.react-component.test.tsx.jinja',
+        extra_context={'component_name': pascal},
+      ),
+      f'{base}/{pascal}.module.css': TemplateMapping(
+        '_repolish.react-component.module.css.jinja',
+        extra_context={'component_name': pascal},
+      ),
+    },
+  )
+
+
+class ReactProvider(Provider[BaseContext, BaseInputs]):
+  def create_context(self):
+    return BaseContext()
+
+  @classmethod
+  def create_provider_commands(cls):
+    return {
+      'component': ProviderCommandContract(
+        args_model=ReactComponentArgs,
+        executor=build_component,
+        summary='Generate a React component module',
+      ),
+    }
+```
+
+With standard CLI wiring (`main = provider_cli(ReactProvider)`), usage looks
+like:
+
+```bash
+react-provider-cli component --name profile-card --style css-module
+```
+
+### Output behavior
+
+Provider command runs use the same apply engine phases as a lane run. That means
+command output remains consistent with other repolish flows.
+
+- The preprocess summary is printed.
+- The normal apply/check summary is printed at the end of the run.
+- Provider authors may still print their own messages in command code (for
+  example progress logs or generated names); those lines appear in command
+  output in addition to repolish summaries.
+
+This keeps command UX predictable for users while still allowing provider
+authors to add helpful command-specific feedback.
 
 ## Run semantics
 
