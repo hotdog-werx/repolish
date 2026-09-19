@@ -1,4 +1,4 @@
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from repolish.providers import TemplateMapping
 from repolish.providers.models.template_path import RepolishTemplatePath
@@ -38,3 +38,37 @@ def get_source_str_from_mapping(
     return PurePosixPath(
         RepolishTemplatePath.from_string(source_path).logical_name,
     ).as_posix()
+
+
+def mapping_source_candidates(
+    setup_output: Path,
+    source_path: str,
+) -> list[Path]:
+    """Return probe paths for a rendered mapping source.
+
+    The render tree may contain either logical names or explicit ``.jinja``
+    names, and mapping materialization uses ``_repolish.`` prefixed files.
+    Probe all compatible variants in deterministic order.
+    """
+    prefix = '_repolish.'
+    source_rel = Path(source_path)
+    base = setup_output / 'repolish' / source_rel
+    parent = setup_output / 'repolish' / source_rel.parent
+    name = source_rel.name
+    return [
+        base,
+        parent / f'{name}.jinja',
+        parent / f'{prefix}{name}',
+        parent / f'{prefix}{name}.jinja',
+    ]
+
+
+def resolve_mapping_source_file(
+    setup_output: Path,
+    source_path: str,
+) -> Path | None:
+    """Resolve the first existing rendered mapping source path."""
+    for candidate in mapping_source_candidates(setup_output, source_path):
+        if candidate.exists():
+            return candidate
+    return None

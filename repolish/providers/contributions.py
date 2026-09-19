@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
@@ -34,7 +33,10 @@ from repolish.providers.models import (
 from repolish.providers.models import (
     Provider as _ProviderBase,
 )
-from repolish.providers.models.template_path import RepolishTemplatePath
+from repolish.providers.models.mapping_normalization import (
+    normalize_lane_spec_mappings,
+    normalize_mapping_entry,
+)
 from repolish.utils import merge_dicts_first_wins
 
 if TYPE_CHECKING:
@@ -406,25 +408,9 @@ def _process_provider_fm(
             accum.suppressed_sources.add(dest)
             continue
 
-        if isinstance(src, str):
-            # Wrap plain-string sources in a TemplateMapping so they carry
-            # source_provider. Store with .jinja stripped to match what's
-            # on disk after staging.
-            tpl = RepolishTemplatePath.from_string(src)
-            accum.merged_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.logical_name,
-                source_provider=provider_id,
-            )
-            continue
-        # For existing TemplateMapping, strip .jinja from source_template
-        # to match what will be on disk after staging
-        tpl = RepolishTemplatePath.from_string(src.source_template) if src.source_template else None
-        annotated = TemplateMapping(
-            source_template=tpl.logical_name if tpl else None,
-            extra_context=src.extra_context,
-            file_mode=src.file_mode,
-            options=src.options,
-            source_provider=provider_id,
+        annotated = normalize_mapping_entry(
+            src,
+            provider_id=provider_id,
         )
         _apply_annotated_tm(dest, annotated, provider_id, accum)
 
@@ -438,23 +424,10 @@ def _collect_promoted_fm(
     for dest, src in pfm.items():
         if src is None:
             continue
-        if isinstance(src, str):
-            # Strip .jinja to match what will be on disk after staging
-            tpl = RepolishTemplatePath.from_string(src)
-            accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.logical_name,
-                source_provider=provider_id,
-            )
-        else:
-            # Strip .jinja from source_template to match staged file
-            tpl = RepolishTemplatePath.from_string(src.source_template) if src.source_template else None
-            accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.logical_name if tpl else None,
-                extra_context=src.extra_context,
-                file_mode=src.file_mode,
-                promote_conflict=src.promote_conflict,
-                source_provider=provider_id,
-            )
+        accum.promoted_file_mappings[dest] = normalize_mapping_entry(
+            src,
+            provider_id=provider_id,
+        )
 
 
 def _handle_promote_file_mappings(
@@ -607,22 +580,6 @@ def _handle_provider_insertions(
         accum.insertion_sources.setdefault(path, []).append(provider_id)
 
 
-def _normalize_lane_mapping(
-    src: str | TemplateMapping,
-    provider_id: str,
-) -> str | TemplateMapping:
-    """Annotate one lane mapping source the way regular mappings are collected."""
-    if isinstance(src, str):
-        return TemplateMapping(
-            source_template=RepolishTemplatePath.from_string(src).logical_name,
-            source_provider=provider_id,
-        )
-    # Strip .jinja to match what is on disk after staging, the same
-    # re-annotation _process_provider_fm performs.
-    logical = RepolishTemplatePath.from_string(src.source_template).logical_name if src.source_template else None
-    return replace(src, source_template=logical, source_provider=provider_id)
-
-
 def _normalize_lane_spec(
     spec: FastLaneSpec,
     own_ctx: BaseContext,
@@ -636,14 +593,19 @@ def _normalize_lane_spec(
     ``repolish.fastlane`` is pure dict work with identical output either way
     it runs.
     """
+    normalized = normalize_lane_spec_mappings(
+        spec,
+        provider_id=provider_id,
+    )
     return FastLaneSpec(
-        file_mappings={dest: _normalize_lane_mapping(src, provider_id) for dest, src in spec.file_mappings.items()},
+        file_mappings=dict(normalized.file_mappings),
         file_insertions={
-            path: _bind_insertions_with_context(functions, own_ctx) for path, functions in spec.file_insertions.items()
+            path: _bind_insertions_with_context(functions, own_ctx)
+            for path, functions in normalized.file_insertions.items()
         },
-        file_validators={path: dict(fns) for path, fns in spec.file_validators.items()},
-        file_copies=list(spec.file_copies),
-        source_provider=provider_id,
+        file_validators={path: dict(fns) for path, fns in normalized.file_validators.items()},
+        file_copies=list(normalized.file_copies),
+        source_provider=normalized.source_provider,
     )
 
 

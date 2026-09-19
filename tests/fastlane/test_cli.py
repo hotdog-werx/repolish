@@ -180,6 +180,61 @@ _STRING_MAPPING_COMMAND_PROVIDER = """\
             }
 """
 
+_JINJA_SUFFIX_COMMAND_PROVIDER = """\
+    from pydantic import BaseModel
+
+    from repolish import (
+        BaseContext,
+        BaseInputs,
+        FastLaneSpec,
+        Provider,
+        ProviderCommandContract,
+        ProviderCommandContext,
+        TemplateMapping,
+    )
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class FetchArgs(BaseModel):
+        name: str
+
+
+    def run_fetch(args: FetchArgs, ctx: ProviderCommandContext) -> FastLaneSpec:
+        return FastLaneSpec(
+            file_mappings={
+                'from-string.txt': 'plain.txt.jinja',
+                'with-context.txt': TemplateMapping(
+                    '_repolish.ctx.txt.jinja',
+                    extra_context={'name': args.name, 'alias': ctx.repolish.provider.alias},
+                ),
+                'emit-template.jinja': 'emit-template.jinja',
+            },
+        )
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        @classmethod
+        def create_provider_commands(cls):
+            return {
+                'fetch': ProviderCommandContract(
+                    args_model=FetchArgs,
+                    executor=run_fetch,
+                    summary='Jinja suffix command',
+                ),
+            }
+"""
+
+_JINJA_SUFFIX_COMMAND_TEMPLATES = {
+    'plain.txt.jinja': 'plain output\n',
+    '_repolish.ctx.txt.jinja': 'hello {{ name }} from {{ alias }}\n',
+    'emit-template.jinja': 'literal template file\n',
+}
+
 _COLLIDING_NAMES_PROVIDER = """\
     from pydantic import BaseModel
 
@@ -760,6 +815,33 @@ class TestProviderCommands:
             match='provider command names collide with fast lane names',
         ):
             provider_cli(provider_cls)
+
+    def test_command_mappings_accept_jinja_suffixes(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _JINJA_SUFFIX_COMMAND_PROVIDER,
+            templates=_JINJA_SUFFIX_COMMAND_TEMPLATES,
+        )
+        app = provider_cli(provider_cls)
+        project = _stage_project(provider_cls, tmp_path)
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['fetch', '--name', 'drawer'])
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'from-string.txt').read_text(
+            encoding='utf-8',
+        ) == 'plain output\n'
+        assert (project / 'with-context.txt').read_text(
+            encoding='utf-8',
+        ) == 'hello drawer from demo\n'
+        assert (project / 'emit-template.jinja').read_text(
+            encoding='utf-8',
+        ) == 'literal template file\n'
 
 
 _COPIES_PROVIDER = """\

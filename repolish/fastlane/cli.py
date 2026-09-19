@@ -14,7 +14,6 @@ registration, readiness check, or link command ever runs.
 from __future__ import annotations
 
 import importlib
-from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Annotated, Any, cast
@@ -32,7 +31,9 @@ from repolish.providers.models import (
     ProviderCommandExecutor,
     ProviderInfo,
     RepolishContext,
-    TemplateMapping,
+)
+from repolish.providers.models.mapping_normalization import (
+    normalize_lane_spec_mappings,
 )
 
 if TYPE_CHECKING:
@@ -185,22 +186,10 @@ def _normalize_command_spec(
     the provider collection path. This helper mirrors lane normalization so
     source-provider bookkeeping and plain-string mappings behave consistently.
     """
-    normalized_mappings: dict[str, str | TemplateMapping] = {}
-    for dest, value in spec.file_mappings.items():
-        if isinstance(value, TemplateMapping):
-            normalized_mappings[dest] = value if value.source_provider else replace(value, source_provider=provider_id)
-        else:
-            normalized_mappings[dest] = TemplateMapping(
-                source_template=value,
-                source_provider=provider_id,
-            )
-
-    return FastLaneSpec(
-        file_mappings=normalized_mappings,
-        file_insertions={path: dict(funcs) for path, funcs in spec.file_insertions.items()},
-        file_validators={path: dict(funcs) for path, funcs in spec.file_validators.items()},
-        file_copies=list(spec.file_copies),
-        source_provider=provider_id,
+    return normalize_lane_spec_mappings(
+        spec,
+        provider_id=provider_id,
+        keep_existing_source_provider=True,
     )
 
 
