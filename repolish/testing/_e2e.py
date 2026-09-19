@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from repolish.commands.apply.options import ApplyOptions
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import apply_session
+from repolish.fastlane.config import prepare_lane_config
 from repolish.providers.models.context import (
     BaseContext,
     GithubRepo,
@@ -321,6 +322,77 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
     # `repolish apply` runs as a CLI with the project as the working directory;
     # resource copies and symlinks anchor their targets to the cwd. Run the
     # pipeline the same way so relative targets land inside *project_dir*.
+    with contextlib.chdir(project_dir):
+        session = resolve_session(options)
+        exit_code = apply_session(
+            session,
+            check_only=check_only,
+            skip_post_process=skip_post_process,
+            fail_on_warnings=fail_on_warnings,
+        )
+    return ApplyResult(
+        exit_code=exit_code,
+        session=session,
+        project_dir=project_dir,
+    )
+
+
+def apply_fast_lane(  # noqa: PLR0913 - mirrors apply_provider on purpose
+    provider_class: type[Provider[CtxT, InpT]],
+    project_dir: Path,
+    lane: str,
+    *,
+    alias: str = 'test-provider',
+    check_only: bool = False,
+    skip_post_process: bool = False,
+    fail_on_warnings: bool = False,
+    config: Mapping[str, Any] | None = None,
+    repo_owner: str = 'test-owner',
+    repo_name: str = 'test-repo',
+    year: int | None = None,
+) -> ApplyResult:
+    """Run the real fast-lane pipeline for *provider_class* in *project_dir*.
+
+    This is the lane-specific sibling of :func:`apply_provider`. It prepares the
+    same single-provider lane config the generated fast-lane CLI uses, then runs
+    the real apply session restricted to *lane* against the fixture project.
+
+    Use this when a provider author wants fixture-based assertions over lane
+    output without shelling out through the CLI wrapper.
+    """
+    provider_root = _locate_templates_root(provider_class)
+    config_data: dict[str, Any] = dict(config) if config else {}
+    providers_config: dict[str, Any] = dict(config_data.get('providers') or {})
+    providers_config[alias] = {
+        'provider_root': str(provider_root),
+        'resources_dir': str(provider_root.parent),
+    }
+    config_data['providers'] = providers_config
+    config_path = project_dir / 'repolish.yaml'
+    config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8')
+
+    global_context = GlobalContext(
+        repo=GithubRepo(owner=repo_owner, name=repo_name),
+        year=year if year is not None else datetime.now(UTC).year,
+        workspace=WorkspaceContext(mode='standalone', root_dir=project_dir),
+    )
+    prepared = prepare_lane_config(
+        provider_root,
+        lane,
+        alias=alias,
+        config_path=config_path,
+    )
+    options = ApplyOptions(
+        config_path=config_path,
+        check_only=check_only,
+        skip_post_process=skip_post_process,
+        fail_on_warnings=fail_on_warnings,
+        provider_filter=[alias],
+        global_context=global_context,
+        lane=lane,
+        lane_config=prepared,
+        skip_dry_pass=True,
+    )
     with contextlib.chdir(project_dir):
         session = resolve_session(options)
         exit_code = apply_session(

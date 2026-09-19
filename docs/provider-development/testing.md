@@ -44,6 +44,7 @@ snapshot the result:
 from pathlib import Path
 
 from repolish.testing import (
+    apply_fast_lane,
     apply_provider,
     assert_idempotent,
     assert_snapshots,
@@ -65,6 +66,40 @@ def test_full_apply(tmp_path: Path) -> None:
     assert result.apply_result['README.md'] == 'written'
     assert_snapshots(result.managed_files(), SNAPSHOT_DIR)
 ```
+
+### Testing fast lanes end to end
+
+The same fixture pattern works for named fast lanes. Use `apply_fast_lane()`
+when you want the real lane runtime, but you do not want to shell out through
+the generated provider CLI in every test.
+
+```python
+from pathlib import Path
+
+from repolish.testing import (
+    apply_fast_lane,
+    assert_snapshots,
+    include_paths,
+    stage_project,
+)
+
+
+def test_actions_lane(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_fast_lane(MyProvider, project, 'actions')
+    lane_files = include_paths(result.managed_files(), exact={'action.yaml'})
+
+    assert result.exit_code == 0
+    assert_snapshots(lane_files, SNAPSHOT_DIR / 'actions')
+```
+
+This is useful when a lane generates templates through the normal repolish
+pipeline and you want the same fixture-and-snapshot ergonomics as full apply
+tests. The helper exercises the real lane restriction path, so regular provider
+hooks stay out of the run and lane-specific post-process behavior is honored. If
+the provider also auto-stages other managed files in the same fixture, filter
+the result down to the lane-owned paths before snapshotting.
 
 Two views over the result, both `{rel_path: content}` and both ready for
 `assert_snapshots`:

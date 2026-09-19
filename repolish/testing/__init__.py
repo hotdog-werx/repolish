@@ -21,6 +21,7 @@ from repolish.providers.models.template_path import RepolishTemplatePath
 from repolish.testing._context import make_context
 from repolish.testing._e2e import (
     ApplyResult,
+    apply_fast_lane,
     apply_provider,
     assert_idempotent,
     stage_project,
@@ -39,6 +40,7 @@ __all__ = [
     'ProviderTestBed',
     'RepolishTemplatePath',
     'SnapshotRunOptions',
+    'apply_fast_lane',
     'apply_provider',
     'assert_idempotent',
     'assert_snapshots',
