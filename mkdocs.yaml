@@ -51,7 +51,12 @@ nav:
           - Validators: provider-development/validators.md
           - Insertions: provider-development/insertions.md
           - Preprocessors: provider-development/preprocessors.md
-          - Fast Lanes: provider-development/fast-lanes.md
+          - Fast Lanes:
+              - Overview: provider-development/fast-lanes/index.md
+              - CLI: provider-development/fast-lanes/cli.md
+              - Commands: provider-development/fast-lanes/commands.md
+              - Workflows: provider-development/fast-lanes/workflows.md
+              - Runtime Semantics: provider-development/fast-lanes/semantics.md
       - Verification:
           - Testing Providers: provider-development/testing.md
       - Advanced:

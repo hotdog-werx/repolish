@@ -123,7 +123,7 @@ Repolish cannot run without at least one provider configured.
           - ruff format {render_dir}
   ```
 
-  See [Fast Lanes](fast-lanes.md) for the full semantics.
+  See [Fast Lanes](fast-lanes/index.md) for the full semantics.
 
 - **`workspace`** _(optional mapping)_ - enables workspace (monorepo) mode. When
   present, repolish runs a session for the root and one for each discovered

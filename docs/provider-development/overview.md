@@ -21,7 +21,7 @@ Every provider passes through the same rough pipeline:
 5. [Validators](validators.md) — enforce correctness after rendering
 6. [Monorepo](monorepo.md) — handle root/member behavior and session wiring
 7. [Testing Providers](testing.md) — verify provider behavior in isolation
-8. [Fast Lanes](fast-lanes.md) — per-provider CLIs for quick updates,
+8. [Fast Lanes](fast-lanes/index.md) — per-provider CLIs for quick updates,
    scaffolding, and utility workflows
 
 ## Common tasks
@@ -51,14 +51,15 @@ See [Testing Providers](testing.md).
 
 ### I need a fast edit loop for a few generated files
 
-Declare a lane in [Fast Lanes](fast-lanes.md) and use the provider's generated
-CLI.
+Declare a lane in [Fast Lanes](fast-lanes/index.md) and use the provider's
+generated CLI.
 
 ### I want provider-owned scaffolding without a separate CLI project
 
-Use [Fast Lanes](fast-lanes.md). Lanes let the provider expose focused commands
-for things like component scaffolds, doc generation, or selective updates while
-keeping templates, standards, and maintenance inside the same provider package.
+Use [Fast Lanes](fast-lanes/index.md). Lanes let the provider expose focused
+commands for things like component scaffolds, doc generation, or selective
+updates while keeping templates, standards, and maintenance inside the same
+provider package.
 
 ## Start here
 
