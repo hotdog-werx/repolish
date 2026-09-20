@@ -190,11 +190,14 @@ def _set_provider_basic_metadata(
 def _set_provider_package_identity(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
+    provider_package_identity: tuple[str, str] | None = None,
 ) -> None:
     """Set package and project names derived from each provider module."""
     for _idx, (_pid, _mod) in enumerate(module_cache):
         _inst = instances[_idx]
         if _inst is not None:
-            _pkg, _proj = resolve_package_identity(_mod.get('__package__'))
+            _pkg, _proj = provider_package_identity or resolve_package_identity(
+                _mod.get('__package__'),
+            )
             _inst.package_name = _pkg
             _inst.project_name = _proj

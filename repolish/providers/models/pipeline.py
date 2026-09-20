@@ -78,6 +78,8 @@ class PipelineOptions:
     """When `True`, collect only `create_fast_lanes` contributions."""
     phase_timer: PhaseTimer | None = None
     """Optional timer used to record detailed provider-pipeline sub-phases."""
+    provider_package_identity: tuple[str, str] | None = None
+    """Known package/project identity for a single-provider fast-lane run."""
     extra_provider_entries: list[ProviderEntry] | None = None
     """Provider entries from member sessions injected into the root session pass."""
     extra_inputs: list[BaseInputs] | None = None

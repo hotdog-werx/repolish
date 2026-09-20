@@ -23,6 +23,7 @@ class FinalProviderOptions:
     context_only: bool = False
     fast_lanes_only: bool = False
     phase_timer: PhaseTimer | None = None
+    provider_package_identity: tuple[str, str] | None = None
 
 
 def _collect_provider_overrides(
@@ -197,6 +198,7 @@ def build_final_providers(
         context_only=options.context_only,
         fast_lanes_only=options.fast_lanes_only,
         phase_timer=options.phase_timer,
+        provider_package_identity=options.provider_package_identity,
     )
 
     # build_final_providers always performs a full pass (dry_run=False),

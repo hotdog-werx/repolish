@@ -242,6 +242,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
                 context_only=options.command_only,
                 fast_lanes_only=options.fast_lanes_only,
                 phase_timer=timer,
+                provider_package_identity=options.provider_package_identity,
             ),
         )
     resolved_symlinks = collect_provider_symlinks(
