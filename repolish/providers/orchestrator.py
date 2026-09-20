@@ -34,7 +34,8 @@ from repolish.providers.module import _load_module_cache
 from repolish.providers.pipeline import (
     _build_all_providers_list,
     _populate_provider_context,
-    _set_provider_metadata,
+    _set_provider_basic_metadata,
+    _set_provider_package_identity,
 )
 
 
@@ -67,9 +68,16 @@ def _prepare_pipeline_state(
     accumulators.file_validators.update(contributions.file_validators)
     accumulators.file_insertions.update(contributions.file_insertions)
 
-    with _phase(options, 'provider_pipeline.metadata'):
+    with _phase(options, 'provider_pipeline.instance_metadata'):
         instances = build_provider_metadata(module_cache)
-        _set_provider_metadata(module_cache, instances, options.alias_map or {})
+        _set_provider_basic_metadata(
+            module_cache,
+            instances,
+            options.alias_map or {},
+        )
+
+    with _phase(options, 'provider_pipeline.package_identity'):
+        _set_provider_package_identity(module_cache, instances)
 
     with _phase(options, 'provider_pipeline.contexts'):
         _populate_provider_context(

@@ -170,23 +170,31 @@ def _populate_provider_context(
         )
 
 
-def _set_provider_metadata(
+def _set_provider_basic_metadata(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     alias_map: dict[str, str],
 ) -> None:
-    """Set alias, version, package_name and project_name on every provider instance.
+    """Set alias and version on every provider instance.
 
-    Version is read from the module's __version__ when present; falls back to
-    an empty string for local / un-installed providers.
-    package_name and project_name are derived from __package__ via
-    :func:`repolish.pkginfo.resolve_package_identity`.
+    Version is read from the module's ``__version__`` when present; it falls
+    back to an empty string for local or uninstalled providers.
     """
     for _idx, (_pid, _mod) in enumerate(module_cache):
         _inst = instances[_idx]
         if _inst is not None:
             _inst.alias = alias_map.get(_pid, _pid)
             _inst.version = _mod.get('__version__', '') or ''
+
+
+def _set_provider_package_identity(
+    module_cache: list[tuple[str, dict]],
+    instances: list[_ProviderBase | None],
+) -> None:
+    """Set package and project names derived from each provider module."""
+    for _idx, (_pid, _mod) in enumerate(module_cache):
+        _inst = instances[_idx]
+        if _inst is not None:
             _pkg, _proj = resolve_package_identity(_mod.get('__package__'))
             _inst.package_name = _pkg
             _inst.project_name = _proj
