@@ -394,6 +394,35 @@ def test_namespace_vcs_siblings_disambiguated(tmp_path: Path) -> None:
     assert project_name == 'devkit-vcs-workspace'
 
 
+def test_namespace_candidates_skip_metadata_scans(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Normalized candidates avoid the expensive distribution fallbacks."""
+    tcase = TCase(
+        name='namespace_fast_path',
+        package_attr='rptest_fast.pkg',
+        expected_module='rptest_fast.pkg',
+        expected_project='rptest-fast-pkg',
+        dist_name='rptest-fast-pkg',
+        pkg_files=['rptest_fast/pkg/__init__.py'],
+        top_level_txt='rptest_fast',
+    )
+    with _fake_install(tmp_path, tcase):
+        distribution_files = mocker.patch(
+            'repolish.pkginfo._project_from_distribution_files',
+        )
+        direct_url = mocker.patch('repolish.pkginfo._project_from_direct_url')
+
+        assert resolve_package_identity(tcase.package_attr) == (
+            tcase.expected_module,
+            tcase.expected_project,
+        )
+
+    distribution_files.assert_not_called()
+    direct_url.assert_not_called()
+
+
 def test_submodule_attr_for_flat_package(tmp_path: Path) -> None:
     """A dotted __package__ inside a flat package resolves to the top-level name.
 
