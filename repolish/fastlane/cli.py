@@ -14,9 +14,11 @@ registration, readiness check, or link command ever runs.
 from __future__ import annotations
 
 import importlib
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any
 
 import cyclopts
 from cyclopts import Parameter
@@ -72,6 +74,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     provider_root: Path,
     lane: str | None,
     *,
+    cli_name: str,
     lane_spec: FastLaneSpec | None = None,
     alias: str | None = None,
     config: Path = Path('repolish.yaml'),
@@ -109,6 +112,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     prepared = prepare_lane_config(
         provider_root,
         lane,
+        cli_name=cli_name,
         alias=alias,
         config_path=config_path,
     )
@@ -175,6 +179,41 @@ class LaneParams(ApplyCommonParams):
     ] = 0
 
 
+class _CommandCommonParams(BaseModel):
+    """Option-only flags shared by generated provider command subcommands."""
+
+    config: Annotated[Path, Parameter(name=['--config', '-c'])] = Path(
+        'repolish.yaml',
+    )
+    check: Annotated[bool, Parameter(name=['--check'])] = False
+    fail_on_warnings: Annotated[
+        bool,
+        Parameter(name=['--fail-on-warnings']),
+    ] = False
+    skip_post_process: Annotated[
+        bool,
+        Parameter(name=['--skip-post-process']),
+    ] = False
+    verbose: Annotated[
+        int,
+        Parameter(
+            name=['-v', '--verbose'],
+            count=True,
+            help='Increase verbosity (-v, -vv).',
+        ),
+    ] = 0
+
+
+@dataclass(frozen=True)
+class _ProviderCommandSpec:
+    provider_root: Path
+    cli_name: str
+    provider_alias: str
+    command_name: str
+    args_model: type[BaseModel]
+    executor: ProviderCommandExecutor
+
+
 def _normalize_command_spec(
     spec: FastLaneSpec,
     *,
@@ -197,6 +236,7 @@ def _lane_command(
     provider_root: Path,
     lane: str | None,
     *,
+    cli_name: str,
     alias: str | None,
 ) -> Callable:
     """Build one lane subcommand function for :func:`provider_cli`."""
@@ -207,6 +247,7 @@ def _lane_command(
             lambda: run_lane(
                 provider_root,
                 lane,
+                cli_name=cli_name,
                 alias=alias,
                 config=params.config,
                 check=params.check,
@@ -230,66 +271,94 @@ def _command_params_model(
     command_name: str,
     args_model: type[BaseModel],
 ) -> type[BaseModel]:
-    """Build a merged params model containing lane flags and command args."""
+    """Build a merged params model containing option flags and command args."""
     safe_name = command_name.replace('-', '_').replace(':', '_').title().replace('_', '')
     model_name = f'{safe_name}Params'
     fields: dict[str, Any] = {}
     for field_name, field_info in args_model.model_fields.items():
         default = ... if field_info.is_required() else field_info.default
-        fields[field_name] = (field_info.annotation, default)
-    merged = create_model(
+        opt_name = field_name.replace('_', '-')
+        annotated = Annotated[
+            field_info.annotation,
+            Parameter(name=[opt_name, f'--{opt_name}']),
+        ]
+        fields[field_name] = (annotated, default)
+    fields['config'] = (
+        Annotated[Path, Parameter(name=['--config', '-c'])],
+        Path('repolish.yaml'),
+    )
+    fields['check'] = (
+        Annotated[bool, Parameter(name=['--check'])],
+        False,
+    )
+    fields['fail_on_warnings'] = (
+        Annotated[bool, Parameter(name=['--fail-on-warnings'])],
+        False,
+    )
+    fields['skip_post_process'] = (
+        Annotated[bool, Parameter(name=['--skip-post-process'])],
+        False,
+    )
+    fields['verbose'] = (
+        Annotated[
+            int,
+            Parameter(
+                name=['-v', '--verbose'],
+                count=True,
+                help='Increase verbosity (-v, -vv).',
+            ),
+        ],
+        0,
+    )
+    return create_model(
         model_name,
-        __base__=cast('Any', LaneParams),
         **fields,
     )
-    return Parameter(name='*')(merged)
 
 
-def _provider_command(
-    provider_root: Path,
-    provider_alias: str,
-    command_name: str,
-    args_model: type[BaseModel],
-    executor: ProviderCommandExecutor,
-) -> Callable:
+def _provider_command(spec: _ProviderCommandSpec) -> Callable:
     """Build one provider command subcommand function for :func:`provider_cli`."""
-    params_model = _command_params_model(command_name, args_model)
+    params_model = _command_params_model(spec.command_name, spec.args_model)
 
     def _run(params: Any) -> None:  # noqa: ANN401 - params is dynamically typed
         def _invoke() -> int:
             from repolish.fastlane.config import prepare_lane_config  # noqa: PLC0415
 
             prepared = prepare_lane_config(
-                provider_root,
-                f'command:{command_name}',
-                alias=provider_alias or None,
+                spec.provider_root,
+                f'command:{spec.command_name}',
+                cli_name=spec.cli_name,
+                alias=spec.provider_alias or None,
                 config_path=params.config.resolve(),
             )
             resolved_alias = next(
                 iter(prepared.config.providers),
-                provider_alias,
+                spec.provider_alias,
             )
-            args_payload = {name: getattr(params, name) for name in args_model.model_fields if hasattr(params, name)}
-            command_args = args_model.model_validate(args_payload)
+            args_payload = {
+                name: getattr(params, name) for name in spec.args_model.model_fields if hasattr(params, name)
+            }
+            command_args = spec.args_model.model_validate(args_payload)
             command_ctx = ProviderCommandContext(
                 repolish=RepolishContext(
                     provider=ProviderInfo(alias=resolved_alias),
                 ),
-                provider_root=provider_root,
+                provider_root=spec.provider_root,
                 config_path=params.config.resolve(),
                 check=params.check,
                 skip_post_process=params.skip_post_process,
                 fail_on_warnings=params.fail_on_warnings,
                 verbose=params.verbose,
             )
-            lane_key = f'command:{command_name}'
+            lane_key = f'command:{spec.command_name}'
             lane_spec = _normalize_command_spec(
-                executor(command_args, command_ctx),
-                provider_id=str(provider_root.resolve()),
+                spec.executor(command_args, command_ctx),
+                provider_id=str(spec.provider_root.resolve()),
             )
             return run_lane(
-                provider_root,
+                spec.provider_root,
                 lane_key,
+                cli_name=spec.cli_name,
                 lane_spec=lane_spec,
                 alias=resolved_alias,
                 config=params.config,
@@ -301,15 +370,16 @@ def _provider_command(
 
         run_cli_command(_invoke)
 
-    _run.__name__ = command_name.replace('-', '_').replace(':', '_')
+    _run.__name__ = spec.command_name.replace('-', '_').replace(':', '_')
     _run.__annotations__['params'] = params_model
-    _run.__doc__ = f'Run provider command {command_name!r}.'
+    _run.__doc__ = f'Run provider command {spec.command_name!r}.'
     return _run
 
 
 def provider_cli(
     provider_class: type[Provider[Any, Any]],
     *,
+    cli_name: str | None = None,
     alias: str | None = None,
 ) -> cyclopts.App:
     """Build the per-provider fast-lane CLI for *provider_class*.
@@ -349,27 +419,53 @@ def provider_cli(
         msg = f'provider command names collide with fast lane names: {collisions}'
         raise ValueError(msg)
 
-    provider_name = type(inst).__name__
+    resolved_cli_name = cli_name or Path(sys.argv[0]).name or 'provider-cli'
+    provider_name = alias or provider_root.parent.parent.name
+    help_text = (
+        f'Generated CLI for the "{provider_name}" provider.\n\n'
+        'Configure lane post_process entries in repolish.yaml with CLI-scoped keys:\n\n'
+        'fast_lanes:\n'
+        '  config:\n'
+        f'    {resolved_cli_name}:{{lane-name}}:\n'
+        '      post_process:\n'
+        '        - <command>\n'
+        f'    {resolved_cli_name}:command:{{command-name}}:\n'
+        '      post_process:\n'
+        '        - <command>'
+    )
     app = cyclopts.App(
-        help=f'Quick scoped apply runs for {provider_name} fast lanes.',
+        help=help_text,
     )
     for lane_name in lanes:
         app.command(
-            _lane_command(provider_root, lane_name, alias=alias),
+            _lane_command(
+                provider_root,
+                lane_name,
+                cli_name=resolved_cli_name,
+                alias=alias,
+            ),
             name=str(lane_name),
         )
     app.command(
-        _lane_command(provider_root, None, alias=alias),
+        _lane_command(
+            provider_root,
+            None,
+            cli_name=resolved_cli_name,
+            alias=alias,
+        ),
         name='all',
     )
     for command_name, contract in commands.items():
         app.command(
             _provider_command(
-                provider_root,
-                inst.alias,
-                str(command_name),
-                contract.args_model,
-                contract.executor,
+                _ProviderCommandSpec(
+                    provider_root=provider_root,
+                    cli_name=resolved_cli_name,
+                    provider_alias=inst.alias,
+                    command_name=str(command_name),
+                    args_model=contract.args_model,
+                    executor=contract.executor,
+                ),
             ),
             name=str(command_name),
             help=contract.summary or None,

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     import cyclopts
 
 runner = CliRunner()
+_CLI_NAME = 'demo-cli'
 
 LaneCli = tuple['cyclopts.App', 'Path', type]
 """The lane_cli fixture tuple: (app, staged project dir, provider class)."""
@@ -313,7 +314,7 @@ def lane_cli(tmp_path: Path):
         _LANE_PROVIDER,
         templates=_TEMPLATES,
     )
-    app = provider_cli(provider_cls)
+    app = provider_cli(provider_cls, cli_name=_CLI_NAME)
     project = _stage_project(provider_cls, tmp_path)
     return app, project, provider_cls
 
@@ -395,7 +396,7 @@ class TestConfigHandling:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(
             provider_cls,
             tmp_path,
@@ -456,7 +457,7 @@ class TestConfigHandling:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = tmp_path / 'project'
         project.mkdir()
         # The config registers some other provider; this CLI's package is not
@@ -506,7 +507,7 @@ class TestAliasResolution:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls, alias='renamed')
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME, alias='renamed')
         project = _stage_project(provider_cls, tmp_path, alias='renamed')
         monkeypatch.chdir(project)
 
@@ -527,7 +528,7 @@ class TestAliasResolution:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls, alias='ghost')
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME, alias='ghost')
         project = _stage_project(provider_cls, tmp_path)  # registered as 'demo'
         monkeypatch.chdir(project)
 
@@ -558,7 +559,7 @@ class TestProviderRootDiscovery:
         mod = importlib.import_module('rootless.mod')
 
         with pytest.raises(RuntimeError, match='resources/templates'):
-            provider_cli(mod.Rootless)
+            provider_cli(mod.Rootless, cli_name=_CLI_NAME)
 
 
 class TestParamParity:
@@ -592,14 +593,18 @@ class TestParamParity:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(
             provider_cls,
             tmp_path,
             extra_config={
                 'post_process': ['touch project.txt'],
                 'fast_lanes': {
-                    'config': {'actions': {'post_process': ['touch lane.txt']}},
+                    'config': {
+                        'demo-cli:actions': {
+                            'post_process': ['touch lane.txt'],
+                        },
+                    },
                 },
             },
         )
@@ -626,7 +631,7 @@ class TestParamParity:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(
             provider_cls,
             tmp_path,
@@ -650,7 +655,7 @@ class TestParamParity:
             _LANE_PROVIDER,
             templates=_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(
             provider_cls,
             tmp_path,
@@ -697,7 +702,7 @@ class TestProviderCommands:
             _COMMAND_PROVIDER,
             templates=_COMMAND_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(provider_cls, tmp_path)
         return app, project
 
@@ -730,6 +735,19 @@ class TestProviderCommands:
             '--style',
         ):
             assert flag in result.output
+
+    def test_cli_help_shows_config_key_hint(
+        self,
+        command_cli: tuple[cyclopts.App, Path],
+    ) -> None:
+        app, _ = command_cli
+
+        result = runner.invoke(app, ['--help'])
+
+        assert result.exit_code == 0, result.output
+        assert 'Generated CLI for the' in result.output
+        assert f'{_CLI_NAME}:{{lane-name}}' in result.output
+        assert f'{_CLI_NAME}:command:{{command-name}}' in result.output
 
     def test_command_requires_declared_args(
         self,
@@ -764,6 +782,21 @@ class TestProviderCommands:
         # Standalone command run still excludes regular hook mappings.
         assert not (project / '.github' / 'workflows' / 'ci.yml').exists()
 
+    def test_command_accepts_positional_args(
+        self,
+        command_cli: tuple[cyclopts.App, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app, project = command_cli
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['fetch', 'drawer', 'modern'])
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'data.json').read_text(
+            encoding='utf-8',
+        ) == 'fetched: yes\n'
+
     def test_all_excludes_standalone_commands(
         self,
         command_cli: tuple[cyclopts.App, Path],
@@ -789,7 +822,7 @@ class TestProviderCommands:
             _STRING_MAPPING_COMMAND_PROVIDER,
             templates={'plain.txt.jinja': 'plain output\n'},
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(provider_cls, tmp_path)
         monkeypatch.chdir(project)
 
@@ -814,7 +847,7 @@ class TestProviderCommands:
             ValueError,
             match='provider command names collide with fast lane names',
         ):
-            provider_cli(provider_cls)
+            provider_cli(provider_cls, cli_name=_CLI_NAME)
 
     def test_command_mappings_accept_jinja_suffixes(
         self,
@@ -826,7 +859,7 @@ class TestProviderCommands:
             _JINJA_SUFFIX_COMMAND_PROVIDER,
             templates=_JINJA_SUFFIX_COMMAND_TEMPLATES,
         )
-        app = provider_cli(provider_cls)
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(provider_cls, tmp_path)
         monkeypatch.chdir(project)
 
@@ -905,7 +938,7 @@ def copies_cli(tmp_path: Path):
         ),
         encoding='utf-8',
     )
-    app = provider_cli(provider_cls)
+    app = provider_cli(provider_cls, cli_name=_CLI_NAME)
     return app, project
 
 

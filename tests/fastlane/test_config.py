@@ -17,6 +17,8 @@ from repolish.config.models.project import FastLanesSection
 from repolish.config.models.provider import ProviderConfig
 from repolish.fastlane.config import prepare_lane_config
 
+_CLI_NAME = 'demo-cli'
+
 
 def _stage_provider_root(tmp_path: Path, *, pkg: str = 'pkg') -> Path:
     """Create ``<tmp>/<pkg>/resources/templates`` and return the root."""
@@ -38,14 +40,13 @@ def _write_config(
 
 class TestWithoutConfigFile:
     def test_falls_back_to_package_name(self, tmp_path: Path) -> None:
-        # No repolish.yaml anywhere: the run is fully in-memory, and the
-        # bookkeeping alias is the package directory name.
         provider_root = _stage_provider_root(tmp_path)
         config_path = tmp_path / 'nowhere' / 'repolish.yaml'
 
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -69,8 +70,9 @@ class TestWithoutConfigFile:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias='ghost',
-            config_path=tmp_path / 'repolish.yaml',  # does not exist
+            config_path=tmp_path / 'repolish.yaml',
         )
 
         assert list(prepared.config.providers) == ['ghost']
@@ -78,10 +80,7 @@ class TestWithoutConfigFile:
 
 
 class TestAliasResolution:
-    def test_alias_in_config_uses_that_entry(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_alias_in_config_uses_that_entry(self, tmp_path: Path) -> None:
         provider_root = _stage_provider_root(tmp_path)
         project = tmp_path / 'project'
         project.mkdir()
@@ -98,6 +97,7 @@ class TestAliasResolution:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias='demo',
             config_path=config_path,
         )
@@ -111,8 +111,6 @@ class TestAliasResolution:
         self,
         tmp_path: Path,
     ) -> None:
-        # No explicit alias: the entry whose provider_root points at this
-        # package names the run (the 'other' cli-only entry cannot match).
         provider_root = _stage_provider_root(tmp_path)
         project = tmp_path / 'project'
         project.mkdir()
@@ -129,6 +127,7 @@ class TestAliasResolution:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -139,9 +138,6 @@ class TestAliasResolution:
         self,
         tmp_path: Path,
     ) -> None:
-        # alias='ghost' is the provider-owned identity and does not have to
-        # appear in the config; the root-matched entry still contributes its
-        # per-provider fields.
         provider_root = _stage_provider_root(tmp_path)
         project = tmp_path / 'project'
         project.mkdir()
@@ -166,6 +162,7 @@ class TestAliasResolution:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias='ghost',
             config_path=config_path,
         )
@@ -178,7 +175,6 @@ class TestAliasResolution:
         ]
         assert info.overrides is not None
         assert info.overrides.context_merge == {'year': 2000}
-        # the raw entry is the matched one, keyed by the run alias
         assert prepared.raw_providers['ghost'].symlinks is not None
 
     def test_relative_provider_root_resolves_against_config_dir(
@@ -188,7 +184,6 @@ class TestAliasResolution:
         provider_root = _stage_provider_root(tmp_path)
         project = tmp_path / 'project'
         project.mkdir()
-        # Same root, declared relative to the config directory.
         relative = Path('..') / 'pkg' / 'resources' / 'templates'
         config_path = _write_config(
             project,
@@ -198,6 +193,7 @@ class TestAliasResolution:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -219,6 +215,7 @@ class TestAliasResolution:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -232,8 +229,6 @@ class TestProjectKeys:
         self,
         tmp_path: Path,
     ) -> None:
-        # Project-wide keys apply even when this provider is not the listed
-        # one: the lane run is still a run against this project.
         provider_root = _stage_provider_root(tmp_path)
         project = tmp_path / 'project'
         project.mkdir()
@@ -251,6 +246,7 @@ class TestProjectKeys:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -258,10 +254,7 @@ class TestProjectKeys:
         assert prepared.config.paused_files == ['plain.txt']
         assert prepared.config.template_overrides == {'plain.txt.jinja': None}
 
-    def test_fast_lanes_section_carried(
-        self,
-        tmp_path: Path,
-    ) -> None:
+    def test_fast_lanes_section_carried(self, tmp_path: Path) -> None:
         provider_root = _stage_provider_root(tmp_path)
         project = tmp_path / 'project'
         project.mkdir()
@@ -271,7 +264,11 @@ class TestProjectKeys:
                 'providers': {'demo': {'provider_root': str(provider_root)}},
                 'fast_lanes': {
                     'resolutions': {'plain.txt': 'fast_lane'},
-                    'config': {'actions': {'post_process': ['touch lane.txt']}},
+                    'config': {
+                        'demo-cli:actions': {
+                            'post_process': ['touch lane.txt'],
+                        },
+                    },
                 },
             },
         )
@@ -279,6 +276,7 @@ class TestProjectKeys:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -286,7 +284,7 @@ class TestProjectKeys:
         assert prepared.config.fast_lanes.resolutions == {
             'plain.txt': 'fast_lane',
         }
-        assert 'actions' in prepared.config.fast_lanes.config
+        assert 'demo-cli:actions' in prepared.config.fast_lanes.config
 
 
 class TestPostProcessSelection:
@@ -301,7 +299,11 @@ class TestPostProcessSelection:
                 'providers': {'demo': {'provider_root': str(provider_root)}},
                 'post_process': ['touch project.txt'],
                 'fast_lanes': {
-                    'config': {'actions': {'post_process': ['touch lane.txt']}},
+                    'config': {
+                        'demo-cli:actions': {
+                            'post_process': ['touch lane.txt'],
+                        },
+                    },
                 },
             },
         )
@@ -318,6 +320,7 @@ class TestPostProcessSelection:
         prepared = prepare_lane_config(
             provider_root,
             'actions',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -332,6 +335,7 @@ class TestPostProcessSelection:
         prepared = prepare_lane_config(
             provider_root,
             'docs',
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )
@@ -346,6 +350,7 @@ class TestPostProcessSelection:
         prepared = prepare_lane_config(
             provider_root,
             None,
+            cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
         )

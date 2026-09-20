@@ -20,15 +20,21 @@ class ApplyCommonParams(BaseModel):
         default=Path('repolish.yaml'),
         description='Path to the repolish YAML configuration file',
     )
-    check: bool = Field(
+    check: Annotated[bool, Parameter(name=['--check'])] = Field(
         default=False,
         description='Load config and create context (dry-run check)',
     )
-    fail_on_warnings: bool = Field(
+    fail_on_warnings: Annotated[
+        bool,
+        Parameter(name=['--fail-on-warnings']),
+    ] = Field(
         default=False,
         description='Treat validator warnings as fatal errors (useful for CI)',
     )
-    skip_post_process: bool = Field(
+    skip_post_process: Annotated[
+        bool,
+        Parameter(name=['--skip-post-process']),
+    ] = Field(
         default=False,
         description='Skip all post_process commands defined in repolish.yaml',
     )

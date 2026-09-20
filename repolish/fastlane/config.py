@@ -99,6 +99,8 @@ def _resolve_identity(
 def _select_post_process(
     raw: RepolishConfigFile | None,
     lane: str | None,
+    *,
+    cli_name: str,
 ) -> list[str]:
     """Return the commands the run's post-process step should execute.
 
@@ -111,7 +113,8 @@ def _select_post_process(
         return []
     if lane is None:
         return raw.post_process
-    lane_config = raw.fast_lanes.config.get(lane)
+    lane_key = f'{cli_name}:{lane}'
+    lane_config = raw.fast_lanes.config.get(lane_key)
     return lane_config.post_process if lane_config is not None else []
 
 
@@ -119,6 +122,7 @@ def prepare_lane_config(
     provider_root: Path,
     lane: str | None,
     *,
+    cli_name: str,
     alias: str | None,
     config_path: Path,
 ) -> LaneSessionConfig:
@@ -140,6 +144,8 @@ def prepare_lane_config(
         provider_root: The provider's ``resources/templates`` directory
             (from :func:`~repolish.fastlane.cli._locate_provider_root`).
         lane: The lane being run, or ``None`` for the provider's full pass.
+        cli_name: Invoked CLI executable name. Used to scope
+            ``fast_lanes.config`` keys as ``"<cli-name>:<lane-or-command>"``.
         alias: Explicit provider identity from ``provider_cli(alias=)``;
             always wins, and does not have to appear in the config.
         config_path: The ``--config`` path; may not exist.
@@ -161,7 +167,7 @@ def prepare_lane_config(
         provider_root,
         config_dir,
     )
-    post_process = _select_post_process(raw, lane)
+    post_process = _select_post_process(raw, lane, cli_name=cli_name)
 
     paused_files: list[str] = []
     template_overrides: dict[str, str | None] = {}

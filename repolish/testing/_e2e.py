@@ -379,6 +379,7 @@ def apply_fast_lane(  # noqa: PLR0913 - mirrors apply_provider on purpose
     prepared = prepare_lane_config(
         provider_root,
         lane,
+        cli_name=f'{alias}-cli',
         alias=alias,
         config_path=config_path,
     )
