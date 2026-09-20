@@ -748,6 +748,9 @@ class TestProviderCommands:
         assert 'Generated CLI for the' in result.output
         assert f'{_CLI_NAME}:{{lane-name}}' in result.output
         assert f'{_CLI_NAME}:command:{{command-name}}' in result.output
+        help_lines = {line.strip() for line in result.output.splitlines()}
+        assert 'fast_lanes:' in help_lines
+        assert 'config:' in help_lines
 
     def test_command_requires_declared_args(
         self,

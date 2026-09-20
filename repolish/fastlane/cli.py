@@ -17,6 +17,7 @@ import importlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import dedent
 from time import perf_counter
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -421,20 +422,25 @@ def provider_cli(
 
     resolved_cli_name = cli_name or Path(sys.argv[0]).name or 'provider-cli'
     provider_name = alias or provider_root.parent.parent.name
-    help_text = (
-        f'Generated CLI for the "{provider_name}" provider.\n\n'
-        'Configure lane post_process entries in repolish.yaml with CLI-scoped keys:\n\n'
-        'fast_lanes:\n'
-        '  config:\n'
-        f'    {resolved_cli_name}:{{lane-name}}:\n'
-        '      post_process:\n'
-        '        - <command>\n'
-        f'    {resolved_cli_name}:command:{{command-name}}:\n'
-        '      post_process:\n'
-        '        - <command>'
-    )
+    help_text = dedent(f"""
+        Generated CLI for the "{provider_name}" provider.
+
+        Configure lane post_process entries in repolish.yaml with CLI-scoped keys:
+
+        ```yaml
+        fast_lanes:
+          config:
+            {resolved_cli_name}:{{lane-name}}:
+              post_process:
+                - <command>
+            {resolved_cli_name}:command:{{command-name}}:
+              post_process:
+                - <command>
+        ```
+        """).strip()
     app = cyclopts.App(
         help=help_text,
+        help_format='markdown',
     )
     for lane_name in lanes:
         app.command(
