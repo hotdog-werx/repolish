@@ -138,6 +138,65 @@ _COMMAND_TEMPLATES = {
     'report.txt.jinja': 'report output\n',
 }
 
+_FAST_PATH_PROVIDER = """\
+    from pydantic import BaseModel
+
+    from repolish import (
+        BaseContext,
+        BaseInputs,
+        FastLaneSpec,
+        Provider,
+        ProviderCommandContract,
+        ProviderCommandContext,
+    )
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class FetchArgs(BaseModel):
+        name: str
+
+
+    def _unexpected_hook(*_args, **_kwargs):
+        raise AssertionError('ordinary provider hooks must not run for fast paths')
+
+
+    def run_fetch(_args: FetchArgs, _ctx: ProviderCommandContext) -> FastLaneSpec:
+        return FastLaneSpec(file_mappings={'command.txt': 'command.txt.jinja'})
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        create_file_mappings = _unexpected_hook
+        create_file_validators = _unexpected_hook
+        create_file_insertions = _unexpected_hook
+        create_insertion_registry = _unexpected_hook
+        create_anchors = _unexpected_hook
+        promote_file_mappings = _unexpected_hook
+        provide_inputs = _unexpected_hook
+        finalize_context = _unexpected_hook
+
+        def create_fast_lanes(self, _repolish):
+            return {'quick': FastLaneSpec(file_mappings={'lane.txt': 'lane.txt.jinja'})}
+
+        @classmethod
+        def create_provider_commands(cls):
+            return {
+                'fetch': ProviderCommandContract(
+                    args_model=FetchArgs,
+                    executor=run_fetch,
+                ),
+            }
+"""
+
+_FAST_PATH_TEMPLATES = {
+    'lane.txt.jinja': 'lane output\n',
+    'command.txt.jinja': 'command output\n',
+}
+
 _STRING_MAPPING_COMMAND_PROVIDER = """\
     from pydantic import BaseModel
 
@@ -799,6 +858,32 @@ class TestProviderCommands:
         assert (project / 'data.json').read_text(
             encoding='utf-8',
         ) == 'fetched: yes\n'
+
+    def test_fast_paths_skip_ordinary_provider_hooks(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _FAST_PATH_PROVIDER,
+            templates=_FAST_PATH_TEMPLATES,
+        )
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
+        project = _stage_project(provider_cls, tmp_path)
+        monkeypatch.chdir(project)
+
+        lane = runner.invoke(app, ['quick'])
+        assert lane.exit_code == 0, lane.output
+        assert (project / 'lane.txt').read_text(
+            encoding='utf-8',
+        ) == 'lane output\n'
+
+        command = runner.invoke(app, ['fetch', 'drawer'])
+        assert command.exit_code == 0, command.output
+        assert (project / 'command.txt').read_text(
+            encoding='utf-8',
+        ) == 'command output\n'
 
     def test_all_excludes_standalone_commands(
         self,

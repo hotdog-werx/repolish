@@ -6,6 +6,7 @@ from repolish.hydration.comparison import (
     collect_output_files,
 )
 from repolish.hydration.context import (
+    FinalProviderOptions,
     build_final_providers,
 )
 from repolish.hydration.display import rich_print_diffs
@@ -14,6 +15,7 @@ from repolish.hydration.rendering import render_template, rendered_file_pairs
 from repolish.hydration.staging import prepare_staging, preprocess_templates
 
 __all__ = [
+    'FinalProviderOptions',
     'apply_generated_output',
     'build_final_providers',
     'check_generated_output',

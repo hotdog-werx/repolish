@@ -142,6 +142,8 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         lane=lane,
         lane_spec=lane_spec,
         skip_dry_pass=True,
+        command_only=lane_spec is not None,
+        fast_lanes_only=lane is not None and lane_spec is None,
     )
     session = resolve_session(options)
     rc = apply_session(

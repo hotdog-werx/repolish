@@ -34,6 +34,32 @@ from repolish.providers.pipeline import (
 )
 
 
+def _build_fast_path_bundle(
+    module_cache: list[tuple[str, dict]],
+    provider_contexts: dict[str, BaseContext],
+    accumulators: Accumulators,
+    options: PipelineOptions,
+) -> SessionBundle | None:
+    """Return a reduced bundle for a command or named fast-lane run."""
+    if options.context_only:
+        return SessionBundle(provider_contexts=provider_contexts)
+
+    if options.fast_lanes_only:
+        collect_provider_contributions(
+            module_cache,
+            provider_contexts,
+            accumulators,
+            contributions=options.contributions,
+            fast_lanes_only=True,
+        )
+        return SessionBundle(
+            provider_contexts=provider_contexts,
+            fast_lanes=accumulators.fast_lanes,
+        )
+
+    return None
+
+
 def _run_provider_pipeline(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
@@ -94,6 +120,15 @@ def _run_provider_pipeline(
 
     # Apply global context overrides (from contributions if needed)
     # Note: global context overrides would go here if added to ProviderContributions
+
+    fast_path_bundle = _build_fast_path_bundle(
+        module_cache,
+        provider_contexts,
+        accum,
+        _opts,
+    )
+    if fast_path_bundle is not None:
+        return fast_path_bundle
 
     if _opts.dry_run:
         emitted = collect_all_emitted_inputs(
@@ -160,6 +195,8 @@ def create_providers(
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
     dry_run: Literal[False] = ...,
+    context_only: bool = ...,
+    fast_lanes_only: bool = ...,
 ) -> SessionBundle: ...
 
 
@@ -172,6 +209,8 @@ def create_providers(
     extra_provider_entries: list[ProviderEntry] | None = ...,
     extra_inputs: list[BaseInputs] | None = ...,
     dry_run: Literal[True],
+    context_only: bool = ...,
+    fast_lanes_only: bool = ...,
 ) -> DryRunResult: ...
 
 
@@ -183,6 +222,8 @@ def create_providers(  # noqa: PLR0913 - skip for now
     extra_provider_entries: list[ProviderEntry] | None = None,
     extra_inputs: list[BaseInputs] | None = None,
     dry_run: bool = False,
+    context_only: bool = False,
+    fast_lanes_only: bool = False,
 ) -> SessionBundle | DryRunResult:
     """Load all template providers and merge their contributions.
 
@@ -230,6 +271,8 @@ def create_providers(  # noqa: PLR0913 - skip for now
             contributions=contributions or ProviderContributions(),
             alias_map=alias_map,
             dry_run=dry_run,
+            context_only=context_only,
+            fast_lanes_only=fast_lanes_only,
             extra_provider_entries=extra_provider_entries,
             extra_inputs=extra_inputs,
         ),

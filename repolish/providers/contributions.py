@@ -947,12 +947,23 @@ def collect_provider_contributions(
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
     contributions: ProviderContributions | None = None,
+    *,
+    fast_lanes_only: bool = False,
 ) -> None:
     """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
     This mutates the provided accumulators in-place.
     """
     for provider_id, module_dict in module_cache:
+        if fast_lanes_only:
+            inst = module_dict.get('_repolish_provider_instance')
+            own_ctx = provider_contexts.get(provider_id)
+            if isinstance(inst, _ProviderBase) and isinstance(
+                own_ctx,
+                BaseContext,
+            ):
+                _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
+            continue
         _collect_provider_contribution(
             provider_id,
             module_dict,

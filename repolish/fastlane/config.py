@@ -15,23 +15,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hotlog import get_logger
-
 from repolish.commands.apply.options import LaneSessionConfig
 from repolish.config import RepolishConfig, load_config_file
 from repolish.config.models.project import FastLanesSection, RepolishConfigFile
 from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
-
-logger = get_logger(__name__)
 
 
 def _package_name(provider_root: Path) -> str:
     """Fallback alias: the name of the package holding the provider resources.
 
     ``provider_root`` is ``<pkg>/resources/templates``, so the package
-    directory is two levels up. The alias passed to ``provider_cli(alias=)``
-    is the stable, provider-owned identity; this fallback only gives
-    unregistered runs a sensible bookkeeping name.
+    directory is two levels up. This is the normal identity for an
+    unregistered provider; ``provider_cli(alias=)`` can override it when the
+    provider deliberately uses a distinct name.
     """
     return provider_root.parent.parent.name
 
@@ -88,11 +84,6 @@ def _resolve_identity(
                 final_alias = matched_name
     if final_alias is None:
         final_alias = _package_name(provider_root)
-        logger.debug(
-            'lane_alias_fallback',
-            alias=final_alias,
-            suggestion='pass alias= to provider_cli for a stable identity',
-        )
     return final_alias, entry
 
 

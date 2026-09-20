@@ -77,6 +77,18 @@ class ApplyOptions:
     """Skip the dry provider pass in ``resolve_session``. Only safe for
     single-provider standalone runs that never consume cross-session
     routing data (``provider_entries``/``emitted_inputs``)."""
+    command_only: bool = False
+    """Build provider contexts without collecting normal provider hooks.
+
+    Used by standalone provider commands, which supply their own runtime
+    ``lane_spec`` and intentionally forgo cross-provider communication.
+    """
+    fast_lanes_only: bool = False
+    """Collect only ``create_fast_lanes`` after building provider contexts.
+
+    Used by named fast-lane runs, which intentionally skip normal provider
+    contributions and cross-provider communication.
+    """
 
 
 @dataclass

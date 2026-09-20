@@ -10,7 +10,7 @@ from repolish.config.models.provider import (
     ProviderOverrides,
 )
 from repolish.fastlane import merge_fast_lanes, restrict_to_lane
-from repolish.hydration import build_final_providers
+from repolish.hydration import FinalProviderOptions, build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import (
     collect_provider_copies,
@@ -235,9 +235,13 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     with timer.phase('provider_pipeline'):
         providers = build_final_providers(
             config,
-            global_context=effective_global_context,
-            extra_provider_entries=options.extra_provider_entries,
-            extra_inputs=options.extra_inputs,
+            options=FinalProviderOptions(
+                global_context=effective_global_context,
+                extra_provider_entries=options.extra_provider_entries,
+                extra_inputs=options.extra_inputs,
+                context_only=options.command_only,
+                fast_lanes_only=options.fast_lanes_only,
+            ),
         )
     resolved_symlinks = collect_provider_symlinks(
         config.providers,

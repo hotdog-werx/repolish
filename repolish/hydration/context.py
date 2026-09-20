@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from repolish.config import RepolishConfig
@@ -9,6 +10,17 @@ from repolish.misc import ctx_to_dict
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
 from repolish.providers.models.pipeline import ProviderContributions
+
+
+@dataclass(frozen=True)
+class FinalProviderOptions:
+    """Optional runtime inputs for the final provider pipeline pass."""
+
+    global_context: GlobalContext | None = None
+    extra_provider_entries: list[ProviderEntry] | None = None
+    extra_inputs: list[BaseInputs] | None = None
+    context_only: bool = False
+    fast_lanes_only: bool = False
 
 
 def _collect_provider_overrides(
@@ -109,9 +121,7 @@ def _apply_delete_overrides(
 def build_final_providers(
     config: RepolishConfig,
     *,
-    global_context: GlobalContext | None = None,
-    extra_provider_entries: list[ProviderEntry] | None = None,
-    extra_inputs: list[BaseInputs] | None = None,
+    options: FinalProviderOptions | None = None,
 ) -> SessionBundle:
     """Build the final SessionBundle object from all configured providers.
 
@@ -121,12 +131,22 @@ def build_final_providers(
     - Applies `config.delete_files` entries (with '!' negation) on top of
       provider decisions and records provenance Decisions for config entries.
 
-    When *global_context* is supplied it is forwarded to ``create_providers``
+    With ``options.context_only``, creates the configured provider contexts and applies
+    their context overrides, but skips input exchange, finalization, and all
+    provider contribution hooks. Standalone provider commands use this path
+    because they supply their own `FastLaneSpec`.
+
+    With ``options.fast_lanes_only``, the same setup runs but only `create_fast_lanes`
+    contributes to the resulting bundle. Named fast-lane runs use this path.
+
+    When ``options.global_context`` is supplied it is forwarded to ``create_providers``
     instead of calling ``get_global_context()`` — used by the monorepo
     orchestrator to inject a pre-built context that carries the
     ``MonorepoContext``.  *extra_provider_entries* and *extra_inputs* are
     forwarded to the pipeline for member-to-root input routing.
     """
+    options = options or FinalProviderOptions()
+
     # build a per-provider override map from the project configuration.
     # the loader applies these via `_apply_provider_overrides` which uses
     # `apply_context_overrides` (dot-notation aware) and then re-validates
@@ -169,9 +189,11 @@ def build_final_providers(
     result = create_providers(
         dirs,
         contributions=contributions,
-        global_context=global_context,
-        extra_provider_entries=extra_provider_entries,
-        extra_inputs=extra_inputs,
+        global_context=options.global_context,
+        extra_provider_entries=options.extra_provider_entries,
+        extra_inputs=options.extra_inputs,
+        context_only=options.context_only,
+        fast_lanes_only=options.fast_lanes_only,
     )
 
     # build_final_providers always performs a full pass (dry_run=False),
@@ -179,6 +201,7 @@ def build_final_providers(
     assert isinstance(result, SessionBundle)  # noqa: S101 - guaranteed by dry_run=False
     providers = result
 
-    delete_files = _apply_delete_overrides(providers, config)
-    providers.delete_files = delete_files
+    if not options.context_only and not options.fast_lanes_only:
+        delete_files = _apply_delete_overrides(providers, config)
+        providers.delete_files = delete_files
     return providers
