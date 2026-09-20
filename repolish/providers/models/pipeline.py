@@ -23,6 +23,7 @@ from repolish.providers.models.context import (
 
 if TYPE_CHECKING:
     from repolish.config.models.provider import ProviderOverrides
+    from repolish.phases import PhaseTimer
     from repolish.providers.models.files import (
         FileValidatorsByPath,
         InsertionRegistry,
@@ -75,6 +76,8 @@ class PipelineOptions:
     """When `True`, create provider contexts without routing inputs or collecting hooks."""
     fast_lanes_only: bool = False
     """When `True`, collect only `create_fast_lanes` contributions."""
+    phase_timer: PhaseTimer | None = None
+    """Optional timer used to record detailed provider-pipeline sub-phases."""
     extra_provider_entries: list[ProviderEntry] | None = None
     """Provider entries from member sessions injected into the root session pass."""
     extra_inputs: list[BaseInputs] | None = None

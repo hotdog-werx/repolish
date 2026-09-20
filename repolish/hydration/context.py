@@ -7,6 +7,7 @@ from repolish.config.models.provider import (
     ResolvedProviderInfo,
 )
 from repolish.misc import ctx_to_dict
+from repolish.phases import PhaseTimer
 from repolish.providers import Action, Decision, SessionBundle, create_providers
 from repolish.providers.models import BaseInputs, GlobalContext, ProviderEntry
 from repolish.providers.models.pipeline import ProviderContributions
@@ -21,6 +22,7 @@ class FinalProviderOptions:
     extra_inputs: list[BaseInputs] | None = None
     context_only: bool = False
     fast_lanes_only: bool = False
+    phase_timer: PhaseTimer | None = None
 
 
 def _collect_provider_overrides(
@@ -194,6 +196,7 @@ def build_final_providers(
         extra_inputs=options.extra_inputs,
         context_only=options.context_only,
         fast_lanes_only=options.fast_lanes_only,
+        phase_timer=options.phase_timer,
     )
 
     # build_final_providers always performs a full pass (dry_run=False),

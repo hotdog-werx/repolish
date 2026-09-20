@@ -1,7 +1,10 @@
 from collections.abc import Sequence
+from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, overload
 
+from repolish.phases import PhaseTimer
 from repolish.providers import SessionBundle
 from repolish.providers.context import _apply_provider_overrides
 from repolish.providers.contributions import (
@@ -18,6 +21,7 @@ from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     GlobalContext,
+    Provider,
     ProviderEntry,
     get_global_context,
 )
@@ -34,10 +38,81 @@ from repolish.providers.pipeline import (
 )
 
 
+def _phase(options: PipelineOptions, name: str) -> AbstractContextManager[None]:
+    """Return the configured timing context, or a no-op context."""
+    return options.phase_timer.phase(name) if options.phase_timer else nullcontext()
+
+
+@dataclass
+class _PipelineState:
+    """Provider-pipeline state prepared before selecting an execution path."""
+
+    accumulators: Accumulators
+    instances: list[Provider | None]
+    all_providers: list[ProviderEntry]
+
+
+def _prepare_pipeline_state(
+    module_cache: list[tuple[str, dict]],
+    provider_contexts: dict[str, BaseContext],
+    options: PipelineOptions,
+) -> _PipelineState:
+    """Build provider metadata, contexts, overrides, and the input registry."""
+    accumulators = Accumulators()
+    contributions = options.contributions
+    accumulators.promoted_file_mappings.update(
+        contributions.promoted_file_mappings,
+    )
+    accumulators.suppressed_sources.update(contributions.suppressed_sources)
+    accumulators.file_validators.update(contributions.file_validators)
+    accumulators.file_insertions.update(contributions.file_insertions)
+
+    with _phase(options, 'provider_pipeline.metadata'):
+        instances = build_provider_metadata(module_cache)
+        _set_provider_metadata(module_cache, instances, options.alias_map or {})
+
+    with _phase(options, 'provider_pipeline.contexts'):
+        _populate_provider_context(
+            module_cache,
+            instances,
+            provider_contexts,
+            options.global_context,
+        )
+
+    with _phase(options, 'provider_pipeline.overrides'):
+        for pid, overrides in contributions.overrides.items():
+            if overrides.context_merge:
+                _apply_provider_overrides(
+                    provider_contexts,
+                    {pid: overrides.context_merge},
+                )
+            if overrides.context_dotted:
+                _apply_provider_overrides(
+                    provider_contexts,
+                    {pid: overrides.context_dotted},
+                )
+
+    with _phase(options, 'provider_pipeline.registry'):
+        all_providers = _build_all_providers_list(
+            module_cache,
+            instances,
+            provider_contexts,
+            alias_map=options.alias_map,
+        )
+        if options.extra_provider_entries:
+            all_providers += options.extra_provider_entries
+
+    return _PipelineState(
+        accumulators=accumulators,
+        instances=instances,
+        all_providers=all_providers,
+    )
+
+
 def _build_fast_path_bundle(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
-    accumulators: Accumulators,
+    state: _PipelineState,
     options: PipelineOptions,
 ) -> SessionBundle | None:
     """Return a reduced bundle for a command or named fast-lane run."""
@@ -45,19 +120,88 @@ def _build_fast_path_bundle(
         return SessionBundle(provider_contexts=provider_contexts)
 
     if options.fast_lanes_only:
-        collect_provider_contributions(
-            module_cache,
-            provider_contexts,
-            accumulators,
-            contributions=options.contributions,
-            fast_lanes_only=True,
-        )
+        with _phase(options, 'provider_pipeline.fast_lanes'):
+            collect_provider_contributions(
+                module_cache,
+                provider_contexts,
+                state.accumulators,
+                contributions=options.contributions,
+                fast_lanes_only=True,
+            )
         return SessionBundle(
             provider_contexts=provider_contexts,
-            fast_lanes=accumulators.fast_lanes,
+            fast_lanes=state.accumulators.fast_lanes,
         )
 
     return None
+
+
+def _run_standard_pipeline(
+    module_cache: list[tuple[str, dict]],
+    provider_contexts: dict[str, BaseContext],
+    state: _PipelineState,
+    options: PipelineOptions,
+) -> SessionBundle | DryRunResult:
+    """Run input exchange, finalization, and ordinary contributions."""
+    if options.dry_run:
+        with _phase(options, 'provider_pipeline.emitted_inputs'):
+            emitted = collect_all_emitted_inputs(
+                module_cache,
+                state.instances,
+                provider_contexts,
+                state.all_providers,
+            )
+        return DryRunResult(
+            provider_contexts=provider_contexts,
+            all_providers_list=state.all_providers,
+            emitted_inputs=emitted,
+        )
+
+    with _phase(options, 'provider_pipeline.inputs'):
+        received_inputs = gather_received_inputs(
+            module_cache,
+            state.instances,
+            provider_contexts,
+            state.all_providers,
+            extra_inputs=options.extra_inputs,
+        )
+
+    with _phase(options, 'provider_pipeline.finalize'):
+        finalize_provider_contexts(
+            module_cache,
+            state.instances,
+            received_inputs,
+            provider_contexts,
+            state.all_providers,
+            global_context=options.global_context,
+        )
+
+    with _phase(options, 'provider_pipeline.contributions'):
+        collect_provider_contributions(
+            module_cache,
+            provider_contexts,
+            state.accumulators,
+            contributions=options.contributions,
+        )
+
+    accumulators = state.accumulators
+    return SessionBundle(
+        anchors=accumulators.merged_anchors,
+        delete_files=list(accumulators.delete_set),
+        file_mappings=accumulators.merged_file_mappings,
+        create_only_files=list(accumulators.create_only_set),
+        delete_history=accumulators.history,
+        provider_contexts=provider_contexts,
+        suppressed_sources=accumulators.suppressed_sources,
+        disabled_file_mappings=accumulators.disabled_file_mappings,
+        file_validators=accumulators.file_validators,
+        validator_sources=accumulators.validator_sources,
+        file_insertions=accumulators.file_insertions,
+        insertion_registry=accumulators.insertion_registry,
+        insertion_sources=accumulators.insertion_sources,
+        promoted_file_mappings=accumulators.promoted_file_mappings,
+        fast_lanes=accumulators.fast_lanes,
+    )
 
 
 def _run_provider_pipeline(
@@ -73,117 +217,18 @@ def _run_provider_pipeline(
     and raw emitted inputs.  All other cases return a :class:`SessionBundle` object
     as before.
     """
-    accum = Accumulators()
     _opts = options or PipelineOptions()
-    _contrib = _opts.contributions
-
-    # Pre-load accum with contributions' promoted mappings and suppressed sources
-    accum.promoted_file_mappings.update(_contrib.promoted_file_mappings)
-    accum.suppressed_sources.update(_contrib.suppressed_sources)
-    accum.file_validators.update(_contrib.file_validators)
-    accum.file_insertions.update(_contrib.file_insertions)
-
-    instances = build_provider_metadata(module_cache)
-    _set_provider_metadata(module_cache, instances, _opts.alias_map or {})
-
-    _populate_provider_context(
-        module_cache,
-        instances,
-        provider_contexts,
-        _opts.global_context,
-    )
-
-    # Apply per-provider overrides from contributions
-    for pid, overrides in _contrib.overrides.items():
-        # Apply context_merge (shallow merge) first
-        if overrides.context_merge:
-            _apply_provider_overrides(
-                provider_contexts,
-                {pid: overrides.context_merge},
-            )
-        # Then apply context_dotted (deep overrides)
-        if overrides.context_dotted:
-            _apply_provider_overrides(
-                provider_contexts,
-                {pid: overrides.context_dotted},
-            )
-
-    all_providers_list: list[ProviderEntry] = _build_all_providers_list(
-        module_cache,
-        instances,
-        provider_contexts,
-        alias_map=_opts.alias_map,
-    )
-
-    if _opts.extra_provider_entries:
-        all_providers_list = all_providers_list + _opts.extra_provider_entries
-
-    # Apply global context overrides (from contributions if needed)
-    # Note: global context overrides would go here if added to ProviderContributions
+    state = _prepare_pipeline_state(module_cache, provider_contexts, _opts)
 
     fast_path_bundle = _build_fast_path_bundle(
         module_cache,
         provider_contexts,
-        accum,
+        state,
         _opts,
     )
     if fast_path_bundle is not None:
         return fast_path_bundle
-
-    if _opts.dry_run:
-        emitted = collect_all_emitted_inputs(
-            module_cache,
-            instances,
-            provider_contexts,
-            all_providers_list,
-        )
-        return DryRunResult(
-            provider_contexts=provider_contexts,
-            all_providers_list=all_providers_list,
-            emitted_inputs=emitted,
-        )
-
-    received_inputs = gather_received_inputs(
-        module_cache,
-        instances,
-        provider_contexts,
-        all_providers_list,
-        extra_inputs=_opts.extra_inputs,
-    )
-
-    finalize_provider_contexts(
-        module_cache,
-        instances,
-        received_inputs,
-        provider_contexts,
-        all_providers_list,
-        global_context=_opts.global_context,
-    )
-
-    collect_provider_contributions(
-        module_cache,
-        provider_contexts,
-        accum,
-        contributions=_contrib,
-    )
-
-    return SessionBundle(
-        anchors=accum.merged_anchors,
-        delete_files=list(accum.delete_set),
-        file_mappings=accum.merged_file_mappings,
-        create_only_files=list(accum.create_only_set),
-        delete_history=accum.history,
-        provider_contexts=provider_contexts,
-        suppressed_sources=accum.suppressed_sources,
-        disabled_file_mappings=accum.disabled_file_mappings,
-        file_validators=accum.file_validators,
-        validator_sources=accum.validator_sources,
-        file_insertions=accum.file_insertions,
-        insertion_registry=accum.insertion_registry,
-        insertion_sources=accum.insertion_sources,
-        promoted_file_mappings=accum.promoted_file_mappings,
-        fast_lanes=accum.fast_lanes,
-    )
+    return _run_standard_pipeline(module_cache, provider_contexts, state, _opts)
 
 
 @overload
@@ -197,6 +242,7 @@ def create_providers(
     dry_run: Literal[False] = ...,
     context_only: bool = ...,
     fast_lanes_only: bool = ...,
+    phase_timer: PhaseTimer | None = ...,
 ) -> SessionBundle: ...
 
 
@@ -211,6 +257,7 @@ def create_providers(
     dry_run: Literal[True],
     context_only: bool = ...,
     fast_lanes_only: bool = ...,
+    phase_timer: PhaseTimer | None = ...,
 ) -> DryRunResult: ...
 
 
@@ -224,6 +271,7 @@ def create_providers(  # noqa: PLR0913 - skip for now
     dry_run: bool = False,
     context_only: bool = False,
     fast_lanes_only: bool = False,
+    phase_timer: PhaseTimer | None = None,
 ) -> SessionBundle | DryRunResult:
     """Load all template providers and merge their contributions.
 
@@ -260,7 +308,11 @@ def create_providers(  # noqa: PLR0913 - skip for now
             path_str = Path(entry).as_posix()
             normalized_dirs.append(path_str)
 
-    module_cache = _load_module_cache(normalized_dirs)
+    with _phase(
+        PipelineOptions(phase_timer=phase_timer),
+        'provider_pipeline.module_load',
+    ):
+        module_cache = _load_module_cache(normalized_dirs)
     provider_contexts: dict[str, BaseContext] = {}
 
     return _run_provider_pipeline(
@@ -273,6 +325,7 @@ def create_providers(  # noqa: PLR0913 - skip for now
             dry_run=dry_run,
             context_only=context_only,
             fast_lanes_only=fast_lanes_only,
+            phase_timer=phase_timer,
             extra_provider_entries=extra_provider_entries,
             extra_inputs=extra_inputs,
         ),
