@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -24,20 +25,33 @@ def pytest_configure() -> None:
     Uses a marker file to ensure providers are only built once,
     even when multiple pytest processes start (xdist workers).
     """
-    # Use a marker file to ensure idempotency across workers
-    marker = _DIST_DIR / '.providers-ready'
-    if marker.exists():
-        return  # Already done
-
-    # Build and install all providers once
-    _DIST_DIR.mkdir(parents=True, exist_ok=True)
     specs = _discover_providers(_EXAMPLES_DIR)
+
+    # Use a marker file to avoid repeated wheel builds, but still verify that
+    # each provider is importable in the active interpreter.
+    marker = _DIST_DIR / '.providers-ready'
+    if marker.exists() and all(_provider_importable(spec.import_path) for spec in specs):
+        return
+
+    # Build and install providers that are missing from the active interpreter.
+    _DIST_DIR.mkdir(parents=True, exist_ok=True)
     for spec in specs:
+        if _provider_importable(spec.import_path):
+            continue
         pkg_name = spec.dist_name.replace('-', '_')
         wheel = _build_wheel(spec.source_dir, _DIST_DIR, pkg_name)
         _install_wheel(wheel)
 
     marker.touch()
+
+
+def _provider_importable(import_path: str) -> bool:
+    """Return whether an import path resolves in the active interpreter."""
+    importlib.invalidate_caches()
+    try:
+        return importlib.util.find_spec(import_path) is not None
+    except ModuleNotFoundError:
+        return False
 
 
 def _git(*args: str, cwd: Path) -> None:

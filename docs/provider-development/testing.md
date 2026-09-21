@@ -18,7 +18,350 @@ from repolish.testing import (
 
 ---
 
-## Quick Start: Snapshot Tests (Recommended Pattern)
+## Quick Start: End-to-End Fixture Testing (Recommended)
+
+The most faithful way to test a provider is to run the **real `repolish apply`
+pipeline** against a made-up project and assert on what it produces:
+`apply_provider()` stages, preprocesses, renders, inserts, post-processes,
+applies, and validates: everything `repolish apply` does, with one difference:
+the `repolish.yaml` is written by the harness, pointing at your provider
+package. No link CLI, no installed wheels, no real repository.
+
+Resource copies and symlinks work as in production: the harness registers
+`resources_dir` at the package's `resources/` root (the parent of the templates
+directory), which is what the provider's link CLI records, so sources outside
+the templates tree resolve correctly. The run is also anchored to the project
+directory, so relative copy and symlink targets land inside the fixture, not
+your test process's working directory.
+
+The made-up project is a **fixture**: a checked-in directory holding the
+simplified state of a repo you want to simulate: developer-owned files,
+insertion markers, values for `repolish-regex` capture, an old config file your
+provider is about to delete. Stage it into a per-test copy, apply, and assert or
+snapshot the result:
+
+```python
+from pathlib import Path
+
+from repolish.testing import (
+    apply_fast_lane,
+    apply_provider,
+    assert_idempotent,
+    assert_snapshots,
+    stage_project,
+)
+
+from my_provider.resources.templates.repolish import MyProvider
+
+FIXTURES = Path(__file__).parent / 'fixtures'
+SNAPSHOT_DIR = Path(__file__).parent / 'snapshots' / 'my_provider'
+
+
+def test_full_apply(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    assert result.exit_code == 0
+    assert result.apply_result['README.md'] == 'written'
+    assert_snapshots(result.managed_files(), SNAPSHOT_DIR)
+```
+
+### Testing fast lanes end to end
+
+The same fixture pattern works for named fast lanes. Use `apply_fast_lane()`
+when you want the real lane runtime, but you do not want to shell out through
+the generated provider CLI in every test.
+
+```python
+from pathlib import Path
+
+from repolish.testing import (
+    apply_fast_lane,
+    assert_snapshots,
+    include_paths,
+    stage_project,
+)
+
+
+def test_actions_lane(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_fast_lane(MyProvider, project, 'actions')
+    lane_files = include_paths(result.managed_files(), exact={'action.yaml'})
+
+    assert result.exit_code == 0
+    assert_snapshots(lane_files, SNAPSHOT_DIR / 'actions')
+```
+
+This is useful when a lane generates templates through the normal repolish
+pipeline and you want the same fixture-and-snapshot ergonomics as full apply
+tests. The helper exercises the real lane restriction path, so regular provider
+hooks stay out of the run and lane-specific post-process behavior is honored. If
+the provider also auto-stages other managed files in the same fixture, filter
+the result down to the lane-owned paths before snapshotting.
+
+Two views over the result, both `{rel_path: content}` and both ready for
+`assert_snapshots`:
+
+- `result.managed_files()` is the one to snapshot: exactly the files this run
+  applied, staged insertions into, or copied, taken from the run's own records
+  (`apply_result`, `insertion_results`, `resolved_copies`). Because the file set
+  comes from the session rather than a directory walk, nothing can leak in: no
+  `__pycache__/`, no `*.pyc`, no exclusion list to maintain. Untouched fixture
+  files are absent; they are checked in with the fixture.
+- `result.project_files()` is the whole applied project tree (fixture state plus
+  provider output) when you also want to assert the surrounding project: scratch
+  dirs (`.repolish/`, `.git/`, `__pycache__/` at any depth), `*.pyc` files, and
+  the harness-written `repolish.yaml` are excluded. Byte caches left behind by
+  `post_process` commands that invoke python are build junk, not project output.
+
+Both return plain dicts, so `include_paths` / `exclude_paths` shape them further
+before `assert_snapshots` when a test needs to focus on a subset.
+
+### Narrowing the snapshot scope
+
+Filtering with `include_paths` / `exclude_paths` has a sharp edge worth stating
+plainly: **a filtered snapshot is blind to anything it was not handed**. If a
+test narrows the view to certain files and a new template later writes outside
+that set, the comparison passes and the new output goes unseen. The full
+`managed_files()` snapshot has no blind spot: adding a template lights up every
+fixture's snapshot diff, and reviewing that diff once with
+`REPOLISH_UPDATE_SNAPSHOTS=1` is the test doing its job, not a chore. Prefer
+paying that review cost over filtering it away.
+
+Reach for a filter only when the full view cannot work, and make determinism the
+first attempt: the harness freezes `year=`, `repo_owner=`, and `repo_name=`
+precisely so snapshot content never drifts between runs. The cases that justify
+filtering:
+
+- a generated file whose content your provider genuinely cannot reproduce
+  deterministically (a lockfile with resolved hashes, a file embedding a
+  wall-clock timestamp produced by `post_process`), and
+- a file that exists only to exercise a side effect (a validator target, scratch
+  output of a `post_process` step) whose content carries no information worth
+  pinning.
+
+Exclude the single offending path, not the whole category, and keep the
+exclusion next to the test with a comment saying why. A comment like
+`# lockfile: resolved hashes differ per run` is self-documenting; a bare
+`exclude_paths(result.managed_files(), {'generated/'})` in a helper far from the
+test is how blind spots accumulate quietly.
+
+### The workflow never changes
+
+The first run is the only setup you ever do:
+
+```bash
+REPOLISH_UPDATE_SNAPSHOTS=1 pytest tests/
+```
+
+Snapshots are written for you; review the git diff and commit. There is no
+"first run without local files" dance: preprocessor directives read the
+**fixture files** (the same files the real repo would have), so the test code is
+identical on the first and every later run.
+
+The same command is the natural response to **template changes**. As you work on
+the provider and edit templates, the generated output, and therefore the
+snapshots, changes with it. Re-run the tests with the environment variable set,
+then review the diff to see exactly what the change produces across every
+fixture project:
+
+```bash
+REPOLISH_UPDATE_SNAPSHOTS=1 pytest tests/
+```
+
+If a snapshot diff surprises you, that is the test earning its keep: the
+template change did something you didn't intend, and you found out before a real
+project did.
+
+### Assert the project, not just the render
+
+`ApplyResult` exposes what the pipeline collected:
+
+- `exit_code`: `0` success; `1` validator failure; `2` drift in check mode
+- `apply_result`: per-file status: `'written'`, `'unchanged'`, `'deleted'`
+- `validation_results`: validator **failures** per destination path (passes
+  don't need asserting; the exit code already covers them)
+- `insertion_results`: per-file insertion execution summaries
+- `render_tree`: the staged render tree, open it to debug a diff
+
+Use `check_only=True` to compare without writing, and `assert_idempotent` for
+the test that pays for itself: apply, then check, expecting no drift. A provider
+that produces output it can't reproduce on the second pass is the classic
+spurious-drift bug, and this catches it:
+
+```python
+def test_no_drift(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+    assert_idempotent(MyProvider, project)
+```
+
+### Testing validators: bad data belongs in the fixture
+
+Validators generate nothing; they inspect. That is exactly why they pair
+naturally with fixtures: the pipeline resolves each validator's target by
+preferring the real project file and falling back to the render tree, so a
+validator registered for a developer-owned file (`config.toml` the repo already
+had, not a template) validates the fixture's copy directly. A fixture with bad
+data is just a fixture: check in the broken state you want the validator to
+catch, apply, and assert on the records.
+
+Two fixtures, one validator, both sides of the check:
+
+```python
+from repolish.providers.models import ValidationStatus
+
+
+def test_catches_missing_api_key(tmp_path: Path) -> None:
+    """The bad fixture fails validation exactly as a real repo would."""
+    project = stage_project(FIXTURES / 'config-missing-key', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    # 1 = validator failure, distinct from 2 (drift) and 0 (clean run)
+    assert result.exit_code == 1
+    failure = result.validation_results['config.toml']['has-api-key']
+    assert failure.status == ValidationStatus.ERROR
+    assert 'api_key' in failure.message
+
+
+def test_accepts_valid_config(tmp_path: Path) -> None:
+    """The good fixture passes: nothing lands in validation_results."""
+    project = stage_project(FIXTURES / 'config-valid', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    assert result.exit_code == 0
+    assert 'config.toml' not in result.validation_results
+```
+
+`validation_results` holds **failures and warnings only**, keyed
+`{dest_path: {validator_name: ValidationResult}}`. Passes never appear: a clean
+run is already proven by `exit_code == 0` and the empty dict. A validator that
+crashes is reported as `ValidationStatus.ERROR` with the same
+`"Validator 'name' for 'dest' crashed: ..."` message shape production prints, so
+a crash test asserts on exactly what a real run would report. Validators
+disabled through `FileValidatorOptions` are skipped entirely, just as in
+production.
+
+Warnings are the one nuance: a `ValidationStatus.WARNING` leaves
+`exit_code == 0` by default, matching `repolish apply`. Pass
+`fail_on_warnings=True` to the harness to test the strict behavior:
+
+```python
+result = apply_provider(MyProvider, project, fail_on_warnings=True)
+assert result.exit_code == 1
+warned = result.validation_results['docs/README.md']['stale-links']
+assert warned.status == ValidationStatus.WARNING
+```
+
+When a test needs the full picture (passes and disables included, not just
+failures), `result.session.validation_reports` maps each destination path to the
+JSON report the pipeline wrote under `.repolish/_/validators/`: open it and read
+every registered validator's outcome from the run.
+
+### Cross-provider inputs: sending and receiving
+
+Providers talk through inputs: one provider's `provide_inputs()` emits payloads,
+and every provider whose `get_inputs_schema()` matches receives them in
+`finalize_context()`. The end-to-end harness covers both directions without a
+second installed provider.
+
+**Sending**: everything the run emitted is recorded on the result.
+`result.emitted_inputs` lists each payload, captured before local routing, so a
+provider consuming its own output cannot hide what it sent:
+
+```python
+def test_emits_ci_tasks(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_provider(MyProvider, project)
+
+    assert [inp.model_dump() for inp in result.emitted_inputs] == [
+        {'ci_tasks': ['lint', 'test']},
+    ]
+```
+
+**Receiving**: pass `extra_inputs=` to inject payloads into the run. They join
+the routing pool before finalization and are delivered by schema match exactly
+as a peer provider's outputs would be, so a dependency test needs no real peer:
+
+```python
+def test_receives_ci_tasks(tmp_path: Path) -> None:
+    project = stage_project(FIXTURES / 'my-repo', tmp_path / 'project')
+
+    result = apply_provider(
+        MyProvider,
+        project,
+        extra_inputs=[CiProviderInputs(ci_tasks=['lint', 'test'])],
+    )
+
+    assert result.exit_code == 0
+    assert result.apply_result['.github/workflows/ci.yml'] == 'written'
+```
+
+Routing matches by schema, not by class identity: a payload from a separate
+module is accepted when it validates against the provider's inputs model. Import
+the peer provider's inputs class when the peer is installed; define a
+structurally identical model in the test when it is not.
+
+For the read pattern (`get_provider_context`) or a full two-provider run,
+register the peer through `config=`. Provider entries other than the harness's
+alias are kept as written, so both providers load and the pipeline routes inputs
+between them for real:
+
+```python
+result = apply_provider(
+    MyProvider,
+    project,
+    alias='my-provider',
+    config={'providers': {
+        'ci': {'provider_root': str(CI_TEMPLATES_ROOT)},
+    }},
+)
+```
+
+`assert_idempotent` accepts `extra_inputs` too and forwards it to both runs, so
+a dependency-driven provider gets the same drift guarantee.
+
+`apply_provider` writes the `repolish.yaml` for you; the `config=` mapping
+carries everything else you'd put in that file, with the harness's entry for its
+own alias always winning over anything you supply there:
+
+```python
+result = apply_provider(
+    MyProvider,
+    project,
+    alias='my-provider',
+    config={
+        'post_process': [f'{sys.executable} -c "..."'],
+        'paused_files': ['legacy/old.py'],
+    },
+)
+```
+
+Context values are deterministic by default: `repolish.repo.owner` is
+`test-owner`, `repolish.repo.name` is `test-repo`, and nothing is derived from
+your cwd or git. Override with `repo_owner` / `repo_name`, freeze
+`repolish.year` with `year=` for license headers, and pass `git_init=True` to
+`stage_project` when your provider code itself reads git.
+
+Standalone projects are supported; monorepo (root/member) fixtures are not yet
+wired through the harness.
+
+### Choosing a tier
+
+- **End-to-end** (`apply_provider`): behavior, output, drift, the tier this page
+  recommends; it cannot drift from the pipeline because it _is_ the pipeline.
+- **Hook-level** (`ProviderTestBed`): fast unit tests for context, mappings,
+  inputs, and validators in isolation. See below.
+- **`run_snapshot_case`**: the earlier snapshot pattern, retained as-is. It may
+  be deprecated in a future release as the end-to-end tier covers its use cases.
+
+---
+
+## Snapshot Tests with `run_snapshot_case`
 
 For most snapshot tests, use `run_snapshot_case()` with `SnapshotRunOptions`.
 This captures the common flow in a single call:
@@ -114,7 +457,7 @@ filtered = exclude_paths(
 
 ### Snapshot workflow: first run vs subsequent runs
 
-**First run** — snapshots don't exist yet:
+**First run** (snapshots don't exist yet):
 
 ```python
 def test_standalone_snapshot() -> None:
@@ -130,10 +473,10 @@ def test_standalone_snapshot() -> None:
     )
 ```
 
-The test fails with missing snapshot errors — the assertion prints the rendered
+The test fails with missing snapshot errors: the assertion prints the rendered
 content so you can copy it into `SNAPSHOT_DIR`.
 
-**Subsequent runs** — feed snapshot content back as local files:
+**Subsequent runs** (feed snapshot content back as local files):
 
 ```python
 def test_standalone_snapshot() -> None:
@@ -167,11 +510,11 @@ existing snapshot files, exactly as `repolish apply` reads from the real repo.
 
 Providers can communicate in two ways:
 
-1. **Push pattern** — via `provide_inputs()` / `finalize_context()`: One
+1. **Push pattern** (via `provide_inputs()` / `finalize_context()`): One
    provider emits typed inputs that another receives. Test this by passing
    `received_inputs` to `SnapshotRunOptions`.
 
-2. **Read pattern** — via `get_provider_context()`: A provider reads another
+2. **Read pattern** (via `get_provider_context()`): A provider reads another
    provider's context directly from `opt.all_providers`. Test this by
    constructing mock provider entries with `mock_provider_entry()`.
 
@@ -398,6 +741,10 @@ bed.file_mappings()         # -> dict[str, str | TemplateMapping | None]
 bed.anchors()               # -> dict[str, str]
 bed.symlinks()              # -> list[Symlink]
 bed.promote_file_mappings() # -> dict[str, str | TemplateMapping | None]
+bed.validators()            # -> dict[str, dict[str, FileValidatorEntry]]
+bed.insertions()            # -> FileInsertionContribution
+bed.insertion_registry()    # -> InsertionRegistry
+bed.copies()                # -> list[ResourceCopy]
 bed.provide_inputs()        # -> Sequence[BaseInputs]
 bed.finalize(received_inputs=[])  # -> context
 ```
@@ -405,6 +752,38 @@ bed.finalize(received_inputs=[])  # -> context
 `provide_inputs()` and `finalize()` accept optional `all_providers` and
 `provider_index` keyword arguments. When omitted they default to a single-entry
 list containing the test provider itself.
+
+`validators()`, `insertions()`, and `insertion_registry()` route through the
+same mode-handler dispatch as `repolish apply`. `copies()` and `symlinks()` are
+no-argument hooks and call the provider instance directly.
+
+### Running validators
+
+`run_validators()` executes the registry returned by `create_file_validators()`
+against real files, so a provider can test its validators the way the pipeline
+runs them:
+
+```python
+bed = ProviderTestBed(MyProvider)
+
+results = bed.run_validators({'config.toml': 'generated by repolish\n'})
+header = results['config.toml']['lint']
+assert header.status == ValidationStatus.PASS
+```
+
+- `files` maps destination paths to file content. It defaults to the output of
+  `render_all()`, so `bed.run_validators()` validates the provider's rendered
+  output in one call.
+- The files are materialized under `base_dir` when given, otherwise a throwaway
+  temporary directory that is removed after the run. Validators receive a real
+  path to read from, just like in `repolish apply`.
+- The return value is `{dest_path: {validator_name: ValidationResult}}` with one
+  entry per **enabled** validator that ran, passes included. Validators disabled
+  through `FileValidatorOptions` (either `enabled=False` or the per-name
+  `validators` map) are skipped.
+- A validator that raises is reported as `ValidationStatus.ERROR` with the same
+  `"Validator 'name' for 'dest' crashed: ..."` message shape the apply pipeline
+  produces, so a crash test asserts on exactly what production would report.
 
 ### Template rendering
 
@@ -436,7 +815,7 @@ prefixed files appear only when explicitly mapped.
 
 `render_all()` also respects `TemplateMapping.extra_context`. When a mapping
 entry carries per-file extra context, it is merged on top of the provider
-context for that destination only — exactly as `repolish apply` does. This means
+context for that destination only, exactly as `repolish apply` does. This means
 a single template can fan out to multiple files with different content:
 
 ```python
@@ -536,7 +915,7 @@ assert_snapshots(rendered, 'tests/snapshots/my_provider')
 2. Create a `tests/snapshots/` directory with expected files matching each key.
 3. Call `assert_snapshots(rendered, snapshot_dir)`.
 4. On first run (empty snapshot dir), the assertion fails with the rendered
-   content printed — copy it into the snapshot directory.
+   content printed; copy it into the snapshot directory.
 5. On subsequent runs, any drift produces a readable unified diff.
 
 ```

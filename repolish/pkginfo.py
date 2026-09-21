@@ -68,31 +68,34 @@ def resolve_package_identity(package_attr: str | None) -> tuple[str, str]:
 def _resolve_namespace_project(module_name: str, top_level: str) -> str:
     """Resolve the distribution name for a namespace sub-package.
 
-    Tries four strategies in order:
+    Tries three strategies in order:
 
-    1. RECORD file scanning — works for normal installs.
-    2. ``direct_url.json`` ``file://`` source path — works for editable installs.
-    3. Single-candidate fallback — when only one distribution claims this
-       namespace top-level there is no ambiguity.
-    4. Name-normalisation match — when multiple distributions share the
-       namespace (e.g. VCS installs with ``https://`` URLs that pass through
-       stages 1-3 without a match), compare the PEP 503-normalised module
-       name against each candidate distribution name.
-    """
-    return (
-        _project_from_distribution_files(module_name)
-        or _project_from_direct_url(module_name)
-        or _project_from_namespace_candidates(module_name, top_level)
-    )
+    1. Candidate lookup — a sole candidate or PEP 503-normalized match.
+    2. RECORD file scanning — resolves unconventional normal installs.
+    3. ``direct_url.json`` ``file://`` source path — resolves editable installs.
 
-
-def _project_from_namespace_candidates(module_name: str, top_level: str) -> str:
-    """Resolve project name from ``packages_distributions`` candidates.
-
-    Stage 3: single unambiguous candidate.
-    Stage 4: PEP 503 name-normalisation match against multiple candidates.
+    Candidate lookup comes first because it avoids scanning installed
+    distributions while loading providers in the common case.
     """
     candidates = _project_from_distributions_list(top_level)
+    candidate = _project_from_namespace_candidates(module_name, candidates)
+    if candidate:
+        return candidate
+
+    return _project_from_distribution_files(
+        module_name,
+    ) or _project_from_direct_url(module_name)
+
+
+def _project_from_namespace_candidates(
+    module_name: str,
+    candidates: list[str],
+) -> str:
+    """Resolve project name from ``packages_distributions`` candidates.
+
+    A sole candidate is unambiguous. For a shared namespace, match the
+    canonical module name against candidate distribution names.
+    """
     if len(candidates) == 1:
         return candidates[0]
     # Multiple distributions share the namespace (e.g. devkit-workspace and

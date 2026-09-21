@@ -9,7 +9,10 @@ from hotlog import get_logger
 
 from repolish.config.paused import is_paused
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.hydration.misc import get_source_str_from_mapping
+from repolish.hydration.misc import (
+    get_source_str_from_mapping,
+    resolve_mapping_source_file,
+)
 from repolish.misc import is_conditional_file
 from repolish.providers import SessionBundle
 
@@ -199,17 +202,8 @@ def _check_single_file_mapping(
 
     Returns (dest_path, message_or_diff) tuple if there's a diff, None if same.
     """
-    # mapping outputs are written with a filename prefix so they don't
-    # interfere with regular template files. look for the prefixed variant
-    # first but fall back to the unprefixed name for backwards compatibility.
-    prefix = '_repolish.'
-    candidate = setup_output / 'repolish' / source_path
-    if not candidate.exists():
-        cand_path = Path(source_path)
-        prefixed = setup_output / 'repolish' / cand_path.parent / (prefix + cand_path.name)
-        candidate = prefixed
-    source_file = candidate
-    if not source_file.exists():
+    source_file = resolve_mapping_source_file(setup_output, source_path)
+    if source_file is None:
         return (dest_path, f'MAPPING_SOURCE_MISSING: {source_path}')
 
     dest_file = base_dir / dest_path

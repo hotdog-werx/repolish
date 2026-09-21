@@ -18,7 +18,11 @@ from typing import Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
-from repolish.providers.models.context import BaseContext
+from repolish.providers.models.context import (
+    BaseContext,
+    RepolishContext,
+    ResourceCopy,
+)
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
@@ -429,6 +433,123 @@ class FileRecord:
     overridden_by: str | None = None
 
 
+class FastLaneSpec(BaseModel):
+    """One fast lane's contributions, in the same shapes the regular hooks use.
+
+    Returned by :meth:`Provider.create_fast_lanes` keyed by lane name. The hook
+    receives only the ``repolish`` namespace (repo info plus the provider's
+    own identity), whose values are identical in a lane run and a full apply,
+    so the lane's file set is stable either way; the peer-fed provider context
+    stays out on purpose. Full `repolish apply` merges every lane's
+    contributions into the session bundle; a lane run executes exactly one
+    lane's contributions and nothing else.
+    """
+
+    file_mappings: dict[str, str | TemplateMapping] = Field(
+        default_factory=dict,
+    )
+    """Destination path → source path or `TemplateMapping`, as in `create_file_mappings`."""
+    file_insertions: InsertionRegistryByPath = Field(default_factory=dict)
+    """Destination path → insertion-function name → callable, as in
+    `create_file_insertions` (the explicit per-file map form)."""
+    file_validators: FileValidatorsByPath = Field(default_factory=dict)
+    """Destination path → validator name → validator callable or spec, as in
+    `create_file_validators`."""
+    file_copies: list[ResourceCopy] = Field(default_factory=list)
+    """Plain resource copies this lane materializes, as in
+    `create_default_copies`: files copied verbatim from provider resources
+    into the project, never run through the template pipeline. A lane run
+    copies exactly this list (the provider's full copy set never executes);
+    a full run folds it in with the provider's other copies."""
+    source_provider: str | None = None
+    """Provider id that declared this lane. Not something the provider sets;
+    populated during collection so merge bookkeeping can attribute the
+    contributions (insertion registry keys, source maps)."""
+
+
+@dataclass(frozen=True)
+class ProviderCommandContext:
+    """Runtime context passed to provider command executors.
+
+    Provider commands are standalone (never merged into full ``repolish apply``)
+    but still run through the apply pipeline once they return a spec. The
+    context exposes the provider identity, the current run flags, and the
+    global ``repolish`` namespace.
+    """
+
+    repolish: RepolishContext
+    provider_root: Path
+    config_path: Path
+    check: bool
+    skip_post_process: bool
+    fail_on_warnings: bool
+    verbose: int
+
+
+class ProviderCommandContract(BaseModel):
+    """Static contract for a standalone provider command.
+
+    Returned by ``Provider.create_provider_commands`` keyed by command name.
+    The contract is intentionally static so cyclopts can build help and
+    validation directly from the declared args model.
+    """
+
+    args_model: type[BaseModel]
+    executor: Callable[[BaseModel, ProviderCommandContext], FastLaneSpec]
+    summary: str = ''
+    description: str = ''
+
+
+FastLaneFactory: TypeAlias = Callable[[], 'FastLaneSpec']
+"""Zero-arg factory for a lane spec, for lazy registration.
+
+Providers with many modules return factories from `create_fast_lanes` so
+lane code (and its imports) loads only when the lane actually runs. CLI
+enumeration iterates lane names only and never calls factories."""
+
+
+FastLaneEntry: TypeAlias = FastLaneSpec | FastLaneFactory
+"""A collected lane: a normalized spec or the unevaluated factory behind it."""
+FastLaneDeclaration: TypeAlias = FastLaneSpec | FastLaneFactory
+"""What `create_fast_lanes` may map a lane name to."""
+
+
+ProviderCommandExecutor: TypeAlias = Callable[
+    [BaseModel, ProviderCommandContext],
+    FastLaneSpec,
+]
+"""Executor callable declared directly on a provider command contract."""
+
+
+ProviderCommandDeclaration: TypeAlias = ProviderCommandContract
+"""What ``create_provider_commands`` may map a command name to."""
+
+
+class LazyLaneSpec:
+    """A lane factory as collected into the session bundle.
+
+    The collection step stores factory lanes unevaluated. Calling the entry
+    runs the factory (the collection wrapper normalizes the result) and
+    memoizes it: a run that reads the lane twice (collision detection, then
+    merge bookkeeping) evaluates the factory once.
+    """
+
+    __slots__ = ('_factory', '_spec')
+
+    def __init__(
+        self,
+        factory: FastLaneFactory,
+    ) -> None:
+        self._factory = factory
+        self._spec: FastLaneSpec | None = None
+
+    def __call__(self) -> FastLaneSpec:
+        """Return the lane spec, evaluating the factory once if needed."""
+        if self._spec is None:
+            self._spec = self._factory()
+        return self._spec
+
+
 class SessionBundle(BaseModel):
     """All contributions collected from providers during one session run.
 
@@ -520,6 +641,17 @@ class SessionBundle(BaseModel):
     by the apply session after both directive phases, with dests relativized
     to the project root where possible; consumers read the families they know.
     Empty when no family ferries data."""
+    fast_lanes: dict[str, dict[str, FastLaneEntry]] = Field(
+        default_factory=dict,
+    )
+    """``provider_id`` → ``lane_name`` → that lane's `FastLaneEntry`
+    contributions. Nested so no component ever parses a composite key:
+    provider IDs are paths and contain a drive-letter colon on Windows,
+    and lane names may contain colons of their own. Collected from
+    ``create_fast_lanes()``; merged into the regular bundle fields for
+    full runs, or executed alone for lane runs (see ``repolish.fastlane``).
+    Factory lanes stay unevaluated here and are resolved by the
+    merge/restrict step, once, only when needed."""
 
 
 def _records_from_template_sources(
@@ -773,5 +905,16 @@ class Accumulators:
     # promoted_file_mappings: collected from promote_file_mappings() on member
     # providers; keyed by destination path relative to the repo root.
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(
+        default_factory=dict,
+    )
+    # fast lanes collected from create_fast_lanes(), nested
+    # ``{provider_id: {lane_name: entry}}`` so lane names stay unique
+    # across providers in multi-provider sessions without ever parsing a
+    # composite key (provider IDs carry a drive-letter colon on Windows,
+    # and lane names may contain colons of their own). Values are
+    # normalized specs (string sources wrapped, insertions bound to the
+    # provider context), or closures producing one on first use (lazy
+    # factory lanes).
+    fast_lanes: dict[str, dict[str, FastLaneEntry]] = field(
         default_factory=dict,
     )

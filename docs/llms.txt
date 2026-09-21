@@ -21,5 +21,6 @@ pull updates with `repolish apply` or detect drift with `repolish --check`.
 - [Preprocessors](https://hotdog-werx.github.io/repolish/concepts/preprocessors/)
 - [Monorepo](https://hotdog-werx.github.io/repolish/concepts/monorepo/)
 - [Resource Linker](https://hotdog-werx.github.io/repolish/provider-development/linker/)
+- [Fast Lanes](https://hotdog-werx.github.io/repolish/provider-development/fast-lanes/)
 - [CLI Reference](https://hotdog-werx.github.io/repolish/reference/)
 - [AI Agent Reference (full)](https://hotdog-werx.github.io/repolish/llms/)

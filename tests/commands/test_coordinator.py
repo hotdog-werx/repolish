@@ -26,6 +26,7 @@ from repolish.commands.apply.coordinator import (
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.utils import CoordinateOptions
 from repolish.config.models import RepolishConfig
+from repolish.postprocess.models import CommandOutcome, PostProcessRun
 from repolish.providers import SessionBundle
 from repolish.providers.models import GlobalContext, TemplateMapping
 from repolish.providers.models.files import FileMode, FileRecord
@@ -512,7 +513,7 @@ def test_coordinate_sessions_monorepo_returns_rc_and_prints_summary(
         return_value=0,
     )
     mock_print = mocker.patch(
-        'repolish.commands.apply.coordinator.print_summary_tree',
+        'repolish.commands.apply.coordinator.print_run_summary',
     )
 
     rc = coordinate_sessions(config_path, CoordinateOptions(check_only=False))
@@ -713,21 +714,85 @@ def test_post_process_promoted_files_updates_changed_outputs(
         _commands: object,
         cwd: Path,
         config_dir: Path,
-    ) -> None:
+    ) -> PostProcessRun:
         seen_config_dirs.append(config_dir)
         (cwd / 'out.md').write_text('after\n', encoding='utf-8')
+        return PostProcessRun(
+            cwd=cwd,
+            outcomes=[
+                CommandOutcome(raw=('fake-format',), argv=('fake-format',)),
+            ],
+        )
 
     mocker.patch(
         'repolish.commands.apply.coordinator.run_post_process',
         side_effect=_fake_run_post_process,
     )
 
-    _post_process_promoted_files(root_session, tmp_path)
+    assert not _post_process_promoted_files(root_session, tmp_path)
 
     assert out.read_text(encoding='utf-8') == 'after\n'
     assert root_session.promoted_apply_result == {'out.md': 'written'}
     # {config_dir} resolves to the directory holding repolish.yaml
     assert seen_config_dirs == [tmp_path]
+
+
+def test_post_process_promoted_files_no_outcomes_skips_recording(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """An empty run records nothing on the session and is not a failure."""
+    root_session = _make_session(tmp_path)
+    root_session.config.post_process = ['fake-format']
+    root_session.promoted_apply_result = {'out.md': 'unchanged'}
+    (tmp_path / 'out.md').write_text('unchanged\n', encoding='utf-8')
+
+    mocker.patch(
+        'repolish.commands.apply.coordinator.run_post_process',
+        return_value=PostProcessRun(cwd=tmp_path),
+    )
+
+    assert not _post_process_promoted_files(root_session, tmp_path)
+    assert root_session.post_process_runs == []
+
+
+def test_post_process_promoted_files_failed_run_records_and_reports(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A failed promoted run returns True, records the run, and logs the report."""
+    root_session = _make_session(tmp_path)
+    root_session.config.post_process = ['fake-format']
+    root_session.promoted_apply_result = {'out.md': 'unchanged'}
+    (tmp_path / 'out.md').write_text('unchanged\n', encoding='utf-8')
+
+    failed_run = PostProcessRun(
+        cwd=tmp_path,
+        outcomes=[
+            CommandOutcome(
+                raw=('fake-format',),
+                argv=('fake-format',),
+                status='failed',
+                returncode=1,
+            ),
+        ],
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator.run_post_process',
+        return_value=failed_run,
+    )
+    logger = mocker.patch('repolish.commands.apply.coordinator.logger')
+
+    assert _post_process_promoted_files(root_session, tmp_path)
+
+    assert root_session.post_process_runs == [('promoted files', failed_run)]
+    report_path = tmp_path / '.repolish' / '_' / 'post-process.promoted.txt'
+    assert report_path.exists()
+    logger.error.assert_called_once_with(
+        'post_process_run_failed',
+        report=str(report_path),
+        note='promoted files post-process failed',
+    )
 
 
 def test_run_root_pass_triggers_promoted_post_process_in_apply_mode(
@@ -745,6 +810,7 @@ def test_run_root_pass_triggers_promoted_post_process_in_apply_mode(
     )
     post_mock = mocker.patch(
         'repolish.commands.apply.coordinator._post_process_promoted_files',
+        return_value=False,
     )
 
     root_session = _make_session(tmp_path)
@@ -753,6 +819,31 @@ def test_run_root_pass_triggers_promoted_post_process_in_apply_mode(
 
     assert rc == 0
     post_mock.assert_called_once_with(root_session, tmp_path)
+
+
+def test_run_root_pass_returns_1_when_promoted_post_process_fails(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A failed promoted post-process aborts the root pass with rc 1."""
+    mocker.patch(
+        'repolish.commands.apply.coordinator._apply_promotion_pass',
+        return_value=0,
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator.apply_session',
+        return_value=0,
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator._post_process_promoted_files',
+        return_value=True,
+    )
+
+    root_session = _make_session(tmp_path)
+    opts = CoordinateOptions(check_only=False, skip_post_process=False)
+    rc = _run_root_pass([], root_session, tmp_path, [], opts)
+
+    assert rc == 1
 
 
 def test_run_root_pass_skips_promoted_post_process_in_check_mode(

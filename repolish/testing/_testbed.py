@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass, field
+import tempfile
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
 
@@ -13,7 +14,19 @@ from pydantic import BaseModel
 from repolish.directives import process_text
 from repolish.misc import ctx_to_dict
 from repolish.pkginfo import resolve_package_identity
-from repolish.providers.models.context import BaseContext, BaseInputs
+from repolish.providers.models.context import (
+    BaseContext,
+    BaseInputs,
+    ResourceCopy,
+)
+from repolish.providers.models.files import (
+    FileInsertionContribution,
+    FileValidatorEntry,
+    FileValidatorSpec,
+    InsertionRegistry,
+    ValidationResult,
+    ValidationStatus,
+)
 from repolish.providers.models.provider import (
     FinalizeContextOptions,
     ProvideInputsOptions,
@@ -25,7 +38,7 @@ from repolish.providers.models.template_path import RepolishTemplatePath
 from repolish.testing._context import make_context
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from repolish.providers.models.files import TemplateMapping
 
@@ -188,6 +201,141 @@ class ProviderTestBed(Generic[CtxT, InpT]):
                 self._resolved_context,
             ),
         )
+
+    def validators(self) -> dict[str, dict[str, FileValidatorEntry]]:
+        """Call ``create_file_validators`` on the provider (or mode handler)."""
+        return cast(
+            'dict[str, dict[str, FileValidatorEntry]]',
+            call_provider_method(
+                self._instance,
+                'create_file_validators',
+                self._resolved_context,
+            ),
+        )
+
+    def insertions(self) -> FileInsertionContribution:
+        """Call ``create_file_insertions`` on the provider (or mode handler)."""
+        return cast(
+            'FileInsertionContribution',
+            call_provider_method(
+                self._instance,
+                'create_file_insertions',
+                self._resolved_context,
+            ),
+        )
+
+    def insertion_registry(self) -> InsertionRegistry:
+        """Call ``create_insertion_registry`` on the provider (or mode handler)."""
+        return cast(
+            'InsertionRegistry',
+            call_provider_method(
+                self._instance,
+                'create_insertion_registry',
+                self._resolved_context,
+            ),
+        )
+
+    def copies(self) -> list[ResourceCopy]:
+        """Call ``create_default_copies`` on the provider instance.
+
+        Like :meth:`symlinks`, this is a no-argument hook called directly on
+        the provider; it is not routed through mode-handler dispatch.
+        """
+        return self._instance.create_default_copies()
+
+    # -- Validator execution --
+
+    def run_validators(
+        self,
+        files: Mapping[str, str | bytes] | None = None,
+        *,
+        base_dir: Path | None = None,
+    ) -> dict[str, dict[str, ValidationResult]]:
+        """Run the provider's registered validators against *files*.
+
+        The files are materialized on disk first — validators receive a real
+        path to read from, mirroring how ``repolish apply`` resolves the
+        workspace copy of each destination.
+
+        Args:
+            files: Mapping of destination path to file content. Defaults to
+                the output of :meth:`render_all`.
+            base_dir: Directory to materialize the files in. When ``None``
+                a throwaway temporary directory is used and removed after
+                the run.
+
+        Returns:
+            ``{dest_path: {validator_name: ValidationResult}}`` covering
+            every enabled validator that ran, passes included. Validators
+            disabled through :class:`FileValidatorOptions` are skipped
+            entirely. A validator that raises is reported as
+            ``ValidationStatus.ERROR`` with the same crash message shape
+            the apply pipeline produces.
+        """
+        rendered = self.render_all() if files is None else files
+        if base_dir is None:
+            with tempfile.TemporaryDirectory() as tmp:
+                return self._run_validators_in(Path(tmp), rendered)
+        return self._run_validators_in(base_dir, rendered)
+
+    def _run_validators_in(
+        self,
+        root: Path,
+        rendered: Mapping[str, str | bytes],
+    ) -> dict[str, dict[str, ValidationResult]]:
+        """Materialize *rendered* under *root* and run each registered validator."""
+        for dest, content in rendered.items():
+            target = root / dest
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(content, bytes):
+                target.write_bytes(content)
+            else:
+                target.write_text(content, encoding='utf-8')
+
+        results: dict[str, dict[str, ValidationResult]] = {}
+        for dest, entries in self.validators().items():
+            per_file = {
+                name: self._run_validator(name, entry, dest, root)
+                for name, entry in entries.items()
+                if self._validator_enabled(name, entry)
+            }
+            results[dest] = per_file
+        return results
+
+    def _validator_enabled(self, name: str, entry: FileValidatorEntry) -> bool:
+        """Return whether a registered validator should run."""
+        if not isinstance(entry, FileValidatorSpec):
+            return True
+        return entry.options.enabled and entry.options.validators.get(
+            name,
+            True,
+        )
+
+    def _run_validator(
+        self,
+        name: str,
+        entry: FileValidatorEntry,
+        dest: str,
+        root: Path,
+    ) -> ValidationResult:
+        """Execute one validator, converting crashes into an ERROR result."""
+        validator = entry.fn if isinstance(entry, FileValidatorSpec) else entry
+        path = root / dest
+        try:
+            result = cast(
+                'Callable[[CtxT, Path], ValidationResult]',
+                validator,
+            )(self._resolved_context, path)
+        except Exception as exc:  # noqa: BLE001 - crashes are surfaced as results
+            return ValidationResult(
+                status=ValidationStatus.ERROR,
+                message=f'Validator {name!r} for {dest!r} crashed: {exc}',
+                path=dest,
+                validator_name=name,
+            )
+        if result.validator_name:
+            return result
+        return replace(result, validator_name=name)
 
     def provide_inputs(
         self,

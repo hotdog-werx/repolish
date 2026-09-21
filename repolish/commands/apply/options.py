@@ -2,14 +2,33 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from repolish.config import ProviderSymlink, RepolishConfig
-from repolish.config.models.provider import ProviderCopy
+from repolish.config.models.provider import ProviderConfig, ProviderCopy
+from repolish.phases import PhaseTimer
+from repolish.postprocess.models import PostProcessRun
 from repolish.providers.models import (
     BaseInputs,
+    FastLaneSpec,
     GlobalContext,
     ProviderEntry,
     SessionBundle,
     ValidationResult,
 )
+
+
+@dataclass(frozen=True)
+class LaneSessionConfig:
+    """Prepared configuration for a fast-lane run.
+
+    Built by :func:`repolish.fastlane.config.prepare_lane_config`: a
+    single-provider :class:`~repolish.config.RepolishConfig` constructed in
+    memory (the provider's root located from its own class, not from
+    registration) plus the raw provider entry the symlink/copy collectors
+    read. Passing it on :class:`ApplyOptions` lets ``resolve_session`` skip
+    config loading, readiness registration, and link subprocesses entirely.
+    """
+
+    config: RepolishConfig
+    raw_providers: dict[str, ProviderConfig]
 
 
 @dataclass(frozen=True)
@@ -41,6 +60,40 @@ class ApplyOptions:
         repr=False,
     )
     extra_inputs: list[BaseInputs] | None = field(default=None, repr=False)
+    lane: str | None = None
+    """Execute only the contributions of this fast lane (see ``repolish.fastlane``)."""
+    lane_spec: FastLaneSpec | None = field(default=None, repr=False)
+    """Optional runtime lane spec for lane runs.
+
+    Used by provider standalone commands to execute a generated spec through the
+    same lane-restrict apply path without requiring declaration in
+    ``create_fast_lanes()``.
+    """
+    lane_config: LaneSessionConfig | None = field(default=None, repr=False)
+    """Prepared single-provider config for a lane run. When set,
+    ``resolve_session`` uses it directly instead of loading ``repolish.yaml``
+    and registering providers (see ``repolish.fastlane.config``)."""
+    skip_dry_pass: bool = False
+    """Skip the dry provider pass in ``resolve_session``. Only safe for
+    single-provider standalone runs that never consume cross-session
+    routing data (``provider_entries``/``emitted_inputs``)."""
+    command_only: bool = False
+    """Build provider contexts without collecting normal provider hooks.
+
+    Used by standalone provider commands, which supply their own runtime
+    ``lane_spec`` and intentionally forgo cross-provider communication.
+    """
+    fast_lanes_only: bool = False
+    """Collect only ``create_fast_lanes`` after building provider contexts.
+
+    Used by named fast-lane runs, which intentionally skip normal provider
+    contributions and cross-provider communication.
+    """
+    provider_package_identity: tuple[str, str] | None = field(
+        default=None,
+        repr=False,
+    )
+    """Known ``(package_name, project_name)`` for a generated provider CLI."""
 
 
 @dataclass
@@ -173,3 +226,20 @@ class ResolvedSession:
     by :func:`~repolish.commands.apply.symlinks.apply_copies` during apply;
     empty in check-only runs (whole-entry pauses are still derivable from
     the session's ``paused_files``)."""
+    post_process_runs: list[tuple[str, PostProcessRun]] = field(
+        default_factory=list,
+        repr=False,
+    )
+    """Post-process runs executed for this session as ``(label, run)`` pairs
+    (label: ``'session'`` or ``'promoted files'``).  Populated by
+    :func:`~repolish.commands.apply.session._run_post_process_if_needed` and
+    the coordinator's promoted-files pass; the post-process summary tree
+    groups by these."""
+    post_process_reports: list[Path] = field(default_factory=list, repr=False)
+    """Text report paths written for the entries in ``post_process_runs``,
+    parallel to that list; each tree node links to its report."""
+    phase_timer: PhaseTimer = field(default_factory=PhaseTimer, repr=False)
+    """Phase durations recorded while resolving and applying this session.
+    Emitted as structured debug events at the end of the run and written to
+    the run's `.repolish/_/phase-timings.json`, linked from the completion
+    footer."""

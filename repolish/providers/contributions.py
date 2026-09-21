@@ -16,6 +16,8 @@ from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,
+    FastLaneFactory,
+    FastLaneSpec,
     FileInsertionContribution,
     FileMappingOptions,
     FileMode,
@@ -23,6 +25,7 @@ from repolish.providers.models import (
     FileValidatorOptions,
     FileValidatorSpec,
     InsertionRegistry,
+    LazyLaneSpec,
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
@@ -30,7 +33,10 @@ from repolish.providers.models import (
 from repolish.providers.models import (
     Provider as _ProviderBase,
 )
-from repolish.providers.models.template_path import RepolishTemplatePath
+from repolish.providers.models.mapping_normalization import (
+    normalize_lane_spec_mappings,
+    normalize_mapping_entry,
+)
 from repolish.utils import merge_dicts_first_wins
 
 if TYPE_CHECKING:
@@ -402,25 +408,9 @@ def _process_provider_fm(
             accum.suppressed_sources.add(dest)
             continue
 
-        if isinstance(src, str):
-            # Wrap plain-string sources in a TemplateMapping so they carry
-            # source_provider. Store with .jinja stripped to match what's
-            # on disk after staging.
-            tpl = RepolishTemplatePath.from_string(src)
-            accum.merged_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.logical_name,
-                source_provider=provider_id,
-            )
-            continue
-        # For existing TemplateMapping, strip .jinja from source_template
-        # to match what will be on disk after staging
-        tpl = RepolishTemplatePath.from_string(src.source_template) if src.source_template else None
-        annotated = TemplateMapping(
-            source_template=tpl.logical_name if tpl else None,
-            extra_context=src.extra_context,
-            file_mode=src.file_mode,
-            options=src.options,
-            source_provider=provider_id,
+        annotated = normalize_mapping_entry(
+            src,
+            provider_id=provider_id,
         )
         _apply_annotated_tm(dest, annotated, provider_id, accum)
 
@@ -434,23 +424,10 @@ def _collect_promoted_fm(
     for dest, src in pfm.items():
         if src is None:
             continue
-        if isinstance(src, str):
-            # Strip .jinja to match what will be on disk after staging
-            tpl = RepolishTemplatePath.from_string(src)
-            accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.logical_name,
-                source_provider=provider_id,
-            )
-        else:
-            # Strip .jinja from source_template to match staged file
-            tpl = RepolishTemplatePath.from_string(src.source_template) if src.source_template else None
-            accum.promoted_file_mappings[dest] = TemplateMapping(
-                source_template=tpl.logical_name if tpl else None,
-                extra_context=src.extra_context,
-                file_mode=src.file_mode,
-                promote_conflict=src.promote_conflict,
-                source_provider=provider_id,
-            )
+        accum.promoted_file_mappings[dest] = normalize_mapping_entry(
+            src,
+            provider_id=provider_id,
+        )
 
 
 def _handle_promote_file_mappings(
@@ -601,6 +578,97 @@ def _handle_provider_insertions(
             accum.insertion_registry.setdefault(function_name, bound_fn)
             accum.insertion_registry[f'{provider_name}:{function_name}'] = bound_fn
         accum.insertion_sources.setdefault(path, []).append(provider_id)
+
+
+def _normalize_lane_spec(
+    spec: FastLaneSpec,
+    own_ctx: BaseContext,
+    provider_id: str,
+) -> FastLaneSpec:
+    """Normalize one lane spec's contributions to their collected forms.
+
+    Plain-string mapping sources are wrapped in a ``TemplateMapping``
+    (``.jinja`` stripped, ``source_provider`` set) and insertion functions are
+    bound to the provider's own context, so the merge step in
+    ``repolish.fastlane`` is pure dict work with identical output either way
+    it runs.
+    """
+    normalized = normalize_lane_spec_mappings(
+        spec,
+        provider_id=provider_id,
+    )
+    return FastLaneSpec(
+        file_mappings=dict(normalized.file_mappings),
+        file_insertions={
+            path: _bind_insertions_with_context(functions, own_ctx)
+            for path, functions in normalized.file_insertions.items()
+        },
+        file_validators={path: dict(fns) for path, fns in normalized.file_validators.items()},
+        file_copies=list(normalized.file_copies),
+        source_provider=normalized.source_provider,
+    )
+
+
+def _lazy_lane_spec(
+    factory: FastLaneFactory,
+    own_ctx: BaseContext,
+    provider_id: str,
+) -> LazyLaneSpec:
+    """Wrap a lane factory so its first use returns the normalized spec.
+
+    The wrapper defers both the factory call and the normalization after it,
+    so lazy lanes load their modules only when a run actually selects them.
+    The entry memoizes the result: a run that reads the lane twice (collision
+    detection, then merge bookkeeping) evaluates the factory once.
+    """
+
+    def _evaluate() -> FastLaneSpec:
+        return _normalize_lane_spec(
+            factory(),
+            own_ctx,
+            provider_id,
+        )
+
+    return LazyLaneSpec(_evaluate)
+
+
+def _handle_provider_fast_lanes(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+) -> None:
+    """Collect fast lane declarations for one provider.
+
+    The hook receives the provider's ``repolish`` namespace (repo info plus
+    its own identity), the same values a full run injects, so lane
+    declarations can embed them (file headers) without touching the
+    peer-fed provider context. Lanes are stored nested, keyed by
+    ``provider_id`` then ``lane_name``, so two providers may declare lanes
+    with the same name without clobbering each other's bookkeeping
+    (dest-level collisions between them stay an error) and no component
+    ever parses a composite key: provider IDs contain a drive-letter
+    colon on Windows, and lane names may contain colons of their own.
+    Factory lanes are stored unevaluated: the merge/restrict step resolves
+    them, so a lane whose factory imports heavily costs nothing until a run
+    actually selects it.
+    """
+    lanes = inst.create_fast_lanes(own_ctx.repolish)
+
+    for lane_name, declaration in lanes.items():
+        if isinstance(declaration, FastLaneSpec):
+            entry = _normalize_lane_spec(
+                declaration,
+                own_ctx,
+                provider_id,
+            )
+        else:
+            entry = _lazy_lane_spec(
+                declaration,
+                own_ctx,
+                provider_id,
+            )
+        accum.fast_lanes.setdefault(provider_id, {})[lane_name] = entry
 
 
 def _extend_provider_insertions(
@@ -873,6 +941,7 @@ def _collect_provider_contribution(
     if provider_overrides:
         _apply_validator_overrides(provider_overrides.validators or {}, accum)
         _apply_insertion_overrides(provider_overrides.insertions or {}, accum)
+    _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
 
 
@@ -881,12 +950,23 @@ def collect_provider_contributions(
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
     contributions: ProviderContributions | None = None,
+    *,
+    fast_lanes_only: bool = False,
 ) -> None:
     """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
     This mutates the provided accumulators in-place.
     """
     for provider_id, module_dict in module_cache:
+        if fast_lanes_only:
+            inst = module_dict.get('_repolish_provider_instance')
+            own_ctx = provider_contexts.get(provider_id)
+            if isinstance(inst, _ProviderBase) and isinstance(
+                own_ctx,
+                BaseContext,
+            ):
+                _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
+            continue
         _collect_provider_contribution(
             provider_id,
             module_dict,

@@ -8,7 +8,10 @@ from hotlog import get_logger
 from repolish.config.paused import is_paused
 from repolish.hydration.comparison import collect_output_files
 from repolish.hydration.mapping_resolution import resolve_mappings
-from repolish.hydration.misc import get_source_str_from_mapping
+from repolish.hydration.misc import (
+    get_source_str_from_mapping,
+    resolve_mapping_source_file,
+)
 from repolish.misc import is_conditional_file
 from repolish.providers import SessionBundle, TemplateMapping
 
@@ -117,23 +120,14 @@ def _copy_mapping_file(
 
     Returns ``'written'``, ``'unchanged'``, or ``None`` when the source is missing.
     """
-    # mapping sources are materialized with a filename prefix; attempt to
-    # load the prefixed file first and fall back to the original name if the
-    # prefix isn't present (compatibility with older runs).
-    prefix = '_repolish.'
-    source_file = setup_output / 'repolish' / source_str
-    if not source_file.exists():
-        cand = Path(source_str)
-        prefixed = setup_output / 'repolish' / cand.parent / (prefix + cand.name)
-        if prefixed.exists():
-            source_file = prefixed
-        else:
-            logger.warning(
-                'file_mapping_source_not_found',
-                source=source_str,
-                dest=dest_path,
-            )
-            return None
+    source_file = resolve_mapping_source_file(setup_output, source_str)
+    if source_file is None:
+        logger.warning(
+            'file_mapping_source_not_found',
+            source=source_str,
+            dest=dest_path,
+        )
+        return None
 
     dest_file = base_dir / dest_path
     # Respect create-only semantics

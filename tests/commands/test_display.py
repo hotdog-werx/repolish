@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -15,7 +16,8 @@ from rich.console import Console
 
 from repolish.commands.apply.display import (
     print_files_summary,
-    print_summary_tree,
+    print_run_footer,
+    print_run_summary,
 )
 from repolish.commands.apply.options import InsertionFileResult, ResolvedSession
 from repolish.config.models import RepolishConfig
@@ -68,8 +70,8 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for tree test
 def _capture(mocker: MockerFixture, sessions: list[ResolvedSession]) -> str:
     out = io.StringIO()
     test_console = Console(file=out, force_terminal=False, no_color=True)
-    mocker.patch('repolish.commands.apply.display.console', test_console)
-    print_summary_tree(sessions)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    print_run_summary(sessions)
     return out.getvalue()
 
 
@@ -631,7 +633,7 @@ def test_summary_tree_validator_report_details_link(
         validation_reports={'config.toml': str(tmp_path / 'report.json')},
     )
     mocker.patch(
-        'repolish.commands.apply.display.supports_hyperlinks',
+        'repolish.reporting.nodes.supports_hyperlinks',
         new=True,
     )
     output = _capture(mocker, [session])
@@ -648,3 +650,30 @@ def test_summary_tree_validator_report_link_absent_without_report(
     output = _capture(mocker, [session])
     assert 'validators:' in output
     assert '[details]' not in output
+
+
+def test_print_run_footer_writes_timings_json_and_footer_line(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """The footer writes phase-timings.json and prints the completion line."""
+    session = _make_session(tmp_path)
+    session.phase_timer.record('render', 183.0)
+
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    mocker.patch('repolish.reporting.nodes.supports_hyperlinks', new=True)
+
+    print_run_footer([session], 4210.0, tmp_path)
+
+    timings_path = tmp_path / '.repolish' / '_' / 'phase-timings.json'
+    payload = json.loads(timings_path.read_text(encoding='utf-8'))
+    assert payload['total_ms'] == 4210
+    # the session name matches the post-process tree's group label
+    assert payload['sessions'][0]['name'] == tmp_path.name
+    assert payload['sessions'][0]['phases'] == {'render': 183}
+
+    output = out.getvalue()
+    assert 'completed in 4.2s' in output
+    assert '[details]' in output

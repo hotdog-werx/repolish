@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from time import perf_counter
 
 from hotlog import get_logger
 
@@ -13,7 +14,8 @@ from repolish.commands.apply.debug import (
     write_provider_debug_files,
 )
 from repolish.commands.apply.display import (
-    print_summary_tree,
+    print_run_footer,
+    print_run_summary,
 )
 from repolish.commands.apply.insertions import (
     stage_registered_insertions,
@@ -40,9 +42,11 @@ from repolish.hydration import (
 )
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.insertions.adoption import adopt_local_insertion_markers
+from repolish.postprocess.report import write_post_process_report
+from repolish.postprocess.runner import run_post_process
 from repolish.providers.models import SessionBundle, build_file_records
 from repolish.providers.models.files import ValidationStatus
-from repolish.utils import run_post_process
+from repolish.reporting import print_run_header
 from repolish.version import __version__
 
 logger = get_logger(__name__)
@@ -96,16 +100,41 @@ def _log_paused_files(paused: frozenset[str]) -> None:
 
 
 def _run_post_process_if_needed(
-    config: RepolishConfig,
+    session: ResolvedSession,
     setup_output: Path,
     *,
     skip_post_process: bool,
-) -> None:
-    """Run configured post-processing only when a real rendered tree exists."""
-    if not skip_post_process:
-        post_cwd = setup_output / 'repolish'
-        if post_cwd.exists() and any(post_cwd.iterdir()):
-            run_post_process(config.post_process, post_cwd, config.config_dir)
+) -> bool:
+    """Run configured post-processing only when a real rendered tree exists.
+
+    Records the run and its report path on *session* (the summary tree links
+    to the report). Returns whether the run failed — the caller then aborts
+    before anything is copied out, so the project tree is never touched by a
+    run whose post-process failed.
+    """
+    if skip_post_process:
+        return False
+    config = session.config
+    post_cwd = setup_output / 'repolish'
+    if not (post_cwd.exists() and any(post_cwd.iterdir())):
+        return False
+    run = run_post_process(config.post_process, post_cwd, config.config_dir)
+    if not run.outcomes:
+        return False
+    report_path = config.config_dir / '.repolish' / '_' / 'post-process.txt'
+    session.post_process_runs.append(('session', run))
+    session.post_process_reports.append(report_path)
+    return run.failed
+
+
+def _write_post_process_reports(session: ResolvedSession) -> None:
+    """Write the text report for every post-process run recorded on *session*."""
+    for (_label, run), report_path in zip(
+        session.post_process_runs,
+        session.post_process_reports,
+        strict=True,
+    ):
+        write_post_process_report(report_path, run)
 
 
 def _validation_has_errors(session: ResolvedSession) -> bool:
@@ -196,6 +225,27 @@ def apply_session(
     this after collecting all resolved sessions so they can inspect cross-session
     interactions before any files are written.
     """
+    try:
+        return _apply_session(
+            session,
+            check_only=check_only,
+            skip_post_process=skip_post_process,
+            fail_on_warnings=fail_on_warnings,
+        )
+    finally:
+        session.phase_timer.emit()
+        _write_post_process_reports(session)
+
+
+def _apply_session(
+    session: ResolvedSession,
+    *,
+    check_only: bool,
+    skip_post_process: bool,
+    fail_on_warnings: bool,
+) -> int:
+    """Apply pipeline body; :func:`apply_session` wraps this for finalization."""
+    timer = session.phase_timer
     config = session.config
     providers = session.providers
     resolved_symlinks = session.resolved_symlinks
@@ -205,29 +255,30 @@ def apply_session(
     mapped_sources = resolve_mappings(providers).mapped_sources
 
     # staging must happen before we can report per-provider template ownership
-    base_dir, setup_input, setup_output = prepare_staging(config)
-    sources = create_staged_template(
-        setup_input,
-        config,
-        mapped_sources=(mapped_sources | providers.suppressed_sources),
-        workspace_mode=session.global_context.workspace.mode,
-    )
-    providers.template_sources, providers.template_overlay_dirs = _resolve_template_alias_map(
-        sources,
-        alias_to_pid,
-    )
-    providers.file_records = build_file_records(
-        providers,
-        pid_to_alias,
-        config_pid,
-        base_dir,
-    )
-    _write_debug_files(
-        base_dir,
-        config,
-        providers,
-        alias_to_pid,
-    )
+    with timer.phase('staging'):
+        base_dir, setup_input, setup_output = prepare_staging(config)
+        sources = create_staged_template(
+            setup_input,
+            config,
+            mapped_sources=(mapped_sources | providers.suppressed_sources),
+            workspace_mode=session.global_context.workspace.mode,
+        )
+        providers.template_sources, providers.template_overlay_dirs = _resolve_template_alias_map(
+            sources,
+            alias_to_pid,
+        )
+        providers.file_records = build_file_records(
+            providers,
+            pid_to_alias,
+            config_pid,
+            base_dir,
+        )
+        _write_debug_files(
+            base_dir,
+            config,
+            providers,
+            alias_to_pid,
+        )
 
     paused = frozenset(config.paused_files)
     _log_paused_files(paused)
@@ -235,58 +286,78 @@ def apply_session(
 
     # Preprocess templates (anchor-driven replacements). The returned ferry
     # carries whatever directive families ferried past the pre-render phase.
-    pre_render_ferry = preprocess_templates(setup_input, providers, base_dir)
+    with timer.phase('preprocess'):
+        pre_render_ferry = preprocess_templates(
+            setup_input,
+            providers,
+            base_dir,
+        )
 
     # Render templates using Jinja2
-    if render_templates(setup_input, providers, setup_output) != 0:
+    with timer.phase('render'):
+        render_failed = render_templates(setup_input, providers, setup_output) != 0
+    if render_failed:
         return 1
 
     # Reconcile developer-owned content that is only discoverable after Jinja rendering
     # (for example, directives inside loop-generated sections).
-    after_render = _run_after_render_directives(setup_output, base_dir)
+    with timer.phase('directives'):
+        after_render = _run_after_render_directives(setup_output, base_dir)
 
-    # Deliver every family's ferried data to its consumers: merged across both
-    # phases, dests relativized to the project root. Consumers (insertions,
-    # validators, ...) read the families they know from `providers.ferry`.
-    providers.ferry = _relativize_ferry_dests(
-        _merge_ferries(pre_render_ferry, after_render.ferry),
-        base_dir,
-    )
+        # Deliver every family's ferried data to its consumers: merged across both
+        # phases, dests relativized to the project root. Consumers (insertions,
+        # validators, ...) read the families they know from `providers.ferry`.
+        providers.ferry = _relativize_ferry_dests(
+            _merge_ferries(pre_render_ferry, after_render.ferry),
+            base_dir,
+        )
 
     is_root_pass = session.global_context.workspace.mode == 'root'
 
     # Stage insertions into the render tree in both modes so check compares and
     # apply copy the identical content, then post-process the render tree
     # exactly once. The project tree is only ever touched by the final copy.
-    (
-        session.insertion_results,
-        session.provider_insertion_results,
-        staged_insertion_dests,
-    ) = stage_registered_insertions(
-        providers,
-        base_dir,
-        setup_output,
-        pid_to_alias,
-    )
-    _run_post_process_if_needed(
-        config,
-        setup_output,
-        skip_post_process=skip_post_process,
-    )
+    with timer.phase('insertions'):
+        (
+            session.insertion_results,
+            session.provider_insertion_results,
+            staged_insertion_dests,
+        ) = stage_registered_insertions(
+            providers,
+            base_dir,
+            setup_output,
+            pid_to_alias,
+        )
+    with timer.phase('post_process'):
+        post_failed = _run_post_process_if_needed(
+            session,
+            setup_output,
+            skip_post_process=skip_post_process,
+        )
+    if post_failed:
+        logger.error(
+            'post_process_run_failed',
+            report=str(
+                config.config_dir / '.repolish' / '_' / 'post-process.txt',
+            ),
+            note='see the post-process summary tree for per-command details',
+        )
+        return 1
 
     if check_only:
         # In check mode, we compare staged output against base_dir without modifying files.
         # Do NOT apply_generated_output here - that would overwrite local changes!
-        rc, check_result = finish_check(
-            CheckContext(
-                setup_output=setup_output,
-                providers=providers,
-                base_dir=base_dir,
-                resolved_symlinks=resolved_symlinks,
-                provider_infos=config.providers,
-                disable_auto_staging=is_root_pass,
-            ),
-        )
+        with timer.phase('check'):
+            rc, check_result = finish_check(
+                CheckContext(
+                    setup_output=setup_output,
+                    providers=providers,
+                    base_dir=base_dir,
+                    resolved_symlinks=resolved_symlinks,
+                    provider_infos=config.providers,
+                    disable_auto_staging=is_root_pass,
+                ),
+            )
         session.apply_result = check_result
         return rc
 
@@ -294,27 +365,31 @@ def apply_session(
     # runs before this copy, never after: formatting a tree that was already
     # copied leaves the project with unformatted content while check reports
     # drift against the formatted staged copy on every run.
-    session.apply_result = apply_generated_output(
-        setup_output,
-        providers,
-        base_dir,
-        disable_auto_staging=is_root_pass,
-        insertion_dests=staged_insertion_dests,
-    )
-    apply_symlinks(resolved_symlinks, config.providers)
-    session.paused_copies = apply_copies(
-        session.resolved_copies,
-        config.providers,
-        paused_files=providers.paused_files,
-    )
+    with timer.phase('apply_copy'):
+        session.apply_result = apply_generated_output(
+            setup_output,
+            providers,
+            base_dir,
+            disable_auto_staging=is_root_pass,
+            insertion_dests=staged_insertion_dests,
+        )
+    with timer.phase('symlinks'):
+        apply_symlinks(resolved_symlinks, config.providers)
+    with timer.phase('copies'):
+        session.paused_copies = apply_copies(
+            session.resolved_copies,
+            config.providers,
+            paused_files=providers.paused_files,
+        )
 
-    session.validation_results, session.validation_reports = _collect_validation(
-        providers,
-        config.config_dir,
-        setup_output / 'repolish',
-        reports_dir=base_dir / '.repolish' / '_' / 'validators',
-        pid_to_alias=pid_to_alias,
-    )
+    with timer.phase('validation'):
+        session.validation_results, session.validation_reports = _collect_validation(
+            providers,
+            config.config_dir,
+            setup_output / 'repolish',
+            reports_dir=base_dir / '.repolish' / '_' / 'validators',
+            pid_to_alias=pid_to_alias,
+        )
 
     if _validation_has_errors(session):
         logger.error(
@@ -344,7 +419,9 @@ def run_session(options: ApplyOptions) -> int:
     and :func:`apply_session` directly to gain visibility into all sessions
     before any files are written.
     """
-    logger.info('repolish_started', version=__version__)
+    logger.debug('repolish_started', version=__version__)
+    print_run_header(['check'] if options.check_only else [])
+    started = perf_counter()
     session = resolve_session(options)
     rc = apply_session(
         session,
@@ -352,5 +429,10 @@ def run_session(options: ApplyOptions) -> int:
         skip_post_process=options.skip_post_process,
         fail_on_warnings=options.fail_on_warnings,
     )
-    print_summary_tree([session])
+    print_run_summary([session])
+    print_run_footer(
+        [session],
+        (perf_counter() - started) * 1000,
+        options.config_path.resolve().parent,
+    )
     return rc

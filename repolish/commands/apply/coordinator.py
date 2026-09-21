@@ -5,13 +5,15 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from hotlog import get_logger
 
 from repolish.commands.apply.display import (
     error_unknown_member,
-    print_summary_tree,
+    print_run_footer,
+    print_run_summary,
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
@@ -29,12 +31,14 @@ from repolish.config.topology import (
 )
 from repolish.directives import process_file
 from repolish.hydration.mapping_resolution import resolve_mappings
+from repolish.postprocess.report import write_post_process_report
+from repolish.postprocess.runner import run_post_process
 from repolish.providers.models import (
     TemplateMapping,
 )
 from repolish.providers.models.context import MemberInfo, WorkspaceContext
 from repolish.providers.models.files import FileMode, FileRecord
-from repolish.utils import run_post_process
+from repolish.reporting import print_run_header
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -408,12 +412,16 @@ def _apply_promotion_pass(
 def _post_process_promoted_files(
     root_session: ResolvedSession,
     root_base_dir: Path,
-) -> None:
+) -> bool:
     """Run root post-process commands against promoted outputs only.
 
     Promoted outputs are copied into a temporary working tree so post-process
     commands operate on a constrained file set, mirroring the staging behavior
-    used by the normal render/apply pipeline.
+    used by the normal render/apply pipeline. The run and its report are
+    recorded on ``root_session`` (label ``promoted files``) so the summary
+    tree shows it under the root group.
+
+    Returns whether the run failed.
     """
     promoted_result = root_session.promoted_apply_result
     post_process = root_session.config.post_process
@@ -422,11 +430,14 @@ def _post_process_promoted_files(
         root_base_dir,
     )
     if not candidate_paths:
-        return
+        return False
     if not post_process:
-        return
+        return False
 
-    with tempfile.TemporaryDirectory(prefix='repolish-promoted-post-') as tmp:
+    with (
+        root_session.phase_timer.phase('post_process'),
+        tempfile.TemporaryDirectory(prefix='repolish-promoted-post-') as tmp,
+    ):
         tmp_root = Path(tmp)
         _copy_promoted_candidates_to_tmp(
             candidate_paths,
@@ -434,13 +445,31 @@ def _post_process_promoted_files(
             tmp_root,
         )
 
-        run_post_process(post_process, tmp_root, root_session.config.config_dir)
+        run = run_post_process(
+            post_process,
+            tmp_root,
+            root_session.config.config_dir,
+        )
+        if not run.outcomes:
+            return False
+        report_path = root_session.config.config_dir / '.repolish' / '_' / 'post-process.promoted.txt'
+        root_session.post_process_runs.append(('promoted files', run))
+        root_session.post_process_reports.append(report_path)
+        write_post_process_report(report_path, run)
+        if run.failed:
+            logger.error(
+                'post_process_run_failed',
+                report=str(report_path),
+                note='promoted files post-process failed',
+            )
+            return True
         _sync_post_processed_promoted_files(
             candidate_paths,
             root_base_dir,
             tmp_root,
             promoted_result,
         )
+    return False
 
 
 def _promoted_post_process_candidates(
@@ -627,8 +656,15 @@ def _run_root_pass(
     if rc != 0:
         return rc
 
-    if not opts.check_only and not opts.skip_post_process:
-        _post_process_promoted_files(root_session, config_dir)
+    if (
+        not opts.check_only
+        and not opts.skip_post_process
+        and _post_process_promoted_files(
+            root_session,
+            config_dir,
+        )
+    ):
+        return 1
 
     return 2 if promotion_stale else 0
 
@@ -705,6 +741,17 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
     if opts.member and not _validate_member_filter(mono_ctx, opts.member):
         return 1
 
+    # Conditional expressions keep every optional part on one covered line
+    # (branch coverage does not count ternaries).
+    print_run_header(
+        [
+            'monorepo',
+            *([f'member {opts.member}'] if opts.member is not None else []),
+            *(['root only'] if opts.root_only else []),
+            *(['check'] if opts.check_only else []),
+        ],
+    )
+    started = perf_counter()
     member_sessions = _resolve_member_sessions(mono_ctx, config_dir, opts)
     root_session = _resolve_root_session(
         config_path,
@@ -720,5 +767,10 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
         config_dir,
         opts,
     )
-    print_summary_tree(completed_sessions)
+    print_run_summary(completed_sessions)
+    print_run_footer(
+        completed_sessions,
+        (perf_counter() - started) * 1000,
+        config_dir,
+    )
     return rc

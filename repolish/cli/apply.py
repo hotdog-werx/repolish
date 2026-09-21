@@ -8,24 +8,45 @@ from repolish.cli.utils import run_cli_command
 
 
 @Parameter(name='*')
-class ApplyParams(BaseModel):
-    """Parameters for the apply command."""
+class ApplyCommonParams(BaseModel):
+    """Parameters shared by the apply command and the generated lane CLIs.
+
+    Fields defined here show up on both ``repolish apply`` and every
+    fast-lane subcommand (see :func:`repolish.fastlane.provider_cli`), so the
+    two flag sets cannot drift apart.
+    """
 
     config: Annotated[Path, Parameter(name=['--config', '-c'])] = Field(
         default=Path('repolish.yaml'),
         description='Path to the repolish YAML configuration file',
     )
-    check: bool = Field(
+    check: Annotated[bool, Parameter(name=['--check'])] = Field(
         default=False,
         description='Load config and create context (dry-run check)',
     )
+    fail_on_warnings: Annotated[
+        bool,
+        Parameter(name=['--fail-on-warnings']),
+    ] = Field(
+        default=False,
+        description='Treat validator warnings as fatal errors (useful for CI)',
+    )
+    skip_post_process: Annotated[
+        bool,
+        Parameter(name=['--skip-post-process']),
+    ] = Field(
+        default=False,
+        description='Skip all post_process commands defined in repolish.yaml',
+    )
+
+
+@Parameter(name='*')
+class ApplyParams(ApplyCommonParams):
+    """Parameters for the apply command."""
+
     strict: bool = Field(
         default=False,
         description='Exit with an error if any provider could not be registered (useful for CI)',
-    )
-    fail_on_warnings: bool = Field(
-        default=False,
-        description='Treat validator warnings as fatal errors (useful for CI)',
     )
     root_only: bool = Field(
         default=False,
@@ -44,10 +65,6 @@ class ApplyParams(BaseModel):
             'Bypass monorepo detection entirely and suppress the member note. '
             'Run a normal single-pass repolish on the current directory.'
         ),
-    )
-    skip_post_process: bool = Field(
-        default=False,
-        description='Skip all post_process commands defined in repolish.yaml',
     )
     providers: Annotated[str | None, Parameter(name=['--providers', '-p'])] = Field(
         default=None,

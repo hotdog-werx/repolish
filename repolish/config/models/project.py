@@ -1,3 +1,4 @@
+from enum import Enum
 from pathlib import Path
 
 from pydantic import (
@@ -20,6 +21,50 @@ class WorkspaceConfig(BaseModel):
 
     members: list[str] | None = None
     """Explicit repo-relative member paths. Overrides uv workspace detection."""
+
+
+class FastLaneResolution(str, Enum):
+    """Which side wins when a regular hook and a fast lane declare one dest."""
+
+    FAST_LANE = 'fast_lane'
+    REGULAR = 'regular'
+
+
+class FastLaneConfig(BaseModel):
+    """Per-lane settings from the ``fast_lanes.config`` section.
+
+    The keys of the surrounding mapping are lane names. ``post_process`` is
+    the first field; the model is deliberately extensible so future
+    per-lane settings land here.
+    """
+
+    post_process: list[str] = Field(
+        default_factory=list,
+        description=(
+            'Post-process commands for this lane, run against the render '
+            'tree in apply and check mode alike. Replaces the project-wide '
+            'post_process in a named lane run (a lane with no entry runs '
+            'no post_process at all).'
+        ),
+    )
+
+
+class FastLanesSection(BaseModel):
+    """The top-level ``fast_lanes`` section in ``repolish.yaml``."""
+
+    resolutions: dict[str, FastLaneResolution] = Field(
+        default_factory=dict,
+        description=(
+            'Resolves a dest declared by both a regular provider hook and a '
+            "fast lane. 'fast_lane' keeps the lane's contribution everywhere; "
+            "'regular' keeps the regular hook's entry (lane runs then skip "
+            'the dest). Without an entry here, such a collision is an error.'
+        ),
+    )
+    config: dict[str, FastLaneConfig] = Field(
+        default_factory=dict,
+        description='Per-lane settings, keyed by lane name.',
+    )
 
 
 class RepolishConfigFile(BaseModel):
@@ -62,6 +107,10 @@ class RepolishConfigFile(BaseModel):
             'files while a provider is being fixed or updated. Remove entries '
             'once the underlying provider issue is resolved.'
         ),
+    )
+    fast_lanes: FastLanesSection = Field(
+        default_factory=FastLanesSection,
+        description='Fast lane section: dest resolutions and per-lane config.',
     )
     providers: dict[str, ProviderConfig] = Field(
         default_factory=dict,
@@ -174,5 +223,12 @@ class RepolishConfig(BaseModel):
         description=(
             'Temporary list of files repolish will not touch. '
             'Inherited directly from `RepolishConfigFile.paused_files`.'
+        ),
+    )
+    fast_lanes: FastLanesSection = Field(
+        default_factory=FastLanesSection,
+        description=(
+            'Fast lane section: dest resolutions and per-lane config. '
+            'Inherited directly from `RepolishConfigFile.fast_lanes`.'
         ),
     )

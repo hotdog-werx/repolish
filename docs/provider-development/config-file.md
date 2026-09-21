@@ -41,7 +41,10 @@ Repolish cannot run without at least one provider configured.
   formatters live — running `ruff format .` or `prettier --write .` here ensures
   the diff and apply steps always operate on correctly formatted output.
   Commands run in order, once per session, with the render directory as their
-  working directory. Three placeholders are substituted before execution:
+  working directory. These commands apply to `repolish apply` and to a fast lane
+  CLI's `all` subcommand; a named lane run uses that lane's own
+  `fast_lanes.config` commands instead (see `fast_lanes` below). Three
+  placeholders are substituted before execution:
 
   - `{render_dir}` — absolute path to the render tree holding the final content
     before it is copied into the project (normally also the working directory)
@@ -94,6 +97,33 @@ Repolish cannot run without at least one provider configured.
   paused_files:
     - .github/workflows/ci.yml # provider#42 pending
   ```
+
+- **`fast_lanes`** _(optional mapping)_ - fast lane configuration, with two
+  sub-keys:
+
+  - **`resolutions`** _(mapping of path to string)_ - resolves a dest declared
+    by both a regular provider hook and a fast lane. Each value is `fast_lane`
+    (the lane's contribution wins everywhere) or `regular` (the regular hook's
+    contribution wins; lane runs skip the dest). Without an entry here, such a
+    collision stops the run naming both declaration sites.
+  - **`config`** _(mapping of lane name to mapping)_ - per-lane settings, keyed
+    by lane name. The one field today is `post_process` (a list of commands),
+    which replaces the project's top-level `post_process` in that lane's named
+    CLI run; a lane with no entry runs no post_process at all. The project's own
+    `post_process` still applies to `repolish apply` and the CLI's `all`
+    subcommand.
+
+  ```yaml
+  fast_lanes:
+    resolutions:
+      action1/action.yaml: fast_lane
+    config:
+      actions:
+        post_process:
+          - ruff format {render_dir}
+  ```
+
+  See [Fast Lanes](fast-lanes/index.md) for the full semantics.
 
 - **`workspace`** _(optional mapping)_ - enables workspace (monorepo) mode. When
   present, repolish runs a session for the root and one for each discovered

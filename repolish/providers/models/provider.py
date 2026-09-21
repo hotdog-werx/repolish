@@ -27,13 +27,16 @@ from repolish.providers._log import logger
 from repolish.providers.models.context import (
     BaseContext,
     BaseInputs,
+    RepolishContext,
     ResourceCopy,
     Symlink,
 )
 from repolish.providers.models.files import (
+    FastLaneDeclaration,
     FileInsertionContribution,
     FileMode,
     InsertionRegistry,
+    ProviderCommandDeclaration,
     TemplateMapping,
     ValidatorMapping,
 )
@@ -559,6 +562,55 @@ class Provider(ABC, Generic[ContextT, InputT]):
         Default implementation returns an empty list (no copies).
         """
         return []
+
+    def create_fast_lanes(
+        self,
+        repolish: RepolishContext,  # noqa: ARG002 - parameter may be unused
+    ) -> dict[str, FastLaneDeclaration]:
+        """Optional: declare fast lanes for quick, scoped apply runs.
+
+        Returns ``{lane_name: FastLaneSpec}`` where each spec holds the same
+        shapes the regular hooks return: ``file_mappings``,
+        ``file_insertions``, ``file_validators``. A value may instead be a
+        zero-arg factory returning the spec (:type:`FastLaneFactory`): the
+        factory is called only when the lane actually runs, so its module
+        imports (and any expensive work building the spec) stay out of CLI
+        startup and out of runs that do not select the lane.
+
+        The hook receives the ``repolish`` namespace (repo info, year, and
+        this provider's own name and version) and **nothing else** on
+        purpose: those values are identical whether the lane runs alone
+        (``<alias>-cli <lane>``) or merged into a full ``repolish apply``,
+        while the provider context may carry peer-provider input that is
+        only complete in a full run. Declare peer-dependent work in the
+        regular hooks instead; use *repolish* for values lanes genuinely
+        need, like ``{{ repolish.provider.alias }}`` file headers.
+
+        Merging rules (full apply folds every lane's contributions into the
+        session bundle): a dest declared by both a regular hook and a lane
+        raises, unless the project config carries a
+        ``fast_lanes.resolutions`` entry for it; the same dest in two lanes
+        always raises.
+
+        Default implementation returns an empty mapping (no lanes).
+        """
+        return {}
+
+    @classmethod
+    def create_provider_commands(
+        cls,
+    ) -> dict[str, ProviderCommandDeclaration]:
+        """Optional: declare standalone provider commands with typed args.
+
+        Returns ``{command_name: ProviderCommandContract}`` for commands that
+        should be exposed on the provider CLI but never merged into full
+        ``repolish apply`` runs.
+
+        The contract is intentionally static and class-level so the CLI can
+        build command help and argument parsing quickly without importing heavy
+        command execution modules.
+        """
+        return {}
 
     def promote_file_mappings(
         self,

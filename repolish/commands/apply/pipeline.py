@@ -1,18 +1,25 @@
+from pathlib import Path
+
 from hotlog import get_logger
 
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.config.models.provider import (
+    ProviderConfig,
+    ProviderCopy,
     ProviderOverrides,
 )
-from repolish.hydration import build_final_providers
+from repolish.fastlane import merge_fast_lanes, restrict_to_lane
+from repolish.hydration import FinalProviderOptions, build_final_providers
 from repolish.linker.health import ensure_providers_ready
 from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,
 )
+from repolish.phases import PhaseTimer
 from repolish.providers.models import (
     BaseInputs,
+    FastLaneSpec,
     GlobalContext,
     ProviderEntry,
     get_global_context,
@@ -89,6 +96,102 @@ def _collect_session_outputs(
     return dry.all_providers_list, dry.emitted_inputs
 
 
+def _load_session_config(
+    options: ApplyOptions,
+    config_dir: Path,
+    timer: PhaseTimer,
+) -> tuple[RepolishConfig, dict[str, ProviderConfig]]:
+    """Read the config file and run the readiness check for a full session.
+
+    Returns both the resolved config and the raw provider entries (what the
+    symlink/copy collectors need). Readiness failures only warn: the
+    providers in question are absent from the run, never fatal on their own.
+    """
+    with timer.phase('config_load'):
+        raw_config = load_config_file(options.config_path)
+        if options.provider_filter is not None:
+            aliases = [
+                alias
+                for alias in (raw_config.providers_order or list(raw_config.providers.keys()))
+                if alias in options.provider_filter
+            ]
+            filtered_raw_providers = {
+                alias: raw_config.providers[alias] for alias in aliases if alias in raw_config.providers
+            }
+        else:
+            aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
+            filtered_raw_providers = raw_config.providers
+    with timer.phase('providers_ready'):
+        readiness = ensure_providers_ready(
+            aliases,
+            filtered_raw_providers,
+            config_dir,
+            strict=options.strict,
+            location_context=None,
+        )
+    if readiness.failed:
+        logger.warning(
+            'providers_not_ready',
+            failed=readiness.failed,
+            note='these providers will be absent from the run',
+        )
+    with timer.phase('config_load'):
+        config = load_config(
+            options.config_path,
+            provider_filter=options.provider_filter,
+        )
+    return config, raw_config.providers
+
+
+def _lane_copy_entries(
+    spec: FastLaneSpec,
+    pid_to_alias: dict[str, str],
+    fallback_alias: str,
+) -> dict[str, list[ProviderCopy]]:
+    """Return the copy set *spec* declares, keyed by its provider alias.
+
+    Normalization stamps every collected spec with its declaring provider's
+    id, so the alias lookup resolves; the alias-empty case is a safety net
+    for a spec that skipped normalization, and such a spec copies nothing.
+    """
+    alias = pid_to_alias.get(spec.source_provider or '') or fallback_alias
+    if not spec.file_copies or not alias:
+        return {}
+    return {
+        alias: [ProviderCopy(source=Path(copy.source), target=Path(copy.target)) for copy in spec.file_copies],
+    }
+
+
+def _lane_copies(
+    spec: FastLaneSpec,
+    pid_to_alias: dict[str, str],
+    *,
+    fallback_alias: str,
+) -> dict[str, list[ProviderCopy]]:
+    """Build the whole copy set for a lane run: the lane's own copies only."""
+    return _lane_copy_entries(spec, pid_to_alias, fallback_alias)
+
+
+def _fold_lane_copies(
+    resolved_copies: dict[str, list[ProviderCopy]],
+    specs: list[FastLaneSpec],
+    pid_to_alias: dict[str, str],
+) -> None:
+    """Extend *resolved_copies* with what the merged lane specs declare.
+
+    Full runs collect the provider's own copy set and the merged lanes' copies
+    side by side, so a lane's copies materialize in a full apply exactly as
+    they do when the lane runs alone.
+    """
+    for spec in specs:
+        for alias, entries in _lane_copy_entries(
+            spec,
+            pid_to_alias,
+            '',
+        ).items():
+            resolved_copies.setdefault(alias, []).extend(entries)
+
+
 def resolve_session(options: ApplyOptions) -> ResolvedSession:
     """Run the provider pipeline and return a fully-resolved session snapshot.
 
@@ -101,64 +204,94 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     """
     config_path = options.config_path
     config_dir = config_path.resolve().parent
+    timer = PhaseTimer()
 
-    raw_config = load_config_file(config_path)
-    # Apply provider filter to raw config for readiness check
-    if options.provider_filter is not None:
-        aliases = [
-            alias
-            for alias in (raw_config.providers_order or list(raw_config.providers.keys()))
-            if alias in options.provider_filter
-        ]
-        filtered_raw_providers = {
-            alias: raw_config.providers[alias] for alias in aliases if alias in raw_config.providers
-        }
+    if options.lane_config is not None:
+        # Prepared lane run (repolish.fastlane.config): the provider's
+        # location comes from its own package, so config resolution and
+        # readiness registration are pure overhead here. Skip both.
+        config = options.lane_config.config
+        raw_providers = options.lane_config.raw_providers
     else:
-        aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
-        filtered_raw_providers = raw_config.providers
-    readiness = ensure_providers_ready(
-        aliases,
-        filtered_raw_providers,
-        config_dir,
-        strict=options.strict,
-        location_context=None,
-    )
-    if readiness.failed:
-        logger.warning(
-            'providers_not_ready',
-            failed=readiness.failed,
-            note='these providers will be absent from the run',
-        )
+        config, raw_providers = _load_session_config(options, config_dir, timer)
 
-    config = load_config(config_path, provider_filter=options.provider_filter)
     effective_global_context = options.global_context or get_global_context()
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
 
     # Dry pass: capture what this session contributes outward for cross-session
     # routing (provider entries + emitted inputs before local consumption).
-    provider_entries, emitted_inputs = _collect_session_outputs(
-        config,
-        alias_to_pid,
-        effective_global_context,
-    )
+    # Single-provider standalone runs (fast lanes) never consume that data, so
+    # they can skip the pass entirely.
+    if options.skip_dry_pass:
+        provider_entries, emitted_inputs = [], []
+    else:
+        with timer.phase('dry_pass'):
+            provider_entries, emitted_inputs = _collect_session_outputs(
+                config,
+                alias_to_pid,
+                effective_global_context,
+            )
 
-    providers = build_final_providers(
-        config,
-        global_context=options.global_context,
-        extra_provider_entries=options.extra_provider_entries,
-        extra_inputs=options.extra_inputs,
-    )
+    with timer.phase('provider_pipeline'):
+        providers = build_final_providers(
+            config,
+            options=FinalProviderOptions(
+                global_context=effective_global_context,
+                extra_provider_entries=options.extra_provider_entries,
+                extra_inputs=options.extra_inputs,
+                context_only=options.command_only,
+                fast_lanes_only=options.fast_lanes_only,
+                phase_timer=timer,
+                provider_package_identity=options.provider_package_identity,
+            ),
+        )
     resolved_symlinks = collect_provider_symlinks(
         config.providers,
-        raw_config.providers,
-        mode=effective_global_context.workspace.mode,
-    )
-    resolved_copies = collect_provider_copies(
-        config.providers,
-        raw_config.providers,
+        raw_providers,
         mode=effective_global_context.workspace.mode,
     )
     ordered_aliases = _ordered_aliases(config)
+
+    if options.lane_spec is not None:
+        if options.lane is None:
+            msg = 'lane_spec requires lane to be set'
+            raise ValueError(msg)
+        lane_alias = next(iter(config.providers), '')
+        lane_pid = alias_to_pid.get(lane_alias, lane_alias)
+        providers.fast_lanes.setdefault(lane_pid, {})[options.lane] = options.lane_spec
+
+    # Fast lanes: fold every lane's contributions into the bundle (full runs)
+    # or cut the bundle down to exactly one lane (lane runs). Both paths run
+    # duplicate detection against the project's fast_lanes.resolutions.
+    if options.lane is not None:
+        # A lane run copies exactly what the lane declares in file_copies:
+        # the provider's own copy set never collects (or executes) here.
+        lane_spec = restrict_to_lane(
+            providers,
+            options.lane,
+            resolutions=config.fast_lanes.resolutions,
+            pid_to_alias=pid_to_alias,
+        )
+        resolved_copies = _lane_copies(
+            lane_spec,
+            pid_to_alias,
+            fallback_alias=next(iter(config.providers), ''),
+        )
+    else:
+        resolved_copies = collect_provider_copies(
+            config.providers,
+            raw_providers,
+            mode=effective_global_context.workspace.mode,
+        )
+        _fold_lane_copies(
+            resolved_copies,
+            merge_fast_lanes(
+                providers,
+                resolutions=config.fast_lanes.resolutions,
+                pid_to_alias=pid_to_alias,
+            ),
+            pid_to_alias,
+        )
 
     return ResolvedSession(
         config_path=config_path,
@@ -175,4 +308,5 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         extra_inputs=options.extra_inputs or [],
         provider_entries=provider_entries,
         emitted_inputs=emitted_inputs,
+        phase_timer=timer,
     )
