@@ -1,0 +1,64 @@
+"""Example facet: the ``.gitignore`` file.
+
+This facet is not active until you register it on the provider::
+
+    class {{ class_name }}(Provider[{{ context_class }}, {{ inputs_class }}]):
+        facets = [GitignoreFacet]
+
+Registering it also requires the ``repolish/gitignore.jinja`` template it
+maps (``resources/templates/repolish/gitignore.jinja``), which renders with
+``{{ '{{ facet.extra_entries }}' }}`` available as the facet's context.
+
+The example demonstrates the aggregating-inputs pattern: any peer provider
+can contribute ignore entries by emitting ``GitignoreInputs`` payloads; the
+framework routes them here by schema, and ``finalize_context`` folds them
+into the facet's context without the facet ever filtering payloads itself.
+"""
+
+from __future__ import annotations
+
+from typing_extensions import override
+
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    FacetFinalizeOptions,
+    FacetSpec,
+    FacetSpecOptions,
+    ProviderFacet,
+)
+
+
+class GitignoreInputs(BaseInputs):
+    """Ignore entries a peer provider wants added to ``.gitignore``."""
+
+    entries: list[str] = []
+
+
+class GitignoreCtx(BaseContext):
+    """Context for the ``.gitignore`` file."""
+
+    extra_entries: list[str] = []
+
+
+class GitignoreFacet(ProviderFacet[GitignoreCtx, GitignoreInputs]):
+    """Owns the ``.gitignore`` file end to end."""
+
+    name = 'gitignore'
+
+    @override
+    def finalize_context(
+        self,
+        opt: FacetFinalizeOptions[GitignoreCtx, GitignoreInputs],
+    ) -> GitignoreCtx:
+        """Fold the entries routed to this facet into its context."""
+        for payload in opt.received_inputs:
+            opt.own_context.extra_entries.extend(payload.entries)
+        return opt.own_context
+
+    @override
+    def create_spec(self, opt: FacetSpecOptions[GitignoreCtx]) -> FacetSpec:
+        """Declare this facet's file: its mapping lives here, not on the provider."""
+        return FacetSpec(
+            file_mappings={'.gitignore': 'gitignore.jinja'},
+        )

@@ -16,6 +16,8 @@ from repolish.providers.models import (
     Action,
     BaseContext,
     Decision,
+    FacetSpec,
+    FacetSpecOptions,
     FastLaneFactory,
     FastLaneSpec,
     FileInsertionContribution,
@@ -29,6 +31,7 @@ from repolish.providers.models import (
     ProviderContributions,
     TemplateMapping,
     call_provider_method,
+    instantiate_facets,
 )
 from repolish.providers.models import (
     Provider as _ProviderBase,
@@ -40,7 +43,7 @@ from repolish.providers.models.mapping_normalization import (
 from repolish.utils import merge_dicts_first_wins
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from repolish.config.models.provider import ProviderOverrides
 
@@ -377,7 +380,7 @@ def _effective_enabled_state(
 
 def _process_provider_fm(
     provider_id: str,
-    fm: dict[str, str | TemplateMapping | None],
+    fm: Mapping[str, str | TemplateMapping | None],
     accum: Accumulators,
     config_overrides: dict[str, FileMappingOptions] | None = None,
 ) -> None:
@@ -493,8 +496,13 @@ def _handle_provider_file_mappings(
     provider_id: str,
     accum: Accumulators,
     provider_overrides: ProviderOverrides | None,
-) -> None:
-    """Collect and normalize file_mappings contributions for one provider."""
+) -> set[str]:
+    """Collect and normalize file_mappings contributions for one provider.
+
+    Returns the dest paths the provider declared through the regular hook
+    (opt-out ``None`` sources excluded); facet collection uses the set to
+    raise on a dest claimed by both a facet and a regular hook.
+    """
     fm = cast(
         'dict[str, str | TemplateMapping | None]',
         call_provider_method(inst, 'create_file_mappings', own_ctx),
@@ -507,6 +515,7 @@ def _handle_provider_file_mappings(
         config_overrides=fm_config_opts,
     )
     _suppress_auto_staged_files(provider_id, fm_config_opts, accum)
+    return {dest for dest, src in fm.items() if src is not None}
 
 
 def _handle_provider_validators(
@@ -514,7 +523,7 @@ def _handle_provider_validators(
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
-) -> None:
+) -> set[str]:
     """Collect validator registrations for one provider.
 
     The validator registry is additive, but the per-file source ownership used for
@@ -522,6 +531,9 @@ def _handle_provider_validators(
     contributed provider for that file path. This keeps the human-facing "who
     owns this validator" metadata aligned with the provider that actually
     declared the check for the target path.
+
+    Returns the dest paths the provider declared (see
+    ``_handle_provider_file_mappings`` for how facet collection uses this).
     """
     validators = cast(
         'dict[str, dict[str, FileValidatorEntry]]',
@@ -530,6 +542,7 @@ def _handle_provider_validators(
     for path, path_validators in validators.items():
         accum.file_validators.setdefault(path, {}).update(path_validators)
         accum.validator_sources[path] = provider_id
+    return set(validators)
 
 
 def _handle_provider_insertions(
@@ -538,12 +551,16 @@ def _handle_provider_insertions(
     provider_id: str,
     accum: Accumulators,
     provider_overrides: ProviderOverrides | None = None,
-) -> None:
+) -> set[str]:
     """Collect insertion-function registrations for one provider.
 
     This mirrors validation registration but keeps the registry keyed by file path
     and function name so later resolution can look up the callables by the parsed
     insertion metadata without leaking registration state across monorepo modes.
+
+    Returns the dest paths the provider declared through the hook, before
+    config-driven ``insertions_extend_files`` additions (see
+    ``_handle_provider_file_mappings`` for how facet collection uses this).
     """
     contribution = cast(
         'FileInsertionContribution',
@@ -557,6 +574,7 @@ def _handle_provider_insertions(
         )
 
     insertions = _normalize_provider_insertions(contribution, shared_registry)
+    declared = set(insertions)
     _extend_provider_insertions(
         insertions,
         extra_paths=(provider_overrides.insertions_extend_files if provider_overrides else None),
@@ -578,6 +596,7 @@ def _handle_provider_insertions(
             accum.insertion_registry.setdefault(function_name, bound_fn)
             accum.insertion_registry[f'{provider_name}:{function_name}'] = bound_fn
         accum.insertion_sources.setdefault(path, []).append(provider_id)
+    return declared
 
 
 def _normalize_lane_spec(
@@ -669,6 +688,130 @@ def _handle_provider_fast_lanes(
                 provider_id,
             )
         accum.fast_lanes.setdefault(provider_id, {})[lane_name] = entry
+
+
+def _facet_spec_dests(spec: FacetSpec) -> set[str]:
+    """Return every dest path a facet's spec claims."""
+    return set(spec.file_mappings) | set(spec.file_insertions) | set(spec.file_validators)
+
+
+def _check_facet_dest_collisions(
+    facet_name: str,
+    dests: set[str],
+    provider_id: str,
+    regular_dests: set[str],
+    facet_dests: dict[str, str],
+) -> None:
+    """Raise when a facet dest collides with a regular hook or a sibling facet.
+
+    Same rule as lane-vs-regular collisions: a dest claimed twice inside one
+    provider is a load-time authoring mistake, not a merge the run should
+    silently resolve. Cross-provider dests follow the normal merge rules.
+    """
+    for dest in dests:
+        if dest in regular_dests:
+            msg = (
+                f'facet {facet_name!r} of provider {provider_id!r} declares '
+                f'dest {dest!r} that the provider already declares through '
+                'its regular hooks (file mappings, insertions, or validators)'
+            )
+            raise ValueError(msg)
+        sibling = facet_dests.get(dest)
+        if sibling is not None:
+            msg = (
+                f'facet {facet_name!r} of provider {provider_id!r} declares '
+                f'dest {dest!r} already claimed by sibling facet {sibling!r}'
+            )
+            raise ValueError(msg)
+    for dest in dests:
+        facet_dests[dest] = facet_name
+
+
+def _apply_facet_spec(  # noqa: PLR0913 - mirrors the regular handler signatures
+    facet_name: str,
+    spec: FacetSpec,
+    provider_id: str,
+    provider_name: str,
+    fctx: BaseContext,
+    accum: Accumulators,
+) -> None:
+    """Merge one facet's spec exactly as if the provider had declared it.
+
+    Insertions bind to the facet's own context (the functions close over
+    facet data, not provider data); validator and insertion registries
+    follow the same setdefault/qualified-key patterns the regular handlers
+    use, so downstream resolution cannot tell the two apart.
+    """
+    _process_provider_fm(provider_id, spec.file_mappings, accum)
+    for path, functions in spec.file_insertions.items():
+        registry = accum.file_insertions.setdefault(path, {})
+        for function_name, bound_fn in _bind_insertions_with_context(
+            functions,
+            fctx,
+        ).items():
+            registry.setdefault(function_name, bound_fn)
+            registry[f'{provider_name}:{function_name}'] = bound_fn
+            accum.insertion_registry.setdefault(function_name, bound_fn)
+            accum.insertion_registry[f'{provider_name}:{function_name}'] = bound_fn
+        accum.insertion_sources.setdefault(path, []).append(provider_id)
+    for path, path_validators in spec.file_validators.items():
+        accum.file_validators.setdefault(path, {}).update(path_validators)
+        accum.validator_sources[path] = provider_id
+    for dest in spec.file_mappings:
+        accum.facet_owners[Path(*PurePosixPath(dest).parts).as_posix()] = (
+            provider_id,
+            facet_name,
+        )
+
+
+def _handle_provider_facets(
+    inst: _ProviderBase,
+    own_ctx: BaseContext,
+    provider_id: str,
+    accum: Accumulators,
+    regular_dests: set[str],
+) -> None:
+    """Collect each declared facet's spec into the accumulators.
+
+    Facets run after the provider's regular hooks so ``regular_dests`` can be
+    checked for collisions. A facet whose context is missing (creation failed
+    earlier) or whose ``create_spec`` raises is skipped with a warning: one
+    broken facet must not stop the run, matching how facet context creation
+    and finalize are treated.
+    """
+    provider_name = inst.alias or provider_id
+    facet_dests: dict[str, str] = {}
+    for facet in instantiate_facets(inst):
+        fctx = own_ctx.facets.get(facet.name)
+        if fctx is None:
+            continue
+        try:
+            spec = facet.create_spec(
+                FacetSpecOptions(own_context=fctx, provider_context=own_ctx),
+            )
+        except Exception as exc:  # noqa: BLE001 - one broken facet must not stop the run
+            logger.warning(
+                'facet_create_spec_raised',
+                provider=provider_id,
+                facet=facet.name,
+                error=str(exc),
+            )
+            continue
+        _check_facet_dest_collisions(
+            facet.name,
+            _facet_spec_dests(spec),
+            provider_id,
+            regular_dests,
+            facet_dests,
+        )
+        _apply_facet_spec(
+            facet.name,
+            spec,
+            provider_id,
+            provider_name,
+            fctx,
+            accum,
+        )
 
 
 def _extend_provider_insertions(
@@ -923,15 +1066,20 @@ def _collect_provider_contribution(
     if provider_overrides and provider_overrides.anchors:
         accum.merged_anchors.update(provider_overrides.anchors)
 
-    _handle_provider_file_mappings(
+    regular_dests = _handle_provider_file_mappings(
         inst,
         own_ctx,
         provider_id,
         accum,
         provider_overrides,
     )
-    _handle_provider_validators(inst, own_ctx, provider_id, accum)
-    _handle_provider_insertions(
+    regular_dests |= _handle_provider_validators(
+        inst,
+        own_ctx,
+        provider_id,
+        accum,
+    )
+    regular_dests |= _handle_provider_insertions(
         inst,
         own_ctx,
         provider_id,
@@ -943,6 +1091,7 @@ def _collect_provider_contribution(
         _apply_insertion_overrides(provider_overrides.insertions or {}, accum)
     _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
     _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
+    _handle_provider_facets(inst, own_ctx, provider_id, accum, regular_dests)
 
 
 def collect_provider_contributions(

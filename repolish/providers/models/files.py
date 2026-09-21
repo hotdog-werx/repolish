@@ -652,6 +652,13 @@ class SessionBundle(BaseModel):
     full runs, or executed alone for lane runs (see ``repolish.fastlane``).
     Factory lanes stay unevaluated here and are resolved by the
     merge/restrict step, once, only when needed."""
+    facet_owners: dict[str, tuple[str, str]] = Field(default_factory=dict)
+    """Destination path (POSIX) → ``(provider_id, facet_name)`` for every
+    dest a facet declared through ``ProviderFacet.create_spec``. The
+    renderer reads it to inject the owning facet's context as
+    ``{{ facet.* }}`` for that one file; every template keeps access to
+    all sibling facets through ``{{ facets.<name>.* }}`` on the provider
+    context."""
 
 
 def _records_from_template_sources(
@@ -918,3 +925,7 @@ class Accumulators:
     fast_lanes: dict[str, dict[str, FastLaneEntry]] = field(
         default_factory=dict,
     )
+    # destination path (POSIX) → (provider_id, facet_name) for every dest a
+    # facet declared via ProviderFacet.create_spec; carried onto the bundle
+    # so the renderer can inject the owning facet's context as `facet`.
+    facet_owners: dict[str, tuple[str, str]] = field(default_factory=dict)

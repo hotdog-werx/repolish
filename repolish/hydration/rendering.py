@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from shutil import copy2
 
 from hotlog import get_logger
@@ -175,6 +175,33 @@ def _ctx_for_pid(pid: str | None, providers: SessionBundle) -> dict:
         if found is not None:
             return ctx_to_dict(found)
     return {}
+
+
+def _facet_ctx_for_dest(
+    dest_path: str,
+    providers: SessionBundle,
+) -> dict | None:
+    """Return the owning facet's context dict for a mapped dest, if any.
+
+    ``facet_owners`` maps dest paths to ``(provider_id, facet_name)`` pairs
+    recorded during collection. Files no facet owns get no ``facet`` key, so
+    ``{{ facet.* }}`` stays undefined there by design: a template that reads
+    it belongs to a facet-owned file.
+    """
+    # Same normalization `_apply_annotated_tm` uses for history keys, so the
+    # collection-side and render-side lookups agree on every platform.
+    key = Path(*PurePosixPath(dest_path).parts).as_posix()
+    owner = providers.facet_owners.get(key)
+    if owner is None:
+        return None
+    pid, facet_name = owner
+    provider_ctx = providers.provider_contexts.get(pid)
+    if provider_ctx is None:
+        return None
+    facet_ctx = provider_ctx.facets.get(facet_name)
+    if facet_ctx is None:
+        return None
+    return ctx_to_dict(facet_ctx)
 
 
 def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
@@ -515,6 +542,11 @@ def _render_template_text(
 
     base_ctx = _ctx_for_pid(mapping.source_provider, providers)
     render_ctx = {**base_ctx, **ctx_to_dict(mapping.extra_context)}
+    facet_ctx = _facet_ctx_for_dest(dest_path, providers)
+    if facet_ctx is not None:
+        # Shorthand for the owning facet's context; the full sibling map is
+        # already reachable as ``facets`` through the provider context dump.
+        render_ctx['facet'] = facet_ctx
 
     try:
         return _jinja_render(env, txt, render_ctx, filename=template_file)

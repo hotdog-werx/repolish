@@ -7,6 +7,7 @@ implementation detail:
 - `workspace` — `MemberInfo`, `WorkspaceContext`, `ProviderSession`
 - `context` — `Symlink`, `ResourceCopy`, `GithubRepo`, `GlobalContext`, `get_global_context`,
   `ProviderInfo`, `RepolishContext`, `BaseContext`, `BaseInputs`
+- `facet` — `ProviderFacet`, `FacetSpec`, the facet options bundles, `instantiate_facets`
 - `pipeline` — `PipelineOptions`, `DryRunResult`
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
   `SessionBundle`, `Accumulators`, `build_file_records`
@@ -25,6 +26,17 @@ from repolish.providers.models.context import (
     ResourceCopy,
     Symlink,
     get_global_context,
+)
+from repolish.providers.models.facet import (
+    FacetCtxT,
+    FacetFinalizeOptions,
+    FacetInpT,
+    FacetInputsOptions,
+    FacetSpec,
+    FacetSpecOptions,
+    ProviderFacet,
+    facet_input_schemas,
+    instantiate_facets,
 )
 from repolish.providers.models.files import (
     Accumulators,
@@ -94,6 +106,12 @@ __all__ = [
     'ContextT',
     'Decision',
     'DryRunResult',
+    'FacetCtxT',
+    'FacetFinalizeOptions',
+    'FacetInpT',
+    'FacetInputsOptions',
+    'FacetSpec',
+    'FacetSpecOptions',
     'FastLaneDeclaration',
     'FastLaneEntry',
     'FastLaneFactory',
@@ -125,6 +143,7 @@ __all__ = [
     'ProviderCommandExecutor',
     'ProviderContributions',
     'ProviderEntry',
+    'ProviderFacet',
     'ProviderInfo',
     'ProviderSession',
     'RepolishContext',
@@ -140,9 +159,11 @@ __all__ = [
     'WorkspaceContext',
     'build_file_records',
     'call_provider_method',
+    'facet_input_schemas',
     'get_global_context',
     'get_provider_context',
     'get_provider_inputs',
     'get_provider_inputs_schema',
+    'instantiate_facets',
     'map_folder',
 ]

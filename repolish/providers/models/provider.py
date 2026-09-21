@@ -16,10 +16,12 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from repolish.providers.models.facet import ProviderFacet
 
 from pydantic import BaseModel, Field
 
@@ -233,6 +235,13 @@ class ProviderEntry(BaseModel):
         the schema returned by :meth:`Provider.get_inputs_schema`, equivalent
         to the third element of the old tuple.  `None` for providers that do
         not accept inputs.
+    input_types:
+        the provider's own input schema plus every declared facet's schema,
+        in that order. Routing delivers a payload to the provider when it
+        exactly matches any schema here; the structural ``model_validate``
+        fallback applies to ``input_type`` only. Entries built by hand that
+        set only ``input_type`` keep working (routing treats it as a
+        one-element list).
     """
 
     provider_id: str
@@ -245,6 +254,7 @@ class ProviderEntry(BaseModel):
     context: object = Field(default_factory=dict)
     context_type: type[BaseModel] | None = None
     input_type: type[BaseModel] | None = None
+    input_types: list[type[BaseModel]] = Field(default_factory=list)
 
 
 @dataclass
@@ -326,6 +336,13 @@ class Provider(ABC, Generic[ContextT, InputT]):
     root_mode: type[ModeHandler[ContextT, InputT]] | None = None
     member_mode: type[ModeHandler[ContextT, InputT]] | None = None
     standalone_mode: type[ModeHandler[ContextT, InputT]] | None = None
+
+    # Explicit, ordered facet classes this provider breaks its per-file
+    # work into (see `repolish.providers.models.facet`). The framework
+    # instantiates each facet once per phase, creates its context into
+    # `own_context.facets[name]`, routes payloads matching each facet's
+    # schema, and merges every `create_spec` result into the bundle.
+    facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = None
 
     def create_context(self) -> ContextT:
         """Return this provider's initial context object.

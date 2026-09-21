@@ -143,6 +143,7 @@ def _build_fast_path_bundle(
         return SessionBundle(
             provider_contexts=provider_contexts,
             fast_lanes=state.accumulators.fast_lanes,
+            facet_owners=state.accumulators.facet_owners,
         )
 
     return None
@@ -213,6 +214,7 @@ def _run_standard_pipeline(
         insertion_sources=accumulators.insertion_sources,
         promoted_file_mappings=accumulators.promoted_file_mappings,
         fast_lanes=accumulators.fast_lanes,
+        facet_owners=accumulators.facet_owners,
     )
 
 

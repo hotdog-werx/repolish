@@ -23,6 +23,7 @@ from pydantic import (
     BaseModel,
     Field,
     computed_field,
+    field_serializer,
 )
 
 from repolish.providers.models.workspace import (
@@ -216,6 +217,31 @@ class BaseContext(BaseModel):
     """
 
     repolish: RepolishContext = Field(default_factory=RepolishContext)
+
+    facets: dict[str, BaseContext] = Field(default_factory=dict)
+    """Facet contexts keyed by facet name.
+
+    Populated by the framework after ``create_context`` runs, before
+    overrides and input exchange, so facet contexts see project overrides
+    and participate in the input phases. Empty for providers without
+    facets. Templates reach a sibling facet's values through
+    ``{{ facets.<name>.<field> }}``; the owning facet's own file also gets
+    the ``{{ facet.<field> }}`` shorthand (see
+    ``repolish.providers.models.facet``)."""
+
+    @field_serializer('facets')
+    def _serialize_facets(
+        self,
+        facets: dict[str, BaseContext],
+    ) -> dict[str, dict[str, object]]:
+        """Dump each facet context by its *runtime* type.
+
+        Pydantic serializes model fields against their declared schema, so
+        without this hook every facet context would serialize as a bare
+        ``BaseContext`` and lose the subclass fields templates read as
+        ``{{ facets.<name>.<field> }}``.
+        """
+        return {name: ctx.model_dump() if isinstance(ctx, BaseModel) else ctx for name, ctx in facets.items()}
 
 
 class BaseInputs(BaseModel):

@@ -10,9 +10,11 @@ from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
     BaseInputs,
+    FacetInputsOptions,
     ProvideInputsOptions,
     ProviderEntry,
     call_provider_method,
+    instantiate_facets,
 )
 from repolish.providers.models import (
     Provider as _ProviderBase,
@@ -98,13 +100,66 @@ def _route_input_to_targets(
     targets: list[ProviderEntry],
     received_inputs: dict[str, list[BaseInputs]],
 ) -> None:
-    """Route a single payload to every target whose schema matches it."""
+    """Route a single payload to every target whose schema matches it.
+
+    A payload reaches a provider when it exactly isinstance-matches any
+    schema in ``entry.input_types`` (the provider's own schema plus its
+    facets' schemas, exact-match only so a structurally-compatible but
+    all-default facet model never steals a payload). Payloads that match no
+    schema exactly still reach the provider through the structural
+    ``model_validate`` fallback against the provider's own ``input_type``
+    only — the fallback exists for the same model class loaded from
+    separate dynamic modules, a situation that only arises for the
+    provider-level schema.
+    """
     for entry in targets:
-        schema = entry.input_type
-        if schema and _schema_matches(schema, inp):
-            received_inputs.setdefault(entry.provider_id, []).append(
-                cast('BaseInputs', inp),
-            )
+        schemas = entry.input_types or ([entry.input_type] if entry.input_type else [])
+        matched = any(isinstance(inp, schema) for schema in schemas) or (
+            entry.input_type is not None and _schema_matches(entry.input_type, inp)
+        )
+        if matched:
+            _deliver_input(entry, inp, received_inputs)
+
+
+def _deliver_input(
+    entry: ProviderEntry,
+    inp: object,
+    received_inputs: dict[str, list[BaseInputs]],
+) -> None:
+    """Append one payload to its recipient's received-inputs list."""
+    received_inputs.setdefault(entry.provider_id, []).append(
+        cast('BaseInputs', inp),
+    )
+
+
+def _facet_emitted_inputs(
+    idx: int,
+    provider_id: str,
+    inst: _ProviderBase,
+    provider_contexts: dict[str, BaseContext],
+    all_providers_list: list[ProviderEntry],
+) -> list[object]:
+    """Return the payloads emitted by a provider's declared facets."""
+    facets = instantiate_facets(inst)
+    if not facets:
+        return []
+    own_ctx = provider_contexts.get(provider_id)
+    facet_ctxs = getattr(own_ctx, 'facets', {}) if own_ctx is not None else {}
+    emitted: list[object] = []
+    for facet in facets:
+        fctx = facet_ctxs.get(facet.name)
+        if fctx is None:
+            continue
+        raw = facet.provide_inputs(
+            FacetInputsOptions(
+                own_context=fctx,
+                all_providers=all_providers_list,
+                provider_index=idx,
+            ),
+        )
+        if raw:
+            emitted.extend(raw)
+    return emitted
 
 
 def _distribute_payloads(
@@ -161,6 +216,18 @@ def _collect_for_provider(
         if inst
         else []
     )
+    facet_inputs = (
+        _facet_emitted_inputs(
+            idx,
+            provider_id,
+            inst,
+            state.provider_contexts,
+            state.all_providers_list,
+        )
+        if inst is not None
+        else []
+    )
+    inputs = [*cast('list[object]', inputs or []), *facet_inputs]
 
     if inputs:
         _distribute_payloads(inputs, state)
@@ -192,6 +259,15 @@ def collect_all_emitted_inputs(
         )
         if raw:
             flat.extend(cast('list[BaseInputs]', raw))
+        facet_raw = _facet_emitted_inputs(
+            idx,
+            provider_id,
+            inst,
+            provider_contexts,
+            all_providers_list,
+        )
+        if facet_raw:
+            flat.extend(cast('list[BaseInputs]', facet_raw))
     return flat
 
 

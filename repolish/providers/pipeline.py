@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from repolish.pkginfo import resolve_package_identity
 from repolish.providers._log import logger
@@ -10,9 +10,14 @@ from repolish.providers.models import (
     ProviderEntry,
     ProviderInfo,
     ProviderSession,
+    facet_input_schemas,
+    instantiate_facets,
 )
 from repolish.providers.models import Provider as _ProviderBase
 from repolish.providers.models.context import RepolishContext
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
 
 
 def _build_all_providers_list(
@@ -30,6 +35,7 @@ def _build_all_providers_list(
     all_providers_list: list[ProviderEntry] = []
     for idx, (pid, _mod) in enumerate(module_cache):
         schema = None
+        input_types: list[type[BaseModel]] = []
         inst = instances[idx]
         alias: str | None = None
         inst_type: type[Any] | None = None
@@ -42,6 +48,12 @@ def _build_all_providers_list(
             except Exception:  # noqa: BLE001 - don't let one provider's broken schema prevent the whole run
                 # DO LATER: consider logging this error so providers can diagnose their broken schema
                 schema = None
+            # The routing schema list: the provider's own schema first, then
+            # every declared facet's schema (exact-match routing; see
+            # `repolish.providers.inputs`).
+            input_types = ([schema] if schema else []) + facet_input_schemas(
+                inst,
+            )
             # `alias` is the configuration key (here we mirror provider_id
             # since that's what create_providers passes).
             alias = pid
@@ -64,6 +76,7 @@ def _build_all_providers_list(
                 context=ctx_obj or BaseContext(),
                 context_type=ctx_type,
                 input_type=schema,
+                input_types=input_types,
             ),
         )
     return all_providers_list
@@ -146,6 +159,47 @@ def _synthesize_provider_context_for_pid(
     provider_contexts[pid] = ctx
 
 
+def _populate_facet_contexts(
+    inst: _ProviderBase,
+    pid: str,
+    provider_contexts: dict[str, BaseContext],
+    global_context: GlobalContext,
+) -> None:
+    """Create every declared facet's context into ``provider_contexts[pid].facets``.
+
+    Runs right after the provider's own context exists, before overrides
+    and input exchange, so facet contexts ride through both. Each facet
+    context receives the same identity injection as the provider context:
+    facets are part of the provider, so ``repolish`` carries the provider's
+    alias and session, and ``ctx.repolish.workspace.mode`` is available for
+    the facet's internal mode branching.
+    """
+    facets = instantiate_facets(inst)
+    own_ctx = provider_contexts.get(pid)
+    if not facets or not isinstance(own_ctx, BaseContext):
+        return
+    for facet in facets:
+        if facet.name in own_ctx.facets:
+            msg = [
+                f'duplicate facet name {facet.name!r} on provider {pid!r};',
+                'facet names must be unique within a provider',
+            ]
+            raise ValueError(''.join(msg))
+        try:
+            ctx = facet.create_context()
+        except Exception as exc:  # noqa: BLE001 - one broken facet must not stop the run
+            logger.warning(
+                'facet_create_context_raised',
+                provider=pid,
+                facet=facet.name,
+                error=str(exc),
+            )
+            continue
+        if isinstance(ctx, BaseContext):
+            ctx = _inject_provider_identity(ctx, inst, global_context)
+        own_ctx.facets[facet.name] = ctx
+
+
 def _populate_provider_context(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
@@ -168,6 +222,7 @@ def _populate_provider_context(
             provider_contexts,
             global_context,
         )
+        _populate_facet_contexts(inst, pid, provider_contexts, global_context)
 
 
 def _set_provider_basic_metadata(
