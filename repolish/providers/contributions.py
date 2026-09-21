@@ -643,9 +643,12 @@ def _handle_provider_fast_lanes(
     The hook receives the provider's ``repolish`` namespace (repo info plus
     its own identity), the same values a full run injects, so lane
     declarations can embed them (file headers) without touching the
-    peer-fed provider context. Lanes are keyed ``f'{provider_id}:{lane_name}'``
-    so two providers may declare lanes with the same name without clobbering
-    each other's bookkeeping; dest-level collisions between them stay an error.
+    peer-fed provider context. Lanes are stored nested, keyed by
+    ``provider_id`` then ``lane_name``, so two providers may declare lanes
+    with the same name without clobbering each other's bookkeeping
+    (dest-level collisions between them stay an error) and no component
+    ever parses a composite key: provider IDs contain a drive-letter
+    colon on Windows, and lane names may contain colons of their own.
     Factory lanes are stored unevaluated: the merge/restrict step resolves
     them, so a lane whose factory imports heavily costs nothing until a run
     actually selects it.
@@ -665,7 +668,7 @@ def _handle_provider_fast_lanes(
                 own_ctx,
                 provider_id,
             )
-        accum.fast_lanes[f'{provider_id}:{lane_name}'] = entry
+        accum.fast_lanes.setdefault(provider_id, {})[lane_name] = entry
 
 
 def _extend_provider_insertions(

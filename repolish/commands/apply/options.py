@@ -89,7 +89,10 @@ class ApplyOptions:
     Used by named fast-lane runs, which intentionally skip normal provider
     contributions and cross-provider communication.
     """
-    provider_package_identity: tuple[str, str] | None = field(default=None, repr=False)
+    provider_package_identity: tuple[str, str] | None = field(
+        default=None,
+        repr=False,
+    )
     """Known ``(package_name, project_name)`` for a generated provider CLI."""
 
 

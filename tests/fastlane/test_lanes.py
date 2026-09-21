@@ -3,7 +3,7 @@
 These exercise the bundle transforms directly with hand-built
 :class:`~repolish.providers.models.SessionBundle` objects, mirroring the state
 the collection step leaves behind (regular contributions already folded,
-lane specs normalized and keyed ``f'{provider_id}:{lane_name}'``).
+lane specs normalized and nested ``{provider_id: {lane_name: entry}}``).
 """
 
 from __future__ import annotations
@@ -67,16 +67,29 @@ def _lane(
     insertions: dict[str, dict[str, object]] | None = None,
     validators: dict[str, dict[str, object]] | None = None,
     pid: str = PID,
-) -> dict[str, FastLaneEntry]:
-    """One lane keyed the way collection stores it on the bundle."""
+) -> dict[str, dict[str, FastLaneEntry]]:
+    """One lane nested the way collection stores it on the bundle."""
     return {
-        f'{pid}:{lane}': FastLaneSpec(
-            file_mappings=mappings or {},
-            file_insertions=insertions or {},
-            file_validators=validators or {},
-            source_provider=pid,
-        ),
+        pid: {
+            lane: FastLaneSpec(
+                file_mappings=mappings or {},
+                file_insertions=insertions or {},
+                file_validators=validators or {},
+                source_provider=pid,
+            ),
+        },
     }
+
+
+def _merge_lanes(
+    *lanes: dict[str, dict[str, FastLaneEntry]],
+) -> dict[str, dict[str, FastLaneEntry]]:
+    """Combine lane dicts the way collection accumulates them per provider."""
+    combined: dict[str, dict[str, FastLaneEntry]] = {}
+    for lane in lanes:
+        for pid, entries in lane.items():
+            combined.setdefault(pid, {}).update(entries)
+    return combined
 
 
 def _bundle() -> SessionBundle:
@@ -109,7 +122,7 @@ class TestMerge:
     def test_merge_truthy_empty_fast_lanes_returns_empty(self) -> None:
         """Defensive guard: handle a truthy mapping whose items() are empty."""
 
-        class _TruthyEmptyDict(dict[str, FastLaneEntry]):
+        class _TruthyEmptyDict(dict[str, dict[str, FastLaneEntry]]):
             def __bool__(self) -> bool:
                 return True
 
@@ -187,20 +200,20 @@ class TestFileModes:
 class TestCollisions:
     def test_lane_vs_lane_always_raises(self) -> None:
         bundle = SessionBundle()
-        bundle.fast_lanes = {
-            **_lane('actions', mappings={'shared.txt': _mapping('a.jinja')}),
-            **_lane('docs', mappings={'shared.txt': _mapping('b.jinja')}),
-        }
+        bundle.fast_lanes = _merge_lanes(
+            _lane('actions', mappings={'shared.txt': _mapping('a.jinja')}),
+            _lane('docs', mappings={'shared.txt': _mapping('b.jinja')}),
+        )
 
         with pytest.raises(ValueError, match=r"shared\.txt.*:actions'.*:docs'"):
             merge_fast_lanes(bundle, resolutions={})
 
     def test_lane_vs_lane_cannot_be_resolved_away(self) -> None:
         bundle = SessionBundle()
-        bundle.fast_lanes = {
-            **_lane('actions', mappings={'shared.txt': _mapping('a.jinja')}),
-            **_lane('docs', mappings={'shared.txt': _mapping('b.jinja')}),
-        }
+        bundle.fast_lanes = _merge_lanes(
+            _lane('actions', mappings={'shared.txt': _mapping('a.jinja')}),
+            _lane('docs', mappings={'shared.txt': _mapping('b.jinja')}),
+        )
 
         with pytest.raises(ValueError, match='fast lane collision'):
             merge_fast_lanes(
@@ -356,17 +369,17 @@ class TestRestrict:
     def setup_bundle(self) -> SessionBundle:
         bundle = _bundle()
         bundle.delete_files = [_posix('stale.txt')]
-        bundle.fast_lanes = {
-            **_lane(
+        bundle.fast_lanes = _merge_lanes(
+            _lane(
                 'actions',
                 mappings={'out/action.yaml': _mapping('action.yaml.jinja')},
                 validators={'out/action.yaml': {'lint': _noop}},
             ),
-            **_lane(
+            _lane(
                 'docs',
                 insertions={'docs/usage.md': {'usage': _render}},
             ),
-        }
+        )
         return bundle
 
     def test_restrict_leaves_exactly_the_lane_contributions(self) -> None:
@@ -402,6 +415,35 @@ class TestRestrict:
         ):
             restrict_to_lane(bundle, 'nope', resolutions={})
 
+    def test_drive_colon_pid_selects_lanes(self) -> None:
+        # On Windows the provider id is a path with a drive-letter colon; a
+        # composite string key would split at the drive and lane selection
+        # would fail. Nested keys make the pid opaque.
+        bundle = SessionBundle()
+        bundle.fast_lanes = _lane(
+            'actions',
+            mappings={'out/action.yaml': _mapping('action.yaml.jinja')},
+            pid='C:/providers/demo/templates',
+        )
+
+        restrict_to_lane(bundle, 'actions', resolutions={})
+
+        assert set(bundle.file_mappings) == {'out/action.yaml'}
+
+    def test_lane_name_with_colon_selects_fine(self) -> None:
+        # Lane names may contain colons (provider commands land here as
+        # lanes named like 'command:fetch'), so neither split nor rsplit
+        # of a composite key could ever be safe.
+        bundle = self.setup_bundle()
+        bundle.fast_lanes[PID]['fetch:latest'] = FastLaneSpec(
+            file_mappings={'out/fetch.txt': _mapping('fetch.jinja')},
+            source_provider=PID,
+        )
+
+        restrict_to_lane(bundle, 'fetch:latest', resolutions={})
+
+        assert set(bundle.file_mappings) == {'out/fetch.txt'}
+
     def test_same_lane_name_from_two_providers_is_ambiguous(self) -> None:
         bundle = self.setup_bundle()
         other = _lane(
@@ -409,7 +451,9 @@ class TestRestrict:
             mappings={'other.txt': _mapping('o.jinja')},
             pid=OTHER_PID,
         )
-        bundle.fast_lanes.update(other)
+        bundle.fast_lanes.update(
+            other,
+        )  # different provider: plain dict update is safe
 
         with pytest.raises(ValueError, match='multiple providers'):
             restrict_to_lane(bundle, 'actions', resolutions={})
@@ -423,7 +467,7 @@ class TestRestrict:
             'docs',
             mappings={'out/action.yaml': _mapping('x.jinja')},
         )
-        bundle.fast_lanes.update(conflicting)
+        bundle.fast_lanes = _merge_lanes(bundle.fast_lanes, conflicting)
 
         restrict_to_lane(bundle, 'actions', resolutions={})  # does not raise
 
@@ -470,7 +514,7 @@ class TestLazyFactories:
                 source_provider=PID,
             ),
         )
-        bundle.fast_lanes[f'{PID}:actions'] = entry
+        bundle.fast_lanes[PID] = {'actions': entry}
 
         merge_fast_lanes(bundle, resolutions={}, pid_to_alias=ALIASES)
 
@@ -491,8 +535,7 @@ class TestLazyFactories:
                 source_provider=PID,
             ),
         )
-        bundle.fast_lanes[f'{PID}:actions'] = actions
-        bundle.fast_lanes[f'{PID}:docs'] = docs
+        bundle.fast_lanes[PID] = {'actions': actions, 'docs': docs}
 
         restrict_to_lane(bundle, 'actions', resolutions={})
 
@@ -514,8 +557,7 @@ class TestLazyFactories:
                 source_provider=PID,
             ),
         )
-        bundle.fast_lanes[f'{PID}:actions'] = first
-        bundle.fast_lanes[f'{PID}:docs'] = second
+        bundle.fast_lanes[PID] = {'actions': first, 'docs': second}
 
         with pytest.raises(ValueError, match=r"shared\.txt.*:actions'.*:docs'"):
             merge_fast_lanes(bundle, resolutions={})

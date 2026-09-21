@@ -29,6 +29,29 @@ def test_normalize_empty_and_invalid():
         runner._normalize_command(123)
 
 
+def test_normalize_strips_windows_retained_quotes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """posix=False (Windows) keeps quote characters inside the tokens.
+
+    Without stripping, `python -c "code"` receives `"code"` as its
+    argument: a string-literal expression that runs as a silent no-op.
+    Backslashes (Windows paths) must survive, and unquoted tokens stay
+    untouched.
+    """
+    monkeypatch.setattr(runner.os, 'name', 'nt')
+    assert runner._normalize_command('python -c "print(1)"') == (
+        'python',
+        '-c',
+        'print(1)',
+    )
+    assert runner._normalize_command(r'C:\tool --flag "a b"') == (
+        r'C:\tool',
+        '--flag',
+        'a b',
+    )
+
+
 def test_run_records_ok_outcome_with_captured_output(tmp_path: Path):
     """A passing command is recorded as ok with its captured output."""
     configure_logging(verbosity=resolve_verbosity(verbose=0))
@@ -88,6 +111,9 @@ def test_run_records_missing_executable_as_failed(tmp_path: Path):
     assert outcome.status == 'failed'
     assert outcome.returncode is None
     assert outcome.error is not None
+    # The recorded error names the binary even where the OS message does
+    # not (Windows' WinError 2 names no file).
+    assert outcome.error.startswith('no-such-binary-xyz: ')
     assert 'no-such-binary-xyz' in outcome.error
 
 
@@ -103,6 +129,22 @@ def test_run_captures_output_at_default_verbosity(
     _, kwargs = mock_run.call_args
     assert kwargs['stdout'] == subprocess.PIPE
     assert kwargs['stderr'] == subprocess.STDOUT
+
+
+def test_run_normalizes_crlf_in_captured_output(
+    tmp_path: Path,
+    mocker: MockerFixture,
+):
+    """Children on Windows write CRLF line endings; recorded output is LF."""
+    configure_logging(verbosity=resolve_verbosity(verbose=0))
+    mock_run = mocker.patch('repolish.postprocess.runner.subprocess.run')
+    mock_run.return_value = mocker.Mock(returncode=0, stdout=b'hello\r\n')
+    run = utils.run_post_process(
+        [[sys.executable, '-c', 'pass']],
+        tmp_path,
+        tmp_path,
+    )
+    assert run.outcomes[0].output == 'hello\n'
 
 
 def test_run_streams_output_when_verbose(

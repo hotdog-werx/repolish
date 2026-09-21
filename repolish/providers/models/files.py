@@ -641,12 +641,17 @@ class SessionBundle(BaseModel):
     by the apply session after both directive phases, with dests relativized
     to the project root where possible; consumers read the families they know.
     Empty when no family ferries data."""
-    fast_lanes: dict[str, FastLaneEntry] = Field(default_factory=dict)
-    """``f'{provider_id}:{lane_name}'`` → that lane's `FastLaneEntry`
-    contributions. Collected from ``create_fast_lanes()``; merged into the
-    regular bundle fields for full runs, or executed alone for lane runs
-    (see ``repolish.fastlane``). Factory lanes stay unevaluated here and
-    are resolved by the merge/restrict step, once, only when needed."""
+    fast_lanes: dict[str, dict[str, FastLaneEntry]] = Field(
+        default_factory=dict,
+    )
+    """``provider_id`` → ``lane_name`` → that lane's `FastLaneEntry`
+    contributions. Nested so no component ever parses a composite key:
+    provider IDs are paths and contain a drive-letter colon on Windows,
+    and lane names may contain colons of their own. Collected from
+    ``create_fast_lanes()``; merged into the regular bundle fields for
+    full runs, or executed alone for lane runs (see ``repolish.fastlane``).
+    Factory lanes stay unevaluated here and are resolved by the
+    merge/restrict step, once, only when needed."""
 
 
 def _records_from_template_sources(
@@ -902,9 +907,14 @@ class Accumulators:
     promoted_file_mappings: dict[str, str | TemplateMapping] = field(
         default_factory=dict,
     )
-    # fast lanes collected from create_fast_lanes(), keyed
-    # ``f'{provider_id}:{lane_name}'`` so lane names stay unique across
-    # providers in multi-provider sessions. Values are normalized specs
-    # (string sources wrapped, insertions bound to the provider context),
-    # or closures producing one on first use (lazy factory lanes).
-    fast_lanes: dict[str, FastLaneEntry] = field(default_factory=dict)
+    # fast lanes collected from create_fast_lanes(), nested
+    # ``{provider_id: {lane_name: entry}}`` so lane names stay unique
+    # across providers in multi-provider sessions without ever parsing a
+    # composite key (provider IDs carry a drive-letter colon on Windows,
+    # and lane names may contain colons of their own). Values are
+    # normalized specs (string sources wrapped, insertions bound to the
+    # provider context), or closures producing one on first use (lazy
+    # factory lanes).
+    fast_lanes: dict[str, dict[str, FastLaneEntry]] = field(
+        default_factory=dict,
+    )

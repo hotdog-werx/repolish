@@ -48,7 +48,18 @@ def _normalize_command(raw: object) -> Sequence[str]:
         # can treat as escape sequences; use posix=False there to preserve
         # backslashes. For cross-platform behavior, detect the platform.
         posix = os.name != 'nt'
-        return shlex.split(raw, posix=posix)
+        tokens = shlex.split(raw, posix=posix)
+        if not posix:
+            # posix=False also keeps quote characters in the tokens, which
+            # silently changes meaning (`python -c "code"` would receive
+            # `"code"` — a string-literal expression, a no-op). Strip one
+            # level of matching surrounding quotes, the way a Windows shell
+            # would.
+            return tuple(
+                token[1:-1] if len(token) >= 2 and token[0] == token[-1] and token[0] in '\'"' else token
+                for token in tokens
+            )
+        return tuple(tokens)
     msg = 'post_process entries must be str or list/tuple of str'
     raise TypeError(msg)
 
@@ -128,15 +139,20 @@ def _run_single(
             stderr=None if verbose else subprocess.STDOUT,
         )
     except FileNotFoundError as exc:
+        # Windows' WinError 2 text names no binary ("The system cannot find
+        # the file specified"); prefix argv[0] so the recorded error is
+        # actionable on every platform (POSIX errno text already names it).
         return (
             'failed',
             None,
             int((time.perf_counter() - start) * 1000),
             '',
-            str(exc),
+            f'{argv[0]}: {exc}',
         )
     duration_ms = int((time.perf_counter() - start) * 1000)
-    output = '' if verbose else (completed.stdout or b'').decode(errors='replace')
+    # Children on Windows write CRLF line endings; normalize so recorded
+    # output compares clean against expectations on every platform.
+    output = '' if verbose else (completed.stdout or b'').decode(errors='replace').replace('\r\n', '\n')
     if completed.returncode == 0:
         return 'ok', 0, duration_ms, output, None
     logger.error(

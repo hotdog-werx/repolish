@@ -258,7 +258,7 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
             raise ValueError(msg)
         lane_alias = next(iter(config.providers), '')
         lane_pid = alias_to_pid.get(lane_alias, lane_alias)
-        providers.fast_lanes[f'{lane_pid}:{options.lane}'] = options.lane_spec
+        providers.fast_lanes.setdefault(lane_pid, {})[options.lane] = options.lane_spec
 
     # Fast lanes: fold every lane's contributions into the bundle (full runs)
     # or cut the bundle down to exactly one lane (lane runs). Both paths run

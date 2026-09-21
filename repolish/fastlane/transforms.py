@@ -43,12 +43,35 @@ def _eval_spec(entry: FastLaneEntry) -> FastLaneSpec:
     return entry()
 
 
+def _lane_label(pid: str, lane_name: str) -> str:
+    """Display label for a lane: the provider id and lane name it runs from."""
+    return f'{pid}:{lane_name}'
+
+
+def _merged_lane_specs(
+    bundle: SessionBundle,
+) -> dict[tuple[str, str], FastLaneSpec]:
+    """Evaluate every collected lane, keyed by ``(provider_id, lane_name)``.
+
+    The bundle stores lanes nested (``{provider_id: {lane_name: entry}}``);
+    this flatten is the only place that shape is unpacked, so tuple keys
+    flow through the merge/restrict logic and no component ever parses a
+    composite string key: provider ids contain a drive-letter colon on
+    Windows, and lane names may contain colons of their own.
+    """
+    return {
+        (pid, name): _eval_spec(entry) for pid, lanes in bundle.fast_lanes.items() for name, entry in lanes.items()
+    }
+
+
 def _spec_dests(spec: FastLaneSpec) -> set[str]:
     """Return every dest path a lane spec claims, across all three kinds."""
     return set(spec.file_mappings) | set(spec.file_insertions) | set(spec.file_validators)
 
 
-def _detect_lane_lane_collisions(merged: dict[str, FastLaneSpec]) -> None:
+def _detect_lane_lane_collisions(
+    merged: dict[tuple[str, str], FastLaneSpec],
+) -> None:
     """Fail when the same dest is declared by two different merged lanes.
 
     This is a static authoring mistake (two specs fed identical inputs in
@@ -58,14 +81,15 @@ def _detect_lane_lane_collisions(merged: dict[str, FastLaneSpec]) -> None:
     registration, and with one lane executing there is nothing to collide
     with.
     """
-    seen: dict[str, str] = {}
+    seen: dict[str, tuple[str, str]] = {}
     for lane_key, spec in merged.items():
         for dest in sorted(_spec_dests(spec)):
             other = seen.get(dest)
             if other is not None and other != lane_key:
                 msg = (
                     f'fast lane collision on {dest!r}: declared by both lane '
-                    f'{other!r} and lane {lane_key!r}. A dest may belong to only '
+                    f'{_lane_label(*other)!r} and lane '
+                    f'{_lane_label(*lane_key)!r}. A dest may belong to only '
                     'one fast lane; move one of the declarations.'
                 )
                 raise ValueError(msg)
@@ -108,13 +132,14 @@ def _collision_kinds(
 
 def _unresolved_collision_msg(
     dest: str,
-    lane_key: str,
+    lane_key: tuple[str, str],
     kinds: list[str],
 ) -> str:
-    pid = lane_key.split(':', 1)[0]
+    pid = lane_key[0]
     return (
-        f'fast lane collision on {dest!r}: lane {lane_key!r} declares it and so '
-        f'does a regular hook ({", ".join(kinds)}) of provider {pid!r}. Regular '
+        f'fast lane collision on {dest!r}: lane {_lane_label(*lane_key)!r} '
+        f'declares it and so does a regular hook ({", ".join(kinds)}) of '
+        f'provider {pid!r}. Regular '
         'hooks can be conditional on context, so this may surface only in some '
         f'project states. Add a fast_lanes.resolutions entry for {dest!r} in '
         "repolish.yaml ('fast_lane' or 'regular') to choose which side owns the dest."
@@ -123,9 +148,9 @@ def _unresolved_collision_msg(
 
 def _resolve_regular_collisions(
     bundle: SessionBundle,
-    merged: dict[str, FastLaneSpec],
+    merged: dict[tuple[str, str], FastLaneSpec],
     resolutions: dict[str, FastLaneResolution],
-) -> tuple[dict[str, set[str]], set[str]]:
+) -> tuple[dict[tuple[str, str], set[str]], set[str]]:
     """Decide every regular-vs-lane collision against the project config.
 
     Returns ``(lane_drops, regular_drops)``: per-lane dest sets the config
@@ -135,7 +160,7 @@ def _resolve_regular_collisions(
     bundle). Unresolved collisions raise.
     """
     mapping_claims, insertion_claims, validator_claims = _regular_claims(bundle)
-    lane_drops: dict[str, set[str]] = {key: set() for key in merged}
+    lane_drops: dict[tuple[str, str], set[str]] = {key: set() for key in merged}
     regular_drops: set[str] = set()
     for lane_key, spec in merged.items():
         for dest in sorted(_spec_dests(spec)):
@@ -277,7 +302,7 @@ def merge_fast_lanes(
     """
     if not bundle.fast_lanes:
         return []
-    merged = {lane_key: _eval_spec(entry) for lane_key, entry in bundle.fast_lanes.items()}
+    merged = _merged_lane_specs(bundle)
     if not merged:
         return []
     _detect_lane_lane_collisions(merged)
@@ -324,17 +349,20 @@ def restrict_to_lane(
     ``'regular'`` removes that dest from the
     run, ``'fast_lane'`` keeps it.
     """
-    matches = [key for key in bundle.fast_lanes if key.split(':', 1)[1] == lane]
+    matches = [(pid, name) for pid, lanes in bundle.fast_lanes.items() for name in lanes if name == lane]
     if not matches:
-        available = sorted({key.split(':', 1)[1] for key in bundle.fast_lanes})
+        available = sorted(
+            {name for lanes in bundle.fast_lanes.values() for name in lanes},
+        )
         msg = f'unknown fast lane {lane!r}; available lanes: {available}'
         raise ValueError(msg)
     if len(matches) > 1:
-        owners = sorted({key.split(':', 1)[0] for key in matches})
+        owners = sorted({pid for pid, _ in matches})
         msg = f'fast lane {lane!r} is declared by multiple providers ({owners}); rename one of the lanes'
         raise ValueError(msg)
 
-    spec = _eval_spec(bundle.fast_lanes[matches[0]])
+    lane_pid, lane_name = matches[0]
+    spec = _eval_spec(bundle.fast_lanes[lane_pid][lane_name])
     mapping_claims, insertion_claims, validator_claims = _regular_claims(bundle)
     skip: set[str] = set()
     for dest in sorted(_spec_dests(spec)):
