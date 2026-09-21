@@ -40,6 +40,15 @@ In templates:
 # © {{ repolish.year }} {{ repolish.repo.owner }}
 ```
 
+### GitHub remotes only
+
+The repo owner and name are parsed from the `origin` remote URL, and only
+`github.com` URLs are recognized (HTTPS and SSH). repolish is a GitHub shop: if
+your project is hosted on GitLab, Bitbucket, or a private Git server, the fields
+fall back to `UnknownOwner`/`UnknownRepo` and nothing else breaks. Support for
+other hosts would have to be added to the URL parser in
+`repolish/providers/models/context.py`; if you need it, PRs are welcome.
+
 ## Provider context
 
 Each provider's `create_context()` method returns a typed Pydantic model.

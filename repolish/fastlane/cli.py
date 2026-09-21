@@ -34,6 +34,7 @@ from repolish.providers.models import (
     ProviderCommandExecutor,
     ProviderInfo,
     RepolishContext,
+    get_global_context,
 )
 from repolish.providers.models.mapping_normalization import (
     normalize_lane_spec_mappings,
@@ -42,7 +43,7 @@ from repolish.providers.models.mapping_normalization import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from repolish.providers.models import Provider
+    from repolish.providers.models import GlobalContext, Provider
 
 logger = get_logger(__name__)
 
@@ -83,6 +84,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     skip_post_process: bool = False,
     fail_on_warnings: bool = False,
     verbose: int = 0,
+    global_context: GlobalContext | None = None,
 ) -> int:
     """Run one lane (or the provider's full pass) against the real project.
 
@@ -94,6 +96,11 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     project, and no readiness check or link command runs. A named lane runs
     only its own ``fast_lanes.config`` post-process commands; ``all`` runs
     the project's.
+
+    When *global_context* is ``None`` the session pipeline computes one via
+    :func:`get_global_context`; a caller that already built one (provider
+    commands, for the executor's ``ProviderCommandContext``) passes it here
+    so the executor and the rendered templates see identical values.
     """
     # Deferred imports: repolish.fastlane is imported by the apply pipeline,
     # so the session modules must not be pulled in at import time.
@@ -141,6 +148,7 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         lane_config=prepared,
         lane=lane,
         lane_spec=lane_spec,
+        global_context=global_context,
         skip_dry_pass=True,
         command_only=lane_spec is not None,
         fast_lanes_only=lane is not None and lane_spec is None,
@@ -342,8 +350,17 @@ def _provider_command(spec: _ProviderCommandSpec) -> Callable:
                 name: getattr(params, name) for name in spec.args_model.model_fields if hasattr(params, name)
             }
             command_args = spec.args_model.model_validate(args_payload)
+            # Populate the global namespace the same way the session
+            # pipeline does for templates and lane hooks: repo info read
+            # from the real project, so an executor reading
+            # ctx.repolish.repo.name sees the same values the rendered
+            # templates do (the same object is passed to run_lane below).
+            global_ctx = get_global_context()
             command_ctx = ProviderCommandContext(
                 repolish=RepolishContext(
+                    repo=global_ctx.repo,
+                    year=global_ctx.year,
+                    workspace=global_ctx.workspace,
                     provider=ProviderInfo(alias=resolved_alias),
                 ),
                 provider_root=spec.provider_root,
@@ -369,6 +386,7 @@ def _provider_command(spec: _ProviderCommandSpec) -> Callable:
                 skip_post_process=params.skip_post_process,
                 fail_on_warnings=params.fail_on_warnings,
                 verbose=params.verbose,
+                global_context=global_ctx,
             )
 
         run_cli_command(_invoke)

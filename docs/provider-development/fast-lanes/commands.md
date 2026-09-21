@@ -110,6 +110,24 @@ like:
 react-provider-cli component --name profile-card --style css-module
 ```
 
+## The executor context
+
+The `ProviderCommandContext` passed to the executor carries the global
+`repolish` namespace under `ctx.repolish`, populated from the project's `origin`
+remote the same way a full `repolish apply` run populates it:
+
+- `ctx.repolish.repo.owner` and `ctx.repolish.repo.name` hold the GitHub owner
+  and repo name of the current project.
+- `ctx.repolish.year` holds the current year.
+- `ctx.repolish.provider` holds the provider's own identity, such as
+  `ctx.repolish.provider.alias`.
+
+Templates rendered during the command run see the same values as
+`{{ repolish.repo.name }}` and friends, so an executor reading the context and a
+template rendering it can never disagree. Only `github.com` remotes are
+recognized; see the [context page](../../concepts/context.md) for the fallback
+behavior on other hosts.
+
 ## One-off work vs coupled lanes
 
 Use a provider command when the operation is fundamentally one-off or

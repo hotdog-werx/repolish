@@ -10,6 +10,7 @@ parity guarantee against a full ``repolish apply``.
 from __future__ import annotations
 
 import importlib
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -295,6 +296,116 @@ _JINJA_SUFFIX_COMMAND_TEMPLATES = {
     'emit-template.jinja': 'literal template file\n',
 }
 
+_REPO_INFO_COMMAND_PROVIDER = """\
+    from pydantic import BaseModel
+
+    from repolish import (
+        BaseContext,
+        BaseInputs,
+        FastLaneSpec,
+        Provider,
+        ProviderCommandContract,
+        ProviderCommandContext,
+        TemplateMapping,
+    )
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class FetchArgs(BaseModel):
+        name: str
+
+
+    def run_fetch(args: FetchArgs, ctx: ProviderCommandContext) -> FastLaneSpec:
+        return FastLaneSpec(
+            file_mappings={
+                'repo.txt': TemplateMapping(
+                    '_repolish.repo.txt.jinja',
+                    extra_context={'repo_name': ctx.repolish.repo.name},
+                ),
+            },
+        )
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        @classmethod
+        def create_provider_commands(cls):
+            return {
+                'fetch': ProviderCommandContract(
+                    args_model=FetchArgs,
+                    executor=run_fetch,
+                ),
+            }
+"""
+
+_REPO_INFO_LANE_PROVIDER = """\
+    from repolish import (
+        BaseContext,
+        BaseInputs,
+        FastLaneSpec,
+        Provider,
+        TemplateMapping,
+    )
+
+    class Ctx(BaseContext):
+        pass
+
+
+    class P(Provider[Ctx, BaseInputs]):
+        def create_context(self):
+            return Ctx()
+
+        def create_fast_lanes(self, repolish):
+            return {
+                'meta': FastLaneSpec(
+                    file_mappings={
+                        'lane.txt': TemplateMapping(
+                            '_repolish.repo.txt.jinja',
+                            extra_context={'repo_name': repolish.repo.name},
+                        ),
+                    },
+                ),
+            }
+"""
+
+_REPO_INFO_TEMPLATES = {
+    '_repolish.repo.txt.jinja': ('executor: {{ repo_name }}\ntemplate: {{ repolish.repo.name }}\n'),
+}
+
+
+def _init_git_origin(
+    project: Path,
+    *,
+    owner: str = 'acme',
+    repo: str = 'widget',
+) -> None:
+    """Give *project* a GitHub-shaped ``origin`` so ``get_global_context`` finds real values."""
+
+    def _run(*args: str) -> None:
+        subprocess.run(  # noqa: S603 - args are hardcoded by the helper, no user input
+            list(args),
+            cwd=str(project),
+            check=True,
+            capture_output=True,
+        )
+
+    try:
+        _run('git', 'init', '--initial-branch=main')
+    except subprocess.CalledProcessError:
+        _run('git', 'init')  # older git without --initial-branch
+    _run(
+        'git',
+        'remote',
+        'add',
+        'origin',
+        f'https://github.com/{owner}/{repo}.git',
+    )
+
+
 _COLLIDING_NAMES_PROVIDER = """\
     from pydantic import BaseModel
 
@@ -410,6 +521,28 @@ class TestSubcommands:
         assert not (project / '.github' / 'workflows' / 'ci.yml').exists()
         # docs-lane insertion did not run
         assert 'usage: demo-cli actions' not in (project / 'README.md').read_text(encoding='utf-8')
+
+    def test_lane_hook_sees_real_repo_info(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _REPO_INFO_LANE_PROVIDER,
+            templates=_REPO_INFO_TEMPLATES,
+        )
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
+        project = _stage_project(provider_cls, tmp_path)
+        _init_git_origin(project)
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['meta'])
+
+        # The repolish namespace the lane hook receives carries the real
+        # repo, and templates render the same values from it.
+        assert result.exit_code == 0, result.output
+        assert (project / 'lane.txt').read_text(encoding='utf-8') == ('executor: widget\ntemplate: widget\n')
 
     def test_all_subcommand_merges_lanes_and_regular(
         self,
@@ -858,6 +991,28 @@ class TestProviderCommands:
         assert (project / 'data.json').read_text(
             encoding='utf-8',
         ) == 'fetched: yes\n'
+
+    def test_command_executor_sees_real_repo_info(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _REPO_INFO_COMMAND_PROVIDER,
+            templates=_REPO_INFO_TEMPLATES,
+        )
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
+        project = _stage_project(provider_cls, tmp_path)
+        _init_git_origin(project)
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['fetch', '--name', 'drawer'])
+
+        # The executor's ctx.repolish.repo.name and the value templates
+        # render from the repolish namespace must both be the real repo.
+        assert result.exit_code == 0, result.output
+        assert (project / 'repo.txt').read_text(encoding='utf-8') == ('executor: widget\ntemplate: widget\n')
 
     def test_fast_paths_skip_ordinary_provider_hooks(
         self,
