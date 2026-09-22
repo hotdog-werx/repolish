@@ -20,3 +20,19 @@ ci-checks.sequence = [
 [tool.poe.tasks.install-devkit-providers]
 help = "install all example providers in editable mode"
 cmd = "uv pip install -e provider-examples/devkit/workspace -e provider-examples/devkit/python -e provider-examples/simple-provider -e provider-examples/scaffold-provider"
+
+# Overrides for .pkglink/.codeguide/poe/repo-tasks.toml (pkglink sync
+# regenerates that file, so fixes there are lost on every `mise install`).
+# releez runs through uvx because the mise pipx venv ships a Python 3.11
+# that links against libssl.so.1.1 (gone from current Fedora), which
+# crashes any releez command that imports pygithub.
+[tool.poe.tasks.start-releez]
+help = "release start with releez"
+sequence = [
+  { cmd = "git pull --tags -f" },
+  { cmd = 'uvx --from "git+https://github.com/hotdog-werx/releez@1.0.1" releez release start' },
+]
+
+[tool.poe.tasks.regen-changelog]
+help = "regenerate changelog with git-cliff"
+cmd = 'uvx --from "git+https://github.com/hotdog-werx/releez@1.0.1" releez changelog regenerate'
