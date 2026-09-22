@@ -371,9 +371,15 @@ def _provider_command(spec: _ProviderCommandSpec) -> Callable:
                 verbose=params.verbose,
             )
             lane_key = f'command:{spec.command_name}'
+            # The provider id must use the same derivation as the session
+            # (``_alias_pid_maps``: ``provider_root.as_posix()``). The
+            # mapping render pass looks templates' declaring provider up in
+            # ``provider_contexts`` by that id, so a str() path (backslashes
+            # on Windows) misses and the template renders with an empty
+            # context ('repolish' is undefined).
             lane_spec = _normalize_command_spec(
                 spec.executor(command_args, command_ctx),
-                provider_id=str(spec.provider_root.resolve()),
+                provider_id=spec.provider_root.as_posix(),
             )
             return run_lane(
                 spec.provider_root,

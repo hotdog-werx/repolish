@@ -94,6 +94,48 @@ def test_render_resolves_context_with_windows_style_pid(
     assert out.read_text() == 'hello=9'
 
 
+def test_render_mapping_resolves_context_with_windows_style_pid(
+    tmp_path: Path,
+):
+    """A backslash-style source_provider on a TemplateMapping still resolves context.
+
+    The mapping render pass looks the declaring provider up in
+    provider_contexts by mapping.source_provider. Session pids are POSIX
+    paths, so a producer that stamps a raw Windows path (as the provider
+    command path did) must not silently fall back to an empty context.
+    """
+    tpl = tmp_path / 'tpl-mapping-pid'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'greet.jinja').write_text(
+        'hello={{ x }}',
+        encoding='utf-8',
+    )
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    _, _ = stage_templates(setup_input, [tpl])
+
+    class CtxX(BaseContext):
+        x: int = 9
+
+    providers = SessionBundle(
+        provider_contexts={'P/subdir': CtxX()},
+        file_mappings={
+            'greet.txt': TemplateMapping(
+                'greet',
+                # Simulate the backslash pid a Windows producer stamps.
+                source_provider='P\\subdir',
+            ),
+        },
+    )
+    preprocess_templates(setup_input, providers, base_dir)
+
+    render_template(setup_input, providers, setup_output)
+
+    out = setup_output / 'repolish' / '_repolish.greet.txt'
+    assert out.read_text() == 'hello=9'
+
+
 def test_render_with_jinja_exposes_context_as_top_level_variables(
     tmp_path: Path,
 ):

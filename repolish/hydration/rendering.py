@@ -169,9 +169,15 @@ def _ctx_for_pid(pid: str | None, providers: SessionBundle) -> dict:
     Returns an empty dict when ``pid`` is ``None`` or not found in
     ``provider_contexts``; rendering falls back to an empty context for
     templates with no declared provider owner.
+
+    The id is normalised to the POSIX form the session uses
+    (``provider_root.as_posix()``) before the lookup, so a producer that
+    stamped a raw Windows path (backslashes) still finds its declaring
+    provider's context instead of silently rendering with an empty one.
     """
     if pid:
-        found = providers.provider_contexts.get(pid)
+        norm_pid = Path(pid.replace('\\', '/')).as_posix()
+        found = providers.provider_contexts.get(norm_pid)
         if found is not None:
             return ctx_to_dict(found)
     return {}
@@ -184,24 +190,16 @@ def _choose_ctx_for_file(rel_str: str, ctx: RenderContext) -> dict:
     """
     # Use the declaring provider's own context when the template has a known
     # provider source; fall back to the merged context otherwise.
+    # provider_ids are expected to be POSIX-formatted; `_ctx_for_pid`
+    # normalises before the lookup so earlier producers that stamped raw
+    # Windows paths (backslashes) still resolve.
     pid = ctx.providers.template_sources.get(rel_str)
-    # provider_ids are expected to be POSIX-formatted, but earlier versions of
-    # the code sometimes exposed raw Windows paths (backslashes).  normalise
-    # before consulting the migration map so lookups succeed even if upstream
-    # producers were inconsistent.  `get` defaults to False to avoid the
-    # mysterious `null` value in the logs that triggered this investigation.
-    if pid:
-        clean = pid.replace('\\', '/')
-        norm_pid = Path(clean).as_posix()
-    else:
-        norm_pid = None
     logger.debug(
         'choose_context_for_file',
         rel=rel_str,
         pid=pid,
-        normalized_pid=norm_pid,
     )
-    return _ctx_for_pid(norm_pid, ctx.providers)
+    return _ctx_for_pid(pid, ctx.providers)
 
 
 def _jinja_render(
