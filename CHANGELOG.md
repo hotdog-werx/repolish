@@ -8,6 +8,25 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.15.0] <a name="1.15.0" href="#1.15.0">-</a> September 22, 2026
+
+### 🚀 Features
+
+- Provider testing tiers, fast lanes, and run reporting (#102) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#102](https://github.com/hotdog-werx/repolish/pull/102)
+
+### 🐛 Bug Fixes
+
+- Pass real global context to provider command executors by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix release task by [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.15.0]: https://github.com/hotdog-werx/repolish/compare/1.14.0...1.15.0
+
 ## [1.14.0] <a name="1.14.0" href="#1.14.0">-</a> September 14, 2026
 
 ### 🚀 Features
