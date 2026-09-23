@@ -83,6 +83,17 @@ class CommandState(Enum):
     NOT_RUN = 'not_run'
 
 
+class LintState(Enum):
+    """The outcome of linting one provider template.
+
+    A clean render with no issues is OK; warnings are advisories and never
+    fail a template (they never affect the lint exit code).
+    """
+
+    OK = 'ok'
+    FAILED = 'failed'
+
+
 @dataclass(frozen=True)
 class ValidatorLine:
     """One validator entry beneath a file row."""
@@ -229,6 +240,7 @@ STATE_ENUMS: tuple[type[Enum], ...] = (
     ValidatorState,
     InsertionState,
     CommandState,
+    LintState,
 )
 """Every state enum, in declaration order; tests assert marker coverage."""
 
@@ -248,3 +260,29 @@ class InsertionCatalogGroup:
 
     provider: str
     functions: tuple[InsertionFunctionRow, ...] = ()
+
+
+@dataclass(frozen=True)
+class LintIssueRow:
+    """One static-analysis finding beneath a lint template row."""
+
+    chain: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class LintTemplateRow:
+    """One provider template in the lint report tree."""
+
+    path: str
+    state: LintState
+    issues: tuple[LintIssueRow, ...] = ()
+    warnings: tuple[str, ...] = ()
+    render_error: str | None = None
+
+
+@dataclass(frozen=True)
+class UnmappedSourceRow:
+    """One conditional source never referenced by create_file_mappings."""
+
+    path: str

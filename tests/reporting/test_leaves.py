@@ -14,12 +14,14 @@ from repolish.reporting.leaves import (
     render_copy_row,
     render_file_row,
     render_insertion_catalog,
+    render_lint_templates,
     render_post_process_group,
     render_promoted_row,
     render_provider_branch,
     render_session_group,
     render_session_groups,
     render_symlink_row,
+    render_unmapped_sources,
 )
 from repolish.reporting.nodes import SummaryNode
 from repolish.summaries.rows import (
@@ -34,6 +36,9 @@ from repolish.summaries.rows import (
     InsertionFunctionRow,
     InsertionLine,
     InsertionState,
+    LintIssueRow,
+    LintState,
+    LintTemplateRow,
     PendingStats,
     PostProcessGroup,
     PromotedRow,
@@ -41,6 +46,7 @@ from repolish.summaries.rows import (
     ProviderBranch,
     SessionGroup,
     SymlinkRow,
+    UnmappedSourceRow,
     ValidatorLine,
     ValidatorState,
 )
@@ -461,3 +467,57 @@ def test_insertion_catalog_styles_match_the_tree_conventions() -> None:
 
 def test_insertion_catalog_empty_groups_render_only_the_note() -> None:
     assert len(render_insertion_catalog([])) == 1
+
+
+# --- lint report -------------------------------------------------------------
+
+
+def test_lint_templates_ok_and_failed_render_markers() -> None:
+    nodes = render_lint_templates(
+        [
+            LintTemplateRow(path='a.md', state=LintState.OK),
+            LintTemplateRow(
+                path='b.md',
+                state=LintState.FAILED,
+                render_error='boom',
+            ),
+        ],
+    )
+    assert [node.label.plain for node in nodes] == ['✓ a.md', '✗ b.md']
+    assert 'green' in _styles(nodes[0])
+    assert 'red' in _styles(nodes[1])
+    assert nodes[0].children == []
+    assert nodes[1].children[0].label.plain == 'render: boom'
+
+
+def test_lint_template_renders_findings_as_children() -> None:
+    node = render_lint_templates(
+        [
+            LintTemplateRow(
+                path='a.md',
+                state=LintState.FAILED,
+                issues=(LintIssueRow(chain='x.y', reason="'x' not in context"),),
+                warnings=("insert zone 'b': brand it",),
+                render_error='boom',
+            ),
+        ],
+    )[0]
+    warning, issue, render_error = node.children
+    assert warning.label.plain == "⚠ insert zone 'b': brand it"
+    assert 'yellow' in _styles(warning)
+    assert issue.label.plain == "• x.y: 'x' not in context"
+    assert issue.label.spans[0].style == 'bold'
+    assert render_error.label.plain == 'render: boom'
+
+
+def test_lint_templates_empty_rows_render_nothing() -> None:
+    assert render_lint_templates([]) == []
+
+
+def test_unmapped_sources_render_yellow_paths() -> None:
+    nodes = render_unmapped_sources(
+        [UnmappedSourceRow(path='_repolish.orphan.toml')],
+    )
+    assert [node.label.plain for node in nodes] == ['_repolish.orphan.toml']
+    assert nodes[0].label.style == 'yellow'
+    assert render_unmapped_sources([]) == []

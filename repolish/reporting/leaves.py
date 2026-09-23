@@ -26,12 +26,15 @@ from repolish.summaries.rows import (
     InsertionCatalogGroup,
     InsertionFunctionRow,
     InsertionLine,
+    LintIssueRow,
+    LintTemplateRow,
     PendingStats,
     PostProcessGroup,
     PromotedRow,
     ProviderBranch,
     SessionGroup,
     SymlinkRow,
+    UnmappedSourceRow,
     ValidatorLine,
     ValidatorState,
 )
@@ -313,3 +316,50 @@ def render_insertion_catalog(
             ),
         )
     return [note, *provider_branches]
+
+
+def _lint_warning_node(warning: str) -> SummaryNode:
+    """Draw one advisory warning line beneath a template."""
+    node = Text('⚠ ', style='yellow')
+    node.append(warning, style='yellow')
+    return SummaryNode(label=node)
+
+
+def _lint_issue_row(row: LintIssueRow) -> SummaryNode:
+    """Draw one finding: yellow bullet, bold chain, plain reason."""
+    node = Text('• ', style='yellow')
+    node.append(row.chain, style='bold')
+    node.append(f': {row.reason}')
+    return SummaryNode(label=node)
+
+
+def _lint_render_error(render_error: str) -> SummaryNode:
+    """Draw the trial-render failure line beneath a template."""
+    node = Text('render: ', style='red')
+    node.append(render_error)
+    return SummaryNode(label=node)
+
+
+def _lint_template_row(row: LintTemplateRow) -> SummaryNode:
+    """Draw one template: marker, path, and its findings as children."""
+    marker = marker_for(row.state)
+    label = Text()
+    label.append(marker.glyph, style=marker.style)
+    label.append(row.path)
+    children = [_lint_warning_node(warning) for warning in row.warnings]
+    children.extend(_lint_issue_row(issue) for issue in row.issues)
+    if row.render_error is not None:
+        children.append(_lint_render_error(row.render_error))
+    return SummaryNode(label=label, children=children)
+
+
+def render_lint_templates(rows: Sequence[LintTemplateRow]) -> list[SummaryNode]:
+    """Draw the lint report: one node per template with its findings."""
+    return [_lint_template_row(row) for row in rows]
+
+
+def render_unmapped_sources(
+    rows: Sequence[UnmappedSourceRow],
+) -> list[SummaryNode]:
+    """Draw the never-referenced conditional sources, one yellow path each."""
+    return [SummaryNode(label=Text(row.path, style='yellow')) for row in rows]

@@ -33,6 +33,7 @@ def test_state_enums_lists_every_state_enum() -> None:
         'ValidatorState',
         'InsertionState',
         'CommandState',
+        'LintState',
     ]
 
 

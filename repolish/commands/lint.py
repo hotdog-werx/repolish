@@ -19,7 +19,6 @@ is the user's own responsibility.
 
 import re
 import types
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Union, cast, get_args, get_origin
 
@@ -29,7 +28,6 @@ import jinja2.nodes
 from hotlog import get_logger
 from jinja2 import select_autoescape
 from pydantic import BaseModel
-from rich.console import Console
 
 from repolish.commands.apply.staging import (
     find_unmapped_conditional_sources,
@@ -45,50 +43,22 @@ from repolish.directives import (
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
+from repolish.reporting import print_summary_trees
+from repolish.reporting.leaves import (
+    render_lint_templates,
+    render_unmapped_sources,
+)
+from repolish.summaries import (
+    LintIssue,
+    LintState,
+    TemplateResult,
+    lint_template_rows,
+    unmapped_source_rows,
+)
 
 logger = get_logger(__name__)
 
 _ZONE_BRAND_TOKENS = frozenset({'generated', 'gen', 'auto'})
-
-
-@dataclass
-class LintIssue:
-    """A single static-analysis finding against a template."""
-
-    template: str
-    chain: str
-    reason: str
-
-
-@dataclass
-class TemplateResult:
-    """Aggregated findings for one template file.
-
-    ``warnings`` are non-blocking advisories (currently: insert-zone marker
-    branding); they never affect :attr:`ok` or the lint exit code.
-    """
-
-    path: str
-    issues: list[LintIssue] = field(default_factory=list)
-    render_error: str | None = None
-    warnings: list[str] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        """Return True when the template has no issues and rendered cleanly."""
-        return not self.issues and self.render_error is None
-
-
-@dataclass
-class LintResult:
-    """Aggregated results for an entire provider."""
-
-    template_results: list[TemplateResult] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        """Return True when every template in the provider is clean."""
-        return all(r.ok for r in self.template_results)
 
 
 # ---------------------------------------------------------------------------
@@ -284,38 +254,43 @@ def _lint_template(
     # Strip preprocessor directives so Jinja2 can parse clean source.
     # No local file participates — anchors keep their template defaults.
     cleaned = strip_directives(raw, source_path=str(tpl_path))
-
-    result = TemplateResult(path=rel)
-    result.warnings.extend(_zone_marker_warnings(raw, str(tpl_path)))
+    warnings = _zone_marker_warnings(raw, str(tpl_path))
 
     try:
         ast = env.parse(cleaned)
     except jinja2.TemplateSyntaxError as exc:
-        result.render_error = f'syntax error: {exc}'
-        return result
+        return TemplateResult(
+            path=rel,
+            warnings=tuple(warnings),
+            render_error=f'syntax error: {exc}',
+        )
 
     # find_undeclared_variables handles scope (loop vars, set vars, etc.)
     undeclared: set[str] = jinja2.meta.find_undeclared_variables(ast)
     all_chains = _collect_chains(ast)
     external_chains = {c for c in all_chains if c.split('.')[0] in undeclared}
-    result.issues.extend(
-        _check_chains(
-            _maximal_chains(external_chains),
-            ctx_dict,
-            ctx_type,
-            rel,
-        ),
+    issues = _check_chains(
+        _maximal_chains(external_chains),
+        ctx_dict,
+        ctx_type,
+        rel,
     )
 
     # Trial render — catches dynamic errors the static pass cannot see
+    render_error: str | None = None
     try:
         env.from_string(cleaned).render(ctx_dict)
     except jinja2.UndefinedError as exc:
-        result.render_error = str(exc)
+        render_error = str(exc)
     except Exception as exc:  # noqa: BLE001 - surface any render failure
-        result.render_error = f'render error: {exc}'
+        render_error = f'render error: {exc}'
 
-    return result
+    return TemplateResult(
+        path=rel,
+        issues=tuple(issues),
+        warnings=tuple(warnings),
+        render_error=render_error,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -335,43 +310,6 @@ def _resolve_context(
     """
     ctx = providers.provider_contexts[pid]
     return ctx.model_dump(), type(ctx)
-
-
-def _report_result(
-    r: TemplateResult,
-    console: Console,
-) -> tuple[int, int]:
-    """Print one template's status and details; return its (issues, render errors)."""
-    status = '[green]✓[/green]' if r.ok else '[red]✗[/red]'
-    console.print(f'{status} {r.path}')
-    for warning in r.warnings:
-        console.print(f'  [yellow]⚠ {warning}[/yellow]')
-    issues = 0
-    render_errors = 0
-    if not r.ok:
-        for issue in r.issues:
-            console.print(
-                f'  [yellow]•[/yellow] [bold]{issue.chain}[/bold]: {issue.reason}',
-            )
-            issues += 1
-        if r.render_error:
-            console.print(f'  [red]render:[/red] {r.render_error}')
-            render_errors += 1
-    return issues, render_errors
-
-
-def _report_results(
-    results: list[TemplateResult],
-    console: Console,
-) -> tuple[int, int]:
-    """Print per-template results and return ``(issues_total, render_errors_total)``."""
-    issues_total = 0
-    render_errors_total = 0
-    for r in results:
-        issues, render_errors = _report_result(r, console)
-        issues_total += issues
-        render_errors_total += render_errors
-    return issues_total, render_errors_total
 
 
 # ---------------------------------------------------------------------------
@@ -407,8 +345,6 @@ def command(provider_dir: Path) -> int:
         logger.error('templates_dir_missing', path=str(tpl_root))
         return 1
 
-    console.rule('[bold]repolish lint')
-
     # Load provider and get finalized context (no inputs - single-provider run)
     try:
         providers = create_providers([str(provider_dir)])
@@ -437,8 +373,9 @@ def command(provider_dir: Path) -> int:
 
     templates = sorted(f for f in tpl_root.rglob('*') if f.is_file())
     results = [_lint_template(tpl, tpl_root, ctx_type, ctx_dict, env) for tpl in templates]
-    lint_result = LintResult(template_results=results)
-    issues_total, render_errors_total = _report_results(results, console)
+    rows = lint_template_rows(results)
+    issues_total = sum(len(result.issues) for result in results)
+    render_errors_total = sum(1 for result in results if result.render_error)
 
     # Check for _repolish.* files that are present in the template tree but
     # never referenced by create_file_mappings.  These are likely typos or
@@ -453,22 +390,26 @@ def command(provider_dir: Path) -> int:
         {provider_dir.name: dummy_info},
         mapped,
     )
-    if unmapped:
-        console.print()
-        console.print(
-            '[yellow]Unmapped conditional sources (never referenced by create_file_mappings):[/yellow]',
+    for alias, path in unmapped:
+        logger.warning(
+            'unmapped_conditional_source',
+            provider=alias,
+            path=path,
+            suggestion='add to create_file_mappings or remove the file',
         )
-        for alias, path in unmapped:
-            console.print(f'  [yellow]{path}[/yellow]')
-            logger.warning(
-                'unmapped_conditional_source',
-                provider=alias,
-                path=path,
-                suggestion='add to create_file_mappings or remove the file',
-            )
+
+    print_summary_trees(
+        [
+            ('repolish lint', render_lint_templates(rows)),
+            (
+                'Unmapped conditional sources (never referenced by create_file_mappings)',
+                render_unmapped_sources(unmapped_source_rows(unmapped)),
+            ),
+        ],
+    )
 
     console.print()
-    if lint_result.ok and not unmapped:
+    if all(row.state is LintState.OK for row in rows) and not unmapped:
         console.rule('[bold green]All templates OK[/bold green]')
         logger.info('lint_passed', templates=len(results))
         return 0

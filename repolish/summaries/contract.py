@@ -1,6 +1,6 @@
 """The input contracts: what each finished surface hands to summaries.
 
-Four surfaces, four contracts, one shape each:
+Five surfaces, five contracts, one shape each:
 
 - apply: `SummarySession`, everything the apply derivation reads.
 - post-process: `PostProcessSession`, the narrow slice the post-process
@@ -8,6 +8,8 @@ Four surfaces, four contracts, one shape each:
 - link: `LinkResult`, the collected declarations of one link pass.
 - insertion catalog: `InsertionCatalogSession`, the registry slice the
   catalog derivation reads (`repolish list-insertions`).
+- lint: `TemplateResult` (with `LintIssue`), the findings of one linted
+  template (`repolish lint`).
 
 The protocols are structural, so the apply pipeline's `ResolvedSession`
 satisfies them without wrapping or conversion — but the dependency arrow
@@ -114,3 +116,27 @@ class LinkResult:
     copies: dict[str, list[ProviderCopy]]
     held_back: dict[str, list[str]]
     paused_files: frozenset[str]
+
+
+@dataclass(frozen=True)
+class LintIssue:
+    """One static-analysis finding against a template."""
+
+    template: str
+    chain: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class TemplateResult:
+    """What one template's lint pass hands over: its findings.
+
+    Assembled where the data exists (`_lint_template` in
+    `repolish.commands.lint`). `warnings` are non-blocking advisories
+    (currently: insert-zone marker branding); they never fail a template.
+    """
+
+    path: str
+    issues: tuple[LintIssue, ...] = ()
+    warnings: tuple[str, ...] = ()
+    render_error: str | None = None
