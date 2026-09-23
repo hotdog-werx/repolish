@@ -155,6 +155,42 @@ def _validation_has_warnings(session: ResolvedSession) -> bool:
     )
 
 
+def _run_session_validation(
+    session: ResolvedSession,
+    base_dir: Path,
+    setup_output: Path,
+) -> None:
+    """Run all registered file validators and record the results on *session*."""
+    session.validation_results, session.validation_reports = _collect_validation(
+        session.providers,
+        session.config.config_dir,
+        setup_output / 'repolish',
+        reports_dir=base_dir / '.repolish' / '_' / 'validators',
+        pid_to_alias=session.pid_to_alias,
+    )
+
+
+def _log_validation_failure(session: ResolvedSession) -> None:
+    """Log the collected validator failures that are failing the run."""
+    logger.error(
+        'validators_failed',
+        files=sorted(session.validation_results),
+        validator_count=sum(len(v) for v in session.validation_results.values()),
+    )
+
+
+def _validation_failure_rc(
+    session: ResolvedSession,
+    *,
+    fail_on_warnings: bool,
+) -> int | None:
+    """Return 1 when validator results fail the run, or None when they do not."""
+    if _validation_has_errors(session) or (fail_on_warnings and _validation_has_warnings(session)):
+        _log_validation_failure(session)
+        return 1
+    return None
+
+
 def _run_after_render_directives(
     setup_output: Path,
     base_dir: Path,
@@ -359,7 +395,17 @@ def _apply_session(
                 ),
             )
         session.apply_result = check_result
-        return rc
+        # Validators run in check mode too: a failing validator must fail the
+        # job even when the tree is clean, because check mode must predict
+        # exactly what `repolish apply` would enforce. Drift alone stays rc 2;
+        # a validator failure is rc 1, the same code apply mode returns.
+        with timer.phase('validation'):
+            _run_session_validation(session, base_dir, setup_output)
+        validation_rc = _validation_failure_rc(
+            session,
+            fail_on_warnings=fail_on_warnings,
+        )
+        return validation_rc if validation_rc is not None else rc
 
     # Copy the post-processed render tree out to the project. Post-process
     # runs before this copy, never after: formatting a tree that was already
@@ -383,31 +429,13 @@ def _apply_session(
         )
 
     with timer.phase('validation'):
-        session.validation_results, session.validation_reports = _collect_validation(
-            providers,
-            config.config_dir,
-            setup_output / 'repolish',
-            reports_dir=base_dir / '.repolish' / '_' / 'validators',
-            pid_to_alias=pid_to_alias,
-        )
+        _run_session_validation(session, base_dir, setup_output)
 
-    if _validation_has_errors(session):
-        logger.error(
-            'validators_failed',
-            files=sorted(session.validation_results),
-            validator_count=sum(len(v) for v in session.validation_results.values()),
-        )
-        return 1
-
-    if fail_on_warnings and _validation_has_warnings(session):
-        logger.error(
-            'validators_failed',
-            files=sorted(session.validation_results),
-            validator_count=sum(len(v) for v in session.validation_results.values()),
-        )
-        return 1
-
-    return 0
+    validation_rc = _validation_failure_rc(
+        session,
+        fail_on_warnings=fail_on_warnings,
+    )
+    return validation_rc if validation_rc is not None else 0
 
 
 def run_session(options: ApplyOptions) -> int:

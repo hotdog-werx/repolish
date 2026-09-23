@@ -552,6 +552,84 @@ def test_validator_warning_exits_nonzero_in_fail_on_warnings_mode(
     assert '⚠' in output or 'warn' in output or 'warning' in output
 
 
+def test_validator_failure_fails_check_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing validator must fail `repolish apply --check` exactly like apply.
+
+    Check mode predicts what apply would enforce: a validator error fails the
+    job even when the tree is otherwise clean.
+    """
+    _make_validator_provider(
+        tmp_path / 'p',
+        status=ValidationStatus.ERROR,
+        fail_message='file failed validation',
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply', '--check'], exit_code=1)
+
+    # Nothing is written in check mode, but the failure is enforced and shown.
+    assert not (tmp_path / 'config.toml').exists()
+    output = result.output
+    assert 'file failed validation' in output
+    assert '✗' in output
+
+
+def test_validator_passing_check_mode_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A passing validator must keep `repolish apply --check` green."""
+    _make_validator_provider(
+        tmp_path / 'p',
+        status=ValidationStatus.PASS,
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    # Apply first so the tree is clean and check mode has no drift to report.
+    run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply', '--check'], exit_code=0)
+
+
+def test_validator_warning_in_check_mode_respects_fail_on_warnings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check mode inherits apply's warning semantics: warning only fails with the flag."""
+    _make_validator_provider(
+        tmp_path / 'p',
+        status=ValidationStatus.WARNING,
+        fail_message='bad config',
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    # Apply first so check mode sees a clean tree and only the validator
+    # outcome decides the exit code.
+    run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply', '--check'], exit_code=0)
+    run_repolish(['apply', '--check', '--fail-on-warnings'], exit_code=1)
+
+
 def test_validator_mixed_warning_and_error_are_both_displayed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
