@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.15.1] <a name="1.15.1" href="#1.15.1">-</a> September 23, 2026
+
+### 🐛 Bug Fixes
+
+- Run file validators in check mode (#104) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#104](https://github.com/hotdog-werx/repolish/pull/104)
+
+[1.15.1]: https://github.com/hotdog-werx/repolish/compare/1.15.0...1.15.1
+
 ## [1.15.0] <a name="1.15.0" href="#1.15.0">-</a> September 22, 2026
 
 ### 🚀 Features
