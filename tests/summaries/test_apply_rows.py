@@ -28,7 +28,7 @@ from repolish.providers.models.files import (
     FileValidatorOptions,
     FileValidatorSpec,
 )
-from repolish.reporting.apply_rows import (
+from repolish.summaries.apply_rows import (
     copy_row,
     file_row,
     file_state_from_status,
@@ -36,7 +36,7 @@ from repolish.reporting.apply_rows import (
     session_groups,
     skip_state,
 )
-from repolish.reporting.rows import (
+from repolish.summaries.rows import (
     AppliedStats,
     CopyRow,
     CopyState,

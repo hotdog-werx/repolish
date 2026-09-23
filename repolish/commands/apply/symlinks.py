@@ -177,7 +177,12 @@ def _paused_entries_under(
         if is_paused(dest, paused_files):
             yield dest
         elif child.is_dir():
-            yield from _paused_entries_under(child, target_path, paused_files, rel=child_rel)
+            yield from _paused_entries_under(
+                child,
+                target_path,
+                paused_files,
+                rel=child_rel,
+            )
 
 
 def held_back_copy_targets(
@@ -229,5 +234,7 @@ def _held_back_targets_for_copy(
         return [target]
     source_path = resources_dir / copy.source
     if source_path.is_dir():
-        return list(_paused_entries_under(source_path, copy.target, paused_files))
+        return list(
+            _paused_entries_under(source_path, copy.target, paused_files),
+        )
     return []

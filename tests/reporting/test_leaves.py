@@ -21,7 +21,7 @@ from repolish.reporting.leaves import (
     render_symlink_row,
 )
 from repolish.reporting.nodes import SummaryNode
-from repolish.reporting.rows import (
+from repolish.summaries.rows import (
     AppliedStats,
     CommandRow,
     CommandState,

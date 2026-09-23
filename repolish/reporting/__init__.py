@@ -1,62 +1,26 @@
-"""Summary-tree contract: derivation builds rows, leaves render, render prints."""
+"""Reporting: the drawing half of the summary.
 
-from repolish.reporting.nodes import (
-    SummaryNode,
-    details_link,
-    stat_suffix,
-)
-from repolish.reporting.post_process import post_process_nodes, session_label
+Derivation lives in `repolish.summaries`: it turns a finished session
+into typed rows. This package turns rows into output — markers, leaf
+renderers, and the console printer. Terminal today; a future
+`print_summary_html` consumes the same rows.
+
+Public surface is just the print/render entry points plus the tree node;
+markers, leaves, and their details live in submodules.
+"""
+
+from repolish.reporting.nodes import SummaryNode
 from repolish.reporting.render import (
     print_completed_footer,
     print_run_header,
     print_summary_trees,
     render_summary_tree,
 )
-from repolish.reporting.rows import (
-    MARKERS,
-    CommandRow,
-    CommandState,
-    CopyRow,
-    CopyState,
-    FileRow,
-    FileState,
-    InsertionLine,
-    InsertionState,
-    PromotedRow,
-    PromotedState,
-    ProviderBranch,
-    SessionGroup,
-    SymlinkRow,
-    ValidatorLine,
-    ValidatorState,
-    marker_for,
-)
 
 __all__ = [
-    'MARKERS',
-    'CommandRow',
-    'CommandState',
-    'CopyRow',
-    'CopyState',
-    'FileRow',
-    'FileState',
-    'InsertionLine',
-    'InsertionState',
-    'PromotedRow',
-    'PromotedState',
-    'ProviderBranch',
-    'SessionGroup',
     'SummaryNode',
-    'SymlinkRow',
-    'ValidatorLine',
-    'ValidatorState',
-    'details_link',
-    'marker_for',
-    'post_process_nodes',
     'print_completed_footer',
     'print_run_header',
     'print_summary_trees',
     'render_summary_tree',
-    'session_label',
-    'stat_suffix',
 ]

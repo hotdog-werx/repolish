@@ -24,7 +24,10 @@ from repolish.commands.apply.session import (
 from repolish.commands.apply.session import (
     run_session as run_repolish,
 )
-from repolish.commands.apply.symlinks import apply_copies, held_back_copy_targets
+from repolish.commands.apply.symlinks import (
+    apply_copies,
+    held_back_copy_targets,
+)
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import (
     ProviderCopy,

@@ -2,9 +2,9 @@
 
 The drawing half of the summary contract. Every glyph, color, note, and
 hyperlink a summary prints is applied here, sourced from `MARKERS` in
-`repolish.reporting.rows` via `marker_for`; renderers never invent a
+`repolish.reporting.markers` via `marker_for`; renderers never invent a
 marker or fall back to a default. They consume row data only: no session
-objects, no state decisions.
+objects, no state decisions — the rows come from `repolish.summaries`.
 """
 
 from collections.abc import Sequence
@@ -14,8 +14,9 @@ from rich.text import Text
 
 from repolish.console import supports_hyperlinks
 from repolish.postprocess.report import format_duration
+from repolish.reporting.markers import marker_for
 from repolish.reporting.nodes import SummaryNode, details_link, stat_suffix
-from repolish.reporting.rows import (
+from repolish.summaries.rows import (
     AppliedStats,
     CommandRow,
     CommandState,
@@ -31,7 +32,6 @@ from repolish.reporting.rows import (
     SymlinkRow,
     ValidatorLine,
     ValidatorState,
-    marker_for,
 )
 
 # rich styles for a file mode note, keyed by FileMode value.
@@ -265,3 +265,10 @@ def render_post_process_group(group: PostProcessGroup) -> SummaryNode:
 def render_apply_summary(groups: Sequence[SessionGroup]) -> list[SummaryNode]:
     """Render every apply-summary group into nodes, in order."""
     return [render_session_group(group) for group in groups]
+
+
+def render_post_process_summary(
+    groups: Sequence[PostProcessGroup],
+) -> list[SummaryNode]:
+    """Render every post-process group into nodes, in order."""
+    return [render_post_process_group(group) for group in groups]

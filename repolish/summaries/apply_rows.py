@@ -1,16 +1,15 @@
-"""Derivation for the apply summary tree: `ResolvedSession` in, rows out.
+"""Derivation for the apply summary tree: `SummarySession` in, rows out.
 
 The state-decision half of the summary contract. Every question about what
 happened to a file, copy, symlink, or promoted file in a run is answered
-here and expressed as a typed row from `repolish.reporting.rows`; the leaf
-renderers in `repolish.reporting.leaves` then only draw. Nothing in this
-module imports rich or prints: it is pure derivation, unit-testable with a
-hand-built session.
+here and expressed as a typed row from `repolish.summaries.rows`; a
+renderer then only draws. Nothing in this module imports rich or prints:
+it is pure derivation, unit-testable with a hand-built session.
 
-`ResolvedSession` is imported under `TYPE_CHECKING` only, mirroring
-`post_process.py`: the functions read its fields but never need the class
-at runtime, which keeps the reporting package free of import cycles with
-`commands.apply`.
+The input type is the `SummarySession` protocol from
+`repolish.summaries.contract`: the pipeline's `ResolvedSession` satisfies
+it structurally, and the functions never need that class at runtime, so
+summaries stays free of import cycles with `commands.apply`.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from repolish.providers.models import (
     FileValidatorSpec,
 )
 from repolish.providers.models.files import ValidationStatus
-from repolish.reporting.rows import (
+from repolish.summaries.rows import (
     AppliedStats,
     CopyRow,
     CopyState,
@@ -50,11 +49,9 @@ from repolish.utils import path_slug
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from repolish.commands.apply.options import (
-        InsertionFileResult,
-        ResolvedSession,
-    )
+    from repolish.commands.apply.options import InsertionFileResult
     from repolish.config.models.provider import ProviderCopy, ProviderSymlink
+    from repolish.summaries.contract import SummarySession
 
 
 # Apply-result status strings -> file states. Anything else fails loudly in
@@ -95,7 +92,7 @@ def file_state_from_status(status: str | None) -> FileState:
 
 def skip_state(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> FileState | None:
     """Return the state of a file that was not applied, or None if it was.
 
@@ -134,7 +131,7 @@ def _validator_entry_enabled(entry: FileValidatorEntry) -> bool:
 
 def _is_validator_only_not_staged(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> bool:
     """Return True when a validator is attached to a file that was never staged.
 
@@ -152,7 +149,7 @@ def _is_validator_only_not_staged(
 
 def _validator_file_owner(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> str | None:
     """Return the non-matching provider that owns the file path, if any.
 
@@ -173,7 +170,7 @@ def _validator_file_owner(
 
 def _is_insertion_only_not_staged(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> bool:
     """Return True when insertions target a file that was never staged."""
     # Check if this record's provider has actual insertions (total_blocks > 0)
@@ -196,7 +193,7 @@ def _is_insertion_only_not_staged(
     )
 
 
-def _insertion_only_label(session: ResolvedSession) -> str:
+def _insertion_only_label(session: SummarySession) -> str:
     """Label for an insertion-only file that was never staged.
 
     Without a provider filter every configured provider ran, so no provider
@@ -225,7 +222,7 @@ def _insertion_line_from_result(
 
 def insertion_line(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> InsertionLine | None:
     """Return the insertion status line for the current provider, if any.
 
@@ -253,7 +250,7 @@ def insertion_line(
 
 def _validator_lines(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> tuple[ValidatorLine, ...]:
     """Build one line per validator registered on the record's file."""
     validation_results = session.validation_results.get(record.path, {}) if session.validation_results else {}
@@ -298,7 +295,7 @@ def _validator_lines(
 
 def _validator_file_row(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> FileRow:
     """Row for a file whose validators are shown beneath it."""
     other_owner = _validator_file_owner(record, session)
@@ -333,7 +330,7 @@ def _file_source(record: FileRecord) -> str:
 
 def _insertion_owner_note(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
     other_owner: str | None,
 ) -> str:
     """Ownership hedge for a staged file another provider also claims."""
@@ -344,7 +341,7 @@ def _insertion_owner_note(
     return ''
 
 
-def _status_file_row(record: FileRecord, session: ResolvedSession) -> FileRow:
+def _status_file_row(record: FileRecord, session: SummarySession) -> FileRow:
     """Row for a normal staged file: apply status, source, and mode."""
     other_owner = _validator_file_owner(record, session)
     if _is_insertion_only_not_staged(record, session) or other_owner is not None:
@@ -377,7 +374,7 @@ def _status_file_row(record: FileRecord, session: ResolvedSession) -> FileRow:
 
 def file_row(
     record: FileRecord,
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> FileRow:
     """Build the row for one file record, dispatching on its shape.
 
@@ -454,7 +451,7 @@ def _applied_stats(
     records: Sequence[FileRecord],
     symlinks: Sequence[ProviderSymlink],
     copies: Sequence[ProviderCopy],
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> AppliedStats:
     """Count apply outcomes over a provider's records for its label suffix."""
     record_paths = {r.path for r in records}
@@ -479,7 +476,7 @@ def _pending_stats(
     records: Sequence[FileRecord],
     symlinks: Sequence[ProviderSymlink],
     copies: Sequence[ProviderCopy],
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> PendingStats:
     """Count pre-apply dispositions for a provider's label suffix."""
     skipped = sum(1 for r in records if skip_state(r, session) is not None)
@@ -510,7 +507,7 @@ def _role_label(ctx: object) -> str:
 
 
 def _classify_aliases(
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> tuple[list[str], dict[str, list[str]], list[str]]:
     """Split session aliases into root, per-member, and standalone groups."""
     root_aliases: list[str] = []
@@ -530,7 +527,7 @@ def _classify_aliases(
     return root_aliases, member_aliases, standalone_aliases
 
 
-def _records_by_owner(session: ResolvedSession) -> dict[str, list[FileRecord]]:
+def _records_by_owner(session: SummarySession) -> dict[str, list[FileRecord]]:
     """Group file records by the provider alias that owns them."""
     records_by_owner: dict[str, list[FileRecord]] = {}
     for record in session.providers.file_records:
@@ -540,7 +537,7 @@ def _records_by_owner(session: ResolvedSession) -> dict[str, list[FileRecord]]:
 
 def _attach_validator_owner_records(
     records_by_owner: dict[str, list[FileRecord]],
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> None:
     """Add validator-owned entries beneath the provider that declared them."""
     for dest, validator_provider in session.providers.validator_sources.items():
@@ -562,7 +559,7 @@ def _attach_validator_owner_records(
 
 def _attach_insertion_owner_records(
     records_by_owner: dict[str, list[FileRecord]],
-    session: ResolvedSession,
+    session: SummarySession,
 ) -> None:
     """Add insertion-owned entries beneath each provider that declared insertions.
 
@@ -594,7 +591,7 @@ def _attach_insertion_owner_records(
 def _provider_branch(
     alias: str,
     records_by_owner: dict[str, list[FileRecord]],
-    session: ResolvedSession,
+    session: SummarySession,
     debug_dir: Path,
 ) -> ProviderBranch:
     """Build one provider's branch: its rows and its label stats."""
@@ -630,7 +627,7 @@ def _provider_branch(
     )
 
 
-def session_groups(session: ResolvedSession) -> list[SessionGroup]:
+def session_groups(session: SummarySession) -> list[SessionGroup]:
     """Build one row group set for a session, grouped by provider role."""
     debug_dir = session.config.config_dir / '.repolish' / '_'
     records_by_owner = _records_by_owner(session)
@@ -694,7 +691,7 @@ def session_groups(session: ResolvedSession) -> list[SessionGroup]:
 
 
 def apply_summary_rows(
-    sessions: Sequence[ResolvedSession],
+    sessions: Sequence[SummarySession],
 ) -> list[SessionGroup]:
     """Merge every session's groups (Root / Member / Standalone) into one row list."""
     return [group for session in sessions for group in session_groups(session)]

@@ -1,12 +1,13 @@
-"""The summary-tree row model: typed states, markers, and row dataclasses.
+"""The summary row model: typed states and row dataclasses.
 
-The contract between summary derivation and summary rendering. Producers
-(`repolish.reporting.apply_rows`, `repolish.reporting.post_process`) turn
-session state into the rows defined here; leaf renderers
-(`repolish.reporting.leaves`) turn rows into `SummaryNode` trees. Neither
-side invents markers or status strings: every glyph a summary can print
-comes from `MARKERS`, one exhaustive table keyed by the state enums, so a
-new state cannot silently render as a green check mark.
+The output contract of `repolish.summaries`. Derivation
+(`repolish.summaries.apply_rows`, `repolish.summaries.post_process`) turns
+the finished session's state into the rows defined here; a renderer
+(`repolish.reporting.leaves` today, an HTML renderer later) turns rows into
+its own output. A summary is just a state: no glyphs, styles, or other
+display decisions live here, and adding a state is a deliberate act
+recorded in `STATE_ENUMS` (renderers keep exhaustive tables keyed by it,
+so a new state fails loudly instead of rendering as a green check mark).
 
 Rows are plain data. They carry no rich objects and no session references;
 `link` fields hold the paths the row hyperlinks to (file-context debug JSON,
@@ -80,112 +81,6 @@ class CommandState(Enum):
     OK = 'ok'
     FAILED = 'failed'
     NOT_RUN = 'not_run'
-
-
-@dataclass(frozen=True)
-class Marker:
-    """How a state renders: glyph prefix, rich style, and an optional note.
-
-    The note renders after the path (`paused`, `(partially paused)`, the
-    promoted-file annotations) in *note_style*, which differs from the
-    glyph style for most states (`✗` yellow with a dim yellow note).
-    """
-
-    glyph: str
-    style: str
-    note: str = ''
-    note_style: str | None = None
-
-    @property
-    def note_styled(self) -> str:
-        """The rich style for the note; falls back to the glyph style."""
-        return self.style if self.note_style is None else self.note_style
-
-
-# Every member of every state enum, with its glyph. Exhaustive by contract:
-# tests assert each enum is fully covered, so adding a state without a
-# marker fails the suite instead of printing a wrong glyph.
-MARKERS: dict[Enum, Marker] = {
-    FileState.WRITTEN: Marker('✓ ', 'green'),
-    FileState.UNCHANGED: Marker('~ ', 'dim cyan'),
-    FileState.DELETED: Marker('✗ ', 'dim red'),
-    FileState.DRIFT: Marker('✗ ', 'red'),
-    FileState.PAUSED: Marker('✗ ', 'yellow', 'paused', 'dim yellow'),
-    FileState.SUPPRESSED: Marker('✗ ', 'yellow', 'suppressed', 'dim yellow'),
-    FileState.DISABLED: Marker('✗ ', 'yellow', 'disabled', 'dim yellow'),
-    FileState.ROOT_SKIPPED: Marker(
-        '✗ ',
-        'yellow',
-        'not in create_file_mappings (root mode)',
-        'dim yellow',
-    ),
-    FileState.INSERTION_ONLY: Marker('◌ ', 'yellow'),
-    FileState.VALIDATOR_ONLY: Marker('◌ ', 'yellow'),
-    FileState.OK: Marker('✓ ', 'green'),
-    CopyState.ACTIVE: Marker('📋 ', 'yellow'),
-    CopyState.PAUSED: Marker('⏸ ', 'yellow', '(paused)', 'dim yellow'),
-    CopyState.PARTIALLY_PAUSED: Marker(
-        '◐ ',
-        'yellow',
-        '(partially paused)',
-        'dim yellow',
-    ),
-    PromotedState.WRITTEN: Marker(
-        '↑ ',
-        'green',
-        '  promoted from {from_}',
-        'dim',
-    ),
-    PromotedState.UNCHANGED: Marker(
-        '~ ',
-        'dim cyan',
-        '  ↑ promoted from {from_}',
-        'dim',
-    ),
-    PromotedState.DIFFERS: Marker(
-        '↑ ',
-        'yellow',
-        '  promoted from {from_} (differs)',
-        'dim yellow',
-    ),
-    PromotedState.OVERRIDDEN_BY_ROOT: Marker(
-        '↑ ',
-        'dim yellow',
-        '  ⚠ overridden by {owner}',
-        'dim yellow',
-    ),
-    PromotedState.PAUSED: Marker(
-        '✗ ',
-        'yellow',
-        '  promoted from {from_} (paused)',
-        'dim yellow',
-    ),
-    PromotedState.SUPPRESSED: Marker(
-        '✗ ',
-        'yellow',
-        '  promoted from {from_} (suppressed)',
-        'dim yellow',
-    ),
-    ValidatorState.PASS: Marker('✓', 'green'),
-    ValidatorState.WARNING: Marker('⚠', 'yellow'),
-    ValidatorState.ERROR: Marker('✗', 'red'),
-    ValidatorState.DISABLED: Marker('✗', 'yellow'),
-    InsertionState.OK: Marker('✓', 'dim green'),
-    InsertionState.FAILED: Marker('✗', 'yellow'),
-    CommandState.OK: Marker('✓ ', 'green'),
-    CommandState.FAILED: Marker('✗ ', 'red'),
-    CommandState.NOT_RUN: Marker('✗ ', 'yellow'),
-}
-
-
-def marker_for(state: Enum) -> Marker:
-    """Return the marker for *state*; states without one fail loudly.
-
-    The single lookup every renderer goes through. A KeyError here means a
-    state enum member was added without a `MARKERS` entry: exactly the
-    silent-green-checkmark bug class this module exists to prevent.
-    """
-    return MARKERS[state]
 
 
 @dataclass(frozen=True)

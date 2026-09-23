@@ -1,8 +1,8 @@
 """CLI-facing summary output: banners, tables, and tree composition.
 
-The apply summary tree itself lives in the reporting package:
-`repolish.reporting.apply_rows` derives typed rows from the session,
-`repolish.reporting.leaves` renders them. This module keeps the console
+The summary trees live in their own packages:
+`repolish.summaries` derives typed rows from the finished session,
+`repolish.reporting` renders them. This module keeps the console
 I/O repolish owns directly: the startup banner, pre-apply file tables,
 member-run notes and errors, and the composition that prints the run's
 summary trees and footer.
@@ -20,13 +20,19 @@ from repolish.phases import write_phase_timings
 from repolish.providers.models import SessionBundle
 from repolish.reporting import (
     SummaryNode,
-    post_process_nodes,
     print_completed_footer,
     print_summary_trees,
+)
+from repolish.reporting.leaves import (
+    MODE_STYLES,
+    render_apply_summary,
+    render_post_process_summary,
+)
+from repolish.summaries import (
+    apply_summary_rows,
+    post_process_rows,
     session_label,
 )
-from repolish.reporting.apply_rows import apply_summary_rows
-from repolish.reporting.leaves import MODE_STYLES, render_apply_summary
 from repolish.version import __version__
 
 
@@ -135,7 +141,10 @@ def print_run_summary(sessions: Sequence[ResolvedSession]) -> None:
     """
     print_summary_trees(
         [
-            ('post-process summary', post_process_nodes(sessions)),
+            (
+                'post-process summary',
+                render_post_process_summary(post_process_rows(sessions)),
+            ),
             ('apply summary', apply_summary_nodes(sessions)),
         ],
     )

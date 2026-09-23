@@ -11,7 +11,11 @@ from rich.console import Console
 
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config.models import RepolishConfig
-from repolish.postprocess.models import CommandOutcome, OutcomeStatus, PostProcessRun
+from repolish.postprocess.models import (
+    CommandOutcome,
+    OutcomeStatus,
+    PostProcessRun,
+)
 from repolish.providers import SessionBundle
 from repolish.providers.models import GlobalContext
 from repolish.providers.models.context import (
@@ -23,8 +27,9 @@ from repolish.providers.models.workspace import (
     ProviderSession,
     WorkspaceContext,
 )
-from repolish.reporting import post_process_nodes, print_summary_trees
-from repolish.reporting.post_process import _command_row
+from repolish.reporting import print_summary_trees
+from repolish.reporting.leaves import render_post_process_summary
+from repolish.summaries.post_process import _command_row, post_process_rows
 
 
 def _make_session(
@@ -86,13 +91,18 @@ def _render(mocker: MockerFixture, sessions: Sequence[ResolvedSession]) -> str:
     test_console = Console(file=out, force_terminal=False, no_color=True)
     mocker.patch('repolish.reporting.render.console', test_console)
     print_summary_trees(
-        [('post-process summary', post_process_nodes(sessions))],
+        [
+            (
+                'post-process summary',
+                render_post_process_summary(post_process_rows(sessions)),
+            ),
+        ],
     )
     return out.getvalue()
 
 
 def test_no_groups_without_runs(mocker: MockerFixture, tmp_path: Path):
-    assert post_process_nodes([_make_session(tmp_path)]) == []
+    assert post_process_rows([_make_session(tmp_path)]) == []
     assert _render(mocker, [_make_session(tmp_path)]) == ''
 
 

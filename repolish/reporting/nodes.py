@@ -1,10 +1,12 @@
 """The summary-tree node contract: `SummaryNode` and label helpers.
 
 Producers build `SummaryNode` trees (plain data, no rich Tree knowledge);
-`repolish.reporting.render` turns them into rich output. Status markers
-live in `repolish.reporting.rows` (`MARKERS` keyed by the state enums) —
-everything else a summary can say — a details link, a stat suffix — has a
-helper here so producers never touch link styles or separators directly.
+`repolish.reporting.render` turns them into rich output. The only
+producers are the leaf renderers in `repolish.reporting.leaves`, which
+consume rows from `repolish.summaries` and markers from
+`repolish.reporting.markers`; everything else a summary can say — a
+details link, a stat suffix — has a helper here so producers never touch
+link styles or separators directly.
 """
 
 from dataclasses import dataclass, field

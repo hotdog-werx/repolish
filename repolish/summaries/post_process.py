@@ -1,25 +1,26 @@
-"""Produce the post-process summary tree: rows from session runs, leaves render.
+"""Derivation for the post-process summary: session runs in, rows out.
 
-One group per session that ran post-process commands (the member name, the
-root, or the standalone directory), one command row per command with its
-outcome state. The group label carries the single `[details]` link to the
-session's report (every command in the group shares that file); runs with
-their own report (a promoted-files pass) nest as labeled subgroups. Sessions
-that ran nothing contribute no group, so the tree is silent when
-post-process is unused.
+One group per session that ran post-process commands (the member name,
+the root, or the standalone directory), one command row per command with
+its outcome state. The group carries the single link to the session's
+report (every command in the group shares that file); runs with their own
+report (a promoted-files pass) nest as labeled subgroups. Sessions that
+ran nothing contribute no group, so the tree is silent when post-process
+is unused. Rendering lives in `repolish.reporting.leaves`.
 """
 
-from collections.abc import Sequence
-from pathlib import Path
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
-from repolish.postprocess.models import CommandOutcome, PostProcessRun
-from repolish.reporting.leaves import render_post_process_group
-from repolish.reporting.nodes import SummaryNode
-from repolish.reporting.rows import CommandRow, CommandState, PostProcessGroup
+from repolish.summaries.rows import CommandRow, CommandState, PostProcessGroup
 
 if TYPE_CHECKING:
-    from repolish.commands.apply.options import ResolvedSession
+    from collections.abc import Sequence
+    from pathlib import Path
+
+    from repolish.postprocess.models import CommandOutcome, PostProcessRun
+    from repolish.summaries.contract import SummarySession
 
 
 # Outcome status strings -> command states. Anything else fails loudly:
@@ -31,7 +32,7 @@ _COMMAND_STATE: dict[str, CommandState] = {
 }
 
 
-def session_label(session: 'ResolvedSession') -> str:
+def session_label(session: SummarySession) -> str:
     """Name a session after its directory role (member name, root, or dir).
 
     Used by the post-process group label and the phase-timings footer so both
@@ -88,7 +89,7 @@ def _labeled_subgroup(
 
 
 def post_process_rows(
-    sessions: Sequence['ResolvedSession'],
+    sessions: Sequence[SummarySession],
 ) -> list[PostProcessGroup]:
     """Build one group row per session that ran post-process commands."""
     groups: list[PostProcessGroup] = []
@@ -122,10 +123,3 @@ def post_process_rows(
             ),
         )
     return groups
-
-
-def post_process_nodes(
-    sessions: Sequence['ResolvedSession'],
-) -> list[SummaryNode]:
-    """Build the post-process summary groups for every session that ran commands."""
-    return [render_post_process_group(group) for group in post_process_rows(sessions)]
