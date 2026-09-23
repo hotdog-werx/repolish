@@ -10,7 +10,6 @@ from pytest_mock import MockerFixture
 from rich.style import Style
 
 from repolish.reporting.leaves import (
-    render_apply_summary,
     render_command_row,
     render_copy_row,
     render_file_row,
@@ -18,6 +17,7 @@ from repolish.reporting.leaves import (
     render_promoted_row,
     render_provider_branch,
     render_session_group,
+    render_session_groups,
     render_symlink_row,
 )
 from repolish.reporting.nodes import SummaryNode
@@ -344,13 +344,13 @@ def test_session_group_renders_title_branches_and_promoted() -> None:
     assert promoted_group.children[0].label.plain == '↑ pkg.md  promoted from '
 
 
-def test_render_apply_summary_preserves_group_order() -> None:
+def test_render_session_groups_preserves_group_order() -> None:
     groups = [
         SessionGroup(title='Root'),
         SessionGroup(title='Member: pkg'),
         SessionGroup(title='Standalone'),
     ]
-    nodes = render_apply_summary(groups)
+    nodes = render_session_groups(groups)
     assert [node.label.plain for node in nodes] == [
         'Root',
         'Member: pkg',

@@ -262,8 +262,12 @@ def render_post_process_group(group: PostProcessGroup) -> SummaryNode:
     return SummaryNode(label=label, children=children)
 
 
-def render_apply_summary(groups: Sequence[SessionGroup]) -> list[SummaryNode]:
-    """Render every apply-summary group into nodes, in order."""
+def render_session_groups(groups: Sequence[SessionGroup]) -> list[SummaryNode]:
+    """Render every session group into nodes, in order.
+
+    Shared by every summary built from `SessionGroup` rows — the apply
+    summary and the link/copy summaries alike.
+    """
     return [render_session_group(group) for group in groups]
 
 

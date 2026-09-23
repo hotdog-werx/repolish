@@ -25,8 +25,8 @@ from repolish.reporting import (
 )
 from repolish.reporting.leaves import (
     MODE_STYLES,
-    render_apply_summary,
     render_post_process_summary,
+    render_session_groups,
 )
 from repolish.summaries import (
     apply_summary_rows,
@@ -129,7 +129,7 @@ def apply_summary_nodes(
     sessions: Sequence[ResolvedSession],
 ) -> list[SummaryNode]:
     """Render the apply summary tree nodes for every session."""
-    return render_apply_summary(apply_summary_rows(sessions))
+    return render_session_groups(apply_summary_rows(sessions))
 
 
 def print_run_summary(sessions: Sequence[ResolvedSession]) -> None:

@@ -4,7 +4,8 @@ Every `repolish apply` run ends with one or two summary trees: the **apply
 summary** (always printed) and the **post-process summary** (printed when any
 session ran `post_process` commands). `repolish
 apply --check` prints the same
-trees, reporting the same states a full apply would produce.
+trees, reporting the same states a full apply would produce. A `repolish link`
+run ends with its own pair: the **link summary** and the **copy summary**.
 
 This page documents how to read them: the tree structure, every marker, every
 annotation, and the hyperlinks each row can carry.
@@ -122,6 +123,32 @@ name, `root`, or the standalone directory name, plus
 `N ok · M failed · K not run` counts. Each command row repeats the raw command
 with its outcome and duration. A failed command shows the error message or exit
 code; commands after a failure show `not run (previous command failed)`.
+
+## The link summaries
+
+```
+link summary
+└── Standalone
+    └── demo
+        └── ↗ .editorconfig  → demo/editorconfig
+
+copy summary
+└── Standalone
+    └── demo
+        ├── 📋 configs  ← demo/configs
+        └── ⏸ dprint.json  ← demo/dprint.json (paused)
+```
+
+`repolish link` prints the **link summary** when any provider resolved symlinks
+and the **copy summary** when any resolved resource copies; both are silent when
+unused. The groups are the same role groups as the apply summary (`Root`,
+`Member: <name>`, `Standalone`), one per config that was linked, with one branch
+per provider alias.
+
+The copy rows use the same markers as the apply summary, so a paused or
+partially paused copy reads identically after both commands. The copy summary
+reflects what repolish _would_ do, including the copies it skipped because the
+project paused them.
 
 ## Check mode parity
 

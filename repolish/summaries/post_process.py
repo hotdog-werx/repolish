@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from repolish.postprocess.models import CommandOutcome, PostProcessRun
-    from repolish.summaries.contract import SummarySession
+    from repolish.summaries.contract import PostProcessSession
 
 
 # Outcome status strings -> command states. Anything else fails loudly:
@@ -32,7 +32,7 @@ _COMMAND_STATE: dict[str, CommandState] = {
 }
 
 
-def session_label(session: SummarySession) -> str:
+def session_label(session: PostProcessSession) -> str:
     """Name a session after its directory role (member name, root, or dir).
 
     Used by the post-process group label and the phase-timings footer so both
@@ -89,7 +89,7 @@ def _labeled_subgroup(
 
 
 def post_process_rows(
-    sessions: Sequence[SummarySession],
+    sessions: Sequence[PostProcessSession],
 ) -> list[PostProcessGroup]:
     """Build one group row per session that ran post-process commands."""
     groups: list[PostProcessGroup] = []
