@@ -23,6 +23,8 @@ from repolish.summaries.rows import (
     CopyRow,
     CopyState,
     FileRow,
+    InsertionCatalogGroup,
+    InsertionFunctionRow,
     InsertionLine,
     PendingStats,
     PostProcessGroup,
@@ -276,3 +278,38 @@ def render_post_process_summary(
 ) -> list[SummaryNode]:
     """Render every post-process group into nodes, in order."""
     return [render_post_process_group(group) for group in groups]
+
+
+def _insertion_function_row(row: InsertionFunctionRow) -> SummaryNode:
+    """Draw one function row: name, dim summary, and the files it serves."""
+    label = Text(row.name)
+    label.append(f'  - {row.summary}', style='dim')
+    files = Text('files (repolish:on markers): ', style='dim')
+    files.append(', '.join(row.files))
+    return SummaryNode(label=label, children=[SummaryNode(label=files)])
+
+
+def render_insertion_catalog(
+    groups: Sequence[InsertionCatalogGroup],
+) -> list[SummaryNode]:
+    """Draw the insertion catalog: a dim usage note.
+
+    Then one bold provider branch per group with its functions beneath.
+    """
+    note = SummaryNode(
+        label=Text(
+            'files gate developer markers; template zones may call any listed function',
+            style='dim',
+        ),
+    )
+    provider_branches = []
+    for group in groups:
+        label = Text(group.provider, style='bold')
+        label.append(f' ({len(group.functions)} functions)', style='dim')
+        provider_branches.append(
+            SummaryNode(
+                label=label,
+                children=[_insertion_function_row(row) for row in group.functions],
+            ),
+        )
+    return [note, *provider_branches]

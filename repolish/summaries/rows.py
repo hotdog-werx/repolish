@@ -231,3 +231,20 @@ STATE_ENUMS: tuple[type[Enum], ...] = (
     CommandState,
 )
 """Every state enum, in declaration order; tests assert marker coverage."""
+
+
+@dataclass(frozen=True)
+class InsertionFunctionRow:
+    """One insertion function in the catalog tree."""
+
+    name: str
+    summary: str
+    files: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class InsertionCatalogGroup:
+    """One provider's insertion functions in the catalog tree."""
+
+    provider: str
+    functions: tuple[InsertionFunctionRow, ...] = ()

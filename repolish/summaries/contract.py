@@ -1,13 +1,15 @@
-"""The input contracts: what each finished run hands to summaries.
+"""The input contracts: what each finished surface hands to summaries.
 
-Three surfaces, three contracts, one shape each:
+Four surfaces, four contracts, one shape each:
 
 - apply: `SummarySession`, everything the apply derivation reads.
 - post-process: `PostProcessSession`, the narrow slice the post-process
   group derivation and the session labeler need.
 - link: `LinkResult`, the collected declarations of one link pass.
+- insertion catalog: `InsertionCatalogSession`, the registry slice the
+  catalog derivation reads (`repolish list-insertions`).
 
-Both protocols are structural, so the apply pipeline's `ResolvedSession`
+The protocols are structural, so the apply pipeline's `ResolvedSession`
 satisfies them without wrapping or conversion — but the dependency arrow
 stays honest: the pipeline *delivers* something that matches what
 summaries asks for; summaries never imports the pipeline at runtime. The
@@ -78,6 +80,18 @@ class PostProcessSession(Protocol):
     providers: SessionBundle
     post_process_runs: list[tuple[str, PostProcessRun]]
     post_process_reports: list[Path]
+
+
+class InsertionCatalogSession(Protocol):
+    """What the insertion catalog receives once a session resolves.
+
+    `repolish list-insertions` reads the insertion registries
+    (`providers.file_insertions` + `providers.insertion_sources`) and
+    maps provider ids back to aliases through `pid_to_alias`.
+    """
+
+    providers: SessionBundle
+    pid_to_alias: dict[str, str]
 
 
 @dataclass(frozen=True)

@@ -16,6 +16,7 @@ imported from submodules.
 
 from repolish.summaries.apply_rows import apply_summary_rows
 from repolish.summaries.contract import LinkResult, SummarySession
+from repolish.summaries.insertion_rows import insertion_function_rows
 from repolish.summaries.link_rows import link_copy_rows, link_symlink_rows
 from repolish.summaries.post_process import post_process_rows, session_label
 from repolish.summaries.rows import (
@@ -27,6 +28,8 @@ from repolish.summaries.rows import (
     CopyState,
     FileRow,
     FileState,
+    InsertionCatalogGroup,
+    InsertionFunctionRow,
     InsertionLine,
     InsertionState,
     PendingStats,
@@ -48,6 +51,8 @@ __all__ = [
     'CopyState',
     'FileRow',
     'FileState',
+    'InsertionCatalogGroup',
+    'InsertionFunctionRow',
     'InsertionLine',
     'InsertionState',
     'LinkResult',
@@ -61,6 +66,7 @@ __all__ = [
     'ValidatorLine',
     'ValidatorState',
     'apply_summary_rows',
+    'insertion_function_rows',
     'link_copy_rows',
     'link_symlink_rows',
     'post_process_rows',

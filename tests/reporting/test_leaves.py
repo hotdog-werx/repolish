@@ -13,6 +13,7 @@ from repolish.reporting.leaves import (
     render_command_row,
     render_copy_row,
     render_file_row,
+    render_insertion_catalog,
     render_post_process_group,
     render_promoted_row,
     render_provider_branch,
@@ -29,6 +30,8 @@ from repolish.summaries.rows import (
     CopyState,
     FileRow,
     FileState,
+    InsertionCatalogGroup,
+    InsertionFunctionRow,
     InsertionLine,
     InsertionState,
     PendingStats,
@@ -418,3 +421,43 @@ def test_post_process_group_renders_counts_link_and_subgroups(
     assert node.children[0].label.plain == '✓ make fmt  ok (0ms)'
     assert node.children[1].label.plain == 'promoted files  1 failed'
     assert node.children[1].children[0].label.plain == '✗ make lint  FAILED bad'
+
+
+def test_insertion_catalog_renders_note_provider_and_rows() -> None:
+    nodes = render_insertion_catalog(
+        [
+            InsertionCatalogGroup(
+                provider='alpha',
+                functions=(
+                    InsertionFunctionRow(
+                        name='render-year',
+                        summary='Show the current year.',
+                        files=('a.md', 'b.md'),
+                    ),
+                ),
+            ),
+        ],
+    )
+    assert nodes[0].label.plain == ('files gate developer markers; template zones may call any listed function')
+    assert nodes[1].label.plain == 'alpha (1 functions)'
+    fn = nodes[1].children[0]
+    assert fn.label.plain == 'render-year  - Show the current year.'
+    assert fn.children[0].label.plain == 'files (repolish:on markers): a.md, b.md'
+
+
+def test_insertion_catalog_styles_match_the_tree_conventions() -> None:
+    nodes = render_insertion_catalog(
+        [
+            InsertionCatalogGroup(
+                provider='alpha',
+                functions=(InsertionFunctionRow(name='render-year', summary='Year.'),),
+            ),
+        ],
+    )
+    assert nodes[0].label.style == 'dim'
+    assert nodes[1].label.style == 'bold'
+    assert 'dim' in _styles(nodes[1])
+
+
+def test_insertion_catalog_empty_groups_render_only_the_note() -> None:
+    assert len(render_insertion_catalog([])) == 1
