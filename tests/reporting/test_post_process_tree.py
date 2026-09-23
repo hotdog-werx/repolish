@@ -3,14 +3,15 @@
 import io
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
+import pytest
 from pytest_mock import MockerFixture
 from rich.console import Console
 
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config.models import RepolishConfig
-from repolish.postprocess.models import CommandOutcome, PostProcessRun
+from repolish.postprocess.models import CommandOutcome, OutcomeStatus, PostProcessRun
 from repolish.providers import SessionBundle
 from repolish.providers.models import GlobalContext
 from repolish.providers.models.context import (
@@ -23,6 +24,7 @@ from repolish.providers.models.workspace import (
     WorkspaceContext,
 )
 from repolish.reporting import post_process_nodes, print_summary_trees
+from repolish.reporting.post_process import _command_row
 
 
 def _make_session(
@@ -359,3 +361,15 @@ def test_groups_per_session_in_order(mocker: MockerFixture, tmp_path: Path):
         sessions.append(session)
     output = _render(mocker, sessions)
     assert output.index('alpha') < output.index('beta')
+
+
+def test_unknown_outcome_status_is_rejected():
+    """An unmapped runner status fails loudly instead of rendering a marker."""
+    with pytest.raises(ValueError, match='unknown post-process outcome status'):
+        _command_row(
+            CommandOutcome(
+                raw=('make',),
+                argv=('make',),
+                status=cast('OutcomeStatus', 'exploded'),
+            ),
+        )

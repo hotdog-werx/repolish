@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 
 from hotlog import get_logger
@@ -153,3 +154,80 @@ def apply_copies(
         if paused_targets:
             paused_by_alias[alias] = sorted(paused_targets)
     return paused_by_alias
+
+
+def _paused_entries_under(
+    source_path: Path,
+    target_path: Path,
+    paused_files: frozenset[str],
+    *,
+    rel: Path = Path(),
+) -> Iterator[str]:
+    """Yield the destinations under a directory copy that ``paused_files`` holds back.
+
+    Mirrors the ``copytree`` ignore filter in `create_provider_copies`: each
+    walked entry is mapped to its destination path under the copy target
+    (accumulating *rel* across nested directories) and matched against the
+    pause matcher. A paused directory is recorded once and not descended
+    into, exactly like the copy walk.
+    """
+    for child in sorted(source_path.iterdir()):
+        child_rel = rel / child.name
+        dest = (target_path / child_rel).as_posix()
+        if is_paused(dest, paused_files):
+            yield dest
+        elif child.is_dir():
+            yield from _paused_entries_under(child, target_path, paused_files, rel=child_rel)
+
+
+def held_back_copy_targets(
+    resolved_copies: dict[str, list[ProviderCopy]],
+    providers: dict[str, ResolvedProviderInfo],
+    *,
+    paused_files: frozenset[str] = frozenset(),
+) -> dict[str, list[str]]:
+    """Compute the copy destinations ``paused_files`` would hold back, without copying.
+
+    Pure counterpart to `apply_copies` for modes that never touch the project
+    tree (check mode): whole-entry pauses are detected via the pause matcher
+    on the target, files inside directory copies by walking each copy source
+    tree. Returns the same alias → sorted POSIX destination map
+    `apply_copies` produces, so the summary tree shows the identical paused
+    (or partially paused) state in check mode and apply mode.
+    """
+    held: dict[str, list[str]] = {}
+    for alias, copies in resolved_copies.items():
+        info = providers.get(alias)
+        if not info:
+            continue
+        targets = [
+            dest
+            for copy in copies
+            for dest in _held_back_targets_for_copy(
+                copy,
+                info.resources_dir,
+                paused_files,
+            )
+        ]
+        if targets:
+            held[alias] = sorted(set(targets))
+    return held
+
+
+def _held_back_targets_for_copy(
+    copy: ProviderCopy,
+    resources_dir: Path,
+    paused_files: frozenset[str],
+) -> list[str]:
+    """Return the destinations one copy entry would hold back, in order.
+
+    Whole-entry pauses record the target itself; directory copies walk their
+    source tree and record each paused child, mirroring the copy pass.
+    """
+    target = copy.target.as_posix()
+    if is_paused(target, paused_files):
+        return [target]
+    source_path = resources_dir / copy.source
+    if source_path.is_dir():
+        return list(_paused_entries_under(source_path, copy.target, paused_files))
+    return []

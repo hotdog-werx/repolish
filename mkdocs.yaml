@@ -81,6 +81,7 @@ nav:
       - lint: reference/lint.md
       - preview: reference/preview.md
       - scaffold: reference/scaffold.md
+      - Summary Trees: reference/summary-trees.md
 
 # Configuration
 theme:

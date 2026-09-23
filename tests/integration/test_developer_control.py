@@ -336,6 +336,46 @@ def test_paused_file_inside_copied_directory_is_not_overwritten(
     ) == 'from provider release\n'
 
 
+def test_check_mode_shows_partially_paused_directory_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--check` reports the same copy pause state `apply` would produce.
+
+    Check mode never runs the copy pass, so it cannot read the per-file
+    held-back set that `apply_copies` records; the summary tree must still
+    mark the directory copy as partially paused so CI shows exactly what
+    apply would hold back.
+    """
+    _inline_provider_with_dir_copy(
+        tmp_path / 'p',
+        '_repolish.github',
+        '.github/workflows',
+        {
+            'ci.yml': 'from provider ci\n',
+            'release.yml': 'from provider release\n',
+        },
+    )
+    _write(tmp_path / '.github' / 'workflows' / 'ci.yml', 'local fix\n')
+    _write(tmp_path / '.github' / 'workflows' / 'release.yml', 'stale local\n')
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps(
+            {
+                'providers': {'p': {'provider_root': './p'}},
+                'paused_files': ['.github/workflows/ci.yml'],
+            },
+        ),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    result = run_repolish(['apply', '--check'])
+
+    assert '(partially paused)' in result.output
+
+
 def test_disabled_file_inside_copied_directory_is_owned_by_project(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

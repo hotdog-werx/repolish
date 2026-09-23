@@ -1,30 +1,34 @@
-"""Produce the post-process summary tree nodes.
+"""Produce the post-process summary tree: rows from session runs, leaves render.
 
 One group per session that ran post-process commands (the member name, the
-root, or the standalone directory), one node per command with its outcome
-marker. The group label carries the single `[details]` link to the session's
-report (every command in the group shares that file). Sessions that ran
-nothing contribute no group, so the tree is silent when post-process is
-unused.
+root, or the standalone directory), one command row per command with its
+outcome state. The group label carries the single `[details]` link to the
+session's report (every command in the group shares that file); runs with
+their own report (a promoted-files pass) nest as labeled subgroups. Sessions
+that ran nothing contribute no group, so the tree is silent when
+post-process is unused.
 """
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.text import Text
-
 from repolish.postprocess.models import CommandOutcome, PostProcessRun
-from repolish.postprocess.report import format_duration
-from repolish.reporting.nodes import (
-    Status,
-    SummaryNode,
-    details_link,
-    stat_suffix,
-    status_prefix,
-)
+from repolish.reporting.leaves import render_post_process_group
+from repolish.reporting.nodes import SummaryNode
+from repolish.reporting.rows import CommandRow, CommandState, PostProcessGroup
 
 if TYPE_CHECKING:
     from repolish.commands.apply.options import ResolvedSession
+
+
+# Outcome status strings -> command states. Anything else fails loudly:
+# the runner produces these three values, so an unmapped one is a bug.
+_COMMAND_STATE: dict[str, CommandState] = {
+    'ok': CommandState.OK,
+    'failed': CommandState.FAILED,
+    'not_run': CommandState.NOT_RUN,
+}
 
 
 def session_label(session: 'ResolvedSession') -> str:
@@ -42,83 +46,86 @@ def session_label(session: 'ResolvedSession') -> str:
     return session.config.config_dir.name
 
 
-def _group_suffix_text(label: str, outcomes: Sequence[CommandOutcome]) -> Text:
-    """Compose a group label with its ok/failed/not-run counts."""
-    text = Text(label, style='bold')
+def _command_row(outcome: CommandOutcome) -> CommandRow:
+    """Turn one command outcome into a command row."""
+    try:
+        state = _COMMAND_STATE[outcome.status]
+    except KeyError:
+        msg = f'unknown post-process outcome status: {outcome.status!r}'
+        raise ValueError(msg) from None
+    return CommandRow(
+        raw=' '.join(outcome.raw) or ' '.join(outcome.argv),
+        state=state,
+        duration_ms=outcome.duration_ms,
+        error=outcome.error,
+        returncode=outcome.returncode,
+    )
+
+
+def _counts(outcomes: Sequence[CommandOutcome]) -> tuple[int, int, int]:
+    """Return the (ok, failed, not_run) counts for a group label suffix."""
     ok = sum(1 for o in outcomes if o.status == 'ok')
     failed = sum(1 for o in outcomes if o.status == 'failed')
     not_run = sum(1 for o in outcomes if o.status == 'not_run')
-    parts = [
-        f'[green]{ok} ok[/green]',
-        f'[red]{failed} failed[/red]',
-        f'[yellow]{not_run} not run[/yellow]',
-    ]
-    parts = [part for count, part in zip((ok, failed, not_run), parts, strict=False) if count]
-    if parts:
-        stat_suffix(text, parts)
-    return text
+    return ok, failed, not_run
 
 
-def _command_text(outcome: CommandOutcome) -> Text:
-    """One command row: marker, the raw argv as written, and the outcome."""
-    text = Text()
-    if outcome.status == 'ok':
-        text.append_text(status_prefix(Status.OK))
-    elif outcome.status == 'failed':
-        text.append_text(status_prefix(Status.FAIL))
-    else:
-        text.append_text(status_prefix(Status.SKIP))
-    text.append(' '.join(outcome.raw) or ' '.join(outcome.argv))
-    if outcome.status == 'ok':
-        text.append(
-            f'  ok ({format_duration(outcome.duration_ms)})',
-            style='dim',
-        )
-    elif outcome.status == 'not_run':
-        text.append('  not run (previous command failed)', style='dim yellow')
-    else:
-        note = outcome.error or f'exit {outcome.returncode}'
-        text.append(f'  FAILED {note}', style='red')
-    return text
+def _labeled_subgroup(
+    label: str,
+    run: PostProcessRun,
+    report_path: Path,
+) -> PostProcessGroup:
+    """Build one labeled subgroup with its own report link and counts."""
+    ok, failed, not_run = _counts(run.outcomes)
+    return PostProcessGroup(
+        label=label,
+        link=report_path,
+        commands=tuple(_command_row(o) for o in run.outcomes),
+        ok=ok,
+        failed=failed,
+        not_run=not_run,
+    )
 
 
-def _run_children(run: PostProcessRun) -> list[SummaryNode]:
-    return [SummaryNode(label=_command_text(outcome)) for outcome in run.outcomes]
-
-
-def post_process_nodes(
+def post_process_rows(
     sessions: Sequence['ResolvedSession'],
-) -> list[SummaryNode]:
-    """Build the post-process summary groups for every session that ran commands.
-
-    The session's report file is shared by every command in the group, so the
-    group label carries the single `[details]` link; command rows stay plain.
-    A promoted-files run (root monorepo pass) nests as its own labeled
-    subgroup with a details link of its own, since it writes its own report.
-    """
-    nodes: list[SummaryNode] = []
+) -> list[PostProcessGroup]:
+    """Build one group row per session that ran post-process commands."""
+    groups: list[PostProcessGroup] = []
     for session in sessions:
         if not session.post_process_runs:
             continue
         all_outcomes = [outcome for _label, run in session.post_process_runs for outcome in run.outcomes]
-        group_label = _group_suffix_text(session_label(session), all_outcomes)
-        group = SummaryNode(label=group_label)
+        ok, failed, not_run = _counts(all_outcomes)
+        session_link: Path | None = None
+        commands: tuple[CommandRow, ...] = ()
+        subgroups: list[PostProcessGroup] = []
         for (label, run), report_path in zip(
             session.post_process_runs,
             session.post_process_reports,
             strict=True,
         ):
             if label == 'session':
-                details_link(group_label, report_path)
-                group.children.extend(_run_children(run))
+                session_link = report_path
+                commands = tuple(_command_row(o) for o in run.outcomes)
             else:
-                sub_label = _group_suffix_text(label, run.outcomes)
-                details_link(sub_label, report_path)
-                group.children.append(
-                    SummaryNode(
-                        label=sub_label,
-                        children=_run_children(run),
-                    ),
-                )
-        nodes.append(group)
-    return nodes
+                subgroups.append(_labeled_subgroup(label, run, report_path))
+        groups.append(
+            PostProcessGroup(
+                label=session_label(session),
+                link=session_link,
+                commands=commands,
+                subgroups=tuple(subgroups),
+                ok=ok,
+                failed=failed,
+                not_run=not_run,
+            ),
+        )
+    return groups
+
+
+def post_process_nodes(
+    sessions: Sequence['ResolvedSession'],
+) -> list[SummaryNode]:
+    """Build the post-process summary groups for every session that ran commands."""
+    return [render_post_process_group(group) for group in post_process_rows(sessions)]

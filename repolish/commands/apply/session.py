@@ -25,7 +25,11 @@ from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.staging import (
     create_staged_template,
 )
-from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
+from repolish.commands.apply.symlinks import (
+    apply_copies,
+    apply_symlinks,
+    held_back_copy_targets,
+)
 from repolish.commands.apply.validators import _collect_validation
 from repolish.config.models.project import RepolishConfig
 from repolish.directives import (
@@ -393,6 +397,15 @@ def _apply_session(
                     provider_infos=config.providers,
                     disable_auto_staging=is_root_pass,
                 ),
+            )
+            # Copies never materialize in check mode, so the held-back set the
+            # copy pass records is computed statically instead. The summary
+            # tree then reports the same paused/partially-paused state apply
+            # would produce.
+            session.paused_copies = held_back_copy_targets(
+                session.resolved_copies,
+                config.providers,
+                paused_files=providers.paused_files,
             )
         session.apply_result = check_result
         # Validators run in check mode too: a failing validator must fail the
