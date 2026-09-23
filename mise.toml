@@ -2,6 +2,12 @@
 experimental = true
 python.uv_venv_auto = true
 
+[task_config]
+includes = [
+  "mise-tasks",
+  "mise-tasks/*.toml",
+]
+
 [env]
 GITHUB_REPO_OWNER = "hotdog-werx"
 GITHUB_REPO_NAME = "{{ config_root | basename }}"

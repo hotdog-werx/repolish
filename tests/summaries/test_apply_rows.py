@@ -24,11 +24,18 @@ from repolish.providers.models import (
     ValidationStatus,
     WorkspaceContext,
 )
+from repolish.providers.models.context import (
+    BaseContext,
+    ProviderInfo,
+    RepolishContext,
+)
 from repolish.providers.models.files import (
     FileValidatorOptions,
     FileValidatorSpec,
 )
+from repolish.providers.models.workspace import ProviderSession
 from repolish.summaries.apply_rows import (
+    apply_summary_rows,
     copy_row,
     file_row,
     file_state_from_status,
@@ -40,6 +47,7 @@ from repolish.summaries.rows import (
     AppliedStats,
     CopyRow,
     CopyState,
+    FileRow,
     FileState,
     InsertionState,
     PendingStats,
@@ -65,6 +73,7 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for derivatio
     file_validators: dict | None = None,
     validator_sources: dict | None = None,
     file_insertions: dict | None = None,
+    insertion_sources: dict | None = None,
     disabled_file_mappings: dict | None = None,
     paused_files: list[str] | None = None,
     apply_result: dict[str, str] | None = None,
@@ -72,6 +81,10 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for derivatio
     provider_filter: list[str] | None = None,
     resolved_copies: dict | None = None,
     paused_copies: dict | None = None,
+    aliases: list[str] | None = None,
+    alias_to_pid: dict | None = None,
+    pid_to_alias: dict | None = None,
+    provider_contexts: dict | None = None,
 ) -> ResolvedSession:
     config = RepolishConfig(
         config_dir=tmp_path,
@@ -84,16 +97,18 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for derivatio
         file_validators=file_validators or {},
         validator_sources=validator_sources or {},
         file_insertions=file_insertions or {},
+        insertion_sources=insertion_sources or {},
         disabled_file_mappings=disabled_file_mappings or {},
+        provider_contexts=provider_contexts or {},
     )
     session = ResolvedSession(
         config_path=tmp_path / 'repolish.yaml',
         config=config,
         global_context=GlobalContext(workspace=WorkspaceContext(mode=mode)),
         providers=providers,
-        aliases=['p'],
-        alias_to_pid={'p': 'pid'},
-        pid_to_alias={'pid': 'p'},
+        aliases=aliases or ['p'],
+        alias_to_pid=alias_to_pid or {'p': 'pid'},
+        pid_to_alias=pid_to_alias or {'pid': 'p'},
         provider_filter=provider_filter,
         resolved_copies=resolved_copies or {},
         paused_copies=paused_copies or {},
@@ -436,3 +451,190 @@ def test_session_groups_reports_copy_pause_in_check_mode(
     (branch,) = group.branches
     (copy_node,) = [row for row in branch.rows if isinstance(row, CopyRow)]
     assert copy_node.state is CopyState.PARTIALLY_PAUSED
+
+
+# --- staged-file annotations (ownership, overlays, provider insertions) ------------
+
+
+def test_file_row_on_a_staged_file_names_the_other_owner(
+    tmp_path: Path,
+) -> None:
+    """A file another provider also claims keeps its apply status and says so."""
+    session = _make_session(
+        tmp_path,
+        file_records=[
+            FileRecord(
+                path='shared.md',
+                mode=FileMode.REGULAR,
+                owner='q',
+                source='_q/shared.md',
+            ),
+            _record('shared.md', source='_p/shared.md'),
+        ],
+        apply_result={'shared.md': 'written'},
+    )
+    row = file_row(_record('shared.md', source='_p/shared.md'), session)
+    assert row.state is FileState.INSERTION_ONLY
+    assert row.owner_note == 'owned by q'
+
+
+def test_file_row_source_falls_back_to_the_overlay_dir(tmp_path: Path) -> None:
+    """A file staged from a mode overlay cites the overlay, not a template."""
+    session = _make_session(tmp_path, apply_result={'a.md': 'written'})
+    record = FileRecord(
+        path='a.md',
+        mode=FileMode.REGULAR,
+        owner='p',
+        overlay_dir='root',
+    )
+    row = file_row(record, session)
+    assert row.source == 'root/'
+
+
+def test_file_row_uses_provider_scoped_insertion_results(
+    tmp_path: Path,
+) -> None:
+    """Insertions come from the owning provider's result, not the aggregate."""
+    session = _make_session(tmp_path, apply_result={'a.md': 'written'})
+    session.provider_insertion_results = {
+        'p': {
+            'a.md': InsertionFileResult(
+                total_blocks=3,
+                failed_blocks=1,
+                disabled_blocks=1,
+            ),
+        },
+    }
+    row = file_row(_record('a.md'), session)
+    assert row.insertion is not None
+    assert row.insertion.succeeded == 1
+    assert row.insertion.failed == 1
+    assert row.insertion.disabled == 1
+
+
+def test_file_row_hides_zero_block_provider_insertions(tmp_path: Path) -> None:
+    """A provider result with no blocks suppresses the insertion line."""
+    session = _make_session(tmp_path, apply_result={'a.md': 'written'})
+    session.provider_insertion_results = {
+        'p': {'a.md': InsertionFileResult(total_blocks=0, failed_blocks=0)},
+    }
+    row = file_row(_record('a.md'), session)
+    assert row.insertion is None
+
+
+# --- validator- and insertion-owned records ---------------------------------------
+
+
+def test_session_groups_attach_validator_owned_files(tmp_path: Path) -> None:
+    """A file only a validator claims appears beneath the declaring provider."""
+    session = _make_session(
+        tmp_path,
+        apply_result={'README.md': 'written'},
+        file_validators={'README.md': {'lint': _validator_fn}},
+        validator_sources={'README.md': 'pid'},
+    )
+    (group,) = session_groups(session)
+    (branch,) = group.branches
+    rows = [row for row in branch.rows if isinstance(row, FileRow)]
+    assert [row.path for row in rows] == ['README.md']
+    assert rows[0].state is FileState.OK
+
+
+def test_session_groups_attach_insertion_owned_files(tmp_path: Path) -> None:
+    """A file insertions claim appears beneath each provider that ran them."""
+    session = _make_session(
+        tmp_path,
+        file_insertions={'a.md': {'header': _validator_fn}},
+        insertion_sources={'a.md': ['pid']},
+    )
+    session.provider_insertion_results = {
+        'p': {'a.md': InsertionFileResult(total_blocks=1, failed_blocks=0)},
+    }
+    (group,) = session_groups(session)
+    (branch,) = group.branches
+    rows = [row for row in branch.rows if isinstance(row, FileRow)]
+    assert [row.path for row in rows] == ['a.md']
+    assert rows[0].state is FileState.INSERTION_ONLY
+
+
+def test_session_groups_skip_insertion_attachment_without_results(
+    tmp_path: Path,
+) -> None:
+    """A declared insertion source with no executed blocks adds no row."""
+    session = _make_session(
+        tmp_path,
+        file_records=[_record('a.md')],
+        file_insertions={'a.md': {'header': _validator_fn}},
+        insertion_sources={'a.md': ['pid']},
+    )
+    (group,) = session_groups(session)
+    (branch,) = group.branches
+    rows = [row for row in branch.rows if isinstance(row, FileRow)]
+    assert [row.path for row in rows] == ['a.md']
+
+
+# --- root / member / standalone classification -------------------------------------
+
+
+def _role_context(
+    mode: Literal['root', 'member', 'standalone'],
+    member_name: str = '',
+) -> BaseContext:
+    return BaseContext(
+        repolish=RepolishContext(
+            provider=ProviderInfo(
+                session=ProviderSession(mode=mode, member_name=member_name),
+            ),
+        ),
+    )
+
+
+def test_session_groups_classify_root_member_standalone(
+    tmp_path: Path,
+) -> None:
+    session = _make_session(
+        tmp_path,
+        mode='root',
+        aliases=['r', 'm', 's'],
+        alias_to_pid={'r': 'pid-r', 'm': 'pid-m', 's': 'pid-s'},
+        pid_to_alias={'pid-r': 'r', 'pid-m': 'm', 'pid-s': 's'},
+        provider_contexts={
+            'pid-r': _role_context('root'),
+            'pid-m': _role_context('member', 'pkg-a'),
+        },
+    )
+    titles = [group.title for group in session_groups(session)]
+    assert titles == ['Root', 'Member: pkg-a', 'Standalone']
+
+
+def test_root_group_carries_promoted_rows(tmp_path: Path) -> None:
+    session = _make_session(
+        tmp_path,
+        mode='root',
+        aliases=['r'],
+        alias_to_pid={'r': 'pid-r'},
+        pid_to_alias={'pid-r': 'r'},
+        provider_contexts={'pid-r': _role_context('root')},
+    )
+    session.promoted_records = [
+        FileRecord(
+            path='pkg.md',
+            mode=FileMode.REGULAR,
+            owner='r',
+            promoted_from='pkg-a',
+        ),
+    ]
+    session.promoted_apply_result = {'pkg.md': 'written'}
+    (root_group,) = session_groups(session)
+    assert root_group.title == 'Root'
+    (promoted,) = root_group.promoted
+    assert promoted.path == 'pkg.md'
+    assert promoted.promoted_from == 'pkg-a'
+
+
+def test_apply_summary_rows_merges_sessions_in_order(tmp_path: Path) -> None:
+    """Every session's groups flatten into one ordered row list."""
+    first = _make_session(tmp_path / 'a')
+    second = _make_session(tmp_path / 'b')
+    groups = apply_summary_rows([first, second])
+    assert [group.title for group in groups] == ['Standalone', 'Standalone']

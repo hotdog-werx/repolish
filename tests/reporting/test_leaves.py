@@ -16,6 +16,7 @@ from repolish.reporting.leaves import (
     render_insertion_catalog,
     render_lint_templates,
     render_post_process_group,
+    render_post_process_summary,
     render_promoted_row,
     render_provider_branch,
     render_session_group,
@@ -308,6 +309,17 @@ def test_provider_branch_renders_stats_suffix_and_children() -> None:
     ]
 
 
+def test_provider_branch_renders_symlink_children() -> None:
+    branch = ProviderBranch(
+        alias='p',
+        rows=(SymlinkRow(target='.venv', source='p/.venv'),),
+    )
+    node = render_provider_branch(branch)
+    assert [child.label.plain for child in node.children] == [
+        '↗ .venv  → p/.venv',
+    ]
+
+
 def test_provider_branch_pending_stats_render_bracketed_counts() -> None:
     branch = ProviderBranch(
         alias='p',
@@ -394,6 +406,12 @@ def test_command_row_not_run_renders_reason() -> None:
         CommandRow(raw='make fmt', state=CommandState.NOT_RUN),
     )
     assert node.label.plain == '✗ make fmt  not run (previous command failed)'
+
+
+def test_render_post_process_summary_preserves_group_order() -> None:
+    groups = [PostProcessGroup(label='pkg-a'), PostProcessGroup(label='pkg-b')]
+    nodes = render_post_process_summary(groups)
+    assert [node.label.plain for node in nodes] == ['pkg-a', 'pkg-b']
 
 
 def test_post_process_group_renders_counts_link_and_subgroups(

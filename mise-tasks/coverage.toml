@@ -1,0 +1,10 @@
+# Per-package coverage: each independent-library package must reach 100%
+# from the tests that live beside it alone, with no help from the wider
+# suites, so overlapping coverage elsewhere can be pruned without risk.
+[cov-reporting]
+description = "coverage of repolish.reporting from tests/reporting alone"
+run = "uv run pytest tests/reporting --cov-config=./coveragerc.toml --cov=repolish.reporting --cov-report=term-missing --cov-fail-under=100"
+
+[cov-summaries]
+description = "coverage of repolish.summaries from tests/summaries alone"
+run = "uv run pytest tests/summaries --cov-config=./coveragerc.toml --cov=repolish.summaries --cov-report=term-missing --cov-fail-under=100"
