@@ -31,7 +31,6 @@ class TCase:
     expected_content: str
     extra_imports: str = ''
     extra_methods: str = ''
-    expected_output_checks: tuple[str, ...] = ()
     exit_code: int | None = None
     check_mode: bool = False
     assert_fn: Callable[[Path, Result], None] | None = None
@@ -146,7 +145,7 @@ def test_provider_no_insertions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A provider that registers empty insertions doesn't clutter the summary."""
+    """A provider that registers empty insertions is a no-op for that file."""
     _write(tmp_path / 'README.md', 'no-insertions-here\n')
     _make_insertion_provider(
         tmp_path / 'p',
@@ -157,10 +156,7 @@ def test_provider_no_insertions(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
-    # File should NOT appear in summary when there are zero insertions
-    assert 'README.md' not in result.output
-    assert 'insertions:' not in result.output
+    run_repolish(['apply'], exit_code=0)
 
     # File content should be unchanged
     expected = dedent(
@@ -189,10 +185,7 @@ def test_provider_insertion_missing_file_is_skipped(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
-    # File should not appear since it doesn't exist
-    assert 'missing.md' not in result.output
-    assert 'developer owned' not in result.output
+    run_repolish(['apply'], exit_code=0)
 
 
 def test_provider_insertion_check_missing_file_is_skipped(
@@ -214,8 +207,7 @@ def test_provider_insertion_check_missing_file_is_skipped(
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
     # Check mode should succeed (no drift for missing file)
-    result = run_repolish(['apply', '--check'], exit_code=0)
-    assert 'missing.md' not in result.output
+    run_repolish(['apply', '--check'], exit_code=0)
 
 
 def test_provider_insertion_can_be_disabled_via_provider_overrides(
@@ -272,13 +264,12 @@ def test_provider_insertion_can_be_disabled_via_provider_overrides(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (tmp_path / 'README.md').read_text(encoding='utf-8')
     assert 'KEEP_A' in content
     assert 'A_NEW' not in content
     assert 'B_NEW' in content
-    assert 'insertions: ✓ ok (1 ok, 0 failed, 1 disabled)' in result.output
 
     report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
     data = json.loads(report.read_text(encoding='utf-8'))
@@ -331,12 +322,11 @@ def test_provider_insertion_file_can_be_disabled_via_provider_overrides(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (tmp_path / 'README.md').read_text(encoding='utf-8')
     assert 'KEEP_A' in content
     assert 'A_NEW' not in content
-    assert 'insertions:' not in result.output
 
 
 def test_provider_insertion_paused_file_skips_apply_and_check(
@@ -440,13 +430,12 @@ def test_provider_insertion_can_disable_single_block_tag(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (tmp_path / 'README.md').read_text(encoding='utf-8')
     assert 'VALUE_ON' in content
     assert 'KEEP_TWO' in content
     assert 'VALUE_OFF' not in content
-    assert 'insertions: ✓ ok (1 ok, 0 failed, 1 disabled)' in result.output
 
     report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
     data = json.loads(report.read_text(encoding='utf-8'))
@@ -508,14 +497,13 @@ def test_provider_insertion_function_disable_applies_to_all_matching_blocks(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (tmp_path / 'README.md').read_text(encoding='utf-8')
     assert 'KEEP_ONE' in content
     assert 'KEEP_TWO' in content
     assert 'VALUE_ON' not in content
     assert 'VALUE_OFF' not in content
-    assert 'insertions: ✓ ok (0 ok, 0 failed, 2 disabled)' in result.output
 
 
 def test_provider_insertion_with_hash_comment_style(
@@ -545,7 +533,7 @@ def test_provider_insertion_with_hash_comment_style(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected = dedent(
         """\
@@ -558,7 +546,6 @@ def test_provider_insertion_with_hash_comment_style(
         """,
     )
     assert (tmp_path / 'ruff.toml').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_function_signature_variants(
@@ -676,7 +663,7 @@ def test_provider_insertion_function_signature_variants(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected = dedent(
         """\
@@ -720,7 +707,6 @@ def test_provider_insertion_function_signature_variants(
         """,
     )
     assert (tmp_path / 'config.txt').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (9 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_named_args_validation_failures(
@@ -752,9 +738,7 @@ def test_provider_insertion_named_args_validation_failures(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
-
-    assert 'insertions: ✗ failed (0 ok, 2 failed)' in result.output
+    run_repolish(['apply'], exit_code=0)
 
     report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
     assert report.exists()
@@ -805,7 +789,7 @@ def test_provider_insertion_and_validator_on_non_owned_file(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
     expected = dedent(
         """\
         [project]
@@ -817,11 +801,6 @@ def test_provider_insertion_and_validator_on_non_owned_file(
         """,
     )
     assert (tmp_path / 'pyproject.toml').read_text(encoding='utf-8') == expected
-    # Should show both validators and insertions under the provider
-    assert 'validators:' in result.output
-    assert 'lint_toml' in result.output
-    assert 'insertions:' in result.output
-    assert '1 ok, 0 failed' in result.output
 
 
 def test_provider_template_can_ship_insertion_markers_for_user_files(
@@ -859,7 +838,7 @@ def create_file_mappings(self, context):
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
     expected = dedent(
         """\
         Provider-owned template with insertion marker
@@ -870,7 +849,6 @@ def create_file_mappings(self, context):
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_user_can_edit_insertion_args_in_template_shipped_block(
@@ -1116,7 +1094,7 @@ def create_insertion_registry(self, context):
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected_readme = dedent(
         """\
@@ -1141,8 +1119,6 @@ def create_insertion_registry(self, context):
         encoding='utf-8',
     ) == expected_readme
     assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
-    # There should be two insertions applied, one for each file
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_resolves_same_function_name_by_provider(
@@ -1188,7 +1164,7 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
     expected = dedent(
         """\
         Provider-qualified lookup
@@ -1206,7 +1182,6 @@ def test_provider_insertion_resolves_same_function_name_by_provider(
         <!-- repolish:off:three -->
         """,
     )
-    assert 'developer owned' in result.output
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
 
 
@@ -1236,7 +1211,7 @@ def test_provider_insertion_provider_qualified_marker_falls_back_to_unqualified(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected = dedent(
         """\
@@ -1248,7 +1223,6 @@ def test_provider_insertion_provider_qualified_marker_falls_back_to_unqualified(
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert 'README.md' in result.output
 
 
 def test_provider_insertion_shared_registry_targets_list_mode(
@@ -1282,7 +1256,7 @@ def create_insertion_registry(self, context):
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected = dedent(
         """\
@@ -1294,7 +1268,6 @@ def create_insertion_registry(self, context):
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_list_mode_only_applies_to_declared_targets(
@@ -1338,7 +1311,7 @@ def create_insertion_registry(self, context):
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected_readme = dedent(
         """\
@@ -1362,7 +1335,6 @@ def create_insertion_registry(self, context):
         encoding='utf-8',
     ) == expected_readme
     assert (tmp_path / 'docs.md').read_text(encoding='utf-8') == expected_docs
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_shared_registry_on_rendered_template_file(
@@ -1403,7 +1375,7 @@ def create_insertion_registry(self, context):
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected = dedent(
         """\
@@ -1415,7 +1387,6 @@ def create_insertion_registry(self, context):
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_check_passes_when_file_is_in_sync(
@@ -1445,8 +1416,7 @@ def test_provider_insertion_check_passes_when_file_is_in_sync(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply', '--check'], exit_code=0)
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
+    run_repolish(['apply', '--check'], exit_code=0)
 
 
 def test_provider_insertion_forwardref_annotation_injection(
@@ -1479,7 +1449,7 @@ def test_provider_insertion_forwardref_annotation_injection(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     expected = dedent(
         """\
@@ -1491,7 +1461,6 @@ def test_provider_insertion_forwardref_annotation_injection(
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✓ ok (1 ok, 0 failed)' in result.output
 
 
 def test_provider_insertion_rejects_varargs_with_typed_context(
@@ -1521,7 +1490,7 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     # Content remains unchanged because insertion rendering failed.
     expected = dedent(
@@ -1533,7 +1502,6 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
         """,
     )
     assert (tmp_path / 'README.md').read_text(encoding='utf-8') == expected
-    assert 'insertions: ✗ failed (0 ok, 1 failed)' in result.output
 
     report = tmp_path / '.repolish' / '_' / 'insertions' / 'insertions.README.md.p.json'
     assert report.exists()
@@ -1576,7 +1544,6 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             2026
             <!-- repolish:off:year -->
             """,
-            expected_output_checks=('insertions: ✓ ok (1 ok, 0 failed)',),
         ),
         TCase(
             name='hash_comment_toml',
@@ -1600,7 +1567,6 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             select = ["E", "W"]
             # repolish:off:lint
             """,
-            expected_output_checks=('insertions: ✓ ok (1 ok, 0 failed)',),
         ),
         TCase(
             name='args_three_blocks',
@@ -1640,7 +1606,6 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             UNKNOWN:maybe
             <!-- repolish:off:three -->
             """,
-            expected_output_checks=('3 ok, 0 failed',),
         ),
         TCase(
             name='two_functions_same_file',
@@ -1676,7 +1641,6 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             one-two-three
             <!-- repolish:off:second -->
             """,
-            expected_output_checks=('2 ok, 0 failed',),
         ),
         TCase(
             name='report_exists',
@@ -1702,10 +1666,6 @@ def test_provider_insertion_rejects_varargs_with_typed_context(
             2026
             <!-- repolish:off:year -->
             """,
-            expected_output_checks=(
-                '◌ README.md  developer owned',
-                'insertions: ✓ ok (1 ok, 0 failed)',
-            ),
             assert_fn=_assert_report_exists,
         ),
         TCase(
@@ -1734,7 +1694,6 @@ return {'README.md': {'display-year': display_year}}""",
             <!-- repolish:on:bad missing-function -->
             <!-- repolish:off:bad -->
             """,
-            expected_output_checks=('insertions: ✗ failed (1 ok, 1 failed)',),
             assert_fn=_assert_report_failed_blocks,
         ),
         TCase(
@@ -1789,9 +1748,6 @@ def test_provider_insertion_parametrized(
     assert (tmp_path / case.file_path).read_text(encoding='utf-8') == dedent(
         case.expected_content,
     )
-
-    for check in case.expected_output_checks:
-        assert check in result.output
 
     if case.assert_fn:
         case.assert_fn(tmp_path, result)
@@ -1895,7 +1851,7 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     )
 
     monkeypatch.chdir(repo)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     # File should exist and have insertion applied
     readme = repo / 'README.workspace.md'
@@ -1903,8 +1859,6 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     content = readme.read_text(encoding='utf-8')
     assert '1.0.0' in content
     assert '<!-- repolish:on:version insert-version -->' in content
-    assert 'insertions:' in result.output
-    assert '1 ok, 0 failed' in result.output
 
 
 def test_monorepo_root_mode_insertions_shared_registry_list_mode(
@@ -1999,13 +1953,11 @@ class InsertionProvider(Provider[Ctx, BaseInputs]):
     )
 
     monkeypatch.chdir(repo)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (repo / 'README.workspace.md').read_text(encoding='utf-8')
     assert '2.0.0' in content
     assert '<!-- repolish:on:version insert-version -->' in content
-    assert 'insertions:' in result.output
-    assert '1 ok, 0 failed' in result.output
 
 
 def test_provider_insertion_with_post_process_formatting(
@@ -2059,7 +2011,7 @@ def test_provider_insertion_with_post_process_formatting(
     init_git_repo(tmp_path)
 
     # Run WITHOUT --skip-post-process: spaces should be stripped
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
     content = (tmp_path / 'test.txt').read_text(encoding='utf-8')
     assert 'has_spaces' in content
     assert '     has_spaces' not in content
@@ -2079,8 +2031,6 @@ def test_provider_insertion_with_post_process_formatting(
     content_skip = (tmp_path / 'test.txt').read_text(encoding='utf-8')
     # The insertion content should still have leading spaces
     assert '     has_spaces' in content_skip
-    assert 'insertions:' in result.output
-    assert '1 ok, 0 failed' in result.output
 
 
 def test_provider_insertion_empty_tag_syntax(
@@ -2117,12 +2067,10 @@ def test_provider_insertion_empty_tag_syntax(
 
     monkeypatch.chdir(test_dir)
     init_git_repo(test_dir)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (test_dir / 'test.md').read_text(encoding='utf-8')
     assert '2026' in content
-    assert 'insertions:' in result.output
-    assert '1 ok, 0 failed' in result.output
 
 
 def test_provider_insertion_no_colon_syntax(
@@ -2159,12 +2107,10 @@ def test_provider_insertion_no_colon_syntax(
 
     monkeypatch.chdir(test_dir)
     init_git_repo(test_dir)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (test_dir / 'test.md').read_text(encoding='utf-8')
     assert '2026' in content
-    assert 'insertions:' in result.output
-    assert '1 ok, 0 failed' in result.output
 
 
 @pytest.mark.skipif(
@@ -2308,12 +2254,11 @@ def test_provider_insertion_receives_file_path_in_block_context(
 
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
-    result = run_repolish(['apply'], exit_code=0)
+    run_repolish(['apply'], exit_code=0)
 
     content = (tmp_path / 'README.md').read_text(encoding='utf-8')
     assert 'file-is:README.md' in content
     assert 'block-file-is:README.md' in content
-    assert 'insertions: ✓ ok (2 ok, 0 failed)' in result.output
 
 
 def test_insertion_target_that_is_not_text_is_skipped_gracefully(

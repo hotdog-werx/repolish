@@ -233,9 +233,7 @@ def test_session_label_skips_root_and_unnamed_contexts(
 def test_session_label_falls_back_to_the_directory(
     tmp_path: Path,
 ) -> None:
-    """Member mode without usable contexts, and every other mode, use the
-    config directory name.
-    """
+    """Member mode without usable contexts, and every other mode, use the config directory name."""
     bare = _make_session(tmp_path / 'member-dir', 'member')
     assert session_label(bare) == 'member-dir'
     standalone = _make_session(tmp_path / 'repo', 'standalone')
