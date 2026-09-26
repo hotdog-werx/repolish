@@ -6,6 +6,10 @@ from repolish.linker.health import (
     ProviderReadinessResult,
     ensure_providers_ready,
 )
+from repolish.linker.module_link import (
+    probe_module_info,
+    run_module_link,
+)
 from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,
@@ -33,9 +37,11 @@ __all__ = [
     'create_provider_symlinks',
     'ensure_providers_ready',
     'link_resources',
+    'probe_module_info',
     'process_provider',
     'resource_linker',
     'resource_linker_cli',
+    'run_module_link',
     'run_provider_link',
     'save_provider_alias',
     'save_provider_info',

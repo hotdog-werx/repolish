@@ -8,6 +8,7 @@ from repolish.exceptions.config import (
 from repolish.exceptions.core import RepolishError
 from repolish.exceptions.linker import (
     LinkerError,
+    ModuleLinkError,
     ProviderNotReadyError,
     ResourceLinkerError,
     SymlinkError,
@@ -18,6 +19,7 @@ __all__ = [
     'ConfigValidationError',
     'DirectoryValidationError',
     'LinkerError',
+    'ModuleLinkError',
     'ProviderConfigError',
     'ProviderNotReadyError',
     'ProviderOrderError',

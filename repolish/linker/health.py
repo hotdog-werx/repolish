@@ -23,7 +23,8 @@ from hotlog import get_logger
 from repolish.config import ProviderConfig
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import load_provider_info
-from repolish.exceptions import ProviderNotReadyError
+from repolish.exceptions import ModuleLinkError, ProviderNotReadyError
+from repolish.linker.module_link import probe_module_info
 from repolish.linker.orchestrator import process_provider
 from repolish.linker.providers import (
     link_target_current,
@@ -167,7 +168,7 @@ def _cache_lookup(
             reason='recorded paths no longer exist; re-registering',
         )
         return None, False
-    if not provider_config.cli:
+    if not provider_config.cli and not provider_config.module:
         # Static provider: the config is the source of truth for location.
         if _static_paths_current(info, provider_config, config_dir):
             logger.debug('provider_already_ready', alias=alias)
@@ -184,8 +185,9 @@ def _cache_lookup(
         # `repolish link` is the refresh point for provider locations.
         logger.debug('provider_already_ready', alias=alias)
         return info, True
-    # CLI provider under location verification: the info file is valid, but
-    # only the CLI can tell whether the package still lives where it says.
+    # CLI or module provider under location verification: the info file is
+    # valid, but only a probe can tell whether the package still lives
+    # where it says.
     return info, False
 
 
@@ -199,10 +201,12 @@ def _register_provider(
 ) -> bool:
     """Attempt to (re-)register a single provider.
 
-    Tries the CLI first (when set), then falls back to static paths.
+    Module and CLI registration both go through
+    :func:`~repolish.linker.orchestrator.process_provider` (module first,
+    CLI as its fallback); a failure falls back to static paths.
     Returns True on success.
     """
-    if provider_config.cli:
+    if provider_config.module or provider_config.cli:
         exit_code = process_provider(
             alias,
             provider_config,
@@ -212,18 +216,38 @@ def _register_provider(
         )
         if exit_code == 0:
             return True
-        # CLI failed; fall back to static paths if available
+        # Module/CLI failed; fall back to static paths if available
         if provider_config.provider_root:
             logger.warning(
                 'provider_cli_failed_falling_back',
                 alias=alias,
                 cli=provider_config.cli,
-                reason='CLI link failed; using provider_root as fallback',
+                reason='link failed; using provider_root as fallback',
             )
             return _register_static(alias, provider_config, config_dir) is not None
         return False
 
     return _register_static(alias, provider_config, config_dir) is not None
+
+
+def _probe_module_or_cli(
+    provider_config: ProviderConfig,
+    config_dir: Path,
+    *,
+    location_context: str | None = None,
+) -> ProviderFileInfo:
+    """Probe the provider's current location: in-process for ``module:``.
+
+    Raises the same exceptions both paths surface upward:
+    :exc:`~repolish.exceptions.ModuleLinkError` for a module that cannot be
+    located, and the subprocess errors from the CLI ``--info`` probe.
+    """
+    if provider_config.module:
+        return probe_module_info(provider_config.module, config_dir)
+    return probe_provider_info(
+        cast('str', provider_config.cli),
+        location_context=location_context,
+    )
 
 
 def _probe_or_register(
@@ -234,19 +258,25 @@ def _probe_or_register(
     *,
     location_context: str | None = None,
 ) -> tuple[bool, bool]:
-    """Verify a cached CLI provider with one ``--info`` probe before registering.
+    """Verify a cached provider with one probe before registering.
 
-    When the probe reports the same locations as the cache and the resources
-    link still points at the package, the link command is skipped entirely —
-    the provider is genuinely current. Otherwise the probe result is handed
-    to registration so the probe is not run twice.
+    Module providers probe in-process (no subprocess, no JSON); CLI
+    providers keep the ``--info`` subprocess probe. When the probe reports
+    the same locations as the cache and the resources link still points at
+    the package, the link step is skipped entirely — the provider is
+    genuinely current. Otherwise the probe result is handed to registration
+    so the probe is not run twice.
     """
-    cli = cast('str', provider_config.cli)
     try:
-        fresh = probe_provider_info(cli, location_context=location_context)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Probe failed (CLI missing or broken): fall through to normal
-        # registration, which logs the failure and applies the static fallback.
+        fresh = _probe_module_or_cli(
+            provider_config,
+            config_dir,
+            location_context=location_context,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, ModuleLinkError):
+        # Probe failed (module not importable, CLI missing or broken): fall
+        # through to normal registration, which logs the failure and applies
+        # the static fallback.
         registered = _register_provider(
             alias,
             provider_config,
@@ -300,7 +330,7 @@ def _check_or_register(  # noqa: PLR0913 - mirrors ensure_providers_ready's para
     )
     if cache_hit:
         return True, True
-    if previous_info is not None and provider_config.cli:
+    if previous_info is not None and (provider_config.cli or provider_config.module):
         return _probe_or_register(
             alias,
             provider_config,
@@ -341,11 +371,11 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
     5. Record the alias as ready or failed.
 
     With *verify_locations* (used by ``repolish link``), CLI providers whose
-    cache looks valid are additionally probed via ``<cli> --info``: when the
-    package still lives where the cache says and the resources link is
-    intact, the link command is skipped; when it moved (dev ↔ release
-    switch), the provider is re-registered. Static providers are always
-    checked against the config-derived paths, which costs nothing.
+    cache looks valid are additionally probed via ``<cli> --info`` and module
+    providers in-process: when the package still lives where the cache says
+    and the resources link is intact, the link step is skipped; when it moved
+    (dev ↔ release switch), the provider is re-registered. Static providers
+    are always checked against the config-derived paths, which costs nothing.
 
     Args:
         aliases: Provider aliases to process, in the desired order.

@@ -82,7 +82,7 @@ def _format_provider_message(
     refers to the provider. Shows the resources directory path.
     In monorepo mode, the location context is appended.
     """
-    if provider_config.cli:
+    if provider_config.cli or provider_config.module:
         resources_dir = '.repolish/' + alias
     elif provider_config.provider_root:
         resources_dir = str(provider_config.provider_root)

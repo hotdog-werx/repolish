@@ -149,6 +149,7 @@ used by configuration and in logged events. The value for each alias is a
 
 ```python
 class ProviderConfig(BaseModel):
+    module: ModuleProviderConfig | None = None
     cli: str | None = None
     provider_root: Path | None = None
     resources_dir: Path | None = None
@@ -160,9 +161,10 @@ class ProviderConfig(BaseModel):
     overrides: ProviderOverrides | None = None
 ```
 
-Each provider entry must specify at least one of `cli` or `provider_root`; they
-may also be combined. See the [Provider configuration](providers.md) guide for
-the full resolution rules and CLI protocol.
+Each provider entry must specify at least one of `module`, `cli`, or
+`provider_root`; they may also be combined, in which case `module` runs first
+and the others act as fallbacks. See the [Provider configuration](providers.md)
+guide for the full resolution rules and CLI protocol.
 
 > The consolidated `overrides` field is the recommended location for all
 > provider-level overrides. It covers `context_merge`, `context_dotted`,
@@ -170,6 +172,39 @@ the full resolution rules and CLI protocol.
 > fields (`context`, `context_overrides`, and `anchors`) are still supported for
 > backwards compatibility, but they are deprecated and should be migrated to
 > `overrides.*`.
+
+- **`module`** - an installed Python module that packages the provider's
+  resources, as an alternative to a link CLI. `repolish link` locates the module
+  in its own process, links the package's `resources` directory into
+  `.repolish/<library-name>/`, and records the same provider-info file a CLI
+  registration writes, so the downstream pipeline is unchanged. This avoids one
+  or two subprocess startups per provider on every `repolish link`. The plain
+  form takes just the dotted module name::
+
+```yaml
+providers:
+  workspace:
+    module: devkit.workspace
+```
+
+and the mapping form adds layout overrides when the package does not use the
+default `resources` / `templates` directories (the same defaults the
+`resource_linker` decorator uses)::
+
+```yaml
+providers:
+  workspace:
+    module:
+      name: devkit.workspace
+      resources_dir: src/resources
+      provider_root: pkg-templates
+```
+
+Both layout fields are package-relative, unlike the project-local
+`provider_root` / `resources_dir` fields described below. When `module` and
+`cli` are both set, the module path runs first and the CLI is only used as a
+fallback, which keeps the option available while a provider environment is being
+consolidated into the one repolish runs in.
 
 - **`cli`** - a shell command (string) that will be executed by `repolish link`.
   The command must write a `.provider-info.json` file under the

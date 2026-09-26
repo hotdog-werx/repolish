@@ -13,11 +13,14 @@ from hotlog import get_logger
 from repolish.config import ProviderConfig
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.models.provider import (
+    ModuleProviderConfig,
     ProviderCopy,
     ProviderSymlink,
     ResolvedProviderInfo,
 )
 from repolish.config.paused import is_paused
+from repolish.exceptions import ModuleLinkError
+from repolish.linker.module_link import run_module_link
 from repolish.linker.providers import run_provider_link, save_provider_info
 from repolish.linker.symlinks import create_additional_link
 from repolish.providers.models import (
@@ -488,6 +491,37 @@ def collect_provider_copies(
     return result
 
 
+def _register_module_provider(
+    provider_name: str,
+    module: ModuleProviderConfig,
+    config_dir: Path,
+    *,
+    fresh_info: ProviderFileInfo | None,
+) -> bool:
+    """Link a module-declared provider in-process and save its provider info.
+
+    Returns False when the module link failed and the caller should try the
+    configured ``cli`` fallback.
+    """
+    try:
+        provider_info = run_module_link(
+            provider_name,
+            module,
+            config_dir,
+            fresh_info=fresh_info,
+        )
+    except (ModuleLinkError, FileNotFoundError) as e:
+        logger.exception(
+            'module_link_failed',
+            provider=provider_name,
+            module=module.name,
+            error=str(e),
+        )
+        return False
+    save_provider_info(provider_name, provider_info, config_dir)
+    return True
+
+
 def process_provider(
     provider_name: str,
     provider_config: ProviderConfig,
@@ -496,11 +530,13 @@ def process_provider(
     location_context: str | None = None,
     fresh_info: ProviderFileInfo | None = None,
 ) -> int:
-    """Run the provider's link CLI to materialise resources under ``.repolish/``.
+    """Materialise a provider's resources under ``.repolish/``.
 
-    This function's sole responsibility is invoking the CLI that symlinks (or
-    copies) the provider's package resources into ``.repolish/<alias>/``.
-    Symlink management is handled separately by :func:`create_provider_symlinks`.
+    A provider configured with ``module:`` is linked in-process via
+    :func:`~repolish.linker.module_link.run_module_link`; the CLI is only
+    consulted as a fallback when the module link fails. A provider with
+    ``cli:`` and no ``module:`` keeps the subprocess path. Symlink management
+    is handled separately by :func:`create_provider_symlinks`.
 
     Args:
         provider_name: Alias of the provider.
@@ -508,14 +544,34 @@ def process_provider(
         config_dir: Directory containing ``repolish.yaml``.
         location_context: Optional context string for monorepo awareness
             (e.g., 'root', 'packages/package_a'). Passed to provider CLIs
-            via REPOLISH_LINK_CONTEXT environment variable.
-        fresh_info: Info from an already-run ``--info`` probe, when the
-            caller probed the CLI before deciding to register; avoids running
-            the probe a second time.
+            via REPOLISH_LINK_CONTEXT environment variable; the module path
+            needs no environment plumbing because it runs in-process.
+        fresh_info: Info from an already-run probe, when the caller probed
+            before deciding to register; avoids running the probe a second
+            time.
 
     Returns:
         0 on success, 1 on failure.
     """
+    if provider_config.module:
+        if _register_module_provider(
+            provider_name,
+            provider_config.module,
+            config_dir,
+            fresh_info=fresh_info,
+        ):
+            return 0
+        if not provider_config.cli:
+            return 1
+        logger.warning(
+            'module_link_failed_falling_back',
+            provider=provider_name,
+            cli=provider_config.cli,
+            reason='module link failed; using cli as fallback',
+        )
+        # Module probe info does not describe the CLI; let it re-probe.
+        fresh_info = None
+
     if not provider_config.cli:
         logger.info(
             'skipping_provider_no_cli',

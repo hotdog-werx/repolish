@@ -207,6 +207,47 @@ class ProviderCopy(ProviderSymlink):
     """
 
 
+class ModuleProviderConfig(BaseModel):
+    """An installed Python module that packages provider resources.
+
+    The in-process alternative to a linker CLI: repolish locates the module
+    with :func:`importlib.util.find_spec`, links its packaged resources under
+    ``.repolish/<library-name>/``, and records the same provider-info file a
+    CLI registration writes. When both ``module`` and ``cli`` are configured,
+    the module path runs first and the CLI is only consulted as a fallback.
+
+    The layout fields mirror the ``resource_linker`` decorator defaults and
+    are package-relative (resolved against the module's install location,
+    unlike the project-local ``provider_root``/``resources_dir`` fields on
+    :class:`ProviderConfig`).
+
+    Usage in repolish.yaml, plain or mapping form::
+
+        providers:
+          short-name:
+            module: devkit.workspace
+          other:
+            module:
+              name: devkit.workspace
+              resources_dir: src/resources
+              provider_root: pkg-templates
+    """
+
+    name: str = Field(
+        description='Importable dotted module name of the provider package (e.g. devkit.workspace).',
+    )
+    resources_dir: str = Field(
+        default='resources',
+        description='Resources directory relative to the package root (default: resources).',
+    )
+    provider_root: str = Field(
+        default='templates',
+        description=(
+            'Subdirectory within resources_dir where repolish.py and the template tree live (default: templates).'
+        ),
+    )
+
+
 class ProviderConfig(BaseModel):
     """Configuration for a single provider.
 
@@ -224,6 +265,16 @@ class ProviderConfig(BaseModel):
         warnings.
     """
 
+    module: ModuleProviderConfig | None = Field(
+        default=None,
+        description=(
+            'Installed Python module that packages the provider resources '
+            '(e.g. devkit.workspace). Takes precedence over cli: the module '
+            'is linked in-process and the CLI is only used as a fallback. '
+            'Either a plain module name or a mapping with name/resources_dir/'
+            'provider_root layout overrides.'
+        ),
+    )
     cli: str | None = Field(
         default=None,
         description='CLI command to call for linking (e.g., codeguide-link)',
@@ -284,6 +335,27 @@ class ProviderConfig(BaseModel):
         default=None,
         description='Consolidated container for all provider-level overrides.',
     )
+
+    @field_validator('module', mode='before')
+    @classmethod
+    def normalize_module(
+        cls,
+        value: object,
+    ) -> ModuleProviderConfig | None:
+        """Normalize the ``module`` field to :class:`ModuleProviderConfig`.
+
+        Accepts the plain YAML form (``module: devkit.workspace``) and the
+        mapping form with layout overrides, so downstream code only ever sees
+        the normalized model.
+        """
+        if value is None or isinstance(value, ModuleProviderConfig):
+            return value
+        if isinstance(value, str):
+            return ModuleProviderConfig(name=value)
+        if isinstance(value, dict):
+            return ModuleProviderConfig.model_validate(value)
+        msg = f'module must be a string or a mapping, got {type(value).__name__}'
+        raise ProviderConfigError(msg)
 
     @model_validator(mode='before')
     @classmethod
@@ -366,14 +438,13 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode='after')
     def validate_cli_or_provider_root(self) -> 'ProviderConfig':
-        """Ensure at least one of cli or provider_root is provided.
+        """Ensure at least one of module, cli, or provider_root is provided.
 
-        cli and provider_root may coexist: if a provider-info JSON file is
-        found at runtime the CLI result takes precedence; provider_root acts
-        as a static fallback when no info file is present.
+        The three may coexist; precedence at runtime is module, then cli,
+        then provider_root as a static fallback.
         """
-        if self.cli is None and self.provider_root is None:
-            msg = 'Either cli or provider_root must be provided'
+        if self.module is None and self.cli is None and self.provider_root is None:
+            msg = 'One of module, cli, or provider_root must be provided'
             raise ProviderConfigError(msg)
         if self.resources_dir is not None and self.provider_root is None:
             msg = 'resources_dir requires provider_root to be set'

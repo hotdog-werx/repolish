@@ -17,6 +17,7 @@ from .project import (
     WorkspaceConfig,
 )
 from .provider import (
+    ModuleProviderConfig,
     ProviderConfig,
     ProviderCopy,
     ProviderSymlink,
@@ -26,6 +27,7 @@ from .provider import (
 __all__ = [
     'AliasRegistry',
     'FastLaneResolution',
+    'ModuleProviderConfig',
     'ProviderConfig',
     'ProviderCopy',
     'ProviderFileInfo',
