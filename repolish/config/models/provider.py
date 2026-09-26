@@ -181,7 +181,7 @@ class ProviderSymlink(BaseModel):
     """Configuration for a provider symlink.
 
     Internal model used in config resolution and provider info.
-    For the decorator API, use the Symlink dataclass from repolish.linker.
+    For the decorator API, use the Symlink dataclass from repolish.providers.models.
     """
 
     source: Path = Field(

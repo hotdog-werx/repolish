@@ -19,7 +19,7 @@ from hotlog import (
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.console import console
 from repolish.exceptions import ResourceLinkerError
-from repolish.linker.symlinks import link_resources
+from repolish.links.symlinks import link_resources
 from repolish.pkginfo import resolve_package_identity
 
 logger = get_logger(__name__)
@@ -179,7 +179,7 @@ def resource_linker(
 
     Example:
         ```python
-        from repolish.linker import resource_linker
+        from repolish.links import resource_linker
 
         @resource_linker()
         def main():
@@ -307,7 +307,7 @@ def resource_linker_cli(
     Example:
         In your CLI module (e.g., mylib/cli.py):
         ```python
-        from repolish.linker import resource_linker_cli
+        from repolish.links import resource_linker_cli
 
         main = resource_linker_cli()
         ```

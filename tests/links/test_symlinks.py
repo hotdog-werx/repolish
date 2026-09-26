@@ -5,11 +5,11 @@ import pytest
 import pytest_mock
 from pytest_mock import MockerFixture
 
-from repolish.linker.symlinks import (
+from repolish.links.symlinks import (
     create_additional_link,
     link_resources,
 )
-from repolish.linker.windows_utils import (
+from repolish.links.windows_utils import (
     normalize_windows_path,
     supports_symlinks,
 )
@@ -51,11 +51,11 @@ def create_test_dir(
 def mock_no_symlinks(mocker: pytest_mock.MockerFixture):
     """Mock supports_symlinks to return False for both linker modules."""
     mocker.patch(
-        'repolish.linker.symlinks.supports_symlinks',
+        'repolish.links.symlinks.supports_symlinks',
         return_value=False,
     )
     mocker.patch(
-        'repolish.linker.validation.supports_symlinks',
+        'repolish.links.validation.supports_symlinks',
         return_value=False,
     )
 

@@ -10,6 +10,7 @@ from typing import cast
 
 from hotlog import get_logger
 
+from repolish.cli_registry import run_provider_link
 from repolish.config import ProviderConfig
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.models.provider import (
@@ -21,8 +22,8 @@ from repolish.config.models.provider import (
 from repolish.config.paused import is_paused
 from repolish.exceptions import ModuleLinkError
 from repolish.linker.module_link import run_module_link
-from repolish.linker.providers import run_provider_link, save_provider_info
-from repolish.linker.symlinks import create_additional_link
+from repolish.linker.providers import save_provider_info
+from repolish.links import create_additional_link
 from repolish.providers.models import (
     ModeHandler,
     Provider,
@@ -535,8 +536,10 @@ def process_provider(
     A provider configured with ``module:`` is linked in-process via
     :func:`~repolish.linker.module_link.run_module_link`; the CLI is only
     consulted as a fallback when the module link fails. A provider with
-    ``cli:`` and no ``module:`` keeps the subprocess path. Symlink management
-    is handled separately by :func:`create_provider_symlinks`.
+    ``cli:`` and no ``module:`` keeps the subprocess path. The CLI half of
+    this function is the v2 removal boundary: it goes together with
+    :mod:`repolish.cli_registry` and the ``cli:`` config field. Symlink
+    management is handled separately by :func:`create_provider_symlinks`.
 
     Args:
         provider_name: Alias of the provider.

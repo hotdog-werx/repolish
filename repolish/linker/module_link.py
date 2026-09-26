@@ -9,7 +9,7 @@ subprocess for happen here, in the main repolish process:
   :class:`~repolish.config.models.metadata.ProviderFileInfo` the CLI's
   ``--info`` flag prints, without executing any module code;
 - the link (:func:`run_module_link`) calls
-  :func:`~repolish.linker.symlinks.link_resources`, the exact function the
+  :func:`~repolish.links.link_resources`, the exact function the
   generated CLI wraps, and returns the info for
   :func:`~repolish.linker.providers.save_provider_info` to persist.
 
@@ -28,7 +28,7 @@ from hotlog import get_logger
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.models.provider import ModuleProviderConfig
 from repolish.exceptions import ModuleLinkError
-from repolish.linker.symlinks import link_resources
+from repolish.links import link_resources
 from repolish.pkginfo import resolve_package_identity
 
 logger = get_logger(__name__)
@@ -114,11 +114,11 @@ def run_module_link(
 ) -> ProviderFileInfo:
     """Link a module-declared provider's resources in-process.
 
-    Mirrors :func:`~repolish.linker.providers.run_provider_link` for the
+    Mirrors :func:`~repolish.cli_registry.run_provider_link` for the
     module path: probes the module's location (or reuses an already-run
     probe passed as *fresh_info*), then links the packaged resources into
     ``.repolish/<library-name>/`` with
-    :func:`~repolish.linker.symlinks.link_resources`.
+    :func:`~repolish.links.link_resources`.
 
     Args:
         provider_name: Alias of the provider.

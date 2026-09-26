@@ -20,6 +20,7 @@ from typing import cast
 
 from hotlog import get_logger
 
+from repolish.cli_registry import probe_provider_info
 from repolish.config import ProviderConfig
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import load_provider_info
@@ -29,7 +30,6 @@ from repolish.linker.orchestrator import process_provider
 from repolish.linker.providers import (
     link_target_current,
     locations_match,
-    probe_provider_info,
     write_provider_info_file,
 )
 
@@ -203,7 +203,9 @@ def _register_provider(
 
     Module and CLI registration both go through
     :func:`~repolish.linker.orchestrator.process_provider` (module first,
-    CLI as its fallback); a failure falls back to static paths.
+    CLI as its fallback); a failure falls back to static paths. The CLI
+    fallback is part of the v2 removal boundary (see
+    :mod:`repolish.cli_registry`).
     Returns True on success.
     """
     if provider_config.module or provider_config.cli:
@@ -241,6 +243,9 @@ def _probe_module_or_cli(
     Raises the same exceptions both paths surface upward:
     :exc:`~repolish.exceptions.ModuleLinkError` for a module that cannot be
     located, and the subprocess errors from the CLI ``--info`` probe.
+
+    The ``cli:`` half is the v2 removal boundary: it goes together with
+    :mod:`repolish.cli_registry` and the ``cli:`` config field.
     """
     if provider_config.module:
         return probe_module_info(provider_config.module, config_dir)

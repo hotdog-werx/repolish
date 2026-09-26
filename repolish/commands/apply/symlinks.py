@@ -10,7 +10,7 @@ from repolish.linker.orchestrator import (
     create_provider_copies,
     create_provider_symlinks,
 )
-from repolish.linker.windows_utils import normalize_windows_path
+from repolish.links import normalize_windows_path
 
 logger = get_logger(__name__)
 

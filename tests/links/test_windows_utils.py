@@ -1,7 +1,7 @@
 import os
 from unittest.mock import patch
 
-from repolish.linker.windows_utils import supports_symlinks
+from repolish.links.windows_utils import supports_symlinks
 
 
 def test_supports_symlinks():

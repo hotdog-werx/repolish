@@ -6,8 +6,8 @@ import pytest
 import pytest_mock
 
 from repolish.cli.testing import CliRunner
-from repolish.linker.decorator import resource_linker, resource_linker_cli
-from tests.linker.conftest import (
+from repolish.links.decorator import resource_linker, resource_linker_cli
+from tests.links.conftest import (
     BasicLinkCliFixture,
     MockedPackageDict,
     PackageDictFixture,
@@ -55,7 +55,7 @@ def test_resource_linker_info_mode(
         pass
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=test_package['pkg_root'],
     )
 
@@ -120,7 +120,7 @@ def test_resource_linker_info_mode_ignores_templates_subdir(
         pass
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=test_package['pkg_root'],
     )
 
@@ -176,7 +176,7 @@ def test_resource_linker_handles_link_error(
         pass
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=pkg_root,
     )
 
@@ -199,7 +199,7 @@ def test_resource_linker_custom_target_base(
     monkeypatch.chdir(tmp_path)
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=pkg_root,
     )
 
@@ -234,7 +234,7 @@ def test_resource_linker_does_not_call_wrapped_in_info_mode(
         called.append(True)
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=test_package['pkg_root'],
     )
 
@@ -309,7 +309,7 @@ def test_resource_linker_cli(
     source_path.mkdir()
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=pkg_root,
     )
     mock_frame = mocker.MagicMock()
@@ -343,7 +343,7 @@ def test_resource_linker_cli_info_mode(
     resources.mkdir()
 
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=pkg_root,
     )
     mock_frame = mocker.MagicMock()
@@ -373,9 +373,9 @@ def test_get_package_root_fallback_when_find_spec_returns_none(
 ) -> None:
     """_get_package_root falls back to caller_file.parent when find_spec returns None."""
     monkeypatch.chdir(tmp_path)
-    mocker.patch('repolish.linker.decorator.find_spec', return_value=None)
+    mocker.patch('repolish.links.decorator.find_spec', return_value=None)
     mock_link = mocker.patch(
-        'repolish.linker.decorator.link_resources',
+        'repolish.links.decorator.link_resources',
         return_value=True,
     )
 
@@ -400,9 +400,9 @@ def test_get_package_root_fallback_when_spec_has_no_search_locations(
     monkeypatch.chdir(tmp_path)
     mock_spec = mocker.MagicMock()
     mock_spec.submodule_search_locations = []  # falsy — triggers the fallback
-    mocker.patch('repolish.linker.decorator.find_spec', return_value=mock_spec)
+    mocker.patch('repolish.links.decorator.find_spec', return_value=mock_spec)
     mock_link = mocker.patch(
-        'repolish.linker.decorator.link_resources',
+        'repolish.links.decorator.link_resources',
         return_value=True,
     )
 
@@ -429,11 +429,11 @@ def test_resource_linker_resolves_pkg_name_from_caller_module(
     (pkg_root / 'resources').mkdir()
 
     mocker.patch(
-        'repolish.linker.decorator.resolve_package_identity',
+        'repolish.links.decorator.resolve_package_identity',
         return_value=('mylib', 'mylib'),
     )
     mocker.patch(
-        'repolish.linker.decorator._get_package_root',
+        'repolish.links.decorator._get_package_root',
         return_value=pkg_root,
     )
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from repolish.exceptions import SymlinkError
-from repolish.linker.symlinks import create_additional_link, link_resources
+from repolish.links.symlinks import create_additional_link, link_resources
 
 
 def test_link_resources_source_not_exists(tmp_path: Path):

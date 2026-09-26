@@ -4,7 +4,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.exceptions import SymlinkError
-from repolish.linker.windows_utils import (
+from repolish.links.windows_utils import (
     normalize_windows_path,
     supports_symlinks,
 )
