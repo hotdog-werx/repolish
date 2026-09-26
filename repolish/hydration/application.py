@@ -6,6 +6,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config.paused import is_paused
+from repolish.filemodes import ModeRules
 from repolish.hydration.comparison import collect_output_files
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.misc import (
@@ -114,7 +115,7 @@ def _copy_mapping_file(
     source_str: str,
     setup_output: Path,
     base_dir: Path,
-    create_only_files_set: set[str],
+    rules: ModeRules,
 ) -> str | None:
     """Copy the resolved source string into the destination path (handles logging).
 
@@ -130,8 +131,9 @@ def _copy_mapping_file(
         return None
 
     dest_file = base_dir / dest_path
-    # Respect create-only semantics
-    if dest_path in create_only_files_set and dest_file.exists():
+    # Create-only semantics come from the shared authority: an existing
+    # create-only destination is developer-owned.
+    if not rules.can_write(dest_path, base_dir):
         logger.info(
             'create_only_file_mapping_exists_skipping',
             dest=dest_path,
@@ -179,7 +181,7 @@ def _apply_file_mappings(
     file_mappings: dict[str, str | TemplateMapping],
     setup_output: Path,
     base_dir: Path,
-    create_only_files_set: set[str],
+    rules: ModeRules,
     paused_files: frozenset[str],
 ) -> dict[str, str]:
     """Process file_mappings: copy source -> destination with rename.
@@ -203,7 +205,7 @@ def _apply_file_mappings(
             source_str,
             setup_output,
             base_dir,
-            create_only_files_set,
+            rules,
         )
         if result is not None:
             status[dest_path] = result
@@ -245,11 +247,11 @@ def apply_generated_output(
     paused_files = resolution.paused_dests
     output_files = collect_output_files(setup_output)
     mapped_sources = resolution.mapped_sources
-    create_only_files_set = resolution.create_only_dests
+    rules = ModeRules.from_resolution(resolution)
 
     logger.info(
         'apply_generated_output_starting',
-        create_only_files=sorted(create_only_files_set),
+        create_only_files=sorted(rules.create_only),
         file_mappings=providers.file_mappings,
         _display_level=1,
     )
@@ -261,9 +263,9 @@ def apply_generated_output(
     # Paused paths are checked with the pause matcher separately — they may be
     # directory or glob entries, not just exact paths.
     skip_sources = mapped_sources | resolution.suppressed_sources
-    for rel_str in create_only_files_set:
-        target_exists = (base_dir / rel_str).exists()
-        if target_exists:
+    existing_create_only = rules.existing_create_only(base_dir)
+    for rel_str in sorted(rules.create_only):
+        if rel_str in existing_create_only:
             skip_sources.add(rel_str)
             logger.info(
                 'create_only_file_exists_skipping',
@@ -294,7 +296,7 @@ def apply_generated_output(
         providers.file_mappings,
         setup_output,
         base_dir,
-        create_only_files_set,
+        rules,
         paused_files,
     )
 

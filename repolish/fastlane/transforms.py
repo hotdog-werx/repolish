@@ -16,11 +16,13 @@ and a lane spec raises unless the project's ``repolish.yaml`` carries a
 :class:`~repolish.config.models.project.FastLanesSection`).
 """
 
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from hotlog import get_logger
 
 from repolish.config.models import FastLaneResolution
+from repolish.filemodes import fold_mapping
 from repolish.providers.models import (
     FastLaneEntry,
     FastLaneSpec,
@@ -184,25 +186,43 @@ def _resolve_regular_collisions(
     return lane_drops, regular_drops
 
 
+@dataclass
+class _BundleModeSet:
+    """List-backed ModeSet: the bundle stores dest lists, not sets."""
+
+    values: list[Path]
+
+    def add(self, path: Path) -> None:
+        self.values.append(path)
+
+    def discard(self, path: Path) -> None:
+        self.values[:] = [p for p in self.values if p != path]
+
+
 def _apply_mapping(
     bundle: SessionBundle,
     dest: str,
     mapping: str | TemplateMapping,
 ) -> None:
-    """Fold one lane mapping into the bundle, honoring its FileMode."""
+    """Fold one lane mapping into the bundle, honoring its FileMode.
+
+    The mode's destination-set claim goes through
+    :func:`repolish.filemodes.fold_mapping` (same table as the regular
+    provider collection path); only the bundle-specific mapping-dict and
+    suppressed-source behavior stays here.
+    """
     path = Path(*PurePosixPath(dest).parts)
     mode = mapping.file_mode if isinstance(mapping, TemplateMapping) else FileMode.REGULAR
-    if mode is FileMode.DELETE:
-        bundle.delete_files.append(path)
-    elif mode is FileMode.KEEP:
-        bundle.delete_files = [p for p in bundle.delete_files if p != path]
-    elif mode is FileMode.SUPPRESS:
-        if isinstance(mapping, TemplateMapping) and mapping.source_template:
-            bundle.suppressed_sources.add(mapping.source_template)
-    else:
-        if mode is FileMode.CREATE_ONLY:
-            bundle.create_only_files.append(path)
+    fold_mapping(
+        mode,
+        path,
+        create_only=_BundleModeSet(bundle.create_only_files),
+        delete=_BundleModeSet(bundle.delete_files),
+    )
+    if mode in (FileMode.REGULAR, FileMode.CREATE_ONLY):
         bundle.file_mappings[dest] = mapping
+    elif mode is FileMode.SUPPRESS and isinstance(mapping, TemplateMapping) and mapping.source_template:
+        bundle.suppressed_sources.add(mapping.source_template)
 
 
 def _apply_insertion_contributions(

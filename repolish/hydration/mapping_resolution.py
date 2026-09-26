@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from repolish.filemodes import posix_dests
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.providers import SessionBundle, TemplateMapping
 
@@ -56,8 +57,8 @@ def resolve_mappings(providers: SessionBundle) -> MappingResolution:
     source_to_dest, dest_to_source, mapped_sources = _collect_source_maps(
         providers,
     )
-    create_only_dests = {path.as_posix() for path in providers.create_only_files}
-    delete_dests = {path.as_posix() for path in providers.delete_files}
+    create_only_dests = set(posix_dests(providers.create_only_files))
+    delete_dests = set(posix_dests(providers.delete_files))
 
     return MappingResolution(
         source_to_dest=source_to_dest,

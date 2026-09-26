@@ -2,7 +2,9 @@
 
 Defines the types that track what happens to each file across all providers:
 - :class:`Action` / :class:`Decision` — provenance enum and record
-- :class:`FileMode` / :class:`TemplateMapping` / :class:`FileRecord` — per-file behaviour
+- :class:`TemplateMapping` / :class:`FileRecord` — per-file behaviour
+  (:class:`FileMode` itself lives in :mod:`repolish.filemodes` and is
+  re-exported here so existing imports keep working)
 - :class:`SessionBundle` — aggregate of all provider contributions
 - :class:`Accumulators` — mutable workspace built up during provider loading
 - :func:`build_file_records` — builds the unified disposition list after staging
@@ -18,6 +20,7 @@ from typing import Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
+from repolish.filemodes import FileMode, posix_dests
 from repolish.providers.models.context import (
     BaseContext,
     RepolishContext,
@@ -194,24 +197,6 @@ class Decision(BaseModel):
 
     source: str
     action: Action
-
-
-class FileMode(str, Enum):
-    """Per-file behavior for a `TemplateMapping`.
-
-    - REGULAR: render and materialize as normal (default)
-    - CREATE_ONLY: treat the destination as create-only (never overwrite existing)
-    - DELETE: mark the destination for deletion (no source template required)
-    - KEEP: explicitly cancel a delete scheduled by an earlier provider
-    - SUPPRESS: skip staging and rendering for this file entirely; useful
-      during development when a template is temporarily broken
-    """
-
-    REGULAR = 'regular'
-    CREATE_ONLY = 'create_only'
-    DELETE = 'delete'
-    KEEP = 'keep'
-    SUPPRESS = 'suppress'
 
 
 @dataclass(frozen=True)
@@ -656,7 +641,7 @@ class SessionBundle(BaseModel):
 
 def _records_from_template_sources(
     template_sources: dict[str, str],
-    create_only_posix: set[str],
+    create_only_posix: frozenset[str],
     pid_to_alias: dict[str, str],
     explicit_sources: set[str],
     overlay_dirs: dict[str, str] | None = None,
@@ -805,7 +790,7 @@ def build_file_records(
     - mapping modes: taken from `TemplateMapping.file_mode`
     - delete: last `Decision` in `delete_history`; source == config_pid -> owner 'config'
     """
-    create_only_posix = {p.as_posix() for p in providers.create_only_files}
+    create_only_posix = posix_dests(providers.create_only_files)
     explicit_sources: set[str] = set()
     for _src in providers.file_mappings.values():
         if isinstance(_src, str):

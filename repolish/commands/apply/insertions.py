@@ -12,6 +12,7 @@ from hotlog import get_logger
 
 from repolish.commands.apply.options import InsertionFileResult
 from repolish.config.paused import is_paused
+from repolish.filemodes import ModeRules
 from repolish.hydration.misc import get_source_str_from_mapping
 from repolish.insertions import (
     DisabledDiagnosticEntry,
@@ -302,10 +303,18 @@ def _stage_file_insertions(
 def _should_skip_file(
     rel_path: str,
     base_dir: Path,
-    paused_files: frozenset[str] | None = None,
+    paused_files: frozenset[str] | None,
+    rules: ModeRules,
 ) -> bool:
-    """Check if a file should be skipped for insertion processing."""
+    """Check if a file should be skipped for insertion processing.
+
+    The create-only question goes through the shared authority
+    (:meth:`ModeRules.can_write`), so insertion checks can never disagree
+    with the writers about which files are developer-owned.
+    """
     if paused_files and is_paused(rel_path, paused_files):
+        return True
+    if not rules.can_write(rel_path, base_dir):
         return True
     target = base_dir / rel_path
     return not target.exists() or target.is_dir()
@@ -430,6 +439,8 @@ def stage_registered_insertions(
     over final content and the project tree is only ever touched by the final
     copy. Files carrying template-declared insert zones are processed even
     when no provider registered ``repolish:on`` insertions for them.
+    Create-only destinations that already exist are skipped: the file is
+    developer-owned, so no staged copy is built for it.
 
     Returns ``(file_results, provider_results, staged_dests)``.
     *staged_dests* lists the destinations materialized in the render tree;
@@ -443,10 +454,19 @@ def stage_registered_insertions(
     reports_dir.mkdir(parents=True, exist_ok=True)
     paused_files = providers.paused_files
     zone_map = _zone_map(providers)
+    rules = ModeRules.from_bundle(providers)
     staged_dests: set[str] = set()
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
         if paused_files and is_paused(rel_path, paused_files):
+            continue
+        if not rules.can_write(rel_path, base_dir):
+            logger.info(
+                'create_only_file_exists_skipping',
+                file=rel_path,
+                target_path=str(base_dir / rel_path),
+                _display_level=1,
+            )
             continue
         source_text = _staged_source_text(
             providers,
@@ -488,14 +508,25 @@ def check_registered_insertions(
     base_dir: Path,
     setup_output: Path | None = None,
 ) -> list[tuple[str, str]]:
-    """Return insertion drift diffs for check mode without mutating files."""
+    """Return insertion drift diffs for check mode without mutating files.
+
+    Create-only destinations that already exist are skipped: the file is
+    developer-owned, so neither a staged render nor a live insertion render
+    may report drift on it.
+    """
     diffs: list[tuple[str, str]] = []
     paused_files = providers.paused_files
     zone_map = _zone_map(providers)
+    rules = ModeRules.from_bundle(providers)
 
     for rel_path in dict.fromkeys((*providers.file_insertions, *zone_map)):
         registry = providers.file_insertions.get(rel_path, {})
-        if not _should_skip_file(rel_path, base_dir, paused_files):
+        if not _should_skip_file(
+            rel_path,
+            base_dir,
+            paused_files,
+            rules,
+        ):
             target = base_dir / rel_path
             staged_result = _staged_check_result(
                 rel_path=rel_path,

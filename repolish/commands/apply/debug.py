@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from repolish.commands.apply.pipeline import _ordered_aliases
 from repolish.config import RepolishConfig
+from repolish.filemodes import MATERIALIZED_MODES
 from repolish.misc import ctx_to_dict
 from repolish.providers._log import logger
 from repolish.providers.models import SessionBundle, TemplateMapping
@@ -126,15 +127,13 @@ def write_file_context_debug_files(
     ``KEEP``, and ``SUPPRESS`` entries are skipped because they are not
     rendered.
     """
-    from repolish.providers.models.files import FileMode  # noqa: PLC0415
-
     debug_dir = base_dir / '.repolish' / '_'
     debug_dir.mkdir(parents=True, exist_ok=True)
     file_ctx_dir = debug_dir / 'file-ctx'
     file_ctx_dir.mkdir(parents=True, exist_ok=True)
 
     for record in providers.file_records:
-        if record.mode not in (FileMode.REGULAR, FileMode.CREATE_ONLY):
+        if record.mode not in MATERIALIZED_MODES:
             continue
 
         dest = record.path

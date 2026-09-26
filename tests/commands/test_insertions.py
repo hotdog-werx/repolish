@@ -240,3 +240,75 @@ def test_staged_source_resolution_follows_mapping_shape(tmp_path: Path) -> None:
     )
     for rel in ('out.txt', 'del.txt', 'gone.txt'):
         assert 'FRESH' in (staged_root / rel).read_text(encoding='utf-8')
+
+
+def _create_only_bundle(tmp_path: Path) -> SessionBundle:
+    """A mapped create-only destination that is also an insertion target."""
+    staged_root = tmp_path / '.staging' / 'repolish'
+    staged_root.mkdir(parents=True)
+    (staged_root / 'src.txt').write_text(
+        'from template\n<!-- repolish:on:one render -->\nold\n<!-- repolish:off:one -->\n',
+        encoding='utf-8',
+    )
+    return SessionBundle(
+        file_insertions={'docs/index.md': {'render': lambda: 'FRESH'}},
+        file_mappings={'docs/index.md': 'src.txt'},
+        create_only_files=[Path('docs/index.md')],
+        paused_files=set(),
+    )
+
+
+def test_existing_create_only_insertion_target_is_developer_owned(
+    tmp_path: Path,
+) -> None:
+    """An existing create-only target is never staged, rendered, or flagged.
+
+    The mapped-source staging would otherwise copy fresh template content
+    over the developer's file via the insertion pass, and check mode would
+    report drift on it. Create-only means: create when missing, then the
+    developer owns it.
+    """
+    providers = _create_only_bundle(tmp_path)
+    local = tmp_path / 'docs' / 'index.md'
+    local.parent.mkdir(parents=True)
+    local.write_text(
+        'local edits\n<!-- repolish:on:one render -->\nlocal body\n<!-- repolish:off:one -->\n',
+        encoding='utf-8',
+    )
+
+    _, _, staged_dests = stage_registered_insertions(
+        providers,
+        tmp_path,
+        tmp_path / '.staging',
+    )
+
+    assert 'docs/index.md' not in staged_dests
+    assert not (tmp_path / '.staging' / 'repolish' / 'docs').exists()
+    assert 'local edits' in local.read_text(encoding='utf-8')
+    # check mode agrees with apply: the developer-owned file is not drift
+    assert (
+        check_registered_insertions(
+            providers,
+            tmp_path,
+            tmp_path / '.staging',
+        )
+        == []
+    )
+
+
+def test_missing_create_only_insertion_target_is_staged_for_creation(
+    tmp_path: Path,
+) -> None:
+    """A create-only target that does not exist yet is created, insertions and all."""
+    providers = _create_only_bundle(tmp_path)
+
+    _, _, staged_dests = stage_registered_insertions(
+        providers,
+        tmp_path,
+        tmp_path / '.staging',
+    )
+
+    assert 'docs/index.md' in staged_dests
+    staged = tmp_path / '.staging' / 'repolish' / 'docs' / 'index.md'
+    assert 'from template' in staged.read_text(encoding='utf-8')
+    assert 'FRESH' in staged.read_text(encoding='utf-8')
