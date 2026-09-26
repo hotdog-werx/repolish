@@ -41,7 +41,8 @@ def test_symlink_rows_preserve_section_and_alias_order() -> None:
     assert [b.alias for b in groups[0].branches] == ['p2', 'p1']
     row = groups[1].branches[0].rows[0]
     assert isinstance(row, SymlinkRow)
-    assert (row.target, row.source) == ('a', 'src/a')
+    # paths pass through in the platform's own separator form, like the apply tree
+    assert (row.target, row.source) == ('a', str(Path('src/a')))
 
 
 def test_symlink_view_skips_sections_without_symlinks() -> None:
