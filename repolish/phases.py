@@ -2,10 +2,10 @@
 
 A `PhaseTimer` names the phases of a run (config load, render, post-process,
 ...) and records how long each took. The durations surface as structured
-hotlog debug events and as a JSON file (`.repolish/_/phase-timings.json`)
-linked from the `completed in ...` footer of apply/check runs — groundwork
-for finding slow areas later; default display adds only that one footer
-line.
+hotlog debug events and as a per-command JSON file
+(`.repolish/_/<command>-phase-timings.json`) linked from the
+`completed in ...` footer every CLI command prints — groundwork for finding
+slow areas later; default display adds only that one footer line.
 """
 
 import json

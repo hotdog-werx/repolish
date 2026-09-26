@@ -664,6 +664,7 @@ from repolish.commands.link import (  # noqa: E402
     _link_members,
     _print_link_summaries,
 )
+from repolish.phases import PhaseTimer  # noqa: E402
 from repolish.summaries import LinkResult  # noqa: E402
 
 
@@ -772,7 +773,7 @@ def test_link_config_no_providers(tmp_path: Path) -> None:
     """_link_config returns an empty LinkResult when config has no providers."""
     config_file = tmp_path / 'repolish.yaml'
     config_file.write_text('providers: {}\n')
-    rc, result = _link_config(config_file)
+    rc, result = _link_config(config_file, timer=PhaseTimer())
     assert rc == 0
     assert result == LinkResult(
         symlinks={},
@@ -825,9 +826,10 @@ def test_link_config_appends_member_section_with_copies(
         ],
     )
 
-    rc, sections = _link_members(mono_ctx, tmp_path)
+    rc, sections, session_timings = _link_members(mono_ctx, tmp_path)
     assert rc == 0
     assert [label for label, _ in sections] == ['Member: pkg_a']
+    assert [label for label, _ in session_timings] == ['Member: pkg_a']
 
 
 def test_link_config_appends_member_section_with_symlinks(
@@ -873,9 +875,10 @@ def test_link_config_appends_member_section_with_symlinks(
         ],
     )
 
-    rc, sections = _link_members(mono_ctx, tmp_path)
+    rc, sections, session_timings = _link_members(mono_ctx, tmp_path)
     assert rc == 0
     assert [label for label, _ in sections] == ['Member: pkg_a']
+    assert [label for label, _ in session_timings] == ['Member: pkg_a']
 
 
 def test_command_returns_nonzero_when_root_link_fails(
@@ -931,7 +934,7 @@ def test_command_appends_root_syms_section(
     )
     mocker.patch(
         'repolish.commands.link._link_members',
-        return_value=(0, []),
+        return_value=(0, [], []),
     )
     mocker.patch('repolish.commands.link._print_link_summaries')
 
@@ -970,12 +973,120 @@ def test_command_appends_root_copies_section(
     )
     mocker.patch(
         'repolish.commands.link._link_members',
-        return_value=(0, []),
+        return_value=(0, [], []),
     )
     mocker.patch('repolish.commands.link._print_link_summaries')
 
     result = run_link(config_file)
     assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# Link phase-timings footer tests
+# ---------------------------------------------------------------------------
+
+
+def _capture_link_console(mocker: pytest_mock.MockerFixture) -> io.StringIO:
+    out = io.StringIO()
+    test_console = Console(
+        file=out,
+        force_terminal=False,
+        no_color=True,
+        width=1000,
+    )
+    mocker.patch('repolish.reporting.render.console', test_console)
+    return out
+
+
+def test_command_writes_link_phase_timings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """command() records the link phases and links to them from the footer."""
+    monkeypatch.chdir(tmp_path)
+    out = _capture_link_console(mocker)
+
+    provider_dir = tmp_path / 'internal'
+    provider_dir.mkdir()
+    (provider_dir / 'repolish.py').write_text('# local provider')
+    (provider_dir / 'repolish').mkdir()
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(f"""
+providers:
+  local:
+    provider_root: {provider_dir}
+""")
+
+    assert run_link(config_file) == 0
+
+    timings_path = tmp_path / '.repolish' / '_' / 'link-phase-timings.json'
+    assert timings_path.exists()
+    payload = json.loads(timings_path.read_text())
+    assert payload['total_ms'] >= 0
+    assert [s['name'] for s in payload['sessions']] == ['Standalone']
+    phases = payload['sessions'][0]['phases']
+    for phase in ('register', 'resolve', 'symlinks', 'copies'):
+        assert phases[phase] >= 0
+    assert 'completed in' in out.getvalue()
+
+
+def test_command_writes_timings_for_each_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A monorepo run records one session per member in the timings file."""
+    monkeypatch.chdir(tmp_path)
+    _capture_link_console(mocker)
+
+    member_dir = tmp_path / 'packages' / 'pkg_a'
+    member_dir.mkdir(parents=True)
+    (member_dir / 'pyproject.toml').write_text(
+        '[project]\nname = "pkg_a"\n',
+    )
+    (member_dir / 'repolish.yaml').write_text(
+        'providers:\n  pkg_a_lib:\n    cli: pkg-a-lib-link\n',
+    )
+    (tmp_path / 'packages' / 'pkg_b').mkdir(parents=True)
+
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(
+        'workspace:\n  members:\n    - packages/*\nproviders: {}\n',
+    )
+
+    # members without repolish.yaml are filtered out; the CLI provider cannot
+    # link, but the timings file still records the attempted sessions.
+    assert run_link(config_file) == 1
+
+    timings_path = tmp_path / '.repolish' / '_' / 'link-phase-timings.json'
+    payload = json.loads(timings_path.read_text())
+    names = [s['name'] for s in payload['sessions']]
+    assert names[0] == 'Root'
+    assert 'Member: pkg_a' in names
+
+
+def test_command_prints_footer_even_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The footer still prints when a provider fails to link (apply parity)."""
+    monkeypatch.chdir(tmp_path)
+    out = _capture_link_console(mocker)
+
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text(
+        'providers:\n  root_lib:\n    cli: root-lib-link\n',
+    )
+    mocker.patch(
+        'repolish.commands.link._link_config',
+        return_value=(1, LinkResult({}, {}, {}, frozenset())),
+    )
+
+    assert run_link(config_file) == 1
+    assert 'completed in' in out.getvalue()
+    assert (tmp_path / '.repolish' / '_' / 'link-phase-timings.json').exists()
 
 
 # ---------------------------------------------------------------------------

@@ -35,3 +35,5 @@ def test_lint_cli_clean_provider(
 
     result = runner.invoke(app, ['lint', str(provider_dir)])
     assert result.exit_code == 0
+    # duration-only footer: lint runs against a provider dir, not a project
+    assert 'completed in' in result.output

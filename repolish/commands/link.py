@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 
 from hotlog import get_logger
 
@@ -23,8 +24,9 @@ from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,
 )
+from repolish.phases import PhaseTimer
 from repolish.providers.models.context import WorkspaceContext
-from repolish.reporting import print_summary_trees
+from repolish.reporting import print_command_timings, print_summary_trees
 from repolish.reporting.leaves import render_session_groups
 from repolish.summaries import (
     LinkResult,
@@ -138,6 +140,7 @@ def _link_config(
     location_context: str | None = None,
     *,
     force: bool = False,
+    timer: PhaseTimer,
 ) -> tuple[int, LinkResult]:
     """Run ensure_providers_ready for the config at *config_path*.
 
@@ -147,20 +150,24 @@ def _link_config(
     materialisation and reports exactly which destinations were held
     back. ``paused_files`` rides along so a whole-target pause is
     detected even when nothing was held back.
+
+    Phase durations (register, resolve, symlinks, copies) are recorded on
+    *timer* so the command footer can report them per section.
     """
     config = load_config_file(config_path)
     if not config.providers:
         return 0, _empty_link_result()
     provider_names = _get_provider_names(config)
     logger.info('linking_providers', providers=provider_names, _display_level=1)
-    result = ensure_providers_ready(
-        provider_names,
-        config.providers,
-        config_path.resolve().parent,
-        force=force,
-        location_context=location_context,
-        verify_locations=True,
-    )
+    with timer.phase('register'):
+        result = ensure_providers_ready(
+            provider_names,
+            config.providers,
+            config_path.resolve().parent,
+            force=force,
+            location_context=location_context,
+            verify_locations=True,
+        )
     if result.failed:
         logger.warning(
             'some_providers_not_linked',
@@ -169,24 +176,27 @@ def _link_config(
         )
         return 1, _empty_link_result()
     _print_link_success(result, config, location_context)
-    resolved = resolve_config(config)
-    resolved_symlinks = collect_provider_symlinks(
-        resolved.providers,
-        config.providers,
-        mode=mode,
-    )
-    apply_symlinks(resolved_symlinks, resolved.providers)
-    resolved_copies = collect_provider_copies(
-        resolved.providers,
-        config.providers,
-        mode=mode,
-    )
-    paused_files = frozenset(resolved.paused_files)
-    held_back = apply_copies(
-        resolved_copies,
-        resolved.providers,
-        paused_files=paused_files,
-    )
+    with timer.phase('resolve'):
+        resolved = resolve_config(config)
+    with timer.phase('symlinks'):
+        resolved_symlinks = collect_provider_symlinks(
+            resolved.providers,
+            config.providers,
+            mode=mode,
+        )
+        apply_symlinks(resolved_symlinks, resolved.providers)
+    with timer.phase('copies'):
+        resolved_copies = collect_provider_copies(
+            resolved.providers,
+            config.providers,
+            mode=mode,
+        )
+        paused_files = frozenset(resolved.paused_files)
+        held_back = apply_copies(
+            resolved_copies,
+            resolved.providers,
+            paused_files=paused_files,
+        )
     return 0, LinkResult(
         symlinks=resolved_symlinks,
         copies=resolved_copies,
@@ -209,15 +219,17 @@ def _link_members(
     config_dir: Path,
     *,
     force: bool = False,
-) -> tuple[int, list[tuple[str, LinkResult]]]:
+) -> tuple[int, list[tuple[str, LinkResult]], list[tuple[str, PhaseTimer]]]:
     """Link providers in every member directory.
 
-    Returns (exit_code, sections). Each section is the member's label
-    paired with its `LinkResult`, so the link and copy summary trees are
-    both derived from the same sections and can mark paused (and
-    partially paused) targets.
+    Returns (exit_code, sections, session_timings). Each section is the
+    member's label paired with its `LinkResult`, so the link and copy
+    summary trees are both derived from the same sections and can mark
+    paused (and partially paused) targets. *session_timings* pairs the
+    same labels with each member's `PhaseTimer` for the run footer.
     """
     sections: list[tuple[str, LinkResult]] = []
+    session_timings: list[tuple[str, PhaseTimer]] = []
     for m in mono_ctx.members:
         member_dir = (config_dir / m.path).resolve()
         member_config = member_dir / 'repolish.yaml'
@@ -227,18 +239,21 @@ def _link_members(
             continue  # pragma: no cover
         logger.info('linking_member', member=m.name, _display_level=1)
         location_context = str(m.path)
+        timer = PhaseTimer()
+        session_timings.append((f'Member: {m.name}', timer))
         with chdir(member_dir):
             rc, result = _link_config(
                 member_config,
                 mode='member',
                 location_context=location_context,
                 force=force,
+                timer=timer,
             )
         if rc != 0:
-            return rc, sections
+            return rc, sections, session_timings
         if result.symlinks or result.copies:
             sections.append((f'Member: {m.name}', result))
-    return 0, sections
+    return 0, sections, session_timings
 
 
 def _command_monorepo(
@@ -247,53 +262,63 @@ def _command_monorepo(
     mono_ctx: WorkspaceContext,
     *,
     force: bool = False,
-) -> int:
+) -> tuple[int, list[tuple[str, PhaseTimer]]]:
     """Handle the monorepo case: link root and all members.
 
-    Returns exit code (0 for success, 1 for failure).
+    Returns the exit code and the per-section timings for the footer.
     """
     console.print('[bold]Monorepo detected[/bold]')
+    root_timer = PhaseTimer()
     rc, root_result = _link_config(
         config_path,
         mode='root',
         location_context='root',
         force=force,
+        timer=root_timer,
     )
+    session_timings: list[tuple[str, PhaseTimer]] = [('Root', root_timer)]
     if rc != 0:
-        return rc
+        return rc, session_timings
     sections: list[tuple[str, LinkResult]] = []
     if root_result.symlinks or root_result.copies:
         sections.append(('Root', root_result))
-    rc, member_sections = _link_members(
+    rc, member_sections, member_timings = _link_members(
         mono_ctx,
         config_dir,
         force=force,
     )
+    session_timings.extend(member_timings)
     if rc != 0:
-        return rc
+        return rc, session_timings
     sections.extend(member_sections)
     _print_link_summaries(sections)
-    return 0
+    return 0, session_timings
 
 
-def _command_standalone(config_path: Path, *, force: bool = False) -> int:
+def _command_standalone(
+    config_path: Path,
+    *,
+    force: bool = False,
+) -> tuple[int, list[tuple[str, PhaseTimer]]]:
     """Handle the standalone case: link a single config.
 
-    Returns exit code (0 for success, 1 for failure).
+    Returns the exit code and the per-section timings for the footer.
     """
     config = load_config_file(config_path)
+    timer = PhaseTimer()
     if not config.providers:
         logger.warning('no_providers_configured', _display_level=1)
-        return 0
+        return 0, [('Standalone', timer)]
     rc, result = _link_config(
         config_path,
         mode='standalone',
         force=force,
+        timer=timer,
     )
     if rc != 0:
-        return rc
+        return rc, [('Standalone', timer)]
     _print_link_summaries([('Standalone', result)])
-    return 0
+    return 0, [('Standalone', timer)]
 
 
 def command(config_path: Path, *, force: bool = False) -> int:
@@ -309,11 +334,25 @@ def command(config_path: Path, *, force: bool = False) -> int:
         config_file=str(config_path),
         _display_level=1,
     )
+    started = perf_counter()
     config = load_config_file(config_path)
     config_dir = config_path.resolve().parent
 
     mono_ctx = _detect_workspace(config, config_dir)
 
     if mono_ctx is not None:
-        return _command_monorepo(config_path, config_dir, mono_ctx, force=force)
-    return _command_standalone(config_path, force=force)
+        rc, session_timings = _command_monorepo(
+            config_path,
+            config_dir,
+            mono_ctx,
+            force=force,
+        )
+    else:
+        rc, session_timings = _command_standalone(config_path, force=force)
+    print_command_timings(
+        'link',
+        (perf_counter() - started) * 1000,
+        session_timings,
+        config_dir,
+    )
+    return rc

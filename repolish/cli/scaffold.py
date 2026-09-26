@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated
 
 from cyclopts import Parameter
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from repolish.cli.utils import run_cli_command
 from repolish.console import console
+from repolish.reporting import print_command_timings
 
 logger = get_logger(__name__)
 
@@ -201,4 +203,9 @@ def scaffold(params: ScaffoldParams = _DEFAULT_SCAFFOLD_PARAMS) -> None:
     README.md, repolish.yaml and the package directory.  Use '.' for the
     current directory.  Existing files are never overwritten.
     """
-    run_cli_command(lambda: _run(params))
+    started = perf_counter()
+    result = _run(params)
+    # scaffold generates files rather than running against a project, so the
+    # footer is duration-only: no config dir hosts a timings file.
+    print_command_timings('scaffold', (perf_counter() - started) * 1000)
+    run_cli_command(lambda: result)

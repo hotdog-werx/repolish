@@ -20,6 +20,7 @@ is the user's own responsibility.
 import re
 import types
 from pathlib import Path
+from time import perf_counter
 from typing import Union, cast, get_args, get_origin
 
 import jinja2
@@ -43,7 +44,7 @@ from repolish.directives import (
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
-from repolish.reporting import print_summary_trees
+from repolish.reporting import print_command_timings, print_summary_trees
 from repolish.reporting.leaves import (
     render_lint_templates,
     render_unmapped_sources,
@@ -327,6 +328,17 @@ def command(provider_dir: Path) -> int:
     Returns:
         0 when all templates are clean, 1 when any issue is found.
     """
+    started = perf_counter()
+    try:
+        return _lint_provider(provider_dir)
+    finally:
+        # lint runs against a provider dir, not a project config, so the
+        # footer is duration-only: no config dir hosts a timings file.
+        print_command_timings('lint', (perf_counter() - started) * 1000)
+
+
+def _lint_provider(provider_dir: Path) -> int:
+    """Lint body; :func:`command` wraps this for the timing footer."""
     provider_dir = provider_dir.resolve()
     tpl_root = provider_dir / 'repolish'
 

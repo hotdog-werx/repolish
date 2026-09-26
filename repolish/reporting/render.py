@@ -11,6 +11,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from repolish.console import console, supports_hyperlinks
+from repolish.phases import PhaseTimer, write_phase_timings
 from repolish.postprocess.report import format_duration
 from repolish.reporting.nodes import SummaryNode, details_link
 from repolish.version import __version__
@@ -62,9 +63,39 @@ def print_run_header(parts: Sequence[str]) -> None:
     console.print(text, end='\n\n')
 
 
-def print_completed_footer(total_ms: int, timings_path: Path) -> None:
-    """Print the one-line run footer with a details link to the timings file."""
+def print_completed_footer(
+    total_ms: int,
+    timings_path: Path | None = None,
+) -> None:
+    """Print the one-line run footer, linking to the timings file when there is one."""
     text = Text('\ncompleted in ')
     text.append(f'{format_duration(total_ms)}', style='dim')
-    details_link(text, timings_path)
+    if timings_path is not None:
+        details_link(text, timings_path)
     console.print(text)
+
+
+def print_command_timings(
+    command: str,
+    total_ms: float,
+    sessions: Sequence[tuple[str, PhaseTimer]] = (),
+    config_dir: Path | None = None,
+) -> None:
+    """Write a command's phase-timings JSON and print the `completed in ...` footer.
+
+    The single place every CLI command reports timing. With a *config_dir*
+    the durations land in ``<config_dir>/.repolish/_/<command>-phase-timings.json``
+    (one file per command, so runs never overwrite each other's timings)
+    and the footer links to it. Commands that run outside a project
+    (lint, preview, scaffold) pass no *config_dir* and get a duration-only
+    footer — there is no project dir to host the file.
+    """
+    if config_dir is None:
+        print_completed_footer(int(total_ms))
+        return
+    timings_path = write_phase_timings(
+        config_dir / '.repolish' / '_' / f'{command}-phase-timings.json',
+        total_ms,
+        sessions,
+    )
+    print_completed_footer(int(total_ms), timings_path)

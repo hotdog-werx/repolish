@@ -45,3 +45,4 @@ def test_integration_debug_cli(
         ['preview', str(debug_file), '--show-patterns', '--show-steps'],
     )
     assert result.exit_code == 0
+    assert 'completed in' in result.output

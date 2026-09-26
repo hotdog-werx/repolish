@@ -23,6 +23,8 @@ def test_scaffold_creates_files(tmp_path: Path) -> None:
         ['scaffold', str(tmp_path), '--package', 'my_provider'],
     )
     assert result.exit_code == 0
+    # duration-only footer: scaffold writes into its destination, not a project
+    assert 'completed in' in result.output
     assert (tmp_path / 'pyproject.toml').exists()
     # default (simple) mode: flat provider.py, no provider/ sub-package
     assert (tmp_path / 'my_provider' / 'repolish' / 'provider.py').exists()

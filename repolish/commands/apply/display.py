@@ -16,11 +16,10 @@ from rich.table import Table
 from repolish.commands.apply.options import ResolvedSession
 from repolish.config import ProviderSymlink
 from repolish.console import console
-from repolish.phases import write_phase_timings
 from repolish.providers.models import SessionBundle
 from repolish.reporting import (
     SummaryNode,
-    print_completed_footer,
+    print_command_timings,
     print_summary_trees,
 )
 from repolish.reporting.leaves import (
@@ -155,15 +154,16 @@ def print_run_footer(
     total_ms: float,
     config_dir: Path,
 ) -> None:
-    """Write the phase-timings JSON and print the `completed in ...` footer.
+    """Print the apply run footer: timings file plus the `completed in ...` line.
 
-    One file per command at *config_dir* (`.repolish/_/phase-timings.json`),
-    holding each session's phase durations; the footer links to it. Timings
-    live only here — the post-process report no longer repeats them.
+    Delegates to :func:`~repolish.reporting.print_command_timings` with
+    apply's sessions named by their directory role (:func:`session_label`).
+    Timings live only in that file — the post-process report does not repeat
+    them.
     """
-    timings_path = write_phase_timings(
-        config_dir / '.repolish' / '_' / 'phase-timings.json',
+    print_command_timings(
+        'apply',
         total_ms,
         [(session_label(session), session.phase_timer) for session in sessions],
+        config_dir,
     )
-    print_completed_footer(int(total_ms), timings_path)

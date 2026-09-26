@@ -11,6 +11,7 @@ markers, leaves, and their details live in submodules.
 
 from repolish.reporting.nodes import SummaryNode
 from repolish.reporting.render import (
+    print_command_timings,
     print_completed_footer,
     print_run_header,
     print_summary_trees,
@@ -19,6 +20,7 @@ from repolish.reporting.render import (
 
 __all__ = [
     'SummaryNode',
+    'print_command_timings',
     'print_completed_footer',
     'print_run_header',
     'print_summary_trees',
