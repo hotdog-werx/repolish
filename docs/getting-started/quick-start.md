@@ -148,6 +148,9 @@ apply summary
 Run `repolish apply` again whenever you add or rename a workflow file and the
 table updates automatically.
 
+Every marker and annotation the summary trees print is documented in the
+[Summary Trees reference](../reference/summary-trees.md).
+
 ## What's next
 
 This example only scratches the surface. Providers can:

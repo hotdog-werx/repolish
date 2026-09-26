@@ -6,30 +6,10 @@ from pytest_mock import MockerFixture
 from rich.text import Text
 
 from repolish.reporting.nodes import (
-    Status,
     SummaryNode,
     details_link,
     stat_suffix,
-    status_prefix,
 )
-
-
-def test_status_markers_pair_glyph_with_style():
-    assert Status.OK.marker == '✓ '
-    assert Status.OK.style == 'green'
-    assert Status.FAIL.marker == '✗ '
-    assert Status.FAIL.style == 'red'
-    assert Status.SKIP.marker == '✗ '
-    assert Status.SKIP.style == 'yellow'
-    assert Status.WARN.marker == '⚠ '
-    assert Status.INFO.marker == '~ '
-    assert Status.INFO.style == 'dim cyan'
-
-
-def test_status_prefix_renders_marker_with_style():
-    prefix = status_prefix(Status.OK)
-    assert prefix.plain == '✓ '
-    assert 'green' in str(prefix.style)
 
 
 def test_summary_node_defaults():

@@ -223,9 +223,9 @@ class ResolvedSession:
     )
     """POSIX copy destinations held back because of ``paused_files``, per
     alias — including individual files inside directory copies.  Populated
-    by :func:`~repolish.commands.apply.symlinks.apply_copies` during apply;
-    empty in check-only runs (whole-entry pauses are still derivable from
-    the session's ``paused_files``)."""
+    by :func:`~repolish.commands.apply.symlinks.apply_copies` during apply
+    and by the pure :func:`~repolish.commands.apply.symlinks.held_back_copy_targets`
+    computation in check mode, so both modes report the same state."""
     post_process_runs: list[tuple[str, PostProcessRun]] = field(
         default_factory=list,
         repr=False,

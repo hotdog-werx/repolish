@@ -1,38 +1,20 @@
-"""The summary-tree contract: nodes, status markers, and label helpers.
+"""The summary-tree node contract: `SummaryNode` and label helpers.
 
 Producers build `SummaryNode` trees (plain data, no rich Tree knowledge);
-`repolish.reporting.render` turns them into rich output. Everything a
-summary can say — a status marker, a details link, a stat suffix — has a
-helper here so producers never touch link styles or separators directly.
+`repolish.reporting.render` turns them into rich output. The only
+producers are the leaf renderers in `repolish.reporting.leaves`, which
+consume rows from `repolish.summaries` and markers from
+`repolish.reporting.markers`; everything else a summary can say — a
+details link, a stat suffix — has a helper here so producers never touch
+link styles or separators directly.
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
 from rich.text import Text
 
 from repolish.console import supports_hyperlinks
-
-
-class Status(Enum):
-    """Outcome markers with their style, keyed by display intent."""
-
-    OK = ('✓ ', 'green')
-    WARN = ('⚠ ', 'yellow')
-    FAIL = ('✗ ', 'red')
-    SKIP = ('✗ ', 'yellow')
-    INFO = ('~ ', 'dim cyan')
-
-    @property
-    def marker(self) -> str:
-        """The glyph prefix for this status, e.g. `'✓ '`."""
-        return self.value[0]
-
-    @property
-    def style(self) -> str:
-        """The rich style for this status's marker, e.g. `'green'`."""
-        return self.value[1]
 
 
 @dataclass
@@ -47,11 +29,6 @@ class SummaryNode:
     label: Text
     children: list['SummaryNode'] = field(default_factory=list)
     link: Path | None = None
-
-
-def status_prefix(status: Status) -> Text:
-    """Return the marker for *status* styled with its color."""
-    return Text(status.marker, style=status.style)
 
 
 def details_link(text: Text, path: Path) -> None:

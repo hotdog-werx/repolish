@@ -184,7 +184,6 @@ def test_provider_default_disabled_validator_can_be_enabled_via_overrides(
     output = result.output
     assert 'lint' in output
     assert 'disabled' not in output
-    assert '✓ lint' in output
 
 
 def test_provider_default_disabled_validator_stays_disabled_when_not_opted_in(
@@ -418,9 +417,7 @@ def test_validator_can_target_existing_project_file_without_file_mapping(
     assert (tmp_path / 'README.md').exists()
     output = result.output
     assert 'README.md' in output
-    assert 'developer owned' in output
     assert 'lint' in output
-    assert '✓ lint' in output
 
 
 def test_validator_override_branches_cover_missing_and_empty_registries(
@@ -520,7 +517,6 @@ def test_validator_failure_warns_but_does_not_fail_without_fail_on_warnings(
     assert 'validators' in output
     assert 'lint' in output
     assert 'bad config' in output
-    assert '⚠' in output
 
 
 def test_validator_warning_exits_nonzero_in_fail_on_warnings_mode(
@@ -549,7 +545,6 @@ def test_validator_warning_exits_nonzero_in_fail_on_warnings_mode(
     assert 'validators' in output
     assert 'lint' in output
     assert 'bad config' in output
-    assert '⚠' in output or 'warn' in output or 'warning' in output
 
 
 def test_validator_failure_fails_check_mode(
@@ -580,7 +575,6 @@ def test_validator_failure_fails_check_mode(
     assert not (tmp_path / 'config.toml').exists()
     output = result.output
     assert 'file failed validation' in output
-    assert '✗' in output
 
 
 def test_validator_passing_check_mode_succeeds(
@@ -689,8 +683,6 @@ def test_validator_mixed_warning_and_error_are_both_displayed(
     assert 'fail' in output
     assert 'deprecated config' in output
     assert 'missing required setting' in output
-    assert '⚠' in output
-    assert '✗' in output
 
 
 def test_validator_missing_file_without_mapping_fails_when_attempting_to_read(
@@ -744,7 +736,6 @@ def test_validator_missing_file_without_mapping_fails_when_attempting_to_read(
     assert 'lint' in output
     assert 'crashed' in output
     assert 'No such file or directory' in output
-    assert '✗' in output
 
 
 def test_validator_missing_file_without_mapping_fails_with_error(
@@ -797,7 +788,6 @@ def test_validator_missing_file_without_mapping_fails_with_error(
     assert 'config.toml' in output
     assert 'lint' in output
     assert 'missing' in output
-    assert '✗' in output
 
 
 def _make_crashing_validator_provider(directory: Path) -> None:

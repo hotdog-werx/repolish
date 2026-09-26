@@ -24,7 +24,10 @@ from repolish.commands.apply.session import (
 from repolish.commands.apply.session import (
     run_session as run_repolish,
 )
-from repolish.commands.apply.symlinks import apply_copies
+from repolish.commands.apply.symlinks import (
+    apply_copies,
+    held_back_copy_targets,
+)
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
 from repolish.config.models.provider import (
     ProviderCopy,
@@ -916,6 +919,79 @@ def test_apply_copies_skips_paused_targets(
         paused_files=frozenset({'pinned.json'}),
         disabled_copies=frozenset(),
     )
+
+
+def test_held_back_copy_targets_reports_paused_children_of_directory_copies(
+    tmp_path: Path,
+) -> None:
+    """The pure computation walks nested copy trees like the copy pass does."""
+    resources_dir = tmp_path / '.repolish' / 'mylib'
+    nested_dir = resources_dir / 'configs' / 'nested'
+    nested_dir.mkdir(parents=True)
+    (nested_dir / 'b.txt').write_text('b', encoding='utf-8')
+    (nested_dir / 'c.txt').write_text('c', encoding='utf-8')
+    providers = {
+        'mylib': ResolvedProviderInfo(
+            alias='mylib',
+            provider_root=resources_dir,
+            resources_dir=resources_dir,
+        ),
+    }
+    resolved_copies = {
+        'mylib': [ProviderCopy(source=Path('configs'), target=Path('configs'))],
+    }
+
+    held = held_back_copy_targets(
+        resolved_copies,
+        providers,
+        paused_files=frozenset({'configs/nested/b.txt'}),
+    )
+
+    assert held == {'mylib': ['configs/nested/b.txt']}
+
+
+def test_held_back_copy_targets_reports_whole_target_pause(
+    tmp_path: Path,
+) -> None:
+    """A paused copy target records the target itself, in both modes."""
+    resources_dir = tmp_path / '.repolish' / 'mylib'
+    (resources_dir / 'configs').mkdir(parents=True)
+    (resources_dir / 'configs' / 'a.txt').write_text('a', encoding='utf-8')
+    providers = {
+        'mylib': ResolvedProviderInfo(
+            alias='mylib',
+            provider_root=resources_dir,
+            resources_dir=resources_dir,
+        ),
+    }
+    resolved_copies = {
+        'mylib': [ProviderCopy(source=Path('configs'), target=Path('configs'))],
+    }
+
+    held = held_back_copy_targets(
+        resolved_copies,
+        providers,
+        paused_files=frozenset({'configs'}),
+    )
+
+    assert held == {'mylib': ['configs']}
+
+
+def test_held_back_copy_targets_skips_unknown_provider(
+    tmp_path: Path,
+) -> None:
+    """Copy entries whose provider is absent from the resolved config are skipped."""
+    resources_dir = tmp_path / '.repolish' / 'ghost'
+    resources_dir.mkdir(parents=True)
+    resolved_copies = {
+        'ghost': [
+            ProviderCopy(source=Path('configs'), target=Path('configs')),
+        ],
+    }
+
+    held = held_back_copy_targets(resolved_copies, {})
+
+    assert held == {}
 
 
 def test_apply_copies_forwards_disabled_overrides(

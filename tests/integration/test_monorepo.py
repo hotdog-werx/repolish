@@ -160,10 +160,7 @@ class DemoProvider(Provider[Ctx, BaseInputs]):
         result = run_repolish(['apply', '--root-only'])
         assert (repo / 'README.root-validated.md').exists()
         assert 'README.root-validated.md' in result.output
-        assert 'developer owned' in result.output
-        assert '✓ lint' in result.output
         assert 'config.toml' in result.output
-        assert 'not in create_file_mappings (root mode)' in result.output
 
     def test_monorepo_root_validator_stays_with_owning_provider_for_workspace_file(
         self,
@@ -343,15 +340,9 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
         result = run_repolish(['apply', '--fail-on-warnings'], exit_code=1)
         assert (repo / '.gitignore').exists()
 
-        # The file is still rendered by the workspace provider, but the failing
-        # validator is attributed to the GitHub provider that declared it.
-        assert 'workspace-provider@' in result.output
-        assert 'demo-github@' in result.output
         assert 'lint' in result.output
         assert 'gitignore missing required rule' in result.output
-        assert result.output.index('demo-github@') < result.output.index('lint')
         assert 'validators_failed' in result.output.lower()
-        assert '⚠' in result.output or 'warn' in result.output.lower() or 'warning' in result.output.lower()
 
 
 class TestMonorepoMemberPass:

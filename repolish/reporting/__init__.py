@@ -1,13 +1,15 @@
-"""Summary-tree contract: node producers build `SummaryNode` data, render prints."""
+"""Reporting: the drawing half of the summary.
 
-from repolish.reporting.nodes import (
-    Status,
-    SummaryNode,
-    details_link,
-    stat_suffix,
-    status_prefix,
-)
-from repolish.reporting.post_process import post_process_nodes, session_label
+Derivation lives in `repolish.summaries`: it turns a finished session
+into typed rows. This package turns rows into output — markers, leaf
+renderers, and the console printer. Terminal today; a future
+`print_summary_html` consumes the same rows.
+
+Public surface is just the print/render entry points plus the tree node;
+markers, leaves, and their details live in submodules.
+"""
+
+from repolish.reporting.nodes import SummaryNode
 from repolish.reporting.render import (
     print_completed_footer,
     print_run_header,
@@ -16,15 +18,9 @@ from repolish.reporting.render import (
 )
 
 __all__ = [
-    'Status',
     'SummaryNode',
-    'details_link',
-    'post_process_nodes',
     'print_completed_footer',
     'print_run_header',
     'print_summary_trees',
     'render_summary_tree',
-    'session_label',
-    'stat_suffix',
-    'status_prefix',
 ]
