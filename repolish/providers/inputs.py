@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel as _BaseModel
@@ -134,6 +134,8 @@ class _GatherState:
     provider_contexts: dict[str, BaseContext]
     all_providers_list: list[ProviderEntry]
     received_inputs: dict[str, list[BaseInputs]]
+    emitted_inputs: list[BaseInputs] = field(default_factory=list)
+    """Raw pre-routing outputs of the local providers' ``provide_inputs``."""
     routing_list: list[ProviderEntry] | None = None
     """Subset of ``all_providers_list`` used as routing targets.
 
@@ -149,7 +151,12 @@ def _collect_for_provider(
     inst: _ProviderBase | None,
     state: _GatherState,
 ) -> None:
-    """Process a single provider entry and update `state.received_inputs`."""
+    """Process a single provider entry and update `state.received_inputs`.
+
+    The raw pre-routing outputs are appended to ``state.emitted_inputs``
+    first, so the session can forward its outward contributions without
+    running the provider hooks a second time.
+    """
     inputs = (
         _retrieve_instance_inputs(
             provider_id,
@@ -163,36 +170,8 @@ def _collect_for_provider(
     )
 
     if inputs:
+        state.emitted_inputs.extend(cast('list[BaseInputs]', inputs))
         _distribute_payloads(inputs, state)
-
-
-def collect_all_emitted_inputs(
-    module_cache: list[tuple[str, dict]],
-    instances: list[_ProviderBase | None],
-    provider_contexts: dict[str, BaseContext],
-    all_providers_list: list[ProviderEntry],
-) -> list[BaseInputs]:
-    """Call each provider's ``provide_inputs`` and return all outputs as a flat list.
-
-    Unlike :func:`gather_received_inputs`, this function does **not** route the
-    inputs to recipients.  It is used by the dry-pass logic to capture the raw
-    outputs before any routing occurs.
-    """
-    flat: list[BaseInputs] = []
-    for idx, (provider_id, _) in enumerate(module_cache):
-        inst = instances[idx]
-        if not inst:
-            continue
-        raw = _retrieve_instance_inputs(
-            provider_id,
-            idx,
-            inst,
-            provider_contexts,
-            all_providers_list,
-        )
-        if raw:
-            flat.extend(cast('list[BaseInputs]', raw))
-    return flat
 
 
 def gather_received_inputs(
@@ -201,12 +180,19 @@ def gather_received_inputs(
     provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
     extra_inputs: list[BaseInputs] | None = None,
-) -> dict[str, list[BaseInputs]]:
-    """Collect provider inputs, route them, and return a by-recipient mapping.
+) -> tuple[dict[str, list[BaseInputs]], list[BaseInputs]]:
+    """Collect provider inputs, route them, and return the routing outcome.
+
+    Returns ``(received_inputs, emitted_inputs)``: the by-recipient mapping
+    of routed payloads, and the flat list of this session's pre-routing
+    outputs. The emitted list is what a member session forwards to the
+    root pass as ``extra_inputs``, captured here as a byproduct so the
+    provider hooks never run twice.
 
     When *extra_inputs* is provided those inputs are added to the routing pool
     alongside the locally-emitted inputs.  This is how member providers' outputs
-    are delivered to root providers during a monorepo root pass.
+    are delivered to root providers during a monorepo root pass. Extra inputs
+    are routed, but never appended to the returned emitted list.
 
     Routing is restricted to the *local* providers (those in ``module_cache``).
     Extra member entries in ``all_providers_list`` are for inspection only and
@@ -240,4 +226,4 @@ def gather_received_inputs(
     if extra_inputs:
         _distribute_payloads(extra_inputs, state)
 
-    return state.received_inputs
+    return state.received_inputs, state.emitted_inputs

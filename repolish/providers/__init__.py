@@ -20,14 +20,13 @@ from repolish.providers.models import (
     call_provider_method,
     get_provider_context,
 )
-from repolish.providers.models.pipeline import DryRunResult, PipelineOptions
+from repolish.providers.models.pipeline import PipelineOptions
 from repolish.providers.orchestrator import create_providers
 
 __all__ = [
     'Action',
     'BaseContext',
     'Decision',
-    'DryRunResult',
     'FileMode',
     'ModeHandler',
     'PipelineOptions',

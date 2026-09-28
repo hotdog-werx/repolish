@@ -2,7 +2,6 @@ from collections.abc import Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, overload
 
 from repolish.phases import PhaseTimer
 from repolish.providers import SessionBundle
@@ -13,7 +12,6 @@ from repolish.providers.contributions import (
 from repolish.providers.finalize import finalize_provider_contexts
 from repolish.providers.inputs import (
     build_provider_metadata,
-    collect_all_emitted_inputs,
     gather_received_inputs,
 )
 from repolish.providers.models import (
@@ -26,7 +24,6 @@ from repolish.providers.models import (
     get_global_context,
 )
 from repolish.providers.models.pipeline import (
-    DryRunResult,
     PipelineOptions,
     ProviderContributions,
 )
@@ -92,16 +89,15 @@ def _prepare_pipeline_state(
         )
 
     with _phase(options, 'provider_pipeline.overrides'):
+        # Dotted overrides arrive pre-folded into ``context_merge`` by
+        # :func:`repolish.hydration.context.build_final_providers`
+        # (``_merge_context_overrides``); the apply helper is dot-notation
+        # aware either way, so a single branch covers both forms.
         for pid, overrides in contributions.overrides.items():
             if overrides.context_merge:
                 _apply_provider_overrides(
                     provider_contexts,
                     {pid: overrides.context_merge},
-                )
-            if overrides.context_dotted:
-                _apply_provider_overrides(
-                    provider_contexts,
-                    {pid: overrides.context_dotted},
                 )
 
     with _phase(options, 'provider_pipeline.registry'):
@@ -153,24 +149,10 @@ def _run_standard_pipeline(
     provider_contexts: dict[str, BaseContext],
     state: _PipelineState,
     options: PipelineOptions,
-) -> SessionBundle | DryRunResult:
+) -> SessionBundle:
     """Run input exchange, finalization, and ordinary contributions."""
-    if options.dry_run:
-        with _phase(options, 'provider_pipeline.emitted_inputs'):
-            emitted = collect_all_emitted_inputs(
-                module_cache,
-                state.instances,
-                provider_contexts,
-                state.all_providers,
-            )
-        return DryRunResult(
-            provider_contexts=provider_contexts,
-            all_providers_list=state.all_providers,
-            emitted_inputs=emitted,
-        )
-
     with _phase(options, 'provider_pipeline.inputs'):
-        received_inputs = gather_received_inputs(
+        received_inputs, emitted_inputs = gather_received_inputs(
             module_cache,
             state.instances,
             provider_contexts,
@@ -213,6 +195,8 @@ def _run_standard_pipeline(
         insertion_sources=accumulators.insertion_sources,
         promoted_file_mappings=accumulators.promoted_file_mappings,
         fast_lanes=accumulators.fast_lanes,
+        provider_entries=state.all_providers[: len(module_cache)],
+        emitted_inputs=emitted_inputs,
     )
 
 
@@ -220,14 +204,12 @@ def _run_provider_pipeline(
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     options: PipelineOptions | None = None,
-) -> SessionBundle | DryRunResult:
+) -> SessionBundle:
     """Run the provider pipeline and return the final result.
 
-    When ``options.dry_run`` is ``True``, the pipeline stops before
-    ``collect_provider_contributions`` (no file writes) and returns a
-    :class:`DryRunResult` containing the provider contexts, all-providers list,
-    and raw emitted inputs.  All other cases return a :class:`SessionBundle` object
-    as before.
+    The returned :class:`SessionBundle` carries the session's outward
+    cross-session data (``provider_entries`` + ``emitted_inputs``) as a
+    byproduct of input exchange, so the provider hooks never run twice.
     """
     _opts = options or PipelineOptions()
     state = _prepare_pipeline_state(module_cache, provider_contexts, _opts)
@@ -243,38 +225,6 @@ def _run_provider_pipeline(
     return _run_standard_pipeline(module_cache, provider_contexts, state, _opts)
 
 
-@overload
-def create_providers(
-    directories: Sequence[str | tuple[str, str]],
-    *,
-    contributions: ProviderContributions | None = ...,
-    global_context: GlobalContext | None = ...,
-    extra_provider_entries: list[ProviderEntry] | None = ...,
-    extra_inputs: list[BaseInputs] | None = ...,
-    dry_run: Literal[False] = ...,
-    context_only: bool = ...,
-    fast_lanes_only: bool = ...,
-    phase_timer: PhaseTimer | None = ...,
-    provider_package_identity: tuple[str, str] | None = ...,
-) -> SessionBundle: ...
-
-
-@overload
-def create_providers(
-    directories: Sequence[str | tuple[str, str]],
-    *,
-    contributions: ProviderContributions | None = ...,
-    global_context: GlobalContext | None = ...,
-    extra_provider_entries: list[ProviderEntry] | None = ...,
-    extra_inputs: list[BaseInputs] | None = ...,
-    dry_run: Literal[True],
-    context_only: bool = ...,
-    fast_lanes_only: bool = ...,
-    phase_timer: PhaseTimer | None = ...,
-    provider_package_identity: tuple[str, str] | None = ...,
-) -> DryRunResult: ...
-
-
 def create_providers(  # noqa: PLR0913 - skip for now
     directories: Sequence[str | tuple[str, str]],
     *,
@@ -282,12 +232,11 @@ def create_providers(  # noqa: PLR0913 - skip for now
     global_context: GlobalContext | None = None,
     extra_provider_entries: list[ProviderEntry] | None = None,
     extra_inputs: list[BaseInputs] | None = None,
-    dry_run: bool = False,
     context_only: bool = False,
     fast_lanes_only: bool = False,
     phase_timer: PhaseTimer | None = None,
     provider_package_identity: tuple[str, str] | None = None,
-) -> SessionBundle | DryRunResult:
+) -> SessionBundle:
     """Load all template providers and merge their contributions.
 
     Merging semantics:
@@ -301,8 +250,9 @@ def create_providers(  # noqa: PLR0913 - skip for now
       additions/removals in provider order.
 
     When *global_context* is ``None``, it is computed via :func:`get_global_context`.
-    When *dry_run* is ``True``, returns a :class:`DryRunResult` instead of a
-    :class:`SessionBundle` object.
+    The returned :class:`SessionBundle` carries the session's outward
+    cross-session data (``provider_entries`` + ``emitted_inputs``), captured
+    during input exchange.
 
     Use :class:`ProviderContributions` to pass per-provider overrides, anchors,
     and file mappings in a single consolidated container.
@@ -337,7 +287,6 @@ def create_providers(  # noqa: PLR0913 - skip for now
             global_context=global_ctx_obj,
             contributions=contributions or ProviderContributions(),
             alias_map=alias_map,
-            dry_run=dry_run,
             context_only=context_only,
             fast_lanes_only=fast_lanes_only,
             phase_timer=phase_timer,

@@ -251,7 +251,12 @@ def test_ctx_keys_helper():
 
 def test_gather_received_inputs_variants() -> None:
     """Cover module path both with and without recipients after."""
-    # provider1 has no recipients after (flag False)
+
+    class Sender(DummyProvider):
+        def provide_inputs(self, opt: object) -> list[Any]:
+            return [{'foo': 1}]
+
+    # provider1 has no instance at all: nothing runs, nothing is captured
     module_cache = [('p1', {})]
     # annotate so the type checker knows we intend the broader provider union
     instances: list[_ProviderBase | None] = [None]
@@ -268,28 +273,29 @@ def test_gather_received_inputs_variants() -> None:
         ),
     ]
     # calling gather_received_inputs directly
-    got = gather_received_inputs(
+    got, emitted = gather_received_inputs(
         module_cache,
         instances,
         provider_contexts,
         all_providers_list,
     )
     assert got == {}
+    assert emitted == []
 
-    # now provider with recipient after and a collect function
-
-    def send(ctx: dict, allp: list, idx: int) -> list:
-        return [{'foo': 1}]
-
-    module_cache = [('p2', {'provide_inputs': send})]
-    got = gather_received_inputs(
+    # now a real instance that emits a payload no recipient declares a
+    # matching schema for: routing drops it, the raw capture keeps it
+    module_cache = [('p2', {})]
+    instances = [Sender()]
+    got, emitted = gather_received_inputs(
         module_cache,
         instances,
         provider_contexts,
         all_providers_list,
     )
-    # unresolved recipient dropped, so result remains empty
+    # unresolved recipient dropped, so the routing map remains empty, but
+    # the raw pre-routing output is still captured as a byproduct
     assert got == {}
+    assert emitted == [{'foo': 1}]
 
 
 def test_overrides_affect_inputs(

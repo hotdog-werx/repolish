@@ -1,9 +1,9 @@
 # CLI
 
 `provider_cli` builds a cyclopts app with one subcommand per lane plus an `all`
-subcommand that runs the provider's full pass (still fast: single provider load,
-no dry pass). New lanes need no `pyproject.toml` edits because the subcommands
-are generated from the hook.
+subcommand that runs the provider's full pass (still fast: single provider
+load). New lanes need no `pyproject.toml` edits because the subcommands are
+generated from the hook.
 
 That generated CLI is the feature worth noticing. A provider author does not
 need a second package, separate parser setup, or hand-maintained subcommand

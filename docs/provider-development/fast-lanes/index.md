@@ -3,10 +3,10 @@
 A fast lane is a named slice of a provider's work with its own CLI subcommand.
 While `repolish apply -p <alias>` already scopes a run to one provider, it still
 builds the full session: every mapping the provider declares is staged and
-rendered, and the pipeline runs its dry pass. A lane run stops earlier. It loads
-exactly one provider, skips the dry pass, and stages only the templates the lane
-declares. For a day-to-day edit loop over a handful of generated files, that is
-the difference between a quick gate and a short coffee break.
+rendered. A lane run stops earlier. It loads exactly one provider and stages
+only the templates the lane declares. For a day-to-day edit loop over a handful
+of generated files, that is the difference between a quick gate and a short
+coffee break.
 
 That shorter loop is only half the story. Fast lanes also let a provider ship
 its own focused project utilities without forcing the team to build and maintain

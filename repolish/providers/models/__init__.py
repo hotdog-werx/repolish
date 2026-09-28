@@ -7,7 +7,8 @@ implementation detail:
 - `workspace` — `MemberInfo`, `WorkspaceContext`, `ProviderSession`
 - `context` — `Symlink`, `ResourceCopy`, `GithubRepo`, `GlobalContext`, `get_global_context`,
   `ProviderInfo`, `RepolishContext`, `BaseContext`, `BaseInputs`
-- `pipeline` — `PipelineOptions`, `DryRunResult`
+- `pipeline` — `PipelineOptions`, `ProviderContributions`
+- `entry` — `ProviderEntry` (leaf module; also re-exported via `provider`)
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
   `SessionBundle`, `Accumulators`, `build_file_records`
 - `provider` — `ProviderEntry`, `Provider`, `ModeHandler`, `ProvideInputsOptions`,
@@ -61,7 +62,6 @@ from repolish.providers.models.files import (
     map_folder,
 )
 from repolish.providers.models.pipeline import (
-    DryRunResult,
     PipelineOptions,
     ProviderContributions,
 )
@@ -93,7 +93,6 @@ __all__ = [
     'BaseProviderMethodOptions',
     'ContextT',
     'Decision',
-    'DryRunResult',
     'FastLaneDeclaration',
     'FastLaneEntry',
     'FastLaneFactory',

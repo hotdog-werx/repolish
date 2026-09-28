@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Generic, Literal, TypeAlias, TypeVar
+from typing import Any, Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,7 @@ from repolish.providers.models.context import (
     RepolishContext,
     ResourceCopy,
 )
+from repolish.providers.models.entry import ProviderEntry  # noqa: TC001 - pydantic resolves this at schema build time
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
@@ -637,6 +638,21 @@ class SessionBundle(BaseModel):
     full runs, or executed alone for lane runs (see ``repolish.fastlane``).
     Factory lanes stay unevaluated here and are resolved by the
     merge/restrict step, once, only when needed."""
+    provider_entries: list[ProviderEntry] = Field(default_factory=list)
+    """This session's local provider registry, captured as a byproduct of
+    input exchange. Forwarded by the coordinator as the member's
+    ``extra_provider_entries`` for the root pass so root providers see
+    every member's contributions during their hooks."""
+    emitted_inputs: list[Any] = Field(default_factory=list)
+    """Inputs emitted by this session's providers before routing, captured
+    as a byproduct of input exchange. Forwarded by the coordinator as the
+    member's ``extra_inputs`` so the root pass routes them alongside its
+    own. Empty for context-only and fast-lane-only sessions.
+
+    Typed ``Any`` on purpose: payloads are pass-through, never re-validated.
+    Provider modules loaded dynamically may subclass their own ``BaseInputs``
+    identity (see ``repolish.providers.inputs._schema_matches``), so strict
+    validation here would reject structurally-valid inputs."""
 
 
 def _records_from_template_sources(

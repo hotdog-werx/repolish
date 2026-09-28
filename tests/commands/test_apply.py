@@ -300,7 +300,6 @@ def test_resolve_session_raises_when_lane_spec_set_without_lane(
             ),
             raw_providers={},
         ),
-        skip_dry_pass=True,
         global_context=GlobalContext(
             workspace=WorkspaceContext(mode='standalone'),
         ),
