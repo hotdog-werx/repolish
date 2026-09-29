@@ -624,6 +624,80 @@ def test_validator_warning_in_check_mode_respects_fail_on_warnings(
     run_repolish(['apply', '--check', '--fail-on-warnings'], exit_code=1)
 
 
+def test_drifted_render_failing_a_validator_fails_check_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check mode validates the content apply would write, not the stale on-disk copy.
+
+    Apply validates after copying, so a rendered change that breaks a validator
+    fails the run loudly. Check mode must predict that: with the workspace still
+    holding the previous good content, the validator has to run against the
+    staged render, or the failure only surfaces once someone runs apply.
+    """
+    _write(tmp_path / 'p' / 'repolish' / 'config.toml', "name = 'demo'\n")
+    _write(
+        tmp_path / 'p' / 'repolish.py',
+        dedent("""\
+        from repolish import BaseContext, Provider, BaseInputs
+        from repolish.providers.models import ValidationResult
+
+        class Ctx(BaseContext):
+            pass
+
+        class P(Provider[Ctx, BaseInputs]):
+            def create_context(self):
+                return Ctx()
+
+            def create_file_mappings(self, ctx):
+                return {'config.toml': 'config.toml'}
+
+            def create_file_validators(self, ctx):
+                def lint(context, path):
+                    text = path.read_text()
+                    if 'BAD' in text:
+                        return ValidationResult(
+                            status='error',
+                            message='BAD marker in rendered config',
+                            path=str(path),
+                            validator_name='lint',
+                        )
+                    return ValidationResult(
+                        status='pass',
+                        message='lint ok',
+                        path=str(path),
+                        validator_name='lint',
+                    )
+
+                return {'config.toml': {'lint': lint}}
+        """),
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    # Clean tree first: the good template applies and the validator passes.
+    run_repolish(['apply'], exit_code=0)
+
+    # Now the template renders content the validator rejects.
+    _write(tmp_path / 'p' / 'repolish' / 'config.toml', "name = 'BAD'\n")
+
+    # Apply fails loudly after copying the bad content.
+    run_repolish(['apply'], exit_code=1)
+
+    # Put the previous good content back on disk, so the on-disk file passes
+    # the validator while the staged render does not. Check mode must still
+    # fail: it predicts what apply would enforce.
+    _write(tmp_path / 'config.toml', "name = 'demo'\n")
+    result = run_repolish(['apply', '--check'], exit_code=1)
+
+    assert 'BAD marker in rendered config' in result.output
+
+
 def test_validator_mixed_warning_and_error_are_both_displayed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

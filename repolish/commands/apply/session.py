@@ -163,14 +163,23 @@ def _run_session_validation(
     session: ResolvedSession,
     base_dir: Path,
     setup_output: Path,
+    *,
+    prefer_render: bool = False,
 ) -> None:
-    """Run all registered file validators and record the results on *session*."""
+    """Run all registered file validators and record the results on *session*.
+
+    Check mode passes ``prefer_render=True``: nothing is copied out, so the
+    staged render is the content apply would enforce, and validators must run
+    against it rather than the stale workspace copy (see
+    :func:`_resolve_validation_path`).
+    """
     session.validation_results, session.validation_reports = _collect_validation(
         session.providers,
         session.config.config_dir,
         setup_output / 'repolish',
         reports_dir=base_dir / '.repolish' / '_' / 'validators',
         pid_to_alias=session.pid_to_alias,
+        prefer_render=prefer_render,
     )
 
 
@@ -410,10 +419,18 @@ def _apply_session(
         session.apply_result = check_result
         # Validators run in check mode too: a failing validator must fail the
         # job even when the tree is clean, because check mode must predict
-        # exactly what `repolish apply` would enforce. Drift alone stays rc 2;
-        # a validator failure is rc 1, the same code apply mode returns.
+        # exactly what `repolish apply` would enforce. Nothing is copied out,
+        # so validators prefer the staged render over the workspace copy —
+        # the workspace may still hold content apply would overwrite. Drift
+        # alone stays rc 2; a validator failure is rc 1, the same code apply
+        # mode returns.
         with timer.phase('validation'):
-            _run_session_validation(session, base_dir, setup_output)
+            _run_session_validation(
+                session,
+                base_dir,
+                setup_output,
+                prefer_render=True,
+            )
         validation_rc = _validation_failure_rc(
             session,
             fail_on_warnings=fail_on_warnings,
