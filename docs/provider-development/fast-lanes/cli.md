@@ -84,6 +84,47 @@ faster". A team can expose component generators, documentation updaters,
 workflow bootstrappers, or one-off maintenance commands through the same
 provider package they already ship for repolish.
 
+## Local providers
+
+A project-local provider has no `resources/templates` for discovery to walk to:
+its `provider_root` holds `repolish.py` and the `repolish/` template tree
+directly. State that root and discovery is skipped entirely:
+
+```python
+from pathlib import Path
+
+from repolish.fastlane import provider_cli
+
+from local_provider.provider import LocalProvider
+
+main = provider_cli(LocalProvider, provider_root=Path('internal/templates'))
+```
+
+A stated root resolves against the working directory, like `--config`, and gets
+the same semantics the config gives a `provider_root` entry: `resources_dir`
+defaults to the root itself, and the root's directory name is the bookkeeping
+fallback identity. Identity still works through the config: the entry whose
+`provider_root` points at the same directory names the run, so `alias=` is only
+needed when the project has no config entry.
+
+`repolish scaffold --local` writes this wiring for you. The CLI lives inside the
+provider package (`internal/local_provider/cli.py`), where the pyproject exposes
+it as the `local-cli` console script:
+
+```
+$ local-cli all
+```
+
+The `--flat` tier puts `cli.py` beside the provider root (`internal/cli.py`)
+instead and loads `repolish.py` from the stated root. That file sits outside the
+root on purpose: running a file as a script puts its directory first on
+`sys.path`, where the provider's `repolish.py` would shadow the `repolish`
+package itself. Run it from the project root:
+
+```
+$ python internal/cli.py all
+```
+
 ## Trying a lane out
 
 The smallest possible lane needs one template, one spec entry, and nothing else.

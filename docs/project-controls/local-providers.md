@@ -112,12 +112,13 @@ empty and no anchors will be defined. That is enough to override specific files.
 
 ## Scaffolding a local provider
 
-`repolish scaffold --local` generates this structure for you — a `repolish.py`
-entry point with a ready `Provider` subclass and a sample template under
-`repolish/`. By convention it goes to `internal/` (sibling to `src/`: code that
+`repolish scaffold --local` generates this structure for you: a `repolish.py`
+entry point re-exporting a ready `Provider` subclass, a sample template under
+`repolish/`, and an editable-installed `local_provider/` package holding the
+real code. By convention it goes to `internal/` (sibling to `src/`: code that
 only maintains this repo, never shipped); the provider is aliased `local` and
-named `LocalProvider`. No `--package` name is needed — local providers are not
-packages — and no directory either, `internal/` is the default:
+named `LocalProvider`. No `--package` name is needed and no directory either,
+`internal/` is the default:
 
 ```bash
 repolish scaffold --local
@@ -125,9 +126,13 @@ repolish scaffold --local
 
 ```
 internal/
+  pyproject.toml                    ← editable-install this (declares local-cli)
+  local_provider/
+    provider.py                      ← LocalProvider / LocalProviderContext
+    cli.py                           ← fast-lane CLI wiring
   templates/
-    repolish.py                     ← LocalProvider entry point
-    repolish/some-template.md.jinja ← sample template
+    repolish.py                      ← shim re-exporting from local_provider
+    repolish/some-template.md.jinja  ← sample template
 ```
 
 The command prints the `providers:` snippet to paste into `repolish.yaml`:
@@ -138,8 +143,36 @@ providers:
     provider_root: internal/templates
 ```
 
-The flat layout above is self-contained (repolish loads `repolish.py` by file
-path, so sibling imports are unavailable). Once you outgrow a single file,
-`repolish scaffold --local --installable` switches to the installable tier:
-`repolish.py` becomes a shim over an editable-installed `internal/` package. See
+Add `--flat` for the zero-install variant: a single self-contained
+`templates/repolish.py` with the CLI beside the root and no `pyproject.toml`
+(repolish loads `repolish.py` by file path, so sibling imports are unavailable).
+The `repolish.yaml` wiring is identical for both tiers. See
 [repolish scaffold](../reference/scaffold.md#local-provider-layout) for details.
+
+## Fast lanes
+
+A local provider gets the same generated fast-lane CLI a package ships: the
+scaffold wires `provider_cli` to the stated `provider_root` that discovery
+cannot find, and lanes declared on the provider class become subcommands. The
+CLI lives inside the provider package (`internal/local_provider/cli.py`), and
+its pyproject declares it as the `local-cli` console script, so after the
+editable install lanes run from anywhere:
+
+```bash
+local-cli <lane>
+```
+
+The flat tier writes `internal/cli.py` instead; run it from the project root:
+
+```bash
+python internal/cli.py <lane>
+```
+
+That file sits beside the provider root, not inside it: running a file as a
+script puts its directory first on `sys.path`, where the provider's
+`repolish.py` would shadow the `repolish` package itself. A stated root carries
+the same semantics the config gives it: `resources_dir` defaults to the root
+itself and a config entry whose `provider_root` points at the same directory
+still names the run. See
+[the CLI docs](../provider-development/fast-lanes/cli.md#local-providers) for
+the full behavior.

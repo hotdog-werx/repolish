@@ -1,0 +1,32 @@
+"""Fast-lane CLI for the "{{ alias }}" project-local provider.
+
+The provider class lives in this package; templates stay in the provider_root
+stated in repolish.yaml ({{ provider_root }}). Once the editable install is in
+place, lanes run from anywhere through the console script:
+
+    {{ alias }}-cli <lane>
+
+or from the project root:
+
+    python {{ provider_root.rsplit('/', 1)[0] }}/{{ package }}/cli.py <lane>
+
+Subcommands come from create_fast_lanes on the provider class; --help lists
+them.
+"""
+
+from pathlib import Path
+
+from repolish.fastlane import provider_cli
+
+from {{ package }}.provider import {{ class_name }}
+
+_PROVIDER_ROOT = Path(__file__).resolve().parent.parent / 'templates'
+
+main = provider_cli(
+    {{ class_name }},
+    provider_root=_PROVIDER_ROOT,
+    alias='{{ alias }}',
+)
+
+if __name__ == '__main__':
+    main()

@@ -168,12 +168,18 @@ def _collect_templates(*, simple: bool) -> list[Path]:
 
 
 # Explicit template → output mappings for local-provider scaffolds.  Unlike
-# the package scaffold these paths are fixed (the provider is not a Python
-# package in the flat tier) and the sample template keeps its ``.jinja``
-# suffix so repolish renders it as ``some-template.md`` on apply.
+# the package scaffold these paths are fixed, and the sample template keeps
+# its ``.jinja`` suffix so repolish renders it as ``some-template.md`` on
+# apply.  Flat tier: the CLI lands beside the ``templates/`` dir, not inside
+# it — running a file as a script puts its directory first on ``sys.path``,
+# where the provider's ``repolish.py`` would shadow the repolish package
+# itself.  Installable tier: the CLI lives inside the installed package
+# (``{pkg}/cli.py``), which contains no ``repolish.py``, so it is safe there
+# and doubles as a console-script entry point.
 _LOCAL_FLAT_OUTPUTS: dict[str, str] = {
     'local/repolish.py.jinja': 'templates/repolish.py',
     'local/some-template.md.jinja': 'templates/repolish/some-template.md.jinja',
+    'local/cli.py.jinja': 'cli.py',
 }
 _LOCAL_INSTALLABLE_OUTPUTS: dict[str, str] = {
     'local/shim.py.jinja': 'templates/repolish.py',
@@ -181,16 +187,17 @@ _LOCAL_INSTALLABLE_OUTPUTS: dict[str, str] = {
     'local/pyproject.toml.jinja': 'pyproject.toml',
     'local/package/__init__.py.jinja': '{pkg}/__init__.py',
     'local/package/provider.py.jinja': '{pkg}/provider.py',
+    'local/cli-installable.py.jinja': '{pkg}/cli.py',
 }
 
 # A project gets at most one local provider by convention: it lives under
 # ``internal/`` (sibling to ``src/``, never inside it — repo-maintenance code,
 # not shipped product code) and is referenced from repolish.yaml as ``local``.
-# The installable tier hosts the real code in an editable-installed package of
-# the same name, with templates/repolish.py reduced to a re-exporting shim.
+# The installable tier hosts the real code in an editable-installed package
+# named after the provider class (``LocalProvider`` -> ``local_provider/``),
+# with templates/repolish.py reduced to a re-exporting shim.
 LOCAL_PROVIDER_ALIAS = 'local'
 LOCAL_PROVIDER_DIR = 'internal'
-LOCAL_PROVIDER_PACKAGE = 'internal'
 
 
 def _local_class_names(name: str) -> tuple[str, str]:
@@ -204,6 +211,15 @@ def _local_class_names(name: str) -> tuple[str, str]:
     if not class_name.lower().endswith('provider'):
         class_name += 'Provider'
     return class_name, f'{class_name}Context'
+
+
+def _local_package_name(class_name: str) -> str:
+    """Derive the installable-tier package name from the class name.
+
+    ``LocalProvider`` becomes ``local_provider`` — the package a maintainer
+    sees in import statements matches the class they subclass.
+    """
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', class_name).lower()
 
 
 def _render_env() -> Environment:
@@ -220,15 +236,16 @@ def generate_local(
     *,
     provider_root: str | None = None,
     prefix: str | None = None,
-    installable: bool = False,
+    flat: bool = False,
 ) -> list[Path]:
     """Render an in-repo local provider scaffold into *output_dir*.
 
-    A local provider is not an installable package — it is a ``templates``
-    directory inside the project with a ``repolish.py`` entry point and a
-    ``repolish/`` template directory, wired up in ``repolish.yaml`` with only
-    ``provider_root``.  Use :func:`generate` for publishable provider
-    packages instead.
+    A local provider lives in a ``templates`` directory inside the project —
+    never published — with a ``repolish.py`` entry point, a ``repolish/``
+    template directory, and a ``cli.py`` wiring the fast-lane CLI
+    (:func:`~repolish.fastlane.provider_cli`) to this root, wired up in
+    ``repolish.yaml`` with only ``provider_root``.  Use :func:`generate` for
+    publishable provider packages instead.
 
     By convention a project has a single local provider, living under
     ``internal/`` (sibling to ``src/`` — repo-maintenance code, not shipped
@@ -243,30 +260,34 @@ def generate_local(
             ``{LOCAL_PROVIDER_DIR}/templates``, i.e. ``internal/templates``).
         prefix: Optional class-name prefix override.  Defaults to the alias,
             camel-cased and suffixed with ``Provider`` as needed.
-        installable: When ``True``, scaffold the *installable* tier:
-            ``templates/repolish.py`` becomes a re-exporting shim and the real
-            implementation lives in an editable-installed package with its own
-            ``pyproject.toml`` (needed once the provider wants sibling-module
-            imports).  Default ``False`` is the *flat* tier.
+        flat: When ``True``, scaffold the *flat* tier instead: a single
+            self-contained ``templates/repolish.py`` (repolish loads it by
+            file path, so it cannot import sibling modules) and a ``cli.py``
+            beside the root.  The default tier is *installable*: the real
+            implementation lives in an editable-installed package named
+            after the provider class (``LocalProvider`` -> ``local_provider/``)
+            with its own ``pyproject.toml``, which also declares the CLI as a
+            ``{alias}-cli`` console script.
 
     Returns:
         List of paths that were written (skipped files are not included).
     """
     class_name, context_class = _local_class_names(prefix or alias)
+    package = _local_package_name(class_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     env = _render_env()
     context_dict = {
         'alias': alias,
-        'package': LOCAL_PROVIDER_PACKAGE,
+        'package': package,
         'provider_root': provider_root or f'{LOCAL_PROVIDER_DIR}/templates',
         'class_name': class_name,
         'context_class': context_class,
     }
 
-    outputs = _LOCAL_INSTALLABLE_OUTPUTS if installable else _LOCAL_FLAT_OUTPUTS
+    outputs = _LOCAL_FLAT_OUTPUTS if flat else _LOCAL_INSTALLABLE_OUTPUTS
     written: list[Path] = []
     for template_rel, out_rel in outputs.items():
-        dest = output_dir / out_rel.replace('{pkg}', LOCAL_PROVIDER_PACKAGE)
+        dest = output_dir / out_rel.replace('{pkg}', package)
         if dest.exists():
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)

@@ -11,6 +11,7 @@ import importlib.util
 import itertools
 import sys
 import textwrap
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -34,7 +35,6 @@ class CiInputsFixture(BaseInputs):
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
     from types import ModuleType
 
     from repolish.providers.models.provider import Provider
@@ -87,6 +87,39 @@ def _make_provider_pkg(
     for val in vars(mod).values():
         if isinstance(val, type) and val.__module__ == mod.__name__ and hasattr(val, 'create_context'):
             return val
+    msg = 'fixture provider module exports no Provider subclass'
+    raise AssertionError(msg)
+
+
+def _make_local_provider(
+    base: Path,
+    provider_code: str,
+    templates: dict[str, str],
+    *,
+    provider_root: str = 'internal/templates',
+) -> tuple[Path, type[Provider]]:
+    """Write a project-local provider under *base* and import its class.
+
+    The layout matches the local-provider scaffold: ``<provider_root>``
+    containing ``repolish.py`` and a ``repolish/`` template directory, with
+    no ``resources/templates`` anywhere up the tree. Returns the stated root
+    alongside the class, mirroring what ``provider_cli(provider_root=)``
+    receives.
+    """
+    root = base / Path(provider_root)
+    (root / 'repolish').mkdir(parents=True)
+    (root / 'repolish.py').write_text(
+        textwrap.dedent(provider_code),
+        encoding='utf-8',
+    )
+    for name, content in templates.items():
+        target = root / 'repolish' / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(textwrap.dedent(content), encoding='utf-8')
+    mod = _load_module(root / 'repolish.py')
+    for val in vars(mod).values():
+        if isinstance(val, type) and val.__module__ == mod.__name__ and hasattr(val, 'create_context'):
+            return root, val
     msg = 'fixture provider module exports no Provider subclass'
     raise AssertionError(msg)
 
