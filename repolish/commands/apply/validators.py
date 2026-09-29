@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from repolish.commands.apply.validator_reports import (
@@ -22,7 +23,6 @@ from repolish.providers.models.files import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -61,24 +61,51 @@ def _validator_entry_enabled(entry: FileValidatorEntry) -> bool:
     return True
 
 
+def _staged_candidates(
+    render_root: Path,
+    rel_path: str,
+) -> tuple[Path, ...]:
+    """Return the paths *rel_path* can live at inside the render tree.
+
+    Auto-staged project files keep their plain name; Jinja-rendered files
+    carry an ``_repolish.`` filename prefix (see
+    :func:`repolish.hydration.rendering._get_target_path` and
+    :func:`repolish.commands.apply.insertions.stage_registered_insertions`).
+    """
+    rel = Path(rel_path)
+    return (
+        render_root / rel,
+        render_root / rel.parent / f'_repolish.{rel.name}',
+    )
+
+
 def _resolve_validation_path(
     rel_path: str,
     workspace_root: Path,
     render_root: Path | None = None,
+    *,
+    prefer_render: bool = False,
 ) -> Path:
     """Resolve the file to validate.
 
-    Prefer the real workspace file when it exists, because providers may validate
-    an already-present project file without any render mapping. Fall back to the
-    rendered staging directory for generated files that do not exist yet in the
-    project tree.
+    By default prefer the real workspace file when it exists, because providers
+    may validate an already-present project file without any render mapping,
+    falling back to the rendered staging tree for generated files that do not
+    exist yet in the project. Apply mode relies on this: validation runs after
+    the copy, so the workspace file is what was just written.
+
+    Check mode passes ``prefer_render=True`` to reverse the order: nothing is
+    copied, so the staged render is the content apply would enforce, and
+    validating a stale workspace copy would green-light failures that apply
+    mode catches.
     """
-    for root in (workspace_root, render_root):
-        if root:
-            candidate = root / rel_path
-            if candidate.exists():
-                return candidate
-    return workspace_root / rel_path
+    workspace = workspace_root / rel_path
+    staged = _staged_candidates(render_root, rel_path) if render_root else ()
+    ordered = (*staged, workspace) if prefer_render else (workspace, *staged)
+    for candidate in ordered:
+        if candidate.exists():
+            return candidate
+    return workspace
 
 
 def _run_single_validator(  # noqa: PLR0913 - private helper
@@ -88,6 +115,8 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
     provider_contexts: dict[str, BaseContext],
     workspace_root: Path,
     render_root: Path | None = None,
+    *,
+    prefer_render: bool = False,
 ) -> ValidatorOutcome:
     """Execute one validator and return its raw outcome (status, reason, trace)."""
     validator = _resolve_validator(validator_entry)
@@ -96,6 +125,7 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
         rel_path,
         workspace_root,
         render_root,
+        prefer_render=prefer_render,
     )
     try:
         validation = cast(
@@ -124,12 +154,14 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
     return ValidatorOutcome(validator_name, status, 'failed.')
 
 
-def _run_validators_for_file(
+def _run_validators_for_file(  # noqa: PLR0913 - private helper
     rel_path: str,
     validators: dict[str, FileValidatorEntry],
     provider_contexts: dict[str, BaseContext],
     workspace_root: Path,
     render_root: Path | None = None,
+    *,
+    prefer_render: bool = False,
 ) -> tuple[bool, dict[str, ValidationResult], list[ValidatorReportEntry]]:
     """Execute all validators registered for one destination file.
 
@@ -153,6 +185,7 @@ def _run_validators_for_file(
             provider_contexts,
             workspace_root,
             render_root,
+            prefer_render=prefer_render,
         )
         entries.append(ValidatorReportEntry.from_outcome(outcome))
         if outcome.status != ValidationStatus.PASS:
@@ -178,13 +211,14 @@ def _validator_alias(
     return pid_to_alias.get(pid, pid) if pid else 'provider'
 
 
-def _collect_validation(
+def _collect_validation(  # noqa: PLR0913 - mirrors the report flag set on purpose
     bundle: SessionBundle,
     workspace_root: Path,
     render_root: Path | None = None,
     *,
     reports_dir: Path | None = None,
     pid_to_alias: dict[str, str] | None = None,
+    prefer_render: bool = False,
 ) -> tuple[dict[str, dict[str, ValidationResult]], dict[str, str]]:
     """Execute all validators; return failures and per-file report paths.
 
@@ -206,6 +240,7 @@ def _collect_validation(
             provider_contexts,
             workspace_root,
             render_root,
+            prefer_render=prefer_render,
         )
         if not file_ok:
             failures[rel_path] = file_results
