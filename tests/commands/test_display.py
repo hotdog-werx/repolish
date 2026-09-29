@@ -173,7 +173,7 @@ def test_print_run_footer_writes_timings_json_and_footer_line(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
-    """The footer writes phase-timings.json and prints the completion line."""
+    """The footer writes apply-phase-timings.json and prints the completion line."""
     session = _make_session(tmp_path)
     session.phase_timer.record('render', 183.0)
 
@@ -183,7 +183,7 @@ def test_print_run_footer_writes_timings_json_and_footer_line(
 
     print_run_footer([session], 4210.0, tmp_path)
 
-    timings_path = tmp_path / '.repolish' / '_' / 'phase-timings.json'
+    timings_path = tmp_path / '.repolish' / '_' / 'apply-phase-timings.json'
     payload = json.loads(timings_path.read_text(encoding='utf-8'))
     assert payload['total_ms'] == 4210
     # the session name matches the post-process tree's group label

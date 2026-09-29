@@ -1,6 +1,7 @@
 """Rendering tests: SummaryNode trees become rich output via repolish.console."""
 
 import io
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -8,8 +9,10 @@ from pytest_mock import MockerFixture
 from rich.console import Console
 from rich.text import Text
 
+from repolish.phases import PhaseTimer
 from repolish.reporting import (
     SummaryNode,
+    print_command_timings,
     print_completed_footer,
     print_run_header,
     print_summary_trees,
@@ -97,6 +100,54 @@ def test_print_completed_footer_shows_duration_without_link_by_default(
     # the footer opens with a blank line so it sits apart from the trees
     assert rendered.startswith('\ncompleted in')
     assert rendered.count('\n') == 2
+
+
+def test_print_completed_footer_duration_only(mocker: MockerFixture):
+    """Without a timings path the footer prints the duration, nothing else."""
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+    print_completed_footer(4210)
+    rendered = out.getvalue()
+    assert 'completed in' in rendered
+    assert '[details]' not in rendered
+
+
+def test_print_command_timings_writes_command_named_file(
+    mocker: MockerFixture,
+    tmp_path: Path,
+):
+    """With a config dir the timings land in `<command>-phase-timings.json`."""
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+
+    timer = PhaseTimer()
+    timer.record('register', 12.0)
+    print_command_timings('link', 5130.0, [('Standalone', timer)], tmp_path)
+
+    payload = json.loads(
+        (tmp_path / '.repolish' / '_' / 'link-phase-timings.json').read_text(
+            encoding='utf-8',
+        ),
+    )
+    assert payload['total_ms'] == 5130
+    assert payload['sessions'][0]['name'] == 'Standalone'
+    assert payload['sessions'][0]['phases'] == {'register': 12}
+    assert 'completed in' in out.getvalue()
+
+
+def test_print_command_timings_duration_only_without_config_dir(
+    mocker: MockerFixture,
+):
+    """Without a config dir (lint, preview, scaffold) the footer has no file."""
+    out = io.StringIO()
+    test_console = Console(file=out, force_terminal=False, no_color=True)
+    mocker.patch('repolish.reporting.render.console', test_console)
+
+    print_command_timings('lint', 90.0)
+
+    assert 'completed in' in out.getvalue()
 
 
 def test_print_run_header_shows_version_and_dim_parts(

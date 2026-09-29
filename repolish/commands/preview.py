@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import perf_counter
 
 import yaml
 from hotlog import get_logger
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from repolish.console import console
 from repolish.directives import extract_patterns, process_text
+from repolish.reporting import print_command_timings
 
 logger = get_logger(__name__)
 
@@ -34,6 +36,26 @@ def command(
     show_steps: bool,
 ) -> int:
     """Run the preview preprocessor tool."""
+    started = perf_counter()
+    try:
+        return _run_preview(
+            debug_file,
+            show_patterns=show_patterns,
+            show_steps=show_steps,
+        )
+    finally:
+        # preview debugs a scratch file, not a project config, so the footer
+        # is duration-only: no config dir hosts a timings file.
+        print_command_timings('preview', (perf_counter() - started) * 1000)
+
+
+def _run_preview(
+    debug_file: Path,
+    *,
+    show_patterns: bool,
+    show_steps: bool,
+) -> int:
+    """Preview body; :func:`command` wraps this for the timing footer."""
     with Path(debug_file).open(encoding='utf-8') as f:
         data = yaml.safe_load(f)
     debug_config = DebugConfig.model_validate(data)

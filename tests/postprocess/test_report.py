@@ -102,7 +102,7 @@ def test_not_run_block_notes_previous_failure(tmp_path: Path):
 
 
 def test_no_timings_section(tmp_path: Path):
-    """Timings live in phase-timings.json, never in the post-process report."""
+    """Timings live in apply-phase-timings.json, never in the post-process report."""
     run = _run(
         tmp_path,
         CommandOutcome(raw=('true',), argv=('true',), status='ok'),

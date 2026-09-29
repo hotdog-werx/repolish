@@ -53,7 +53,7 @@ class InvalidConfigCase:
                 },
             },
             error_type=ProviderConfigError,
-            error_match='Either cli or provider_root must be provided',
+            error_match='One of module, cli, or provider_root must be provided',
         ),
         InvalidConfigCase(
             name='providers_order_references_undefined_provider',

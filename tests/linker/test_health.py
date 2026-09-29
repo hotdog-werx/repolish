@@ -570,3 +570,181 @@ def test_link_probe_failure_falls_back_to_registration(
     assert result.cached == []
     saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
     assert saved['site_package_dir'] == ''  # static fallback: no package location
+
+
+def test_module_provider_registers_and_is_ready(
+    module_pkg: dict,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A module: provider links in-process and records the same info file."""
+    monkeypatch.chdir(tmp_path)
+    providers = {'lib': ProviderConfig(module='mylib_ws')}
+    result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    assert result.ready == ['lib']
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['site_package_dir'] == str(module_pkg['resources'])
+    assert Path(saved['resources_dir']).is_symlink()
+
+
+def test_module_provider_takes_precedence_over_cli(
+    module_pkg: dict,
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """With module and cli both set, the CLI subprocess never runs."""
+    monkeypatch.chdir(tmp_path)
+    mock_run = mocker.patch('subprocess.run')
+    providers = {'lib': ProviderConfig(module='mylib_ws', cli='mylib-link')}
+    result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    mock_run.assert_not_called()
+    assert result.ready == ['lib']
+
+
+def test_module_provider_cached_when_current(
+    module_pkg: dict,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A module provider whose package and link are current stays cached."""
+    monkeypatch.chdir(tmp_path)
+    providers = {'lib': ProviderConfig(module='mylib_ws')}
+    ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    assert result.cached == ['lib']
+
+
+def test_module_provider_apply_trusts_cache(
+    module_pkg: dict,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Without verify_locations (apply), a valid cache needs no probe."""
+    monkeypatch.chdir(tmp_path)
+    providers = {'lib': ProviderConfig(module='mylib_ws')}
+    ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    result = ensure_providers_ready(['lib'], providers, tmp_path)
+
+    assert result.cached == ['lib']
+
+
+def test_module_provider_moved_relinks(
+    module_pkg: dict,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A cached module provider whose package moved (dev to release) re-links."""
+    monkeypatch.chdir(tmp_path)
+    old_site = (tmp_path / 'old_site').resolve()
+    old_site.mkdir()
+    resources = tmp_path / '.repolish' / 'mylib-ws'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(old_site)  # link still pointing at the old location
+    _write_cli_info('lib', tmp_path, resources, old_site)
+
+    providers = {'lib': ProviderConfig(module='mylib_ws')}
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    assert result.ready == ['lib']
+    assert result.cached == []
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['site_package_dir'] == str(module_pkg['resources'])
+
+
+def test_module_link_failure_falls_back_to_static(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A module that cannot be imported falls back to provider_root."""
+    monkeypatch.chdir(tmp_path)
+    provider_root = tmp_path / 'my_provider'
+    provider_root.mkdir()
+    providers = {
+        'lib': ProviderConfig(
+            module='missing_mod_abc',
+            provider_root=str(provider_root),
+        ),
+    }
+    result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    assert result.ready == ['lib']
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['provider_root'] == str(provider_root)
+
+
+def test_module_link_failure_without_fallback_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A failed module link with no cli or provider_root records the alias as failed."""
+    monkeypatch.chdir(tmp_path)
+    providers = {'lib': ProviderConfig(module='missing_mod_abc')}
+    result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    assert result.failed == ['lib']
+
+
+def test_module_failure_falls_back_to_cli(
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """When the module link fails but cli is set, the CLI path registers."""
+    monkeypatch.chdir(tmp_path)
+    cli_info = ProviderFileInfo(
+        resources_dir=str(tmp_path / '.repolish' / 'mylib-ws'),
+        site_package_dir='/cli/source',
+    )
+    mock_cli_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        return_value=cli_info,
+    )
+    providers = {
+        'lib': ProviderConfig(module='missing_mod_abc', cli='mylib-link'),
+    }
+    result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    mock_cli_link.assert_called_once()
+    assert result.ready == ['lib']
+    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
+    assert saved['site_package_dir'] == '/cli/source'
+
+
+def test_module_probe_failure_falls_back_to_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A verify-time probe of a missing module falls through to registration."""
+    monkeypatch.chdir(tmp_path)
+    old_site = (tmp_path / 'old_site').resolve()
+    old_site.mkdir()
+    resources = tmp_path / '.repolish' / 'mylib-ws'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(old_site)
+    _write_cli_info('lib', tmp_path, resources, old_site)
+
+    providers = {'lib': ProviderConfig(module='missing_mod_abc')}
+    result = ensure_providers_ready(
+        ['lib'],
+        providers,
+        tmp_path,
+        verify_locations=True,
+    )
+
+    assert result.failed == ['lib']

@@ -167,6 +167,59 @@ def test_list_insertions_shows_message_when_no_functions_match_filters(
     assert 'No insertion functions found for the requested filters.' in result.output
 
 
+def test_list_insertions_writes_phase_timings_footer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """list-insertions reports its timing and links to the timings JSON file."""
+    provider_dir = tmp_path / 'p'
+    provider_dir.mkdir()
+    (provider_dir / 'repolish.py').write_text(
+        dedent(
+            """\
+            from repolish import BaseContext, BaseInputs, Provider
+
+
+            class Ctx(BaseContext):
+                pass
+
+
+            class P(Provider[Ctx, BaseInputs]):
+                def create_context(self):
+                    return Ctx()
+
+                def create_file_insertions(self, context):
+                    return {'README.md': {'render-a': lambda: 'a'}}
+            """,
+        ),
+        encoding='utf-8',
+    )
+
+    (tmp_path / 'README.md').write_text(
+        '<!-- repolish:on:one render-a -->\n<!-- repolish:off:one -->\n',
+        encoding='utf-8',
+    )
+
+    (tmp_path / 'repolish.yaml').write_text(
+        json.dumps({'providers': {'p': {'provider_root': './p'}}}, indent=4),
+        encoding='utf-8',
+    )
+
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['list-insertions'])
+
+    assert result.exit_code == 0
+    assert 'completed in' in result.output
+    timings_path = tmp_path / '.repolish' / '_' / 'list-insertions-phase-timings.json'
+    assert timings_path.exists()
+    payload = json.loads(timings_path.read_text())
+    assert payload['total_ms'] >= 0
+    sessions = payload['sessions']
+    assert len(sessions) == 1
+    assert sessions[0]['phases'], 'resolution phases must be recorded'
+
+
 def test_list_insertions_filter_does_not_match_other_provider_qualified_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

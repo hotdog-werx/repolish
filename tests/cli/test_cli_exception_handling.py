@@ -32,7 +32,7 @@ class CLITestCase:
                   some-provider:
                     link: some-link-cli
                 """),
-            error_has='Either cli or provider_root must be provided',
+            error_has='One of module, cli, or provider_root must be provided',
         ),
         CLITestCase(
             name='link_resources_dir_without_provider_root',

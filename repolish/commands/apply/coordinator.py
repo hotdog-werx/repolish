@@ -708,9 +708,8 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
     1. Detect workspace topology.
     2. If standalone → run single session via :func:`run_session`.
     3. Resolve every member session.  Each :func:`resolve_session` call
-       internally performs a dry pass that captures the outward cross-session
-       data (``provider_entries`` + ``emitted_inputs``) alongside the full
-       provider state.
+       captures the outward cross-session data (``provider_entries`` +
+       ``emitted_inputs``) as a byproduct of its provider pass.
     4. Resolve the root session with all member data injected.
 
     Apply phase:

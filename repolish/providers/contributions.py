@@ -5,6 +5,7 @@ from pathlib import Path, PurePosixPath
 from types import UnionType
 from typing import TYPE_CHECKING, Any, Union, cast, get_args, get_origin
 
+from repolish.filemodes import fold_mapping
 from repolish.insertions.models import BlockContext, InsertionBlock
 from repolish.insertions.type_utils import (
     is_block_context_annotation,
@@ -332,17 +333,27 @@ def _apply_annotated_tm(
     provider_id: str,
     accum: Accumulators,
 ) -> None:
-    """Apply a fully-annotated TemplateMapping to the accumulators."""
+    """Apply a fully-annotated TemplateMapping to the accumulators.
+
+    The mode's destination-set claim goes through
+    :func:`repolish.filemodes.fold_mapping`; what stays here is this
+    path's own bookkeeping: provenance history and which mappings survive
+    in ``merged_file_mappings``.
+    """
     path = Path(*PurePosixPath(dest).parts)
     key = path.as_posix()
+    fold_mapping(
+        annotated.file_mode,
+        path,
+        create_only=accum.create_only_set,
+        delete=accum.delete_set,
+    )
     if annotated.file_mode == FileMode.DELETE:
-        accum.delete_set.add(path)
         accum.merged_file_mappings.pop(dest, None)
         accum.history.setdefault(key, []).append(
             Decision(source=provider_id, action=Action.delete),
         )
     elif annotated.file_mode == FileMode.KEEP:
-        accum.delete_set.discard(path)
         accum.history.setdefault(key, []).append(
             Decision(source=provider_id, action=Action.keep),
         )
@@ -353,8 +364,6 @@ def _apply_annotated_tm(
             accum.suppressed_sources.add(annotated.source_template)
         accum.merged_file_mappings.pop(dest, None)
     else:
-        if annotated.file_mode == FileMode.CREATE_ONLY:
-            accum.create_only_set.add(path)
         accum.merged_file_mappings[dest] = annotated
 
 

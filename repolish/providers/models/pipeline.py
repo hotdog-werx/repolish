@@ -1,13 +1,11 @@
-"""Pipeline model definitions: options and dry-run result.
+"""Pipeline model definitions: options and contributions.
 
-These models are the input/output contracts for the provider pipeline:
+These models are the input contracts for the provider pipeline:
 
 - `PipelineOptions` — runtime parameters passed to the pipeline (overrides,
-  alias map, global context, dry-run flag, extra entries and inputs for
-  cross-session routing)
+  alias map, global context, extra entries and inputs for cross-session
+  routing)
 - `ProviderContributions` — consolidated container for provider contribution data
-- `DryRunResult` — data returned when `PipelineOptions.dry_run` is `True`;
-  carries contexts and emitted inputs without writing any files
 """
 
 from __future__ import annotations
@@ -16,7 +14,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from repolish.providers.models.context import (
-    BaseContext,
     BaseInputs,
     GlobalContext,
 )
@@ -24,12 +21,12 @@ from repolish.providers.models.context import (
 if TYPE_CHECKING:
     from repolish.config.models.provider import ProviderOverrides
     from repolish.phases import PhaseTimer
+    from repolish.providers.models.entry import ProviderEntry
     from repolish.providers.models.files import (
         FileValidatorsByPath,
         InsertionRegistry,
         TemplateMapping,
     )
-    from repolish.providers.models.provider import ProviderEntry
 
 
 @dataclass
@@ -70,8 +67,6 @@ class PipelineOptions:
     """Mapping from provider_id (filesystem path key) to config alias."""
     global_context: GlobalContext = field(default_factory=GlobalContext)
     """Repo-level globals injected into every provider context."""
-    dry_run: bool = False
-    """When `True`, skip `collect_provider_contributions` and return a `DryRunResult`."""
     context_only: bool = False
     """When `True`, create provider contexts without routing inputs or collecting hooks."""
     fast_lanes_only: bool = False
@@ -88,20 +83,3 @@ class PipelineOptions:
         default_factory=ProviderContributions,
     )
     """Consolidated provider contributions: overrides, file mappings, and promoted sources."""
-
-
-@dataclass
-class DryRunResult:
-    """Data returned by the pipeline when `PipelineOptions.dry_run` is `True`.
-
-    Captures everything produced during context creation and input exchange,
-    but omits the file-contribution phase so no filesystem state is modified.
-    The coordinator uses this to carry member-session data into the root session.
-    """
-
-    provider_contexts: dict[str, BaseContext]
-    """Finalized context objects keyed by provider_id."""
-    all_providers_list: list[ProviderEntry]
-    """Full provider registry built during this pass (local + any injected extras)."""
-    emitted_inputs: list[BaseInputs]
-    """Flat list of all inputs emitted by all providers before routing."""

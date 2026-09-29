@@ -201,9 +201,8 @@ def build_final_providers(
         provider_package_identity=options.provider_package_identity,
     )
 
-    # build_final_providers always performs a full pass (dry_run=False),
-    # so the result is always a SessionBundle object.
-    assert isinstance(result, SessionBundle)  # noqa: S101 - guaranteed by dry_run=False
+    # create_providers always returns a SessionBundle (the dry-run variant
+    # was removed; the routing byproducts now live on the bundle itself).
     providers = result
 
     if not options.context_only and not options.fast_lanes_only:

@@ -146,14 +146,55 @@ providers:
 
 That's all you need — no `provider_root` or manual path configuration.
 
+### The `module` Alternative
+
+A provider whose package follows the recommended structure (`resources` with a
+`templates` subdirectory) does not need its link CLI registered at all. Declare
+the installed module instead and `repolish link` locates and links it in its own
+process, with no subprocess per provider:
+
+```yaml
+providers:
+  mylib:
+    module: mylib
+```
+
+The registration protocol is identical: the same `.provider-info.json` is
+written, so everything downstream (auto-discovery, symlinks, copies) works the
+same as with `cli`. Both entries may coexist, with `module` taking precedence
+and `cli` kept as a fallback. See the
+[providers section](config-file.md#providers-subsection) for the layout
+overrides and the resolution rules.
+
+<!-- v2 note (2026-09): if module: proves out in dogfooding, the cli: config
+entry is a deprecation candidate: repolish would stop asking providers to
+ship a link CLI for registration. The resource_linker CLI utility itself
+stays, independently of repolish config, for any library that wants to link
+its own resources into a repo. -->
+
 ### Updating Resources
 
-On Unix/macOS with symlinks, updates are automatic. On Windows or to force an
-update:
+How a provider update lands depends on what changed:
+
+- **Upgraded in place** (same install location, new version): nothing to do. On
+  Unix/macOS `.repolish/<library-name>` is a symlink into the package, so the
+  linked content follows the upgrade automatically. Run `repolish apply` and the
+  new templates are used.
+- **Install location moved** (dev checkout to release install, venv switch): a
+  plain `repolish link` detects it. The link command probes where each provider
+  currently lives and re-links only the ones that moved, so there is no need to
+  delete `.repolish/` and start over.
+- **Everything else** (a symlink replaced by hand, odd states, "just redo it"):
+  `repolish link --force` re-registers every provider from scratch, still
+  without deleting anything.
+
+On Windows, where `.repolish/<library-name>` is a copy rather than a symlink,
+both an in-place upgrade and a move are picked up by the next `repolish link`,
+which refreshes the copy.
 
 ```bash
-pip install --upgrade mylib
-mylib-link --force
+uv add mylib@2.0
+repolish link
 ```
 
 ## Recommended Package Structure

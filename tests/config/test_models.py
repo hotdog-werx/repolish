@@ -12,7 +12,11 @@ from repolish.config import (
     ProviderConfig,
     RepolishConfigFile,
 )
-from repolish.config.models import AliasRegistry, ProviderFileInfo
+from repolish.config.models import (
+    AliasRegistry,
+    ModuleProviderConfig,
+    ProviderFileInfo,
+)
 from repolish.config.models.provider import ProviderOverrides, ProviderSymlink
 from repolish.config.resolution import resolve_config
 from repolish.exceptions import ProviderConfigError
@@ -36,7 +40,7 @@ class ProviderConfigCase:
             cli=None,
             provider_root=None,
             should_raise=True,
-            error_match='Either cli or provider_root must be provided',
+            error_match='One of module, cli, or provider_root must be provided',
         ),
         ProviderConfigCase(
             name='accepts_both_cli_and_provider_root',
@@ -468,3 +472,51 @@ class TestLegacyOverridesMigration:
         assert config.overrides.context_merge == {'a': 1}
         assert config.overrides.context_dotted == {'b': 2}
         assert config.overrides.anchors == {'c': '3'}
+
+
+def test_module_string_normalizes_to_model():
+    """The plain YAML form (module: devkit.workspace) becomes the full spec."""
+    provider = ProviderConfig(module='devkit.workspace')
+
+    assert provider.module == ModuleProviderConfig(name='devkit.workspace')
+
+
+def test_module_mapping_normalizes_with_overrides():
+    """The mapping form carries layout overrides past normalization."""
+    provider = ProviderConfig(
+        module={
+            'name': 'devkit.workspace',
+            'resources_dir': 'src/resources',
+            'provider_root': 'pkg-templates',
+        },
+    )
+
+    assert provider.module is not None
+    assert provider.module.name == 'devkit.workspace'
+    assert provider.module.resources_dir == 'src/resources'
+    assert provider.module.provider_root == 'pkg-templates'
+
+
+def test_module_alone_satisfies_validation():
+    """A provider configured with only module: passes the at-least-one rule."""
+    provider = ProviderConfig(module='devkit.workspace')
+
+    assert provider.module is not None
+    assert provider.cli is None
+    assert provider.provider_root is None
+
+
+def test_module_invalid_type_raises():
+    """Anything but a string or mapping is a config error, not a coercion."""
+    with pytest.raises(
+        ProviderConfigError,
+        match='module must be a string or a mapping',
+    ):
+        ProviderConfig(module=42)
+
+
+def test_module_none_passthrough():
+    """An explicit module: null in YAML normalizes through the None branch."""
+    provider = ProviderConfig(module=None, cli='mylib-link')
+
+    assert provider.module is None

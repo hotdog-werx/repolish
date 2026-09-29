@@ -7,7 +7,6 @@ from repolish.config import RepolishConfig, load_config, load_config_file
 from repolish.config.models.provider import (
     ProviderConfig,
     ProviderCopy,
-    ProviderOverrides,
 )
 from repolish.fastlane import merge_fast_lanes, restrict_to_lane
 from repolish.hydration import FinalProviderOptions, build_final_providers
@@ -18,14 +17,9 @@ from repolish.linker.orchestrator import (
 )
 from repolish.phases import PhaseTimer
 from repolish.providers.models import (
-    BaseInputs,
     FastLaneSpec,
-    GlobalContext,
-    ProviderEntry,
     get_global_context,
 )
-from repolish.providers.models.pipeline import ProviderContributions
-from repolish.providers.orchestrator import create_providers
 
 logger = get_logger(__name__)
 
@@ -41,59 +35,6 @@ def _alias_pid_maps(
 def _ordered_aliases(config: RepolishConfig) -> list[str]:
     """Return provider aliases in the configured or default order."""
     return config.providers_order or list(config.providers.keys())
-
-
-def _build_provider_overrides(
-    config: RepolishConfig,
-    alias_to_pid: dict[str, str],
-) -> dict[str, ProviderOverrides]:
-    """Build provider overrides keyed by provider id using the typed config model."""
-    provider_overrides: dict[str, ProviderOverrides] = {}
-    for alias, info in config.providers.items():
-        pid = alias_to_pid.get(alias, info.provider_root.as_posix())
-        overrides = info.overrides
-        if not overrides:
-            continue
-        provider_overrides[pid] = ProviderOverrides(
-            context_merge=overrides.context_merge,
-            context_dotted=overrides.context_dotted,
-            anchors=overrides.anchors,
-            file_mappings=overrides.file_mappings,
-            copies=overrides.copies,
-            validators=overrides.validators,
-            insertions=overrides.insertions,
-            insertions_extend_files=overrides.insertions_extend_files,
-        )
-    return provider_overrides
-
-
-def _collect_session_outputs(
-    config: RepolishConfig,
-    alias_to_pid: dict[str, str],
-    global_context: GlobalContext | None,
-) -> tuple[list[ProviderEntry], list[BaseInputs]]:
-    """Run a dry provider pass to capture this session's outward cross-session data.
-
-    Returns ``(provider_entries, emitted_inputs)`` — the provider entries list
-    and inputs emitted before routing.  These are forwarded to the root session
-    as ``extra_provider_entries`` and ``extra_inputs`` so root providers see a
-    complete picture of each member's contributions.
-    """
-    dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
-    provider_overrides = _build_provider_overrides(config, alias_to_pid)
-
-    # Build ProviderContributions from the already-typed per-provider overrides.
-    contributions = ProviderContributions(
-        overrides=dict(provider_overrides.items()),
-    )
-
-    dry = create_providers(
-        dirs,
-        contributions=contributions,
-        global_context=global_context,
-        dry_run=True,
-    )
-    return dry.all_providers_list, dry.emitted_inputs
 
 
 def _load_session_config(
@@ -218,20 +159,6 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     effective_global_context = options.global_context or get_global_context()
     alias_to_pid, pid_to_alias = _alias_pid_maps(config)
 
-    # Dry pass: capture what this session contributes outward for cross-session
-    # routing (provider entries + emitted inputs before local consumption).
-    # Single-provider standalone runs (fast lanes) never consume that data, so
-    # they can skip the pass entirely.
-    if options.skip_dry_pass:
-        provider_entries, emitted_inputs = [], []
-    else:
-        with timer.phase('dry_pass'):
-            provider_entries, emitted_inputs = _collect_session_outputs(
-                config,
-                alias_to_pid,
-                effective_global_context,
-            )
-
     with timer.phase('provider_pipeline'):
         providers = build_final_providers(
             config,
@@ -306,7 +233,11 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
         resolved_copies=resolved_copies,
         extra_provider_entries=options.extra_provider_entries or [],
         extra_inputs=options.extra_inputs or [],
-        provider_entries=provider_entries,
-        emitted_inputs=emitted_inputs,
+        # Outward cross-session data, captured as a byproduct of input
+        # exchange (see repolish.providers.inputs.gather_received_inputs):
+        # the local provider registry and the raw pre-routing outputs the
+        # coordinator forwards to the root session.
+        provider_entries=providers.provider_entries,
+        emitted_inputs=providers.emitted_inputs,
         phase_timer=timer,
     )

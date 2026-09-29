@@ -5,7 +5,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from repolish.exceptions import SymlinkError
-from repolish.linker.validation import (
+from repolish.links.validation import (
     SymlinkCheckResult,
     check_copy_validity,
     validate_existing_symlink,
@@ -154,7 +154,7 @@ class CopyValidityCase:
 def test_check_copy_validity(mocker: MockerFixture, case: CopyValidityCase):
     """Test check_copy_validity under different conditions."""
     mocker.patch(
-        'repolish.linker.validation.supports_symlinks',
+        'repolish.links.validation.supports_symlinks',
         return_value=case.supports_symlinks,
     )
 

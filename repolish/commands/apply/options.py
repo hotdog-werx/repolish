@@ -73,10 +73,6 @@ class ApplyOptions:
     """Prepared single-provider config for a lane run. When set,
     ``resolve_session`` uses it directly instead of loading ``repolish.yaml``
     and registering providers (see ``repolish.fastlane.config``)."""
-    skip_dry_pass: bool = False
-    """Skip the dry provider pass in ``resolve_session``. Only safe for
-    single-provider standalone runs that never consume cross-session
-    routing data (``provider_entries``/``emitted_inputs``)."""
     command_only: bool = False
     """Build provider contexts without collecting normal provider hooks.
 
@@ -131,7 +127,8 @@ class ResolvedSession:
         provider, including the :class:`~repolish.providers.models.WorkspaceContext`.
     providers:
         All provider instances with their finalized contexts, file mappings,
-        and template sources populated.
+        and template sources populated. Its ``provider_entries`` and
+        ``emitted_inputs`` fields carry the outward cross-session data.
     aliases:
         Provider aliases in processing order.
     alias_to_pid:
@@ -241,5 +238,5 @@ class ResolvedSession:
     phase_timer: PhaseTimer = field(default_factory=PhaseTimer, repr=False)
     """Phase durations recorded while resolving and applying this session.
     Emitted as structured debug events at the end of the run and written to
-    the run's `.repolish/_/phase-timings.json`, linked from the completion
-    footer."""
+    the run's `.repolish/_/apply-phase-timings.json`, linked from the
+    completion footer."""

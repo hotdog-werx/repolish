@@ -19,6 +19,12 @@ class ResourceLinkerError(LinkerError):
     log_category = 'resource_linker_error'
 
 
+class ModuleLinkError(LinkerError):
+    """Error locating or linking a module-declared provider package."""
+
+    log_category = 'module_link_error'
+
+
 class ProviderNotReadyError(LinkerError):
     """Raised in strict mode when one or more providers could not be registered."""
 

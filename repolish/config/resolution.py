@@ -90,8 +90,9 @@ def _try_auto_link(
     logger.warning(
         'provider_directory_missing',
         alias=alias,
-        suggestion='provider directory not found; attempting to link via cli',
+        suggestion='provider directory not found; attempting to link',
         cli=provider_config.cli,
+        module=provider_config.module.name if provider_config.module else None,
     )
     exit_code = process_provider(
         alias,
@@ -105,6 +106,7 @@ def _try_auto_link(
         'provider_auto_link_failed',
         alias=alias,
         cli=provider_config.cli,
+        module=provider_config.module.name if provider_config.module else None,
         exit_code=exit_code,
     )
     return None
@@ -173,7 +175,7 @@ def _resolve_single_provider(
     """
     provider_info = load_provider_info(alias, config_dir)
 
-    if provider_info is None and provider_config.cli:
+    if provider_info is None and (provider_config.cli or provider_config.module):
         provider_info = _try_auto_link(alias, provider_config, config_dir)
 
     if provider_info:

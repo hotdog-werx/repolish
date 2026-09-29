@@ -8,6 +8,7 @@ from pathlib import Path
 from hotlog import get_logger
 
 from repolish.config.paused import is_paused
+from repolish.filemodes import ModeRules
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.hydration.misc import (
     get_source_str_from_mapping,
@@ -30,8 +31,7 @@ class MappingCheckContext:
     setup_output: Path
     base_dir: Path
     preserve: bool
-    delete_files_set: set[str]
-    create_only_files_set: set[str]
+    rules: ModeRules
     paused_files: frozenset[str]
 
 
@@ -231,16 +231,6 @@ def _check_single_file_mapping(
     return (dest_path, ud)
 
 
-def _should_skip_mapping(
-    dest_path: str,
-    delete_files_set: set[str],
-    create_only_files_set: set[str],
-    base_dir: Path,
-) -> bool:
-    """Return True when the mapping should be skipped from checks."""
-    return dest_path in delete_files_set or (dest_path in create_only_files_set and (base_dir / dest_path).exists())
-
-
 def _check_file_mappings(
     providers: SessionBundle,
     ctx: MappingCheckContext,
@@ -255,12 +245,9 @@ def _check_file_mappings(
     for dest_path, source_path in providers.file_mappings.items():
         if is_paused(dest_path, ctx.paused_files):
             continue
-        if _should_skip_mapping(
-            dest_path,
-            ctx.delete_files_set,
-            ctx.create_only_files_set,
-            ctx.base_dir,
-        ):
+        # Skip modes come from the shared authority, so check mode can
+        # never disagree with the writers about developer-owned files.
+        if ctx.rules.excluded_from_check(dest_path, ctx.base_dir):
             continue
 
         src = get_source_str_from_mapping(source_path)
@@ -298,16 +285,13 @@ def check_generated_output(
 
     preserve = _preserve_line_endings()
     mapped_sources = resolution.mapped_sources
-    delete_files_set = resolution.delete_dests
-    create_only_files_set = resolution.create_only_dests
+    rules = ModeRules.from_resolution(resolution)
 
     # Build skip set: include create-only files that already exist in the project.
     # Paused paths are checked with the pause matcher separately (they may be
     # directory or glob entries, not just exact paths).
-    skip_files = mapped_sources | delete_files_set | resolution.suppressed_sources
-    for rel_str in create_only_files_set:
-        if (base_dir / rel_str).exists():
-            skip_files.add(rel_str)
+    skip_files = mapped_sources | rules.delete | resolution.suppressed_sources
+    skip_files |= rules.existing_create_only(base_dir)
 
     # Check regular files (skip _repolish.* prefix, mapped sources, delete files, and existing create-only files)
     diffs.extend(
@@ -326,8 +310,7 @@ def check_generated_output(
         setup_output=setup_output,
         base_dir=base_dir,
         preserve=preserve,
-        delete_files_set=delete_files_set,
-        create_only_files_set=create_only_files_set,
+        rules=rules,
         paused_files=paused_files,
     )
     diffs.extend(

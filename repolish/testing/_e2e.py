@@ -392,7 +392,6 @@ def apply_fast_lane(  # noqa: PLR0913 - mirrors apply_provider on purpose
         global_context=global_context,
         lane=lane,
         lane_config=prepared,
-        skip_dry_pass=True,
     )
     with contextlib.chdir(project_dir):
         session = resolve_session(options)
