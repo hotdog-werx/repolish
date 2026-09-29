@@ -224,6 +224,100 @@ class TestAliasResolution:
         assert prepared.raw_providers['pkg'].provider_root == str(provider_root)
 
 
+class TestStatedLocalRoot:
+    """A stated local root carries the config's static semantics.
+
+    ``provider_cli(provider_root=)`` passes these in: ``resources_dir``
+    defaults to the root itself and the root's directory name is the
+    bookkeeping fallback identity.
+    """
+
+    def test_without_config_uses_root_name_and_root_resources(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        provider_root = tmp_path / 'internal' / 'templates'
+        provider_root.mkdir(parents=True)
+
+        prepared = prepare_lane_config(
+            provider_root,
+            'actions',
+            cli_name=_CLI_NAME,
+            alias=None,
+            config_path=tmp_path / 'nowhere' / 'repolish.yaml',
+            resources_dir=provider_root,
+            default_alias=provider_root.name,
+        )
+
+        assert list(prepared.config.providers) == ['templates']
+        info = prepared.config.providers['templates']
+        assert info.provider_root == provider_root
+        # local layout: resources live in the root itself, not its parent
+        assert info.resources_dir == provider_root
+        assert prepared.raw_providers['templates'].provider_root == str(
+            provider_root,
+        )
+
+    def test_root_match_still_names_the_run(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        provider_root = tmp_path / 'internal' / 'templates'
+        provider_root.mkdir(parents=True)
+        project = tmp_path / 'project'
+        project.mkdir()
+        config_path = _write_config(
+            project,
+            {'providers': {'local': {'provider_root': str(provider_root)}}},
+        )
+
+        prepared = prepare_lane_config(
+            provider_root,
+            'actions',
+            cli_name=_CLI_NAME,
+            alias=None,
+            config_path=config_path,
+            resources_dir=provider_root,
+            default_alias=provider_root.name,
+        )
+
+        assert list(prepared.config.providers) == ['local']
+
+    def test_entry_declared_resources_dir_wins(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        provider_root = tmp_path / 'internal' / 'templates'
+        provider_root.mkdir(parents=True)
+        declared = tmp_path / 'internal' / 'extra'
+        declared.mkdir()
+        project = tmp_path / 'project'
+        project.mkdir()
+        config_path = _write_config(
+            project,
+            {
+                'providers': {
+                    'local': {
+                        'provider_root': str(provider_root),
+                        'resources_dir': str(declared),
+                    },
+                },
+            },
+        )
+
+        prepared = prepare_lane_config(
+            provider_root,
+            'actions',
+            cli_name=_CLI_NAME,
+            alias=None,
+            config_path=config_path,
+            resources_dir=provider_root,
+            default_alias=provider_root.name,
+        )
+
+        assert prepared.config.providers['local'].resources_dir == declared
+
+
 class TestProjectKeys:
     def test_paused_files_and_template_overrides_carried(
         self,

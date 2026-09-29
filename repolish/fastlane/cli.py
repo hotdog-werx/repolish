@@ -85,6 +85,8 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     fail_on_warnings: bool = False,
     verbose: int = 0,
     global_context: GlobalContext | None = None,
+    resources_dir: Path | None = None,
+    default_alias: str | None = None,
 ) -> int:
     """Run one lane (or the provider's full pass) against the real project.
 
@@ -101,6 +103,10 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     :func:`get_global_context`; a caller that already built one (provider
     commands, for the executor's ``ProviderCommandContext``) passes it here
     so the executor and the rendered templates see identical values.
+
+    *resources_dir* and *default_alias* carry a stated local root's layout
+    (``provider_cli(provider_root=)``); both default to ``None`` for an
+    installed package, whose location is discovered instead.
     """
     # Deferred imports: repolish.fastlane is imported by the apply pipeline,
     # so the session modules must not be pulled in at import time.
@@ -123,6 +129,8 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
         cli_name=cli_name,
         alias=alias,
         config_path=config_path,
+        resources_dir=resources_dir,
+        default_alias=default_alias,
     )
     lane_alias = next(iter(prepared.config.providers))
     logger.debug(
@@ -222,6 +230,8 @@ class _ProviderCommandSpec:
     command_name: str
     args_model: type[BaseModel]
     executor: ProviderCommandExecutor
+    resources_dir: Path | None = None
+    default_alias: str | None = None
 
 
 def _normalize_command_spec(
@@ -242,12 +252,14 @@ def _normalize_command_spec(
     )
 
 
-def _lane_command(
+def _lane_command(  # noqa: PLR0913 - forwards the run_lane flag set
     provider_root: Path,
     lane: str | None,
     *,
     cli_name: str,
     alias: str | None,
+    resources_dir: Path | None = None,
+    default_alias: str | None = None,
 ) -> Callable:
     """Build one lane subcommand function for :func:`provider_cli`."""
     default_params = LaneParams()
@@ -264,6 +276,8 @@ def _lane_command(
                 skip_post_process=params.skip_post_process,
                 fail_on_warnings=params.fail_on_warnings,
                 verbose=params.verbose,
+                resources_dir=resources_dir,
+                default_alias=default_alias,
             ),
         )
 
@@ -340,6 +354,8 @@ def _provider_command(spec: _ProviderCommandSpec) -> Callable:
                 cli_name=spec.cli_name,
                 alias=spec.provider_alias or None,
                 config_path=params.config.resolve(),
+                resources_dir=spec.resources_dir,
+                default_alias=spec.default_alias,
             )
             resolved_alias = next(
                 iter(prepared.config.providers),
@@ -392,6 +408,8 @@ def _provider_command(spec: _ProviderCommandSpec) -> Callable:
                 fail_on_warnings=params.fail_on_warnings,
                 verbose=params.verbose,
                 global_context=global_ctx,
+                resources_dir=spec.resources_dir,
+                default_alias=spec.default_alias,
             )
 
         run_cli_command(_invoke)
@@ -407,6 +425,7 @@ def provider_cli(
     *,
     cli_name: str | None = None,
     alias: str | None = None,
+    provider_root: Path | str | None = None,
 ) -> cyclopts.App:
     """Build the per-provider fast-lane CLI for *provider_class*.
 
@@ -416,6 +435,21 @@ def provider_cli(
     apply flags (``--config``, ``--check``, ``--skip-post-process``,
     ``--fail-on-warnings``, ``-v``); an extra ``all`` subcommand runs the
     provider's full pass with the same fast single-provider runtime.
+
+    The provider's location is discovered from the class's package
+    (``<pkg>/resources/templates``) unless *provider_root* is given — the
+    project-local provider layout, where the stated directory holds
+    ``repolish.py`` and the ``repolish/`` template tree directly, matching
+    what a ``provider_root:`` entry in ``repolish.yaml`` states::
+
+        from repolish.fastlane import provider_cli
+        from internal.provider import MyProvider
+
+        main = provider_cli(MyProvider, provider_root='internal/templates')
+
+    A stated root resolves against the working directory and gets the config's
+    static semantics (``resources_dir`` defaults to the root itself, and the
+    root's directory name is the bookkeeping fallback identity).
 
     Assign the result to ``main`` and register it as a project script::
 
@@ -429,7 +463,19 @@ def provider_cli(
         [project.scripts]
         mylib-cli = 'mylib.cli:main'
     """
-    provider_root = _locate_provider_root(provider_class)
+    resources_dir: Path | None = None
+    default_alias: str | None = None
+    if provider_root is None:
+        provider_root = _locate_provider_root(provider_class)
+    else:
+        provider_root = Path(provider_root).resolve()
+        if not provider_root.is_dir():
+            msg = f'provider_root does not exist: {provider_root}'
+            raise RuntimeError(msg)
+        # Stated root: local-provider layout, mirroring the config's static
+        # resolution (resources_dir defaults to the provider_root itself).
+        resources_dir = provider_root
+        default_alias = provider_root.name
     inst = provider_class()
     inst.templates_root = provider_root
     inst.alias = alias or ''
@@ -446,7 +492,7 @@ def provider_cli(
         raise ValueError(msg)
 
     resolved_cli_name = cli_name or Path(sys.argv[0]).name or 'provider-cli'
-    provider_name = alias or provider_root.parent.parent.name
+    provider_name = alias or default_alias or provider_root.parent.parent.name
     help_text = dedent(f"""
         Generated CLI for the "{provider_name}" provider.
 
@@ -474,6 +520,8 @@ def provider_cli(
                 lane_name,
                 cli_name=resolved_cli_name,
                 alias=alias,
+                resources_dir=resources_dir,
+                default_alias=default_alias,
             ),
             name=str(lane_name),
         )
@@ -483,6 +531,8 @@ def provider_cli(
             None,
             cli_name=resolved_cli_name,
             alias=alias,
+            resources_dir=resources_dir,
+            default_alias=default_alias,
         ),
         name='all',
     )
@@ -496,6 +546,8 @@ def provider_cli(
                     command_name=str(command_name),
                     args_model=contract.args_model,
                     executor=contract.executor,
+                    resources_dir=resources_dir,
+                    default_alias=default_alias,
                 ),
             ),
             name=str(command_name),

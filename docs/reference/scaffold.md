@@ -75,6 +75,7 @@ repolish scaffold --local
 
 ```
 internal/
+  cli.py                            # fast-lane CLI wiring (provider_cli)
   templates/
     repolish.py                      # entry point: LocalProvider / LocalProviderContext
     repolish/
@@ -95,8 +96,13 @@ providers:
 Then `repolish link` and `repolish apply` work as usual. Local providers are
 meant to be quick: they ship templates under `repolish/` and can define
 insertion functions for use throughout the project, without a CLI, packaging, or
-publishing. See [Local Providers](../project-controls/local-providers.md) for
-the full mechanism.
+publishing. The scaffold also writes `internal/cli.py`, a fast-lane CLI wired to
+the stated root (`python internal/cli.py <lane>`; it sits beside `templates/`,
+not inside it, so the provider's `repolish.py` cannot shadow the `repolish`
+package when the file runs as a script); see
+[Fast Lanes](../provider-development/fast-lanes/cli.md#local-providers). See
+[Local Providers](../project-controls/local-providers.md) for the full
+mechanism.
 
 ### Flat vs installable
 
@@ -123,6 +129,7 @@ under `internal/`, with its own `pyproject.toml`:
 ```
 internal/
   pyproject.toml
+  cli.py                     # fast-lane CLI: imports the class from the package
   internal/
     __init__.py               # __version__
     provider.py               # LocalProvider / LocalProviderContext

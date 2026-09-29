@@ -125,6 +125,7 @@ repolish scaffold --local
 
 ```
 internal/
+  cli.py                           ← fast-lane CLI wiring
   templates/
     repolish.py                     ← LocalProvider entry point
     repolish/some-template.md.jinja ← sample template
@@ -143,3 +144,23 @@ path, so sibling imports are unavailable). Once you outgrow a single file,
 `repolish scaffold --local --installable` switches to the installable tier:
 `repolish.py` becomes a shim over an editable-installed `internal/` package. See
 [repolish scaffold](../reference/scaffold.md#local-provider-layout) for details.
+
+## Fast lanes
+
+A local provider gets the same generated fast-lane CLI a package ships: the
+scaffold writes `internal/cli.py`, which states the `provider_root` that
+discovery cannot find, and lanes declared on the provider class become
+subcommands. Run one from the project root:
+
+```bash
+python internal/cli.py <lane>
+```
+
+The file sits beside the provider root, not inside it: running a file as a
+script puts its directory first on `sys.path`, where the provider's
+`repolish.py` would shadow the `repolish` package itself. A stated root carries
+the same semantics the config gives it: `resources_dir` defaults to the root
+itself and a config entry whose `provider_root` points at the same directory
+still names the run. See
+[the CLI docs](../provider-development/fast-lanes/cli.md#local-providers) for
+the full behavior.

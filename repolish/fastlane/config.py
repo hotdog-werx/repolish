@@ -8,7 +8,10 @@ ever loaded. :func:`prepare_lane_config` builds the run's configuration
 from a single raw YAML read — honoring only ``paused_files``, the
 ``fast_lanes`` section, ``template_overrides``, and the provider's own
 entry fields — or entirely in memory when the project has no
-``repolish.yaml`` or does not list the provider.
+``repolish.yaml`` or does not list the provider. The provider's location is
+either the located package (``<pkg>/resources/templates``) or a stated local
+root (``provider_root=`` to :func:`repolish.fastlane.provider_cli`), and the
+``resources_dir``/``default_alias`` defaults follow that layout.
 """
 
 from __future__ import annotations
@@ -60,13 +63,17 @@ def _resolve_identity(
     alias: str | None,
     provider_root: Path,
     config_dir: Path,
+    *,
+    default_alias: str | None = None,
 ) -> tuple[str, ProviderConfig | None]:
     """Pick the run's alias and the config entry contributing its fields.
 
     An explicit alias always wins; it is the provider-owned identity and does
     not have to appear in the config. Otherwise the entry whose
-    ``provider_root`` points at this package names the run, and with no match
-    at all the package name is the bookkeeping fallback.
+    ``provider_root`` points at this provider's location names the run, and
+    with no match at all the bookkeeping fallback is the caller's
+    ``default_alias`` (a local provider's stated root name) or the package
+    name (the directory holding ``resources/``).
     """
     final_alias = alias
     entry: ProviderConfig | None = None
@@ -83,7 +90,7 @@ def _resolve_identity(
             if final_alias is None:
                 final_alias = matched_name
     if final_alias is None:
-        final_alias = _package_name(provider_root)
+        final_alias = default_alias or _package_name(provider_root)
     return final_alias, entry
 
 
@@ -109,19 +116,22 @@ def _select_post_process(
     return lane_config.post_process if lane_config is not None else []
 
 
-def prepare_lane_config(
+def prepare_lane_config(  # noqa: PLR0913 - mirrors the run_lane flag set on purpose
     provider_root: Path,
     lane: str | None,
     *,
     cli_name: str,
     alias: str | None,
     config_path: Path,
+    resources_dir: Path | None = None,
+    default_alias: str | None = None,
 ) -> LaneSessionConfig:
     """Build the single-provider configuration for one lane run.
 
-    The provider's entry is always constructed in memory from the located
-    root (the package the CLI is running from); a matching ``repolish.yaml``
-    entry contributes its per-provider fields (symlinks, copies, overrides,
+    The provider's entry is always constructed in memory from its location
+    (the located package, or the stated local root from
+    ``provider_cli(provider_root=)``); a matching ``repolish.yaml`` entry
+    contributes its per-provider fields (symlinks, copies, overrides,
     ``resources_dir``). Project-wide keys are honored when the config file
     exists, whether or not the provider is listed in it.
 
@@ -132,14 +142,25 @@ def prepare_lane_config(
     project's commands.
 
     Args:
-        provider_root: The provider's ``resources/templates`` directory
-            (from :func:`~repolish.fastlane.cli._locate_provider_root`).
+        provider_root: The provider's location: its ``resources/templates``
+            directory for an installed package
+            (:func:`~repolish.fastlane.cli._locate_provider_root`), or the
+            stated local root for a project-local provider
+            (``provider_cli(provider_root=)``).
         lane: The lane being run, or ``None`` for the provider's full pass.
         cli_name: Invoked CLI executable name. Used to scope
             ``fast_lanes.config`` keys as ``"<cli-name>:<lane-or-command>"``.
         alias: Explicit provider identity from ``provider_cli(alias=)``;
             always wins, and does not have to appear in the config.
         config_path: The ``--config`` path; may not exist.
+        resources_dir: Default resource directory for a stated local root
+            (the root itself, mirroring the config's static resolution). When
+            ``None`` (an installed package) the directory holding the
+            templates is used; an entry-declared ``resources_dir`` always
+            wins either way.
+        default_alias: Bookkeeping fallback identity for a stated local root
+            (the root's directory name). When ``None`` (an installed package)
+            the package name is derived from the root instead.
 
     Returns:
         A :class:`~repolish.commands.apply.options.LaneSessionConfig` ready
@@ -157,6 +178,7 @@ def prepare_lane_config(
         alias,
         provider_root,
         config_dir,
+        default_alias=default_alias,
     )
     post_process = _select_post_process(raw, lane, cli_name=cli_name)
 
@@ -168,7 +190,7 @@ def prepare_lane_config(
         template_overrides = raw.template_overrides
         fast_lanes = raw.fast_lanes
 
-    resources_dir = provider_root.parent
+    resources_dir = resources_dir or provider_root.parent
     if entry is not None and entry.resources_dir:
         declared = Path(entry.resources_dir)
         resources_dir = declared if declared.is_absolute() else (config_dir / declared).resolve()

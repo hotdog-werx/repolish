@@ -266,7 +266,7 @@ def test_generate_normalizes_underscores_to_dashes_in_repo_name(
 
 
 def test_generate_local_creates_expected_structure(tmp_path: Path) -> None:
-    """A local provider is just templates/repolish.py and a repolish/ template dir."""
+    """A local provider is templates/repolish.py, a repolish/ template dir, and a CLI."""
     written = generate_local(
         output_dir=tmp_path,
         provider_root='internal/templates',
@@ -275,11 +275,13 @@ def test_generate_local_creates_expected_structure(tmp_path: Path) -> None:
     relative = {p.relative_to(tmp_path).as_posix() for p in written}
     assert relative == {
         'templates/repolish.py',
+        'cli.py',
         'templates/repolish/some-template.md.jinja',
     }
-    # a local provider is not a package: only the templates directory exists
+    # a local provider is not a package: only the templates directory and
+    # the CLI beside it exist
     assert (tmp_path / 'templates').is_dir()
-    assert len(list(tmp_path.iterdir())) == 1
+    assert len(list(tmp_path.iterdir())) == 2
 
 
 def test_generate_local_defaults_to_local_conventions(tmp_path: Path) -> None:
@@ -365,6 +367,7 @@ def test_generate_local_installable_writes_package(tmp_path: Path) -> None:
         'internal/__init__.py',
         'internal/provider.py',
         'templates/repolish.py',
+        'cli.py',
         'templates/repolish/some-template.md.jinja',
     }
 
@@ -387,12 +390,39 @@ def test_generate_local_installable_pyproject(tmp_path: Path) -> None:
 def test_generate_local_installable_sources_are_valid_python(
     tmp_path: Path,
 ) -> None:
-    """Shim and provider.py compile."""
+    """Shim, cli.py, and provider.py compile."""
     generate_local(output_dir=tmp_path, installable=True)
 
     for rel in (
         'templates/repolish.py',
+        'cli.py',
         'internal/provider.py',
         'internal/__init__.py',
     ):
         compile((tmp_path / rel).read_text(), rel, 'exec')
+
+
+def test_generate_local_cli_wires_the_fast_lane_cli(tmp_path: Path) -> None:
+    """The flat tier's cli.py points provider_cli at the stated provider_root."""
+    generate_local('toolkit', tmp_path, provider_root='internal/templates')
+
+    cli = (tmp_path / 'cli.py').read_text()
+    # the class is loaded from the provider_root's repolish.py by path: a
+    # plain import of that file would shadow the repolish package itself
+    assert 'get_module' in cli
+    assert "['ToolkitProvider']" in cli
+    assert "Path(__file__).resolve().parent / 'templates'" in cli
+    assert "alias='toolkit'" in cli
+    compile(cli, 'cli.py', 'exec')
+
+
+def test_generate_local_installable_cli_imports_from_package(
+    tmp_path: Path,
+) -> None:
+    """The installable tier's cli.py imports the class from the installed package."""
+    generate_local(output_dir=tmp_path, installable=True)
+
+    cli = (tmp_path / 'cli.py').read_text()
+    assert 'from internal.provider import LocalProvider' in cli
+    assert 'get_module' not in cli
+    assert "alias='local'" in cli

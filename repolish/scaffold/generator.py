@@ -170,10 +170,14 @@ def _collect_templates(*, simple: bool) -> list[Path]:
 # Explicit template → output mappings for local-provider scaffolds.  Unlike
 # the package scaffold these paths are fixed (the provider is not a Python
 # package in the flat tier) and the sample template keeps its ``.jinja``
-# suffix so repolish renders it as ``some-template.md`` on apply.
+# suffix so repolish renders it as ``some-template.md`` on apply.  The CLI
+# lands beside the ``templates/`` dir, not inside it: running a file as a
+# script puts its directory first on ``sys.path``, where the provider's
+# ``repolish.py`` would shadow the repolish package itself.
 _LOCAL_FLAT_OUTPUTS: dict[str, str] = {
     'local/repolish.py.jinja': 'templates/repolish.py',
     'local/some-template.md.jinja': 'templates/repolish/some-template.md.jinja',
+    'local/cli.py.jinja': 'cli.py',
 }
 _LOCAL_INSTALLABLE_OUTPUTS: dict[str, str] = {
     'local/shim.py.jinja': 'templates/repolish.py',
@@ -181,6 +185,7 @@ _LOCAL_INSTALLABLE_OUTPUTS: dict[str, str] = {
     'local/pyproject.toml.jinja': 'pyproject.toml',
     'local/package/__init__.py.jinja': '{pkg}/__init__.py',
     'local/package/provider.py.jinja': '{pkg}/provider.py',
+    'local/cli-installable.py.jinja': 'cli.py',
 }
 
 # A project gets at most one local provider by convention: it lives under
@@ -225,10 +230,11 @@ def generate_local(
     """Render an in-repo local provider scaffold into *output_dir*.
 
     A local provider is not an installable package — it is a ``templates``
-    directory inside the project with a ``repolish.py`` entry point and a
-    ``repolish/`` template directory, wired up in ``repolish.yaml`` with only
-    ``provider_root``.  Use :func:`generate` for publishable provider
-    packages instead.
+    directory inside the project with a ``repolish.py`` entry point, a
+    ``repolish/`` template directory, and a ``cli.py`` wiring the fast-lane
+    CLI (:func:`~repolish.fastlane.provider_cli`) to this root, wired up in
+    ``repolish.yaml`` with only ``provider_root``.  Use :func:`generate` for
+    publishable provider packages instead.
 
     By convention a project has a single local provider, living under
     ``internal/`` (sibling to ``src/`` — repo-maintenance code, not shipped
