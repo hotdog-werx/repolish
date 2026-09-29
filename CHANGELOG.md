@@ -8,6 +8,28 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.16.0] <a name="1.16.0" href="#1.16.0">-</a> September 29, 2026
+
+### 🚀 Features
+
+- Typed summary rows behind input contracts; reporting owns all display (#106)
+  by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#106](https://github.com/hotdog-werx/repolish/pull/106)
+- Faster runs and single-owner semantics: in-process linking, no dry pass,
+  summary contracts (#107) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#107](https://github.com/hotdog-werx/repolish/pull/107)
+- Provider_cli supports local providers (#108) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#108](https://github.com/hotdog-werx/repolish/pull/108)
+
+### 🐛 Bug Fixes
+
+- Check mode validates the staged render, not the stale workspace copy (#109) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#109](https://github.com/hotdog-werx/repolish/pull/109)
+
+[1.16.0]: https://github.com/hotdog-werx/repolish/compare/1.15.1...1.16.0
+
 ## [1.15.1] <a name="1.15.1" href="#1.15.1">-</a> September 23, 2026
 
 ### 🐛 Bug Fixes
