@@ -95,7 +95,7 @@ from pathlib import Path
 
 from repolish.fastlane import provider_cli
 
-from internal.provider import LocalProvider
+from local_provider.provider import LocalProvider
 
 main = provider_cli(LocalProvider, provider_root=Path('internal/templates'))
 ```
@@ -107,12 +107,19 @@ fallback identity. Identity still works through the config: the entry whose
 `provider_root` points at the same directory names the run, so `alias=` is only
 needed when the project has no config entry.
 
-`repolish scaffold --local` writes this wiring as `cli.py` beside the provider
-root (`internal/cli.py`): the flat tier loads `repolish.py` from the stated
-root, the installable tier imports the class from the installed package. The
-file sits outside the root on purpose: running a file as a script puts its
-directory first on `sys.path`, where the provider's `repolish.py` would shadow
-the `repolish` package itself. Run it from the project root:
+`repolish scaffold --local` writes this wiring for you. The CLI lives inside the
+provider package (`internal/local_provider/cli.py`), where the pyproject exposes
+it as the `local-cli` console script:
+
+```
+$ local-cli all
+```
+
+The `--flat` tier puts `cli.py` beside the provider root (`internal/cli.py`)
+instead and loads `repolish.py` from the stated root. That file sits outside the
+root on purpose: running a file as a script puts its directory first on
+`sys.path`, where the provider's `repolish.py` would shadow the `repolish`
+package itself. Run it from the project root:
 
 ```
 $ python internal/cli.py all

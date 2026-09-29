@@ -102,22 +102,33 @@ def test_scaffold_local_defaults_to_internal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """--local with no DIRECTORY scaffolds internal/: alias local, class LocalProvider."""
+    """--local with no DIRECTORY scaffolds internal/ with the installable tier."""
     monkeypatch.chdir(tmp_path)
     result = runner.invoke(app, ['scaffold', '--local'])
     assert result.exit_code == 0
-    templates = tmp_path / 'internal' / 'templates'
-    assert (templates / 'repolish.py').exists()
-    assert (templates / 'repolish' / 'some-template.md.jinja').exists()
+    base = tmp_path / 'internal'
+    assert (base / 'templates' / 'repolish' / 'some-template.md.jinja').exists()
+    assert (base / 'pyproject.toml').exists()
+    pkg = base / 'local_provider'
+    assert (pkg / '__init__.py').exists()
+    provider = pkg / 'provider.py'
+    assert provider.exists()
+    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in provider.read_text()
+    # the CLI lives inside the package and the pyproject exposes it
+    assert (pkg / 'cli.py').exists()
+    pyproject = (base / 'pyproject.toml').read_text()
+    assert 'local-cli = "local_provider.cli:main"' in pyproject
 
-    content = (templates / 'repolish.py').read_text()
-    assert 'class LocalProviderContext(BaseContext):' in content
-    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
-    assert 'local:' in content
-    assert 'provider_root: internal/templates' in content
+    shim = (base / 'templates' / 'repolish.py').read_text()
+    assert 'from local_provider import __version__' in shim
+    assert 'from local_provider.provider import LocalProvider' in shim
+    assert 'class LocalProvider' not in shim
 
     # the printed repolish.yaml snippet matches the convention
     assert 'provider_root: internal/templates' in result.output
+    # the installable tier needs the editable-install hint (output is line-wrapped)
+    assert 'editable-install' in result.output
+    assert 'local-cli' in result.output
 
 
 def test_scaffold_local_explicit_directory(
@@ -129,49 +140,40 @@ def test_scaffold_local_explicit_directory(
     dest = tmp_path / 'ops'
     result = runner.invoke(app, ['scaffold', 'ops', '--local'])
     assert result.exit_code == 0
-    assert (dest / 'templates' / 'repolish.py').exists()
-    # no package artifacts
-    assert not list(dest.glob('*.toml'))
+    assert (dest / 'pyproject.toml').exists()
+    assert (dest / 'local_provider' / 'provider.py').exists()
 
-    content = (dest / 'templates' / 'repolish.py').read_text()
-    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
-    assert 'provider_root: ops/templates' in content
+    shim = (dest / 'templates' / 'repolish.py').read_text()
+    assert 'from local_provider.provider import LocalProvider' in shim
+    assert 'provider_root: ops/templates' in shim
 
 
-def test_scaffold_local_installable_tier(
+def test_scaffold_local_flat_tier(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """--local --installable adds pyproject.toml + internal package and shims repolish.py."""
+    """--flat scaffolds the single-file tier: no pyproject, cli.py beside the root."""
     monkeypatch.chdir(tmp_path)
-    result = runner.invoke(
-        app,
-        ['scaffold', 'internal', '--local', '--installable'],
-    )
+    result = runner.invoke(app, ['scaffold', 'internal', '--local', '--flat'])
     assert result.exit_code == 0
     base = tmp_path / 'internal'
-    assert (base / 'pyproject.toml').exists()
-    assert (base / 'internal' / '__init__.py').exists()
-    provider = base / 'internal' / 'provider.py'
-    assert provider.exists()
-    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in provider.read_text()
+    assert not (base / 'pyproject.toml').exists()
+    assert (base / 'cli.py').exists()
+    assert (base / 'templates' / 'repolish' / 'some-template.md.jinja').exists()
 
-    shim = (base / 'templates' / 'repolish.py').read_text()
-    assert 'from internal import __version__' in shim
-    assert 'from internal.provider import LocalProvider' in shim
-    assert 'class LocalProvider' not in shim
+    content = (base / 'templates' / 'repolish.py').read_text()
+    assert 'class LocalProvider(Provider[LocalProviderContext, BaseInputs]):' in content
+    assert 'provider_root: internal/templates' in content
 
-    # installable tier needs the editable-install hint (output is line-wrapped)
-    assert 'editable-install' in result.output
-    assert '-e' in result.output
-    assert './internal' in result.output
+    # the flat tier has no install step, so no editable-install hint
+    assert 'editable-install' not in result.output
 
 
-def test_scaffold_installable_requires_local(tmp_path: Path) -> None:
-    """--installable without --local is rejected."""
+def test_scaffold_flat_requires_local(tmp_path: Path) -> None:
+    """--flat without --local is rejected."""
     result = runner.invoke(
         app,
-        ['scaffold', str(tmp_path / 'internal'), '--installable'],
+        ['scaffold', str(tmp_path / 'internal'), '--flat'],
     )
     assert result.exit_code == 1
 

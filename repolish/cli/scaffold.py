@@ -59,17 +59,18 @@ class ScaffoldParams(BaseModel):
             'Generate an in-repo local provider instead of an installable '
             'package: internal/templates/repolish.py plus a repolish/ '
             'template directory, aliased "local" and wired up in '
-            'repolish.yaml with only provider_root — no CLI, no package '
-            'name, no publishing step.'
+            'repolish.yaml with only provider_root — no package name, no '
+            'publishing step.'
         ),
     )
-    installable: bool = Field(
+    flat: bool = Field(
         default=False,
         description=(
-            'Only meaningful with --local: scaffold the installable tier — '
-            'pyproject.toml plus an internal/ package holding the real '
-            'provider code, with templates/repolish.py reduced to a shim. '
-            'Needed once the provider wants sibling-module imports.'
+            'Only meaningful with --local: scaffold the flat tier instead of '
+            'the default installable one — a single self-contained '
+            'templates/repolish.py and a cli.py beside it, with no '
+            'pyproject.toml and nothing to install. Repolish loads '
+            'repolish.py by file path, so it cannot import sibling modules.'
         ),
     )
 
@@ -122,7 +123,7 @@ def _run_local(params: ScaffoldParams) -> None:
         dest,
         provider_root=provider_root,
         prefix=params.prefix,
-        installable=params.installable,
+        flat=params.flat,
     )
     _report_written(written, Path.cwd(), dest)
     if not written:  # pragma: no cover - no files written, nothing to report
@@ -132,10 +133,12 @@ def _run_local(params: ScaffoldParams) -> None:
         f'providers:\n  {LOCAL_PROVIDER_ALIAS}:\n    provider_root: {provider_root}',
         style='cyan',
     )
-    if params.installable:
+    if not params.flat:
         console.print(
             f'[bold]editable-install [cyan]{display}[/cyan] into the environment that '
-            f'runs repolish[/bold] (e.g. [cyan]-e ./{display}[/cyan] in its requirements)',
+            f'runs repolish[/bold] (e.g. [cyan]-e ./{display}[/cyan] in its requirements); '
+            f'the fast-lane CLI is exposed as the [cyan]{LOCAL_PROVIDER_ALIAS}-cli[/cyan] '
+            'console script',
         )
 
 
@@ -167,8 +170,8 @@ def _validate(params: ScaffoldParams) -> str | None:
         if params.monorepo:
             return '--monorepo cannot be combined with --local'
         return None
-    if params.installable:
-        return '--installable requires --local'
+    if params.flat:
+        return '--flat requires --local'
     if params.directory is None:
         return 'DIRECTORY is required unless --local is given'
     return None

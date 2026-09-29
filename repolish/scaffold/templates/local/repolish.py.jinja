@@ -14,10 +14,11 @@ content anywhere in the project via repolish:on/off insertion markers.
 IMPORTANT: repolish loads this module directly by file path, so keep it
 self-contained — absolute imports of sibling modules (e.g. `from helpers
 import x` next to this file) will crash `repolish apply`.  When the provider
-grows to want multiple files, upgrade to the installable tier: give this
-directory a pyproject.toml and a real package holding `{{ class_name }}`,
-editable-install it into the environment that runs repolish, and reduce this
-file to a re-exporting shim:
+grows to want multiple files, upgrade to the installable tier (the default
+`repolish scaffold --local` output): give the parent directory a
+pyproject.toml and a real package beside this directory holding
+`{{ class_name }}`, editable-install it into the environment that runs
+repolish, and reduce this file to a re-exporting shim:
 
     from <pkg> import __version__
     from <pkg>.provider import {{ class_name }}

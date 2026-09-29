@@ -23,7 +23,7 @@ postinstall = ["mise run pkglink", "mise run setup-hook"]
 
 [tools]
 uv = "0.9.27"
-dprint = "0.51.1"
+dprint = "0.57.4"
 starship = "1.24.2"
 git-cliff = "2.12.0"
 actionlint = "1.7.10"

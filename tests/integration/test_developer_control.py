@@ -870,16 +870,18 @@ def test_scaffolded_local_provider_applies_end_to_end(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`repolish scaffold --local` output wires into repolish.yaml and applies cleanly.
+    """`repolish scaffold --local --flat` output wires into repolish.yaml and applies cleanly.
 
     This also pins the layout the scaffold and the loader agree on: the
     provider entry point is ``templates/repolish.py`` (relative to the
-    provider_root) and templates ship under ``templates/repolish/``.
+    provider_root) and templates ship under ``templates/repolish/``. The
+    installable tier needs an editable install before it can apply, so the
+    flat tier is the one exercised in-process here.
     """
     monkeypatch.chdir(tmp_path)
     init_git_repo(tmp_path)
 
-    run_repolish(['scaffold', '--local'])
+    run_repolish(['scaffold', '--local', '--flat'])
     provider_root = tmp_path / 'internal' / 'templates'
     assert (provider_root / 'repolish.py').exists()
     assert (provider_root / 'repolish' / 'some-template.md.jinja').exists()
