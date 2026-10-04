@@ -39,7 +39,8 @@ regex to write, and the visible markers document the intention. Each variant is
 covered in the Markers tab:
 
 - [Keep Blocks](../markers/keep-block.md) — a bounded `start`/`end` region (with
-  `end-regex` for Jinja-generated loops).
+  `start-regex`/`end-regex` when a side must match by pattern, e.g. a template
+  class projects are meant to subclass).
 - [Keep the Rest](../markers/keep-rest.md) — everything from a marker to EOF.
 - [Keep the Header](../markers/keep-header.md) — the top of the file up to a
   marker.

@@ -16,11 +16,17 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RegionBoundary:
-    """Markers delimiting a bounded region: literal start, literal end or regex."""
+    """Markers delimiting a bounded region: literal or regex start and end.
 
-    start: str
+    Exactly one of ``start`` / ``start_regex`` is set by construction (the
+    keep-block parser picks the mode from the directive); ``start`` keeps its
+    positional slot so literal-boundary call sites are unchanged.
+    """
+
+    start: str = ''
     end: str | None = None
     end_regex: str | None = None
+    start_regex: str | None = None
 
 
 def find_first_line_index(
@@ -50,10 +56,10 @@ def find_bounded_region(
     end_limit_exclusive: int | None = None,
 ) -> tuple[int, int] | None:
     """Return the inclusive line span for one bounded region."""
-    bounded_start_index = find_first_line_index(
+    bounded_start_index = _find_start_line_index(
         lines,
-        boundary.start,
         start=start_index,
+        boundary=boundary,
     )
     if bounded_start_index is None:
         return None
@@ -208,13 +214,30 @@ def find_bounded_regions_in_range(
     return regions
 
 
-def occurrence_key(boundary: RegionBoundary) -> tuple[str, str, str]:
+def occurrence_key(boundary: RegionBoundary) -> tuple[str, str, str, str]:
     """Build a stable occurrence key for repeated bounded-region lookups."""
     return (
         boundary.start,
+        boundary.start_regex or '',
         boundary.end or '',
         boundary.end_regex or '',
     )
+
+
+def _find_start_line_index(
+    lines: list[str],
+    *,
+    start: int,
+    boundary: RegionBoundary,
+) -> int | None:
+    """Return the opening boundary index using literal `start` or `start_regex`."""
+    if boundary.start_regex is not None:
+        start_re = re.compile(boundary.start_regex)
+        for index in range(start, len(lines)):
+            if start_re.search(lines[index].strip()):
+                return index
+        return None
+    return find_first_line_index(lines, boundary.start, start=start)
 
 
 def _find_end_line_index(

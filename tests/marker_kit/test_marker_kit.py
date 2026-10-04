@@ -69,10 +69,22 @@ def test_bounded_region_helpers_cover_literal_and_regex_bounds() -> None:
     assert find_first_line_index(lines, 'body', start=0) == 2
     assert find_bounded_region(lines, 0, boundary) == (1, 3)
     assert find_all_bounded_regions(lines, boundary) == [(1, 3)]
-    assert occurrence_key(boundary) == ('<!-- on -->', '<!-- off -->', '')
+    assert occurrence_key(boundary) == ('<!-- on -->', '', '<!-- off -->', '')
 
     regex_boundary = RegionBoundary(start='<!-- on -->', end_regex=r'^<!-- off')
     assert find_bounded_region(lines, 0, regex_boundary) == (1, 3)
+
+    start_regex_boundary = RegionBoundary(
+        start_regex=r'^<!-- on',
+        end='<!-- off -->',
+    )
+    assert find_bounded_region(lines, 0, start_regex_boundary) == (1, 3)
+    assert occurrence_key(start_regex_boundary) == (
+        '',
+        '^<!-- on',
+        '<!-- off -->',
+        '',
+    )
 
 
 def test_prefixed_regions_skip_unbounded_zones() -> None:

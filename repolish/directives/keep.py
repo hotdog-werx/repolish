@@ -94,16 +94,27 @@ def _parse_keep_literal(raw: str) -> str:
 
 
 def _parse_keep_block_spec(
+    start_mode: str,
     start_raw: str,
     end_mode: str,
     end_raw: str,
 ) -> KeepBlockSpec:
-    """Parse keep-block bounds supporting literal `end` and `end-regex`."""
-    start = _parse_keep_literal(start_raw)
+    """Parse keep-block bounds supporting literal/regex start and end."""
+    start_value = _parse_keep_literal(start_raw)
     end_value = _parse_keep_literal(end_raw)
+    start_regex = start_value if start_mode == 'start-regex' else None
+    start = '' if start_regex is not None else start_value
     if end_mode == 'end':
-        return KeepBlockSpec(start=start, end=end_value)
-    return KeepBlockSpec(start=start, end_regex=end_value)
+        return KeepBlockSpec(
+            start=start,
+            end=end_value,
+            start_regex=start_regex,
+        )
+    return KeepBlockSpec(
+        start=start,
+        end_regex=end_value,
+        start_regex=start_regex,
+    )
 
 
 _KEEP_BLOCK_EXTRACT_DEF = DirectiveMapDefinition(
@@ -133,7 +144,7 @@ class _KeepApplyContext:
     template_lines: list[str]
     local_lines: list[str]
     patterns: KeepPatterns
-    keep_block_occurrence: OccurrenceTracker[tuple[str, str, str]]
+    keep_block_occurrence: OccurrenceTracker[tuple[str, str, str, str]]
     phase: str
     source_path: str | None
 

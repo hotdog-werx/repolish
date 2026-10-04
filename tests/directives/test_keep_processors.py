@@ -138,6 +138,7 @@ def test_extract_patterns_includes_keep_directives() -> None:
 
     assert patterns.keep_blocks['readme-custom-block'] == (
         '<!-- start -->',
+        None,
         '<!-- end -->',
         None,
     )
@@ -161,7 +162,26 @@ def test_extract_patterns_supports_keep_block_end_regex() -> None:
     assert patterns.keep_blocks['paths'] == (
         '# additional-paths',
         None,
+        None,
         '^provider[0-9]+:$',
+    )
+
+
+def test_extract_patterns_supports_keep_block_start_regex() -> None:
+    template = dedent("""\
+        ## repolish:keep-block[svc] start-regex="^class \\\\w+\\\\((SomeBase|SomeOtherBase)\\\\):$" end="# -- svc-end"
+        class SomeService(SomeBase):
+            pass
+        # -- svc-end
+    """)
+
+    patterns = extract_patterns(template)
+
+    assert patterns.keep_blocks['svc'] == (
+        '',
+        r'^class \w+\((SomeBase|SomeOtherBase)\):$',
+        '# -- svc-end',
+        None,
     )
 
 
@@ -734,6 +754,39 @@ def test_apply_keep_block_with_end_regex_uses_next_item_boundary() -> None:
         r"provider3:\n\s+- 'static3'\n\s+# additional-paths\n\s+- 'custom3'\n",
         result,
     )
+
+
+def test_apply_keep_block_with_start_regex_preserves_user_subclass() -> None:
+    """start-regex opens the kept region at a signature the user chose.
+
+    With a literal start marker, a project whose class line differs from the
+    template default (a renamed class, a different base to inherit from) has
+    no matching region — the only escape used to be duplicating the base class
+    outside the managed block. A regex start matches both the template default
+    and the user's variant, so the user's class line and body win on apply.
+    """
+    template = dedent("""\
+        # repolish:keep-block[svc] start-regex="^class \\\\w+\\\\((SomeBase|SomeOtherBase)\\\\):$" end="# -- svc-end"
+        class SomeService(SomeBase):
+            def handle(self, request):
+                raise NotImplementedError
+
+        # -- svc-end
+    """)
+
+    local_content = dedent("""\
+        class CachedService(SomeOtherBase):
+            def handle(self, request):
+                return self.cache.get(request)
+
+        # -- svc-end
+    """)
+
+    result = process_text(template, local_content)
+
+    assert 'class CachedService(SomeOtherBase):' in result
+    assert 'return self.cache.get(request)' in result
+    assert 'raise NotImplementedError' not in result
 
 
 def test_apply_keep_block_end_regex_with_no_room_for_end_falls_back_to_template() -> None:

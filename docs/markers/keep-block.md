@@ -28,6 +28,8 @@ Default content for new projects.
 
 - `start` / `end` are literal marker strings — use whatever comment style fits
   the file (they are ordinary lines, and they remain in the output).
+- Either side can match by regular expression instead: `start-regex` /
+  `end-regex` (see [start-regex](#start-regex) and [end-regex](#end-regex)).
 - If your project file has no matching marker pair, the template default is
   kept.
 - Supports the [`|after-render` phase](phases.md) — required when the blocks are
@@ -207,6 +209,44 @@ boundary.
 simulate after-render behavior, paste the **rendered** content into the scratch
 file as `template` and drop the `|after-render` suffix — the reconciliation
 machinery is identical.
+
+## start-regex
+
+`end-regex` has a start-side sibling: `start-regex` opens each kept region at
+the first line matching a pattern, instead of at one exact literal line. The
+case that demands it is a template shipping a class that projects are meant to
+make their own:
+
+```python title="template"
+# repolish:keep-block[service] start-regex="^class \w+\((SomeBase|SomeOtherBase)\):$" end="# -- service-end"
+class SomeService(SomeBase):
+    def handle(self, request):
+        raise NotImplementedError
+
+# -- service-end
+```
+
+A literal `start` marker pins the region to one exact line. A project that
+inherits differently (`class CachedService(SomeOtherBase):`) has no matching
+marker, so its class could not live in the managed file — the only escape was
+duplicating the class outside the provider's reach. With `start-regex`, the
+region opens at the class line _you_ wrote, whatever name or base it carries:
+
+```python title="your file"
+class CachedService(SomeOtherBase):
+    def handle(self, request):
+        return self.cache.get(request)
+
+# -- service-end
+```
+
+The whole region — signature line included — survives every apply; the provider
+can still rewrite everything around it.
+
+Matching follows the `end-regex` rules: the pattern is searched against each
+line (stripped of surrounding whitespace), so anchor it with `^`/`$` when the
+whole line should match. `start-regex` combines freely with `end` or
+`end-regex`.
 
 ## When to use
 
