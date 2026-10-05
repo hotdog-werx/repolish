@@ -69,9 +69,8 @@ lines document the intention. Pages and examples:
   repeated blocks (first-to-first pairing), `end-regex` for Jinja-generated
   loops, `start-regex` when the region must open at a line only a pattern can
   describe (a template class projects subclass with their own name/base), and
-  the directive-placement rule (each keep-block directive directly above its own
-  region; stacked directive lines leave earlier regions unmanaged). Includes the
-  registry.py-style example with corrected placement.
+  stacked directive lines (a run of consecutive directives shares one segment).
+  Includes the registry.py-style example.
 - [Keep the Rest](../markers/keep-rest.md) — everything from a marker to EOF.
 - [Keep the Header](../markers/keep-header.md) — top of file up to a marker; the
   directive must be the template's first line.

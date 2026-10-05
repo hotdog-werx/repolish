@@ -224,71 +224,170 @@ def apply_keep_replacements(
     return ''.join(result)
 
 
+@dataclass(frozen=True)
+class _BlockClaim:
+    """One keep-block spec resolved against the segment its run governs."""
+
+    name: str
+    template_regions: list[tuple[int, int]]
+    occurrence_start: int
+    local_regions: list[tuple[int, int]]
+
+    def paired_local_region(self, offset: int) -> tuple[int, int] | None:
+        """Return the local region paired with template region *offset*, if any."""
+        index = self.occurrence_start + offset
+        if index < len(self.local_regions):
+            return self.local_regions[index]
+        return None
+
+
 def _apply_keep_block(
     result: list[str],
     directive_index: int,
     match: re.Match[str],
     ctx: _KeepApplyContext,
 ) -> tuple[list[str], int]:
-    name = _directive_name(match.group(1), source_path=ctx.source_path)
-    spec = ctx.patterns.blocks.get(name)
-    if spec is None:
-        logger.debug('keep_block_no_match_in_target', name=name)
-        return result, directive_index + 1
+    """Apply one keep-block directive together with any stacked run below it.
 
+    Consecutive keep-block directive lines form a single run governing one
+    shared segment (from below the run up to the next keep directive): each
+    spec claims the regions matching its own markers anywhere in that
+    segment, so stacked directives all manage their regions instead of only
+    the last one. A lone directive keeps the interleaved semantics — its
+    segment ends where the next keep directive begins.
+    """
+    matches = _stacked_block_directives(directive_index, match, ctx)
+    content_start = directive_index + len(matches)
     segment_end = _find_next_keep_directive_index(
         ctx.template_lines,
-        directive_index + 1,
+        content_start,
         ctx.phase,
         source_path=ctx.source_path,
     )
     if segment_end is None:
         segment_end = len(ctx.template_lines)
 
-    template_regions = find_bounded_regions_in_range(
-        ctx.template_lines,
-        directive_index + 1,
-        segment_end,
-        spec,
-    )
-    if not template_regions:
-        logger.warning('keep_block_template_region_not_found', name=name)
-        return result, directive_index + 1
+    claims = _collect_block_claims(matches, content_start, segment_end, ctx)
+    _emit_block_segment(result, claims, content_start, segment_end, ctx)
+    return result, segment_end
 
-    marker_key = occurrence_key(spec)
-    occurrence_start = ctx.keep_block_occurrence.take(
-        marker_key,
-        len(template_regions),
-    )
-    local_regions = find_all_bounded_regions(
-        ctx.local_lines,
-        spec,
-    )
 
-    cursor = directive_index + 1
-    matched_any = False
-    for offset, template_region in enumerate(template_regions):
-        result.extend(ctx.template_lines[cursor : template_region[0]])
-        local_index = occurrence_start + offset
-        if local_index < len(local_regions):
-            local_region = local_regions[local_index]
-            result.extend(
-                ctx.local_lines[local_region[0] : local_region[1] + 1],
-            )
-            matched_any = True
+def _stacked_block_directives(
+    directive_index: int,
+    first_match: re.Match[str],
+    ctx: _KeepApplyContext,
+) -> list[re.Match[str]]:
+    """Collect the run of consecutive keep-block directive lines, first included.
+
+    Only keep-block lines join a run; keep-rest/keep-header keep their own
+    single-directive semantics.
+    """
+    matches = [first_match]
+    lines = ctx.template_lines
+    index = directive_index + 1
+    while index < len(lines):
+        stripped = lines[index].rstrip('\r\n')
+        stacked = _KEEP_BLOCK_RE.match(stripped)
+        if stacked is None or not _is_phase_selected(
+            stacked,
+            ctx.phase,
+            source_path=ctx.source_path,
+        ):
+            break
+        matches.append(stacked)
+        index += 1
+    return matches
+
+
+def _collect_block_claims(
+    matches: list[re.Match[str]],
+    content_start: int,
+    segment_end: int,
+    ctx: _KeepApplyContext,
+) -> list[_BlockClaim]:
+    """Resolve each directive in the run into its claimed regions and pairings.
+
+    Occurrence batches are taken in directive order, so interleaved templates
+    pair first-to-first exactly as before.
+    """
+    claims: list[_BlockClaim] = []
+    for match in matches:
+        name = _directive_name(match.group(1), source_path=ctx.source_path)
+        spec = ctx.patterns.blocks.get(name)
+        if spec is None:
+            logger.debug('keep_block_no_match_in_target', name=name)
+            continue
+        template_regions = find_bounded_regions_in_range(
+            ctx.template_lines,
+            content_start,
+            segment_end,
+            spec,
+        )
+        if not template_regions:
+            logger.warning('keep_block_template_region_not_found', name=name)
+            continue
+        claims.append(
+            _BlockClaim(
+                name=name,
+                template_regions=template_regions,
+                occurrence_start=ctx.keep_block_occurrence.take(
+                    occurrence_key(spec),
+                    len(template_regions),
+                ),
+                local_regions=find_all_bounded_regions(ctx.local_lines, spec),
+            ),
+        )
+    return claims
+
+
+def _sorted_claim_spans(
+    claims: list[_BlockClaim],
+) -> list[tuple[tuple[int, int], int, _BlockClaim]]:
+    """Flatten claimed regions into (region, offset, claim) spans in file order."""
+    spans: list[tuple[tuple[int, int], int, _BlockClaim]] = []
+    for claim in claims:
+        for offset, region in enumerate(claim.template_regions):
+            spans.append((region, offset, claim))
+    spans.sort(key=lambda span: span[0][0])
+    return spans
+
+
+def _emit_block_segment(
+    result: list[str],
+    claims: list[_BlockClaim],
+    content_start: int,
+    segment_end: int,
+    ctx: _KeepApplyContext,
+) -> None:
+    """Emit the shared segment once, splicing each claimed region's content.
+
+    A region overlapped by an earlier claim's already-emitted content is
+    skipped, so stacked specs sharing the same markers never emit a region
+    twice.
+    """
+    cursor = content_start
+    matched_names: set[str] = set()
+    for region, offset, claim in _sorted_claim_spans(claims):
+        if region[0] < cursor:
+            continue
+        result.extend(ctx.template_lines[cursor : region[0]])
+        local_region = claim.paired_local_region(offset)
+        if local_region is None:
+            result.extend(ctx.template_lines[region[0] : region[1] + 1])
         else:
-            result.extend(
-                ctx.template_lines[template_region[0] : template_region[1] + 1],
-            )
-        cursor = template_region[1] + 1
+            result.extend(ctx.local_lines[local_region[0] : local_region[1] + 1])
+            matched_names.add(claim.name)
+        cursor = region[1] + 1
 
     result.extend(ctx.template_lines[cursor:segment_end])
+    _log_block_claims(claims, matched_names)
 
-    if matched_any:
-        logger.debug('keep_block_matched_in_target', name=name)
-    else:
-        logger.debug('keep_block_no_match_in_target', name=name)
-    return result, segment_end
+
+def _log_block_claims(claims: list[_BlockClaim], matched_names: set[str]) -> None:
+    """Report per directive whether any local region was spliced."""
+    for claim in claims:
+        event = 'keep_block_matched_in_target' if claim.name in matched_names else 'keep_block_no_match_in_target'
+        logger.debug(event, name=claim.name)
 
 
 def _apply_keep_rest(
