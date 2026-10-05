@@ -87,6 +87,16 @@ def test_bounded_region_helpers_cover_literal_and_regex_bounds() -> None:
     )
 
 
+def test_bounded_region_start_regex_without_match_returns_none() -> None:
+    """A start-regex that matches nothing finds no region, never the literal."""
+    # The blank line would match a literal '' start fallback — pin that the
+    # regex path owns the dispatch and yields no region instead.
+    lines = ['intro\n', '\n', '<!-- off -->\n']
+    boundary = RegionBoundary(start_regex=r'^<!-- never', end='<!-- off -->')
+
+    assert find_bounded_region(lines, 0, boundary) is None
+
+
 def test_prefixed_regions_skip_unbounded_zones() -> None:
     """A zone with no end boundary yields no region — never swallows the file."""
     lines = ['<!-- on -->\n', 'body\n', 'outro\n']

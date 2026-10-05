@@ -94,8 +94,9 @@ file** flow; a template can ship the same markers too (see
 
 === "Try it"
 
-    [`repolish preview`](../reference/preview.md) does not simulate insertions
-    (it runs the pre-render phase only), so this sandbox is a scratch project:
+    [`repolish preview`](../reference/preview.md) simulates the marker and
+    adoption machinery with plain function bodies, but `config-options` reads
+    from the provider's context model — so this example uses a scratch project:
 
     ```bash
     mkdir insertion-demo && cd insertion-demo

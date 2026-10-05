@@ -1,9 +1,11 @@
 # repolish preview
 
-Preview directive processing for a single template. This is the interactive
-debugger for working out template and directive syntax before running a full
-`repolish apply` — see the [Markers](../markers/index.md) tab for the directive
-families themselves.
+Preview the full render pipeline for a single template. This is the interactive
+debugger for working out template and marker syntax before running a full
+`repolish apply` — one YAML file exercises pre-render directives, the Jinja
+render, after-render directives, and insertion fills, with the Result matching
+what a real apply would write. See the [Markers](../markers/index.md) tab for
+the marker families themselves.
 
 ```
 repolish preview [OPTIONS] DEBUG_FILE
@@ -17,10 +19,10 @@ repolish preview [OPTIONS] DEBUG_FILE
 
 ## Options
 
-| Option            | Default | Description                                                                     |
-| ----------------- | ------- | ------------------------------------------------------------------------------- |
-| `--show-patterns` | off     | Print the patterns extracted from the template (anchor tags and regex markers). |
-| `--show-steps`    | off     | Print intermediate processing steps.                                            |
+| Option            | Default | Description                                                                             |
+| ----------------- | ------- | --------------------------------------------------------------------------------------- |
+| `--show-patterns` | off     | Print the patterns extracted from the template, for both directive phases.              |
+| `--show-steps`    | off     | Print each intermediate pipeline stage (pre-render output, Jinja render, after-render). |
 
 ## Debug file format
 
@@ -28,45 +30,67 @@ The debug file is a YAML document with three keys:
 
 ```yaml
 template: |
-  # required - the template content
+  # required - the template content, exactly as it lives in the provider
 
 target: |
   # optional - simulates the current file on disk
-  # patterns in the target are extracted and merged into the output
+  # keep blocks, regex captures, and marker edits are adopted from it
 
 config:
   anchors:
     myblock: |
       # optional - anchor values injected into tag blocks
+  context:
+    # optional - variables for the Jinja render stage
+    python_version: '3.12'
+  insertions:
+    # optional - function bodies for repolish:on blocks and insert zones
+    functions:
+      display-year: '2026'
+      env-name: '{{ args[0] }} environment'
 ```
 
 ### `template` (required)
 
-The Jinja2 template content. Directives (tag blocks, regex markers) are
-processed first, then the result is treated as output.
+The template content, exactly as the provider ships it — Jinja syntax included.
 
 ### `target` (optional)
 
-The content of the file that already exists on disk. repolish extracts regex
-captures from the target and uses them to fill in the template's regex markers.
-Omit when the template produces fully static output.
+The content of the file that already exists on disk. repolish reconciles the
+template against it the way a real apply does: regex captures and keep blocks
+are preserved from it, and marker edits (function and args on a `repolish:on`
+line, zone opening markers) are adopted from it.
 
 ### `config` (optional)
 
-Configuration for the directive pass. Currently supports:
+- `anchors` — a mapping of anchor names to their replacement values.
+- `context` — the Jinja variables the render stage sees. A template variable
+  with no entry fails exactly like a real apply (strict undefined), so
+  previewing is also a quick way to check which names a template needs.
+- `insertions.functions` — a mapping of function name to body. The body is a
+  Jinja template rendered with the debug `context` plus `args` — the marker's
+  shell-split arguments — so `{{ args[0] }}` echoes what the marker carried. The
+  same registry fills `repolish:insert` zones: a zone's function is the
+  directive's `function="..."` value, or the zone name when omitted.
 
-- `anchors` - a mapping of anchor names to their replacement values.
+## Pipeline
 
-## Scope
+Preview runs every stage an apply would run for the file:
 
-Preview runs the **pre-render phase only**: the Result is what Jinja2 will
-receive. Directives tagged `|after-render` pass through unprocessed and
-unstripped — intentional, since they don't get evaluated until after rendering
-in a real apply. Insertions are not simulated.
+1. **Pre-render directives** — tag blocks (with `anchors`), `regex`,
+   `multiregex`, `keep-*`, and pre-render `keep-block`/`insert` directives.
+2. **Jinja render** — the pre-render output rendered with `config.context`.
+   Strict undefined and syntax errors fail the preview (exit code 1).
+3. **After-render directives** — anything tagged `|after-render`, with the
+   `target` file's insertion markers spliced back in (adoption).
+4. **Insertions** — `repolish:on` blocks and `repolish:insert` zones filled from
+   `config.insertions.functions`. A block whose function is missing or raises
+   survives with its markers and reports a diagnostic; the exit code stays 0 (a
+   real apply continues past failed blocks the same way).
 
-A full-render preview — Jinja2 rendering, the after-render phase, and
-insertions, so the Result matches an actual apply — is a planned expansion. The
-debug-file format will need to grow context/insertion inputs when that lands.
+The Result section prints the final text — what would be written on apply. With
+`--show-steps`, each intermediate stage prints too, so you can see exactly where
+a directive or template error enters the picture.
 
 ## Examples
 
@@ -74,11 +98,16 @@ debug-file format will need to grow context/insertion inputs when that lands.
 
 ```yaml
 template: |
-  python_version = "3.11"
+  python_version = "{{ python_version }}"
+
+config:
+  context:
+    python_version: '3.11'
 ```
 
 ```bash
 repolish preview debug.yaml
+# -> python_version = "3.11"
 ```
 
 ### Regex capture from target
@@ -116,7 +145,63 @@ config:
 repolish preview debug.yaml
 ```
 
-### Inspecting patterns and steps
+### After-render keep blocks in a Jinja loop
+
+```yaml
+template: |
+  ## repolish:keep-block[paths|after-render] start="# additional-paths" end-regex="^provider[0-9]+:$"
+  {% for idx in providers %}
+  provider{{ idx }}:
+     - static{{ idx }}
+     # additional-paths
+     - default{{ idx }}
+  {% endfor %}
+
+target: |
+  provider1:
+     - static1
+     # additional-paths
+     - custom1
+  provider2:
+     - static2
+     # additional-paths
+     - custom2
+
+config:
+  context:
+    providers: [1, 2]
+```
+
+Each rendered block pairs first-to-first with the target's blocks, so both
+custom entries survive the loop. See [keep blocks](../markers/keep-block.md).
+
+### Insertion blocks and zones
+
+```yaml
+template: |
+  # repolish:on:env show-env staging
+  # repolish:off:env
+
+  ## repolish:insert[badges] start="<!-- generated:badges:on" end="<!-- generated:badges:off -->"
+  <!-- generated:badges:on my-org/my-repo -->
+  _Default badge row._
+  <!-- generated:badges:off -->
+
+config:
+  insertions:
+    functions:
+      show-env: '{{ args[0] }} environment'
+      badges: '![ci](https://ci.example/{{ args[0] }}/badge.svg)'
+```
+
+```bash
+repolish preview debug.yaml
+```
+
+Edit the marker's args in `target` to try adoption — the adopted arg drives the
+filled body.
+
+### Inspecting patterns and stages
 
 ```bash
 repolish preview debug.yaml --show-patterns --show-steps -vv

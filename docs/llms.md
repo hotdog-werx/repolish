@@ -6,14 +6,14 @@ values before render and put them back.
 
 ## Commands
 
-| Command                   | Does                                              |
-| ------------------------- | ------------------------------------------------- |
-| `repolish scaffold .`     | Generate provider package (always start here)     |
-| `repolish link`           | Copy provider resources to `.repolish/<alias>/`   |
-| `repolish apply`          | Render + write files                              |
-| `repolish apply --check`  | Same pipeline, report drift, write nothing        |
-| `repolish preview f.yaml` | Debug one template's directives (pre-render only) |
-| `repolish lint`           | Check provider templates against context model    |
+| Command                   | Does                                                |
+| ------------------------- | --------------------------------------------------- |
+| `repolish scaffold .`     | Generate provider package (always start here)       |
+| `repolish link`           | Copy provider resources to `.repolish/<alias>/`     |
+| `repolish apply`          | Render + write files                                |
+| `repolish apply --check`  | Same pipeline, report drift, write nothing          |
+| `repolish preview f.yaml` | Debug one template through the full render pipeline |
+| `repolish lint`           | Check provider templates against context model      |
 
 ## New provider
 

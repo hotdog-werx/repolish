@@ -205,10 +205,9 @@ If no match is found before the section ends, the region closes at the section
 boundary.
 
 !!! tip "Trying end-regex in preview"
-[`repolish preview`](../reference/preview.md) runs the pre-render phase only. To
-simulate after-render behavior, paste the **rendered** content into the scratch
-file as `template` and drop the `|after-render` suffix — the reconciliation
-machinery is identical.
+[`repolish preview`](../reference/preview.md) runs the full pipeline — paste the
+Jinja template as-is (loop and `|after-render` suffix included) plus the loop
+variables under `config.context`, and the Result is the reconciled output.
 
 ## start-regex
 

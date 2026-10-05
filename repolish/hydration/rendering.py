@@ -20,6 +20,32 @@ from repolish.providers import FileMode, SessionBundle, TemplateMapping
 logger = get_logger(__name__)
 
 
+def new_template_environment() -> Environment:
+    """The session Jinja environment: strict undefined, trailing newline kept.
+
+    Every render path (the staging walk, per-mapping renders, and single-text
+    consumers such as ``repolish preview``) must use this constructor so their
+    rendering behavior can never drift apart.
+    """
+    return Environment(
+        autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
+        undefined=StrictUndefined,
+        keep_trailing_newline=True,
+    )
+
+
+def render_text(txt: str, ctx: dict, *, filename: Path | str) -> str:
+    """Render one template text in memory with the session Jinja environment.
+
+    The in-memory sibling of the staging render pass: same environment
+    configuration, same error wrapping (:func:`_jinja_render`). Raises
+    :class:`UndefinedError` / :class:`TemplateSyntaxError` for the caller to
+    report; *filename* only annotates those errors.
+    """
+    env = new_template_environment()
+    return _jinja_render(env, txt, ctx, filename=Path(filename))
+
+
 class _BinaryFile:
     """Sentinel type returned when a template file cannot be decoded as UTF-8.
 
@@ -89,11 +115,7 @@ def render_with_jinja(ctx: RenderContext) -> None:
 
     template_root = setup_input / 'repolish'
 
-    env = Environment(
-        autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-    )
+    env = new_template_environment()
 
     for src in template_root.rglob('*'):
         if src.is_dir():
@@ -505,11 +527,7 @@ def _render_template_text(
     providers: SessionBundle,
 ) -> str:
     """Render text template with provider context and extra_context."""
-    env = Environment(
-        autoescape=select_autoescape(['html', 'xml'], default_for_string=False),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-    )
+    env = new_template_environment()
 
     base_ctx = _ctx_for_pid(mapping.source_provider, providers)
     render_ctx = {**base_ctx, **ctx_to_dict(mapping.extra_context)}
