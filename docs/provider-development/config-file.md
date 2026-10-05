@@ -268,18 +268,21 @@ Shorthand notation is supported in the YAML. Instead of writing::
 ```yaml
 providers:
   base:
-    cli: codeguide-link
+    module: devkit.workspace
 ```
 
 you may simply write::
 
 ```yaml
 providers:
-  base: codeguide-link
+  base: devkit.workspace
 ```
 
-The model validator normalizes this into a `ProviderConfig` with the string
-assigned to `cli`.
+The model validator resolves the shorthand module first: a string that names an
+importable package becomes `module:`; anything else keeps the legacy meaning and
+is assigned to `cli`. A string that falls back because it names a command on
+PATH rather than a package emits a warning, since v2 will require the shorthand
+to be a valid module name (write `cli:` explicitly for linker commands).
 
 ### Symlinks
 
