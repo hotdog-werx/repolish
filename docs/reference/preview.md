@@ -44,10 +44,10 @@ config:
     # optional - variables for the Jinja render stage
     python_version: '3.12'
   insertions:
-    # optional - function bodies for repolish:on blocks and insert zones
+    # optional - entry points resolving to renderer functions
     functions:
-      display-year: '2026'
-      env-name: '{{ args[0] }} environment'
+      display-year: .prototype:display_year
+      env-name: .prototype:env_name
 ```
 
 ### `template` (required)
@@ -67,11 +67,20 @@ line, zone opening markers) are adopted from it.
 - `context` — the Jinja variables the render stage sees. A template variable
   with no entry fails exactly like a real apply (strict undefined), so
   previewing is also a quick way to check which names a template needs.
-- `insertions.functions` — a mapping of function name to body. The body is a
-  Jinja template rendered with the debug `context` plus `args` — the marker's
-  shell-split arguments — so `{{ args[0] }}` echoes what the marker carried. The
-  same registry fills `repolish:insert` zones: a zone's function is the
-  directive's `function="..."` value, or the zone name when omitted.
+- `insertions.functions` — a mapping of function name to entry point, in the
+  pyproject script form `module:object.attr`. The module is imported and the
+  dotted attribute path is walked to the callable, which meets the same calling
+  contract a real apply's registered renderers do. Write the functions the way
+  provider insertion functions are written — typed parameters filled from the
+  marker's args, like `def show_env(env: str) -> str`, or a keyword-only
+  `block: InsertionBlock` (importable from `repolish.insertions`) — so a
+  finished prototype lifts into `create_file_insertions` unchanged. A leading
+  `.` — as in `.prototype:display_year` — imports the module from the scratch
+  file's directory, so a prototype module beside the scratch file can hold the
+  real functions while you figure out how they should work. The same registry
+  fills `repolish:insert` zones: a zone's function is the directive's
+  `function="..."` value, or the zone name when omitted. An unresolvable entry
+  point fails the preview with a clean error (exit code 1).
 
 ## Pipeline
 
@@ -190,8 +199,20 @@ template: |
 config:
   insertions:
     functions:
-      show-env: '{{ args[0] }} environment'
-      badges: '![ci](https://ci.example/{{ args[0] }}/badge.svg)'
+      show-env: .prototype:show_env
+      badges: .prototype:badges
+```
+
+With a `prototype.py` beside `debug.yaml` holding the real functions, written
+exactly as they will live in the provider:
+
+```python
+def show_env(env: str) -> str:
+    return f'{env} environment'
+
+
+def badges(owner_repo: str, style: str = 'flat') -> str:
+    return f'![ci](https://ci.example/{owner_repo}/badge.svg?style={style})'
 ```
 
 ```bash
@@ -199,7 +220,10 @@ repolish preview debug.yaml
 ```
 
 Edit the marker's args in `target` to try adoption — the adopted arg drives the
-filled body.
+filled body. Iterate on `prototype.py` and rerun to try a function shape; when
+the prototype is ready, the functions lift into the provider's
+`create_file_insertions` unchanged — no project or registration step needed
+along the way.
 
 ### Inspecting patterns and stages
 

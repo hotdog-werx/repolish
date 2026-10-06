@@ -7,9 +7,12 @@ insertion-marker adoption), and the insertion stage (``repolish:on`` blocks and
 family without a real project or a full ``repolish apply``.
 """
 
+import sys
 from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
 from time import perf_counter
+from types import ModuleType
 from typing import Any
 
 import yaml
@@ -23,7 +26,7 @@ from repolish.directives.insert_zones import (
     InsertZoneDeclaration,
     extract_insert_zone_declarations,
 )
-from repolish.hydration.rendering import new_template_environment, render_text
+from repolish.hydration.rendering import render_text
 from repolish.insertions import render_insertions_text
 from repolish.reporting import print_command_timings
 
@@ -31,11 +34,14 @@ logger = get_logger(__name__)
 
 
 class DebugInsertions(BaseModel):
-    """Insertion inputs: function bodies used to fill markers and zones."""
+    """Insertion inputs: entry points resolved to renderer callables."""
 
     functions: dict[str, str] = Field(
         default_factory=dict,
-        description='Function name to Jinja body, rendered with the debug context plus the marker args as `args`',
+        description=(
+            'Function name to entry point (`module:object.attr`); a leading `.` '
+            'imports the module from the scratch file directory'
+        ),
     )
 
 
@@ -111,7 +117,12 @@ def _run_preview(
     template = debug_config.template
     target = debug_config.target
     section = debug_config.config
-    registry = _build_insertion_registry(section.insertions, section.context)
+
+    try:
+        registry = _build_insertion_registry(section.insertions, debug_file)
+    except _EntryPointError as exc:
+        logger.exception('preview_insertion_registration_failed', error=str(exc))
+        return 1
 
     console.rule('[bold]Debug Preprocessing')
     logger.info(
@@ -193,27 +204,67 @@ def _show_stage(title: str, content: str) -> None:
     console.print()
 
 
+class _EntryPointError(Exception):
+    """Raised when a declared insertion entry point cannot be resolved."""
+
+
 def _build_insertion_registry(
     insertions: DebugInsertions,
-    context: dict[str, Any],
+    debug_file: Path,
 ) -> dict[str, Callable[..., str]]:
-    """Turn declared function bodies into a renderer registry.
+    """Resolve insertion entry points into a renderer registry.
 
-    Each body is a Jinja template rendered with the debug context plus the
-    marker's shell-split arguments as ``args``, so scratch functions can be
-    static text or echo the arguments a marker carried.
+    Each value follows the pyproject script form ``module:object.attr``: the
+    module is imported and the dotted attribute path is walked to a callable,
+    giving prototype functions the same calling contract a real apply's
+    registered renderers meet. A leading ``.`` marks the module as a sibling
+    of the scratch file.
     """
-    return {name: _debug_renderer(body, context) for name, body in insertions.functions.items()}
+    return {name: _resolve_entry_point(name, entry, debug_file) for name, entry in insertions.functions.items()}
 
 
-def _debug_renderer(body: str, context: dict[str, Any]) -> Callable[..., str]:
-    """Build one insertion renderer from a Jinja body."""
+def _resolve_entry_point(
+    alias: str,
+    entry: str,
+    debug_file: Path,
+) -> Callable[..., str]:
+    """Import one entry point and return the callable it names."""
+    module_name, marker, attr_path = entry.partition(':')
+    if not marker or not module_name or not attr_path:
+        msg = f'insertion {alias!r}: expected "module:object", got {entry!r}'
+        raise _EntryPointError(msg)
 
-    def render(*args: str) -> str:
-        env = new_template_environment()
-        return env.from_string(body).render(**context, args=list(args))
+    try:
+        module = _import_entry_module(module_name, debug_file)
+        target: Any = module
+        for attr in attr_path.split('.'):
+            target = getattr(target, attr)
+    except (AttributeError, ImportError) as exc:
+        msg = f'insertion {alias!r}: cannot resolve {entry!r} ({exc})'
+        raise _EntryPointError(msg) from exc
 
-    return render
+    if not callable(target):
+        msg = f'insertion {alias!r}: {entry!r} is not callable'
+        raise _EntryPointError(msg)
+    return target
+
+
+def _import_entry_module(module_name: str, debug_file: Path) -> ModuleType:
+    """Import the entry module; a leading dot resolves against the scratch dir.
+
+    The scratch directory is prepended to ``sys.path`` and stays there for the
+    run, so prototype modules can import siblings during rendering too. Stale
+    same-name modules are dropped first, so iterating on a prototype within one
+    process picks up new file content.
+    """
+    if not module_name.startswith('.'):
+        return import_module(module_name)
+    resolved = module_name[1:]
+    scratch_dir = str(debug_file.parent)
+    sys.modules.pop(resolved, None)
+    if scratch_dir not in sys.path:
+        sys.path.insert(0, scratch_dir)
+    return import_module(resolved)
 
 
 def _collect_zone_declarations(

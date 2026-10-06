@@ -115,8 +115,10 @@ fallback for unknown/failing/disabled functions.
 ## Debug workflow
 
 `repolish preview scratch.yaml` — keys: `template`, `target` (simulated project
-file), `config.anchors`. Iterate directives there before a real apply. Add
-`--show-patterns --show-steps -vv` to see what matched.
+file), `config.anchors`, `config.context` (Jinja vars),
+`config.insertions.functions` (entry points like `.prototype:display_year`, a
+leading `.` importing from the scratch directory). Iterate directives there
+before a real apply. Add `--show-patterns --show-steps -vv` to see what matched.
 
 ## Linking
 

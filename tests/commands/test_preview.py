@@ -133,6 +133,11 @@ def _run_scratch(
     return result, f.getvalue()
 
 
+def _write_prototype(tmp_path: Path, source: str) -> None:
+    """Write the prototype module entry points import from."""
+    (tmp_path / 'prototype.py').write_text(source, encoding='utf-8')
+
+
 def test_preview_renders_jinja_context(tmp_path: Path):
     """config.context feeds the Jinja render stage."""
     result, output = _run_scratch(
@@ -219,7 +224,19 @@ def test_preview_after_render_regex_pairs_dependency_versions(tmp_path: Path):
 
 
 def test_preview_fills_insertion_blocks(tmp_path: Path):
-    """config.insertions.functions fills repolish:on blocks."""
+    """Entry points resolve to callables that fill repolish:on blocks."""
+    _write_prototype(
+        tmp_path,
+        textwrap.dedent(
+            """\
+            def display_year() -> str:
+                return "2026"
+
+            def note() -> str:
+                return "made with repolish"
+            """,
+        ),
+    )
     result, output = _run_scratch(
         tmp_path,
         """\
@@ -231,7 +248,8 @@ def test_preview_fills_insertion_blocks(tmp_path: Path):
         config:
           insertions:
             functions:
-              display-year: "2026"
+              display-year: .prototype:display_year
+              note: .prototype:note
         """,
     )
 
@@ -241,7 +259,16 @@ def test_preview_fills_insertion_blocks(tmp_path: Path):
 
 
 def test_preview_insertion_functions_receive_marker_args(tmp_path: Path):
-    """Function bodies are Jinja templates with the marker args as `args`."""
+    """Prototype functions receive the marker's shell-split arguments."""
+    _write_prototype(
+        tmp_path,
+        textwrap.dedent(
+            """\
+            def show_env(env: str) -> str:
+                return f"{env} environment"
+            """,
+        ),
+    )
     result, output = _run_scratch(
         tmp_path,
         """\
@@ -251,20 +278,60 @@ def test_preview_insertion_functions_receive_marker_args(tmp_path: Path):
           # repolish:off:env
 
         config:
-          context:
-            env_label: Environment
           insertions:
             functions:
-              show-env: "{{ args[0] }} {{ env_label }}"
+              show-env: .prototype:show_env
         """,
     )
 
     assert result == 0
-    assert 'staging Environment' in output
+    assert 'staging environment' in output
+
+
+def test_preview_insertion_functions_accept_typed_block_param(tmp_path: Path):
+    """Keyword-only InsertionBlock params work, as in real provider functions."""
+    _write_prototype(
+        tmp_path,
+        textwrap.dedent(
+            """\
+            from repolish.insertions import InsertionBlock
+
+            def env_name(*, block: InsertionBlock) -> str:
+                return f"{block.args[0]} environment"
+            """,
+        ),
+    )
+    result, output = _run_scratch(
+        tmp_path,
+        """\
+        template: |
+          # repolish:on:env env-name staging
+          body
+          # repolish:off:env
+
+        config:
+          insertions:
+            functions:
+              env-name: .prototype:env_name
+        """,
+    )
+
+    assert result == 0
+    assert 'staging environment' in output
+    assert 'body' not in output
 
 
 def test_preview_insertion_marker_arg_edits_are_adopted(tmp_path: Path):
     """Adoption keeps the target file's marker args when filling from the template."""
+    _write_prototype(
+        tmp_path,
+        textwrap.dedent(
+            """\
+            def show_env(env: str) -> str:
+                return f"{env} environment"
+            """,
+        ),
+    )
     result, output = _run_scratch(
         tmp_path,
         """\
@@ -281,7 +348,7 @@ def test_preview_insertion_marker_arg_edits_are_adopted(tmp_path: Path):
         config:
           insertions:
             functions:
-              show-env: "{{ args[0] }} environment"
+              show-env: .prototype:show_env
         """,
     )
 
@@ -293,6 +360,15 @@ def test_preview_insertion_marker_arg_edits_are_adopted(tmp_path: Path):
 
 def test_preview_fills_insertion_zones(tmp_path: Path):
     """repolish:insert zones fill from the declared (or named) function."""
+    _write_prototype(
+        tmp_path,
+        textwrap.dedent(
+            """\
+            def badges(owner_repo: str) -> str:
+                return f"![ci](https://ci.example/{owner_repo}/badge.svg)"
+            """,
+        ),
+    )
     result, output = _run_scratch(
         tmp_path,
         """\
@@ -307,7 +383,7 @@ def test_preview_fills_insertion_zones(tmp_path: Path):
         config:
           insertions:
             functions:
-              badges: "![ci](https://ci.example/{{ args[0] }}/badge.svg)"
+              badges: .prototype:badges
         """,
     )
 
@@ -315,6 +391,56 @@ def test_preview_fills_insertion_zones(tmp_path: Path):
     assert 'repolish:insert' not in output
     assert '![ci](https://ci.example/my-org/my-repo/badge.svg)' in output
     assert 'Default badge row' not in output
+
+
+def test_preview_insertion_entry_points_import_installed_modules(tmp_path: Path):
+    """Entry points without a leading dot import normally installed modules."""
+    result, output = _run_scratch(
+        tmp_path,
+        """\
+        template: |
+          # repolish:on:pattern re-escape a.b
+          body
+          # repolish:off:pattern
+
+        config:
+          insertions:
+            functions:
+              re-escape: re:escape
+        """,
+    )
+
+    assert result == 0
+    assert 'a\\.b' in output
+
+
+def test_preview_insertion_registration_failures_fail_cleanly(tmp_path: Path):
+    """An unresolvable entry point stops the preview with a clean error."""
+    _write_prototype(tmp_path, 'year = "2026"\n')
+    cases = [
+        'display-year: display-year',  # no object part
+        'display-year: .prototype:missing',  # attribute does not exist
+        'display-year: .no-such-module:year',  # module does not exist
+        'display-year: .prototype:year',  # exists but is not callable
+    ]
+    for entry in cases:
+        result, output = _run_scratch(
+            tmp_path,
+            f"""\
+            template: |
+              <!-- repolish:on:footer display-year -->
+              body
+              <!-- repolish:off:footer -->
+
+            config:
+              insertions:
+                functions:
+                  {entry}
+            """,
+        )
+
+        assert result == 1, output
+        assert 'preview_insertion_registration_failed' in output
 
 
 def test_preview_unknown_insertion_function_reports_diagnostic(tmp_path: Path):

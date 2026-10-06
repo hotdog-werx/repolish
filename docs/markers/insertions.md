@@ -13,7 +13,7 @@ came from — instead of manually copying a class's fields or a CLI's options in
 a README, a function reads the code directly and writes the section. Add a
 field, run repolish, the docs follow.
 
-<!-- Align with: tests/integration/test_insertions.py, tests/insertions/; worked example validated end-to-end with a scratch project (preview does not simulate insertions) -->
+<!-- Align with: tests/integration/test_insertions.py, tests/insertions/; worked example validated end-to-end with a scratch project (preview simulates insertions with prototype entry points) -->
 
 ## The block
 
@@ -95,8 +95,9 @@ file** flow; a template can ship the same markers too (see
 === "Try it"
 
     [`repolish preview`](../reference/preview.md) simulates the marker and
-    adoption machinery with plain function bodies, but `config-options` reads
-    from the provider's context model — so this example uses a scratch project:
+    adoption machinery with prototype functions declared as entry points, but
+    `config-options` reads from the provider's context model — so this example
+    uses a scratch project:
 
     ```bash
     mkdir insertion-demo && cd insertion-demo
