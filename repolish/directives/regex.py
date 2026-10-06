@@ -17,6 +17,7 @@ from repolish.directives.definitions import (
     extract_directive_map,
 )
 from repolish.directives.phases import directive_phase_of
+from repolish.marker_kit import apply_splices
 
 logger = get_logger(__name__)
 
@@ -109,36 +110,22 @@ def _extend_trimmed_region_to_include_whitespace(
     return trimmed_end
 
 
-def _find_template_match(
-    pattern: re.Pattern[str],
+def _trimmed_region(
     content: str,
-) -> _MatchedRegion | None:
-    """Find and trim a regex match in template content.
-
-    Returns None if no match is found (caller should skip this regex).
-    Otherwise returns the trimmed region with its boundaries.
-    """
-    template_match = pattern.search(content)
-    offset = 0
-
-    if not template_match:
-        fallback = _search_indented_template_match(pattern, content)
-        if fallback is None:
-            return None
-        template_match, offset = fallback
-
+    match: re.Match[str],
+    offset: int = 0,
+) -> _MatchedRegion:
+    """Return the trimmed region for one regex match at *offset* in *content*."""
     # Determine which group index we used (1 for capture group, 0 for full match)
-    group_idx = 1 if template_match.lastindex else 0
-    cap_start, cap_end = template_match.span(group_idx)
+    group_idx = 1 if match.lastindex else 0
+    cap_start, cap_end = match.span(group_idx)
     cap_start += offset
     cap_end += offset
 
     # Extract and trim the matched content
-    matched_raw = content[cap_start:cap_end]
-    matched = _trim_block_by_indent(matched_raw)
+    matched = _trim_block_by_indent(content[cap_start:cap_end])
 
     # Compute the trimmed region boundaries
-    trimmed_start = cap_start
     trimmed_end = cap_start + len(matched)
     trimmed_end = _extend_trimmed_region_to_include_whitespace(
         content,
@@ -146,7 +133,60 @@ def _find_template_match(
         cap_end,
     )
 
-    return _MatchedRegion(content=matched, start=trimmed_start, end=trimmed_end)
+    return _MatchedRegion(content=matched, start=cap_start, end=trimmed_end)
+
+
+def _find_template_regions(
+    pattern: re.Pattern[str],
+    content: str,
+) -> list[_MatchedRegion]:
+    """Find every trimmed regex-match region in template content, in order.
+
+    A plain scan supplies the regions; when it finds nothing, each line is
+    tried as an indented full match (one region per matching line).
+    """
+    regions = [_trimmed_region(content, match) for match in pattern.finditer(content)]
+    if regions:
+        return regions
+    return _find_indented_line_regions(pattern, content)
+
+
+def _find_indented_line_regions(
+    pattern: re.Pattern[str],
+    content: str,
+) -> list[_MatchedRegion]:
+    """Match the pattern against indented single lines, one region per line."""
+    regions: list[_MatchedRegion] = []
+    offset = 0
+    for line in content.splitlines(keepends=True):
+        stripped = line.lstrip(' \t')
+        if stripped:
+            line_body = stripped.rstrip('\r\n')
+            match = pattern.fullmatch(line_body)
+            if match:
+                regions.append(_trimmed_region(content, match, offset + (len(line) - len(stripped))))
+        offset += len(line)
+    return regions
+
+
+def _local_captures(
+    pattern: re.Pattern[str],
+    local_file_content: str,
+) -> list[str]:
+    """Return the trimmed capture of every local-file match, in order."""
+    return [_trim_block_by_indent(_select_capture(match)) for match in pattern.finditer(local_file_content)]
+
+
+def _pair_occurrences(
+    regions: list[_MatchedRegion],
+    local_captures: list[str],
+) -> list[tuple[int, int, str]]:
+    """Splice every template region against its first-to-first local pair."""
+    return [
+        (region.start, region.end, local_captures[offset])
+        for offset, region in enumerate(regions)
+        if offset < len(local_captures)
+    ]
 
 
 def apply_regex_replacements(
@@ -156,7 +196,13 @@ def apply_regex_replacements(
     *,
     phase: str = 'pre-render',
 ) -> str:
-    """Applies regex replacements to the content."""
+    """Applies regex replacements to the content.
+
+    Occurrences pair first-to-first: every template match is reconciled
+    against the local file's matches in encounter order, so loop-generated
+    duplicates all reconcile. Template matches beyond the local captures
+    keep the template default; extra local matches are ignored.
+    """
     content = _strip_regex_directives_for_phase(content, phase)
     logger.debug(
         'applying_regex_replacements',
@@ -166,9 +212,9 @@ def apply_regex_replacements(
     for regex_name, regex_pattern in regexes.items():
         pattern = re.compile(rf'{regex_pattern}', re.MULTILINE)
 
-        # Check local file for a match
-        local_match = pattern.search(local_file_content)
-        if not local_match:
+        # Collect the local file's captures, in encounter order
+        local_captures = _local_captures(pattern, local_file_content)
+        if not local_captures:
             logger.debug(
                 'regex_no_match_in_target',
                 regex=regex_name,
@@ -179,43 +225,19 @@ def apply_regex_replacements(
         logger.debug(
             'regex_matched_in_target',
             regex=regex_name,
-            matched=_select_capture(local_match),
+            matched=local_captures[0],
         )
 
-        # Get the trimmed content from local file
-        local_matched_raw = _select_capture(local_match)
-        local_matched = _trim_block_by_indent(local_matched_raw)
-
-        # Find the region to replace in the template
-        region = _find_template_match(pattern, content)
-        if region is None:
+        # Find every region to replace in the template
+        regions = _find_template_regions(pattern, content)
+        if not regions:
             # nothing to replace in template
             continue
 
-        # Replace the matched region with local content
-        content = content[: region.start] + local_matched + content[region.end :]
+        # Replace the paired regions with local content
+        content = apply_splices(content, _pair_occurrences(regions, local_captures))
 
     return content
-
-
-def _search_indented_template_match(
-    pattern: re.Pattern[str],
-    content: str,
-) -> tuple[re.Match[str], int] | None:
-    """Match a pattern against an indented single line and return its offset."""
-    offset = 0
-    for line in content.splitlines(keepends=True):
-        stripped = line.lstrip(' \t')
-        if not stripped:
-            offset += len(line)
-            continue
-
-        line_body = stripped.rstrip('\r\n')
-        match = pattern.fullmatch(line_body)
-        if match:
-            return match, offset + (len(line) - len(stripped))
-        offset += len(line)
-    return None
 
 
 def _strip_regex_directives_for_phase(content: str, phase: str) -> str:

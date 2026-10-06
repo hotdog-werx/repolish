@@ -158,11 +158,47 @@ captured values — the fastest feedback loop for directive work. Full format in
 
 <!-- insertion-candidate: the debug-file examples here could be rendered from tests (or preview fixtures) once providers dogfood insertions -->
 
-## Limits
+## Repeated occurrences
 
-Regex adoption is **single-occurrence**: with loop-generated duplicates only the
-first rendered line is reconciled against your file. When you find yourself
-preserving a _region_ rather than a value, [keep blocks](keep-block.md) are the
-better tool — no pattern to write, and occurrence pairing is handled for you.
-See the [uncovered regions](index.md#what-markers-dont-cover-yet) map for the
-planned follow-ups.
+Occurrences pair **first-to-first**: every rendered match reconciles against
+your file's matches in encounter order, so loop-generated duplicates all adopt.
+A template may render more occurrences than your file has — the extras keep the
+template default — and extra matches in your file are ignored. The typical case
+is a provider that declares which libraries it needs while the file holds the
+versions already in the project:
+
+```yaml title="scratch.yaml"
+template: |
+  # Managed dependencies
+  ## repolish:regex[deps|after-render] ^[ \t]*- \w+==(.+)$
+  {% for dep in ['alpha', 'beta', 'gamma'] %}
+    - {{ dep }}==0.0.0
+  {% endfor %}
+
+target: |
+  # Managed dependencies
+    - alpha==1.2.3
+    - beta==4.5.6
+```
+
+`alpha` and `beta` keep the versions in the file; the newly added `gamma` keeps
+the template default.
+
+Pairing is positional: occurrence _n_ in the rendered template adopts capture
+_n_ from the file, so entries must correspond in order. To adopt a value by name
+instead — robust to reordering or to entries missing from the file — give each
+rendered entry its own directive with a pattern that names it:
+
+```yaml
+{% for dep in ['alpha', 'beta', 'gamma'] %}
+## repolish:regex[{{ dep }}|after-render] ^[ \t]*- {{ dep }}==(.+)$
+  - {{ dep }}==0.0.0
+{% endfor %}
+```
+
+When the provider runs in the project's environment, it can also read the
+current file itself (in `create_context`) and decide the versions up front, no
+pattern needed. When you find yourself preserving a _region_ rather than a
+value, [keep blocks](keep-block.md) are the better tool — no pattern to write.
+Multiregex sections are still single-occurrence; see the
+[uncovered regions](index.md#what-markers-dont-cover-yet) map.

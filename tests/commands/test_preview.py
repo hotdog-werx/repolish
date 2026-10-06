@@ -188,6 +188,36 @@ def test_preview_after_render_keep_block_in_jinja_loop(tmp_path: Path):
     assert 'default1' not in output
 
 
+def test_preview_after_render_regex_pairs_dependency_versions(tmp_path: Path):
+    """|after-render regex pairs loop-generated deps; new entries keep defaults."""
+    result, output = _run_scratch(
+        tmp_path,
+        """\
+        template: |
+          ## repolish:regex[deps|after-render] ^[ \\t]*- \\w+==(.+)$
+          {% for dep in deps %}
+            - {{ dep }}==0.0.0
+          {% endfor %}
+
+        target: |
+          - alpha==1.2.3
+          - beta==4.5.6
+
+        config:
+          context:
+            deps: [alpha, beta, gamma]
+        """,
+    )
+
+    assert result == 0
+    assert 'repolish:regex' not in output
+    assert 'alpha==1.2.3' in output
+    assert 'beta==4.5.6' in output
+    assert 'gamma==0.0.0' in output
+    assert 'alpha==0.0.0' not in output
+    assert 'beta==0.0.0' not in output
+
+
 def test_preview_fills_insertion_blocks(tmp_path: Path):
     """config.insertions.functions fills repolish:on blocks."""
     result, output = _run_scratch(

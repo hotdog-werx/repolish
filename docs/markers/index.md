@@ -73,11 +73,11 @@ blocks in developer-owned files.
 
 Known gaps, tracked as future work rather than documented behavior:
 
-- **Repeated regex / multiregex occurrences** — regex and multiregex apply is
-  _single-occurrence_: with loop-generated duplicates, only the first rendered
-  occurrence is reconciled against your file; the rest keep template defaults.
-  Keep directives already solve this (`end-regex` + first-to-first occurrence
-  pairing); extending the same pairing to regex/multiregex is the follow-up.
+- **Repeated multiregex occurrences** — multiregex apply is _single-occurrence_:
+  with loop-generated duplicate sections, only the first rendered block is
+  reconciled against your file. Regex directives pair repeated occurrences
+  first-to-first; extending that pairing to multiregex sections is the
+  follow-up.
 - **Multiregex directive lines in unmatched blocks** — when the block pattern
   finds nothing in your current file, its directive lines survive into the
   output instead of being stripped; this includes fresh projects with no local
