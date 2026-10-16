@@ -142,6 +142,17 @@ class TCase:
             expected_bodies=('\n',),
         ),
         TCase(
+            name='blank_lines_belong_to_the_body',
+            # Marker matches must stay on their own line: the blank lines
+            # around a hash marker belong to the body, not the marker span.
+            text='# repolish:on:empty render\n\n\n# repolish:off:empty\n',
+            expected_tags=('empty',),
+            expected_functions=('render',),
+            expected_args=((),),
+            expected_bodies=('\n\n\n',),
+            comment_styles=('hash',),
+        ),
+        TCase(
             name='unclosed_marker',
             text='<!-- repolish:on:broken build -->\ncontent\n',
             expected_diagnostics=('Unclosed insertion marker for tag',),
