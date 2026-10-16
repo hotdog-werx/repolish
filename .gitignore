@@ -17,4 +17,5 @@ tmp*
 site
 *.lock
 !uv.lock
+!uv-toolbox.lock
 

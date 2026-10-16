@@ -1,0 +1,20 @@
+[project]
+name = "internal-tools"
+version = "0.0.0"
+description = "Internal tools for the project"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.0",
+  "cyclopts>=4.25",
+]
+
+[project.scripts]
+local-cli = "local_provider.cli:main"
+
+[tool.uv.build-backend]
+module-name = "local_provider"
+module-root = "."
+
+[build-system]
+requires = ["uv_build>=0.1,<2"]
+build-backend = "uv_build"

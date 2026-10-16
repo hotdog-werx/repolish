@@ -52,3 +52,38 @@ updates.
 ```bash
 uv add repolish
 ```
+
+## Development
+
+Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
+
+<!-- repolish:on:mise dev-tasks -->
+
+**repo**
+
+| Task                       | Description                                                                               |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| `build`                    | build the package (requires VERSION env var)                                              |
+| `build-docs`               | build the static documentation site                                                       |
+| `check-complexity`         | complexity gate (fails above 10)                                                          |
+| `check-coverage`           | run the test suite with coverage (100% required)                                          |
+| `check-dprint`             | check dprint-managed formatting                                                           |
+| `check-python`             | ruff lint and format check                                                                |
+| `check-ty`                 | type check with ty (0.0.89; older pins like 0.0.14 emit false positives)                  |
+| `ci-checks`                | run all checks for CI                                                                     |
+| `clean-docs`               | clean docs build artifacts                                                                |
+| `cov-contexts`             | record per-test coverage contexts for the whole suite into .coverage                      |
+| `cov-redundant`            | report tests whose product-code coverage is duplicated elsewhere (run cov-contexts first) |
+| `cov-reporting`            | coverage of repolish.reporting from tests/reporting alone                                 |
+| `cov-summaries`            | coverage of repolish.summaries from tests/summaries alone                                 |
+| `dev-docs`                 | start the docs development server                                                         |
+| `format`                   | run all formatters                                                                        |
+| `format-dprint`            | format dprint-managed files                                                               |
+| `format-python`            | format python code                                                                        |
+| `install-devkit-providers` | install all example providers in editable mode                                            |
+| `publish`                  | publish the package to PyPI (requires VERSION, PYPI_TOKEN, IS_RELEASE env vars)           |
+| `regen-changelog`          | regenerate the changelog with releez                                                      |
+| `setup`                    | sync the uv env, install the uv-toolbox envs, refresh ty.toml                             |
+| `start-releez`             | release start with releez                                                                 |
+
+<!-- repolish:off:mise -->

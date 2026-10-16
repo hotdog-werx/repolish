@@ -1,0 +1,7 @@
+providers:
+  local:
+    provider_root: internal/templates
+
+post_process:
+  - command: dprint --config {config_dir}/dprint.json fmt --no-gitignore
+    files: ['*.md']

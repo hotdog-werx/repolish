@@ -1,7 +1,12 @@
 # Dev environment setup.
 [setup]
-description = "sync the uv environment"
-run = "uv sync --all-groups"
+description = "sync the uv env, install the uv-toolbox envs, refresh ty.toml"
+run = """
+uv sync --all-groups
+uvtb install
+# after uvtb installs, re-resolve the repolish env's site-packages for ty
+uvtb exec --env repolish -- local-cli venv
+"""
 
 [install-devkit-providers]
 description = "install all example providers in editable mode"

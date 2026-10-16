@@ -57,6 +57,7 @@ nav:
               - Commands: provider-development/fast-lanes/commands.md
               - Workflows: provider-development/fast-lanes/workflows.md
               - Runtime Semantics: provider-development/fast-lanes/semantics.md
+          - Facets: provider-development/facets.md
       - Verification:
           - Testing Providers: provider-development/testing.md
       - Advanced:

@@ -302,8 +302,12 @@ def _command_params_model(
     for field_name, field_info in args_model.model_fields.items():
         default = ... if field_info.is_required() else field_info.default
         opt_name = field_name.replace('_', '-')
+        # Typed as Any: this is runtime model surgery, and pydantic types
+        # FieldInfo.annotation as TypeForm[Any] (a non-type expression) in
+        # some resolutions, which trips ty when it evaluates Annotated[...].
+        annotation: Any = field_info.annotation
         annotated = Annotated[
-            field_info.annotation,
+            annotation,
             Parameter(name=[opt_name, f'--{opt_name}']),
         ]
         fields[field_name] = (annotated, default)

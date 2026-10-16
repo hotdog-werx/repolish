@@ -1,0 +1,21 @@
+venv_path: .uv-toolbox
+
+environments:
+  - name: tools
+    dependencies:
+      - ruff==0.17.1
+      - complexipy==8.0.1
+      - zensical==0.0.71
+      - releez==1.0.1
+
+  - name: repolish
+    dependencies:
+      - repolish
+      - internal-tools
+    sources:
+      repolish:
+        path: .
+        editable: true
+      internal-tools:
+        path: ./internal
+        editable: true
