@@ -13,8 +13,8 @@
   double-backticks or directives.
 - Python style:
   - imports at top
-  - `poe format` before running tests or other checks
-  - `poe ci-checks` for lint/typing/complexity/coverage
+  - `mise run format` before running tests or other checks
+  - `mise run ci-checks` for lint/typing/complexity/coverage
 - Comments/docstrings explain what/how, not historical rationale.
 - Parameterized tests: wrap each case in a `TCase` dataclass, use
   `ids=lambda c: c.name`; function names in snake_case.

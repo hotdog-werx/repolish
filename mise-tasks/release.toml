@@ -1,0 +1,21 @@
+# Release tasks. releez runs through uvx because the mise pipx venv ships a
+# Python 3.11 that links against libssl.so.1.1 (gone from current Fedora),
+# which crashes any releez command that imports pygithub.
+[build]
+description = "build the package (requires VERSION env var)"
+run = "scripts/release/build.sh"
+
+[publish]
+description = "publish the package to PyPI (requires VERSION, PYPI_TOKEN, IS_RELEASE env vars)"
+run = "scripts/release/publish.sh"
+
+[regen-changelog]
+description = "regenerate the changelog with releez"
+run = 'uvx --from "git+https://github.com/hotdog-werx/releez@1.0.1" releez changelog regenerate'
+
+[start-releez]
+description = "release start with releez"
+run = """
+git pull --tags -f &&
+uvx --from "git+https://github.com/hotdog-werx/releez@1.0.1" releez release start
+"""

@@ -32,9 +32,6 @@ build.packages = ["repolish"]
 metadata.allow-direct-references = true
 version.path = 'repolish/version.py'
 
-[tool]
-pyright.extends = ".pkglink/.codeguide/configs/pyrightconfig.json"
-
 [tool.releez]
 create-pr = true
 run-changelog-format = true
@@ -42,7 +39,16 @@ run-changelog-format = true
 [tool.releez.hooks]
 post-changelog = [
   ["uvx", "hatch", "version", "{version}"], # {version} = bare semver
-  ["mise", "exec", "--", "poe", "format-dprint", "{changelog}"],
+  [
+    "mise",
+    "exec",
+    "--",
+    "dprint",
+    "--config",
+    "dprint.json",
+    "fmt",
+    "{changelog}",
+  ],
 ]
 
 [build-system]
