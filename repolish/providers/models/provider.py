@@ -16,10 +16,12 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from repolish.providers.models.facet import ProviderFacet
 
 from pydantic import BaseModel
 
@@ -273,6 +275,13 @@ class Provider(ABC, Generic[ContextT, InputT]):
     root_mode: type[ModeHandler[ContextT, InputT]] | None = None
     member_mode: type[ModeHandler[ContextT, InputT]] | None = None
     standalone_mode: type[ModeHandler[ContextT, InputT]] | None = None
+
+    # Explicit, ordered facet classes this provider breaks its per-file
+    # work into (see `repolish.providers.models.facet`). The framework
+    # instantiates each facet once per phase, creates its context into
+    # `own_context.facets[name]`, routes payloads matching each facet's
+    # schema, and merges every `create_spec` result into the bundle.
+    facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = None
 
     def create_context(self) -> ContextT:
         """Return this provider's initial context object.

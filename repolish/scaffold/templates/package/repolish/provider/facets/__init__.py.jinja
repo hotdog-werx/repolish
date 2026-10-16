@@ -1,0 +1,12 @@
+"""Facet modules for the {{ class_name }} provider.
+
+A facet holds one managed file's whole contribution set: its context, its
+inputs, and its file's mappings, insertions, and validators. Declare the
+facets this provider uses with the ``facets`` class attribute, e.g.::
+
+    facets = [GitignoreFacet]
+"""
+
+from {{ package_name }}.repolish.provider.facets.gitignore import GitignoreFacet
+
+__all__ = ['GitignoreFacet']

@@ -23,6 +23,8 @@ Every provider passes through the same rough pipeline:
 7. [Testing Providers](testing.md) — verify provider behavior in isolation
 8. [Fast Lanes](fast-lanes/index.md) — per-provider CLIs for quick updates,
    scaffolding, and utility workflows
+9. [Facets](facets.md) — break a provider's per-file work into one class per
+   managed file
 
 ## Common tasks
 
@@ -53,6 +55,11 @@ See [Testing Providers](testing.md).
 
 Declare a lane in [Fast Lanes](fast-lanes/index.md) and use the provider's
 generated CLI.
+
+### I need to add another managed file to a crowded provider
+
+Put the file's context, inputs, and contributions in one small class. See
+[Facets](facets.md).
 
 ### I want provider-owned scaffolding without a separate CLI project
 

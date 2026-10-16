@@ -140,6 +140,8 @@ _MONOREPO_ONLY: frozenset[str] = frozenset(
         'package/repolish/provider/root.py.jinja',
         'package/repolish/provider/member.py.jinja',
         'package/repolish/provider/standalone.py.jinja',
+        'package/repolish/provider/facets/__init__.py.jinja',
+        'package/repolish/provider/facets/gitignore.py.jinja',
     },
 )
 _SIMPLE_ONLY: frozenset[str] = frozenset(
