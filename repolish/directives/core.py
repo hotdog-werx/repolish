@@ -62,12 +62,14 @@ class Patterns:
         return value if isinstance(value, KeepPatterns) else None
 
     @property
-    def keep_blocks(self) -> dict[str, tuple[str, str | None, str | None]]:
-        """Keep-block bounds as ``(start, end, end_regex)`` tuples."""
+    def keep_blocks(
+        self,
+    ) -> dict[str, tuple[str, str | None, str | None, str | None]]:
+        """Keep-block bounds as ``(start, start_regex, end, end_regex)`` tuples."""
         keep = self._keep
         if keep is None:
             return {}
-        return {name: (spec.start, spec.end, spec.end_regex) for name, spec in keep.blocks.items()}
+        return {name: (spec.start, spec.start_regex, spec.end, spec.end_regex) for name, spec in keep.blocks.items()}
 
     @property
     def keep_rest(self) -> dict[str, str]:

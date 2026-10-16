@@ -36,20 +36,21 @@ Two marker families exist:
 
 Payload per command:
 
-| Directive                               | Payload                                                       |
-| --------------------------------------- | ------------------------------------------------------------- |
-| `repolish:start[n]` … `repolish:end[n]` | none — the pair marks a block                                 |
-| `repolish:regex[n]`                     | `<pattern>` (rest of line)                                    |
-| `repolish:multiregex-block[n]`          | `<pattern>` (rest of line)                                    |
-| `repolish:multiregex[n]`                | `<pattern>` (rest of line)                                    |
-| `repolish:keep-block[n]`                | `start="..." end="..."` or `start="..." end-regex="..."`      |
-| `repolish:keep-rest[n]`                 | `marker="..."` (aliases: `keep-the-rest`, `keep-footer`)      |
-| `repolish:keep-header[n]`               | `marker="..."` (alias: `keep-the-header`)                     |
-| `repolish:insert[n]`                    | `start="..." end="..." [function="..."]` or `end-regex="..."` |
+| Directive                               | Payload                                                                   |
+| --------------------------------------- | ------------------------------------------------------------------------- |
+| `repolish:start[n]` … `repolish:end[n]` | none — the pair marks a block                                             |
+| `repolish:regex[n]`                     | `<pattern>` (rest of line)                                                |
+| `repolish:multiregex-block[n]`          | `<pattern>` (rest of line)                                                |
+| `repolish:multiregex[n]`                | `<pattern>` (rest of line)                                                |
+| `repolish:keep-block[n]`                | `start="..." end="..."`, with `start-regex=`/`end-regex=` for either side |
+| `repolish:keep-rest[n]`                 | `marker="..."` (aliases: `keep-the-rest`, `keep-footer`)                  |
+| `repolish:keep-header[n]`               | `marker="..."` (alias: `keep-the-header`)                                 |
+| `repolish:insert[n]`                    | `start="..." end="..." [function="..."]` or `end-regex="..."`             |
 
-For `keep-block` and `insert` the argument order is fixed: `start` first, then
-`end`/`end-regex`, then the optional `function`. `repolish:insert` is colon-only
-— it has no dash spelling, and the post-bracket colon is not accepted.
+For `keep-block` and `insert` the argument order is fixed: `start`/`start-regex`
+(keep-block only) first, then `end`/`end-regex`, then the optional `function`.
+`repolish:insert` is colon-only — it has no dash spelling, and the post-bracket
+colon is not accepted.
 
 All directive lines are stripped from the output at the phase that processes
 them; a line the grammar doesn't recognize is not a directive and passes through

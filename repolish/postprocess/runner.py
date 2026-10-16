@@ -2,9 +2,11 @@
 
 The runner records every command's result instead of dumping output and
 raising: the summary tree and the text report are the display surface. The
-config contract is unchanged — shell-free argv execution, placeholder
-substitution up front, stop-on-first-failure, and the
-``REPOLISH_NO_POST_PROCESS_CD`` escape hatch.
+config contract is shell-free argv execution, placeholder substitution up
+front, stop-on-first-failure, the ``REPOLISH_NO_POST_PROCESS_CD`` escape
+hatch, and optional ``PostProcessEntry`` scopes: a scoped command runs only
+when the run generated a matching file, and is recorded as ``skipped``
+otherwise.
 """
 
 import os
@@ -18,9 +20,11 @@ from pathlib import Path
 from hotlog import get_logger
 from hotlog.config import get_config
 
+from repolish.misc import path_matches_any
 from repolish.postprocess.models import (
     CommandOutcome,
     OutcomeStatus,
+    PostProcessEntry,
     PostProcessRun,
 )
 
@@ -60,8 +64,30 @@ def _normalize_command(raw: object) -> Sequence[str]:
                 for token in tokens
             )
         return tuple(tokens)
-    msg = 'post_process entries must be str or list/tuple of str'
+    msg = 'post_process entries must be str, list/tuple of str, or a command/files mapping'
     raise TypeError(msg)
+
+
+def _normalize_entry(
+    raw: object,
+) -> tuple[Sequence[str], tuple[str, ...] | None]:
+    """Normalize one post_process entry into its argv and file scope.
+
+    A string or list/tuple is an unscoped command (it always runs); a
+    :class:`PostProcessEntry` carries its ``files`` scope alongside the
+    argv. Raises ``TypeError`` for unsupported types.
+    """
+    if isinstance(raw, PostProcessEntry):
+        return _normalize_command(raw.command), tuple(raw.files)
+    return _normalize_command(raw), None
+
+
+def _scope_applies(
+    scope: tuple[str, ...],
+    generated_files: Sequence[str],
+) -> bool:
+    """Return whether any generated file matches the entry's scope."""
+    return any(path_matches_any(path, scope) for path in generated_files)
 
 
 def _applied_placeholders(
@@ -167,6 +193,7 @@ def run_post_process(
     commands: Iterable[object],
     cwd: Path,
     config_dir: Path,
+    generated_files: Sequence[str] | None = None,
 ) -> PostProcessRun:
     """Run post-processing commands safely and record their outcomes.
 
@@ -174,11 +201,12 @@ def run_post_process(
     - list/tuple of argv parts, e.g. ['ruff', '--fix', '.']
     - simple strings without shell metacharacters (they will be tokenized
       with shlex.split and executed without a shell)
-
-    Commands that include shell metacharacters (pipes, redirects, &&, etc.)
-    are rejected. If you need complex shell constructs, wrap them in a
-    script and reference that script as an argv list or as a single
-    executable.
+    - :class:`PostProcessEntry` mappings (``command`` plus ``files``), run
+      only when *generated_files* holds a path matching one of the scope
+      entries; otherwise the command is recorded as ``skipped`` and never
+      started. A ``generated_files`` of ``None`` means the caller has no
+      file set to offer — scoped entries then run rather than silently
+      skipping on missing information.
 
     Commands may reference three placeholders, substituted before execution:
     - ``{render_dir}`` — absolute path to the rendered tree holding the final
@@ -194,10 +222,13 @@ def run_post_process(
     via cwd); ``{render_dir}`` keeps pointing at the files either way.
 
     Args:
-        commands: Iterable of command specifications (str or Sequence[str]).
+        commands: Iterable of command specifications (str, Sequence[str],
+            or PostProcessEntry).
         cwd: Rendered tree to process ({render_dir}); made absolute here.
         config_dir: Directory containing `repolish.yaml` ({config_dir});
             made absolute here.
+        generated_files: Project-relative POSIX paths the run generated;
+            scoped entries run only when one matches their ``files``.
 
     Raises:
         ValueError: when a command contains an unknown ``{placeholder}``.
@@ -214,14 +245,14 @@ def run_post_process(
         'render_dir_rel': os.path.relpath(render_dir, config_dir),
         'config_dir': str(config_dir),
     }
-    normalised = [_normalize_command(raw) for raw in commands if raw is not None]
-    normalised = [argv for argv in normalised if argv]
+    normalised = [_normalize_entry(raw) for raw in commands if raw is not None]
+    normalised = [entry for entry in normalised if entry[0]]
     run = PostProcessRun(cwd=render_dir)
     if not normalised:
         return run
     # Resolve every command before starting any of them so an unknown
     # placeholder fails the run up front instead of mid-sequence.
-    resolved = [_resolve_placeholders(argv, values) for argv in normalised]
+    resolved = [_resolve_placeholders(argv, values) for argv, _scope in normalised]
     logger.debug(
         'post_process_start',
         command_count=len(resolved),
@@ -233,7 +264,7 @@ def run_post_process(
         'REPOLISH_CONFIG_DIR': values['config_dir'],
     }
     process_cwd = config_dir if _runs_from_config_dir() else cwd
-    for raw_argv, argv in zip(normalised, resolved, strict=True):
+    for (raw_argv, scope), argv in zip(normalised, resolved, strict=True):
         placeholders = _applied_placeholders(raw_argv, values)
         if run.failed:
             run.outcomes.append(
@@ -242,6 +273,22 @@ def run_post_process(
                     argv=argv,
                     placeholders=placeholders,
                     status='not_run',
+                ),
+            )
+            continue
+        if scope is not None and generated_files is not None and not _scope_applies(scope, generated_files):
+            logger.debug(
+                'post_process_command_skipped',
+                command=list(argv),
+                patterns=list(scope),
+            )
+            run.outcomes.append(
+                CommandOutcome(
+                    raw=tuple(raw_argv),
+                    argv=argv,
+                    placeholders=placeholders,
+                    status='skipped',
+                    scope=scope,
                 ),
             )
             continue
@@ -266,6 +313,7 @@ def run_post_process(
                 duration_ms=duration_ms,
                 output=output,
                 error=error,
+                scope=scope,
             ),
         )
     return run

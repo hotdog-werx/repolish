@@ -1,6 +1,9 @@
+import shutil
 from enum import Enum
+from importlib.util import find_spec
 from pathlib import Path
 
+from hotlog import get_logger
 from pydantic import (
     BaseModel,
     Field,
@@ -10,6 +13,43 @@ from pydantic import (
 
 from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
 from repolish.exceptions import ConfigValidationError
+from repolish.postprocess.models import PostProcessEntry
+
+logger = get_logger(__name__)
+
+
+def _shorthand_is_provider_package(name: str) -> bool:
+    """Return True when *name* resolves to an importable package.
+
+    Mirrors the module-link probe's requirement
+    (:func:`repolish.linker.module_link._package_root`): a provider module
+    must resolve to a package directory, not a plain module.
+    """
+    try:
+        spec = find_spec(name)
+    except (ModuleNotFoundError, ValueError):
+        return False
+    return spec is not None and bool(spec.submodule_search_locations)
+
+
+def _expand_provider_shorthand(alias: str, value: str) -> dict[str, str]:
+    """Expand a bare-string provider entry, module first.
+
+    The shorthand prefers ``module:``: when the string resolves to an
+    installed package it becomes a module provider. Otherwise it keeps the
+    legacy meaning (``cli:``), warning when the command exists, since v2 will
+    require the shorthand to name a valid module.
+    """
+    if _shorthand_is_provider_package(value):
+        return {'module': value}
+    if shutil.which(value) is not None:
+        logger.warning(
+            'provider_shorthand_cli_fallback',
+            alias=alias,
+            command=value,
+            hint='v2 will require the provider shorthand to be a valid module name; write module: or cli: explicitly',
+        )
+    return {'cli': value}
 
 
 class WorkspaceConfig(BaseModel):
@@ -38,13 +78,15 @@ class FastLaneConfig(BaseModel):
     per-lane settings land here.
     """
 
-    post_process: list[str] = Field(
+    post_process: list[str | PostProcessEntry] = Field(
         default_factory=list,
         description=(
             'Post-process commands for this lane, run against the render '
             'tree in apply and check mode alike. Replaces the project-wide '
             'post_process in a named lane run (a lane with no entry runs '
-            'no post_process at all).'
+            'no post_process at all). Entries may be scoped with the '
+            'command/files mapping form, matching against the generated '
+            'files of the lane run.'
         ),
     )
 
@@ -74,9 +116,13 @@ class RepolishConfigFile(BaseModel):
     convert this to RepolishConfig using resolve_config().
     """
 
-    post_process: list[str] = Field(
+    post_process: list[str | PostProcessEntry] = Field(
         default_factory=list,
-        description='List of shell commands to run after generating files (formatters)',
+        description=(
+            'Commands to run after generating files (formatters). Plain '
+            'strings always run; a command/files mapping runs only when '
+            'the run generated a file matching one of its path entries.'
+        ),
     )
     delete_files: list[str] = Field(
         default_factory=list,
@@ -139,14 +185,15 @@ class RepolishConfigFile(BaseModel):
     ) -> dict[str, object]:
         """Normalize provider configurations from shorthand string to full ProviderConfig.
 
-        Supports shorthand syntax where the value is just the CLI command:
+        Supports shorthand syntax where the value is a single string, resolved
+        module first (see :func:`_expand_provider_shorthand`):
             providers:
-              base: codeguide-link
+              base: devkit.workspace
 
         Which is equivalent to:
             providers:
               base:
-                cli: codeguide-link
+                module: devkit.workspace
 
         Args:
             value: Raw provider configurations from YAML (always a dict due to field type)
@@ -157,8 +204,7 @@ class RepolishConfigFile(BaseModel):
         normalized: dict[str, object] = {}
         for name, config in value.items():
             if isinstance(config, str):
-                # Shorthand: treat string as CLI command
-                normalized[name] = {'cli': config}
+                normalized[name] = _expand_provider_shorthand(name, config)
             else:
                 normalized[name] = config
 
@@ -194,9 +240,12 @@ class RepolishConfig(BaseModel):
     config_dir: Path = Field(
         description='Directory containing the repolish.yaml file',
     )
-    post_process: list[str] = Field(
+    post_process: list[str | PostProcessEntry] = Field(
         default_factory=list,
-        description='List of shell commands to run after generating files',
+        description=(
+            'Commands to run after generating files; plain strings always '
+            'run, command/files mappings run only on matching generations'
+        ),
     )
     delete_files: list[str] = Field(
         default_factory=list,

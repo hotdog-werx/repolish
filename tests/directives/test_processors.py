@@ -493,3 +493,86 @@ def test_replace_text_regex_fallback_skips_whitespace_only_line() -> None:
 
     # Directive line is stripped; no template match exists to replace.
     assert out == '    '
+
+
+def test_replace_text_regex_pairs_repeated_occurrences_first_to_first() -> None:
+    """Loop-generated duplicates reconcile against every local match, in order."""
+    template = dedent(
+        r"""\
+        ## repolish-regex[v]: ^version:\s*(.+)$
+        version: 0.0.0
+        version: 0.0.0
+        """,
+    )
+    local_content = 'version: 1.1.0\nversion: 2.2.0\n'
+
+    out = process_text(template, local_content)
+
+    assert 'version: 1.1.0' in out
+    assert 'version: 2.2.0' in out
+    assert '0.0.0' not in out
+
+
+def test_replace_text_after_render_regex_pairs_loop_generated_duplicates() -> None:
+    """Duplicated occurrences rendered by a Jinja loop all reconcile."""
+    template = dedent(
+        r"""\
+        ## repolish-regex[v|after-render]: ^version:\s*(.+)$
+        version: 0.0.0
+        version: 0.0.0
+        """,
+    )
+    local_content = 'version: 1.1.0\nversion: 2.2.0\n'
+
+    pre = process_text(template, local_content, phase=DirectivePhase.PRE_RENDER)
+    assert 'version: 0.0.0' in pre
+
+    post = process_text(pre, local_content, phase=DirectivePhase.AFTER_RENDER)
+    assert 'version: 1.1.0' in post
+    assert 'version: 2.2.0' in post
+    assert '0.0.0' not in post
+
+
+def test_replace_text_regex_extra_template_occurrences_keep_defaults() -> None:
+    """Template occurrences beyond the local captures keep the template default."""
+    template = dedent(
+        r"""\
+        ## repolish-regex[v]: ^version:\s*(.+)$
+        version: 0.0.0
+        version: 0.0.0
+        """,
+    )
+    local_content = 'version: 1.1.0\n'
+
+    out = process_text(template, local_content)
+
+    assert 'version: 1.1.0' in out
+    assert out.count('version: 0.0.0') == 1
+
+
+def test_replace_text_regex_extra_local_captures_are_ignored() -> None:
+    """Local matches beyond the template occurrences are not spliced anywhere."""
+    template = dedent(
+        r"""\
+        ## repolish-regex[v]: ^version:\s*(.+)$
+        version: 0.0.0
+        """,
+    )
+    local_content = 'version: 1.1.0\nversion: 2.2.0\n'
+
+    out = process_text(template, local_content)
+
+    assert 'version: 1.1.0' in out
+    assert '2.2.0' not in out
+
+
+def test_replace_text_regex_indented_fallback_pairs_each_matching_line() -> None:
+    """The indented single-line fallback pairs one region per matching line."""
+    template = '## repolish-regex[v]: ^version:\\s*(.+)$\n    version: 0.0.0\n    version: 0.0.0\n'
+    local_content = 'version: 1.1.0\nversion: 2.2.0\n'
+
+    out = process_text(template, local_content)
+
+    assert '    version: 1.1.0\n' in out
+    assert '    version: 2.2.0\n' in out
+    assert '0.0.0' not in out

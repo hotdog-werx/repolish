@@ -12,6 +12,7 @@ from repolish.insertions import (
     WriteBackResult,
     write_back,
 )
+from repolish.insertions.writer import _preserve_block_whitespace
 
 
 @dataclass
@@ -168,6 +169,15 @@ class TCase:
                 """,
             render=lambda block: 'body { color: blue; }' if block.tag == 'style' else '',
             comment_styles=('block',),
+        ),
+        TCase(
+            name='blank_line_body_replaced_without_growth',
+            # The body is only blank lines: the renderer output replaces it
+            # wholesale, and re-running on this result is a no-op.
+            text='# repolish:on:empty render\n\n\n# repolish:off:empty\n',
+            expected='# repolish:on:empty render\n\n\n\n# repolish:off:empty\n',
+            render=lambda _: '\n\n\n',
+            comment_styles=('hash',),
         ),
         TCase(
             name='renderer_exception_returns_empty_string',
@@ -621,3 +631,15 @@ def test_write_back_default_file_path_is_empty() -> None:
 
     assert captured_block is not None
     assert captured_block.file_path == ''
+
+
+def test_preserve_block_whitespace_empty_body_has_no_margins() -> None:
+    """An empty body yields empty margins rather than raising.
+
+    The parser currently always leaves at least a newline between the
+    markers of a block, but the margin helper is a pure function whose
+    contract covers the empty string — it is the crash site of the
+    blank-line-body bug, so pin it directly.
+    """
+    assert _preserve_block_whitespace('') == ('', '')
+    assert _preserve_block_whitespace('\n') == ('\n', '')

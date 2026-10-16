@@ -27,18 +27,18 @@ class CommentStyle(StrEnum):
             return r'<!--\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s>]*)(?:\s+(?P<body>[^\n\r]*))?\s*-->'
         if self is CommentStyle.HASH:
             return (
-                r'(?m)^(?:\s*#\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
-                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*)$'
+                r'(?m)^(?:[^\S\n\r]*#\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
+                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?[^\S\n\r]*)$'
             )
         if self is CommentStyle.JS:
             return (
-                r'(?m)^(?:\s*//\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
-                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*)$'
+                r'(?m)^(?:[^\S\n\r]*//\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
+                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?[^\S\n\r]*)$'
             )
         if self is CommentStyle.BLOCK:
             return (
-                r'(?m)^(?:\s*/\*\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
-                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*\*/\s*)$'
+                r'(?m)^(?:[^\S\n\r]*/\*\s*repolish:(?P<kind>on|off):?(?P<tag>[^\s]*)'
+                r'(?:[^\S\n\r]+(?P<body>[^\n\r]*))?\s*\*/[^\S\n\r]*)$'
             )
         return CommentStyle.HTML.pattern  # pragma: no cover -- should not reach this
 

@@ -81,6 +81,7 @@ class CommandState(Enum):
     OK = 'ok'
     FAILED = 'failed'
     NOT_RUN = 'not_run'
+    SKIPPED = 'skipped'
 
 
 class LintState(Enum):
@@ -205,7 +206,10 @@ class SessionGroup:
 
 @dataclass(frozen=True)
 class CommandRow:
-    """One post-process command in the post-process summary tree."""
+    """One post-process command in the post-process summary tree.
+
+    `scope` carries a skipped command's file patterns, for the row note.
+    """
 
     raw: str
     state: CommandState
@@ -213,6 +217,7 @@ class CommandRow:
     error: str | None = None
     returncode: int | None = None
     link: Path | None = None
+    scope: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -220,8 +225,8 @@ class PostProcessGroup:
     """One session's post-process commands, sharing one report file.
 
     Runs with their own report (a promoted-files pass) nest as subgroups
-    with a link of their own. `ok`/`failed`/`not_run` carry the counts the
-    group label appends; subgroups count their own rows.
+    with a link of their own. `ok`/`failed`/`not_run`/`skipped` carry the
+    counts the group label appends; subgroups count their own rows.
     """
 
     label: str
@@ -231,6 +236,7 @@ class PostProcessGroup:
     ok: int = 0
     failed: int = 0
     not_run: int = 0
+    skipped: int = 0
 
 
 STATE_ENUMS: tuple[type[Enum], ...] = (

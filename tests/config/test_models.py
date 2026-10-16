@@ -5,6 +5,7 @@ Only tests custom validation logic - Pydantic handles basic model validation.
 
 from dataclasses import dataclass
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -197,6 +198,7 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
 class ProviderShorthandCase:
     name: str
     providers_config: dict
+    expected_module: dict[str, str | None]  # provider_name -> expected module name
     expected_cli: dict[str, str | None]  # provider_name -> expected cli value
     expected_provider_root: dict[
         str,
@@ -208,32 +210,55 @@ class ProviderShorthandCase:
     'case',
     [
         ProviderShorthandCase(
-            name='shorthand_string_cli',
-            providers_config={'base': 'codeguide-link'},
-            expected_cli={'base': 'codeguide-link'},
+            name='shorthand_string_module',
+            # 'repolish' is an installed package in the test environment
+            providers_config={'base': 'repolish'},
+            expected_module={'base': 'repolish'},
+            expected_cli={'base': None},
             expected_provider_root={'base': None},
         ),
         ProviderShorthandCase(
             name='multiple_shorthand',
             providers_config={
-                'base': 'codeguide-link',
+                'base': 'repolish',
                 'py-tools': 'pytools-link',
             },
-            expected_cli={'base': 'codeguide-link', 'py-tools': 'pytools-link'},
+            expected_module={'base': 'repolish', 'py-tools': None},
+            expected_cli={'base': None, 'py-tools': 'pytools-link'},
             expected_provider_root={'base': None, 'py-tools': None},
+        ),
+        ProviderShorthandCase(
+            name='shorthand_plain_module_falls_back_to_cli',
+            # 'math' is importable but not a package, so it cannot be a
+            # module provider; the shorthand keeps the legacy cli meaning
+            providers_config={'base': 'math'},
+            expected_module={'base': None},
+            expected_cli={'base': 'math'},
+            expected_provider_root={'base': None},
+        ),
+        ProviderShorthandCase(
+            name='shorthand_missing_parent_falls_back_to_cli',
+            # find_spec raises for a dotted name whose parent is not
+            # installed; the shorthand survives as the legacy cli meaning
+            providers_config={'base': 'missing-parent-pkg.module'},
+            expected_module={'base': None},
+            expected_cli={'base': 'missing-parent-pkg.module'},
+            expected_provider_root={'base': None},
         ),
         ProviderShorthandCase(
             name='mixed_shorthand_and_expanded',
             providers_config={
-                'base': 'codeguide-link',
+                'base': 'repolish',
                 'local': {'provider_root': './templates'},
             },
-            expected_cli={'base': 'codeguide-link', 'local': None},
+            expected_module={'base': 'repolish', 'local': None},
+            expected_cli={'base': None, 'local': None},
             expected_provider_root={'base': None, 'local': './templates'},
         ),
         ProviderShorthandCase(
             name='expanded_with_cli',
             providers_config={'base': {'cli': 'codeguide-link'}},
+            expected_module={'base': None},
             expected_cli={'base': 'codeguide-link'},
             expected_provider_root={'base': None},
         ),
@@ -242,16 +267,49 @@ class ProviderShorthandCase:
 )
 def test_provider_shorthand_normalization(case: ProviderShorthandCase):
     """Test that provider shorthand syntax is normalized to full ProviderConfig."""
-    config = RepolishConfigFile(providers=case.providers_config)
+    with mock.patch('repolish.config.models.project.logger.warning') as warning_mock:
+        config = RepolishConfigFile(providers=case.providers_config)
 
     assert len(config.providers) == len(case.expected_cli)
+    warning_mock.assert_not_called()  # the cli fallback below covers the warning
 
-    for provider_name, expected_cli in case.expected_cli.items():
+    for provider_name in case.expected_cli:
         assert provider_name in config.providers
         provider = config.providers[provider_name]
         assert isinstance(provider, ProviderConfig)
-        assert provider.cli == expected_cli
+        expected_module = case.expected_module[provider_name]
+        if expected_module is None:
+            assert provider.module is None
+        else:
+            assert provider.module is not None
+            assert provider.module.name == expected_module
+        assert provider.cli == case.expected_cli[provider_name]
         assert provider.provider_root == case.expected_provider_root[provider_name]
+
+
+def test_provider_shorthand_cli_fallback_warns_when_command_exists() -> None:
+    """A shorthand that is not a module but names a real command warns.
+
+    The warning announces the v2 contract: the shorthand will require a
+    valid module name, so cli commands must be written out explicitly.
+    """
+    with (
+        mock.patch(
+            'repolish.config.models.project.shutil.which',
+            return_value='/usr/bin/codeguide-link',
+        ),
+        mock.patch('repolish.config.models.project.logger.warning') as warning_mock,
+    ):
+        config = RepolishConfigFile(providers={'base': 'codeguide-link'})
+
+    provider = config.providers['base']
+    assert isinstance(provider, ProviderConfig)
+    assert provider.module is None
+    assert provider.cli == 'codeguide-link'
+    warning_mock.assert_called_once()
+    assert warning_mock.call_args.args[0] == 'provider_shorthand_cli_fallback'
+    assert warning_mock.call_args.kwargs['alias'] == 'base'
+    assert warning_mock.call_args.kwargs['command'] == 'codeguide-link'
 
 
 def test_provider_config_context_roundtrip(tmp_path: Path):

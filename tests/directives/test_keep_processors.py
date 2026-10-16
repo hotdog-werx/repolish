@@ -138,6 +138,7 @@ def test_extract_patterns_includes_keep_directives() -> None:
 
     assert patterns.keep_blocks['readme-custom-block'] == (
         '<!-- start -->',
+        None,
         '<!-- end -->',
         None,
     )
@@ -161,7 +162,26 @@ def test_extract_patterns_supports_keep_block_end_regex() -> None:
     assert patterns.keep_blocks['paths'] == (
         '# additional-paths',
         None,
+        None,
         '^provider[0-9]+:$',
+    )
+
+
+def test_extract_patterns_supports_keep_block_start_regex() -> None:
+    template = dedent("""\
+        ## repolish:keep-block[svc] start-regex="^class \\\\w+\\\\((SomeBase|SomeOtherBase)\\\\):$" end="# -- svc-end"
+        class SomeService(SomeBase):
+            pass
+        # -- svc-end
+    """)
+
+    patterns = extract_patterns(template)
+
+    assert patterns.keep_blocks['svc'] == (
+        '',
+        r'^class \w+\((SomeBase|SomeOtherBase)\):$',
+        '# -- svc-end',
+        None,
     )
 
 
@@ -736,6 +756,39 @@ def test_apply_keep_block_with_end_regex_uses_next_item_boundary() -> None:
     )
 
 
+def test_apply_keep_block_with_start_regex_preserves_user_subclass() -> None:
+    """start-regex opens the kept region at a signature the user chose.
+
+    With a literal start marker, a project whose class line differs from the
+    template default (a renamed class, a different base to inherit from) has
+    no matching region — the only escape used to be duplicating the base class
+    outside the managed block. A regex start matches both the template default
+    and the user's variant, so the user's class line and body win on apply.
+    """
+    template = dedent("""\
+        # repolish:keep-block[svc] start-regex="^class \\\\w+\\\\((SomeBase|SomeOtherBase)\\\\):$" end="# -- svc-end"
+        class SomeService(SomeBase):
+            def handle(self, request):
+                raise NotImplementedError
+
+        # -- svc-end
+    """)
+
+    local_content = dedent("""\
+        class CachedService(SomeOtherBase):
+            def handle(self, request):
+                return self.cache.get(request)
+
+        # -- svc-end
+    """)
+
+    result = process_text(template, local_content)
+
+    assert 'class CachedService(SomeOtherBase):' in result
+    assert 'return self.cache.get(request)' in result
+    assert 'raise NotImplementedError' not in result
+
+
 def test_apply_keep_block_end_regex_with_no_room_for_end_falls_back_to_template() -> None:
     """If a start marker is the last line before next directive, no region is extracted."""
     template = dedent("""\
@@ -787,3 +840,262 @@ def test_apply_keep_block_with_malformed_bounds_keeps_template_region() -> None:
     )
 
     assert result == 'Top\n<<\nDefault\n>>\nBottom\n'
+
+
+def test_apply_keep_block_stacked_directives_each_manage_own_region() -> None:
+    """Stacked directive lines form one run governing a shared segment.
+
+    The natural layout when a template manages several regions is to place
+    the directive lines together; before stacking support, every region but
+    the last sat in a segment that ended at the next directive line and
+    shipped the template default (keep_block_template_region_not_found).
+    """
+    template = dedent("""\
+        # Registry
+
+        # repolish:keep-block[plugins] start="# -- plugins-start" end="# -- plugins-end"
+        # repolish:keep-block[envs] start="# -- envs-start" end="# -- envs-end"
+        Managed intro.
+
+        # -- plugins-start
+        PLUGINS = []
+        # -- plugins-end
+
+        # -- envs-start
+        ALLOWED_ENVIRONMENTS = ["development"]
+        # -- envs-end
+    """)
+
+    local_content = dedent("""\
+        # Registry
+
+        Managed intro.
+
+        # -- plugins-start
+        PLUGINS = ["my-plugin"]
+        # -- plugins-end
+
+        # -- envs-start
+        ALLOWED_ENVIRONMENTS = ["development", "staging"]
+        # -- envs-end
+    """)
+
+    result = process_text(template, local_content)
+
+    assert result == local_content
+
+
+def test_apply_keep_block_stacked_run_matches_regions_in_any_order() -> None:
+    """Each spec claims its regions anywhere in the shared segment.
+
+    Region order follows the file, not directive order; a spec whose markers
+    are absent from your file keeps the template default while the other
+    spec's region is still preserved.
+    """
+    template = dedent("""\
+        # repolish:keep-block[first] start="<!-- first-start -->" end="<!-- first-end -->"
+        # repolish:keep-block[second] start="<!-- second-start -->" end="<!-- second-end -->"
+        <!-- second-start -->
+        second default
+        <!-- second-end -->
+        middle
+        <!-- first-start -->
+        first default
+        <!-- first-end -->
+    """)
+
+    local_content = dedent("""\
+        <!-- second-start -->
+        second custom
+        <!-- second-end -->
+        middle
+    """)
+
+    result = apply_keep_replacements(
+        template,
+        KeepPatterns(
+            blocks={
+                'first': KeepBlockSpec(
+                    start='<!-- first-start -->',
+                    end='<!-- first-end -->',
+                ),
+                'second': KeepBlockSpec(
+                    start='<!-- second-start -->',
+                    end='<!-- second-end -->',
+                ),
+            },
+            rest={},
+            header={},
+        ),
+        local_file_content=local_content,
+    )
+
+    assert result == dedent("""\
+        <!-- second-start -->
+        second custom
+        <!-- second-end -->
+        middle
+        <!-- first-start -->
+        first default
+        <!-- first-end -->
+    """)
+
+
+def test_apply_keep_block_stacked_run_followed_by_lone_directive() -> None:
+    """A stacked run and a later interleaved directive coexist.
+
+    The run's segment ends at the lone directive, which then manages its own
+    region.
+    """
+    template = dedent("""\
+        # repolish:keep-block[a] start="<!-- a-start -->" end="<!-- a-end -->"
+        # repolish:keep-block[b] start="<!-- b-start -->" end="<!-- b-end -->"
+        <!-- a-start -->
+        a default
+        <!-- a-end -->
+        between
+        <!-- b-start -->
+        b default
+        <!-- b-end -->
+        # repolish:keep-block[c] start="<!-- c-start -->" end="<!-- c-end -->"
+        <!-- c-start -->
+        c default
+        <!-- c-end -->
+        tail
+    """)
+
+    local_content = dedent("""\
+        <!-- a-start -->
+        a custom
+        <!-- a-end -->
+        between
+        <!-- b-start -->
+        b custom
+        <!-- b-end -->
+        <!-- c-start -->
+        c custom
+        <!-- c-end -->
+        tail
+    """)
+
+    result = process_text(template, local_content)
+
+    assert result == local_content
+
+
+def test_apply_keep_block_stacked_identical_markers_emit_region_once() -> None:
+    """Two stacked directives with the same markers govern one region, not two.
+
+    The second claim's span overlaps the first's already-emitted content and
+    is skipped — redundant authoring (one directive already covers repeated
+    regions), but stacking it stays output-safe.
+    """
+    template = dedent("""\
+        # repolish:keep-block[one] start="<!-- start -->" end="<!-- end -->"
+        # repolish:keep-block[two] start="<!-- start -->" end="<!-- end -->"
+        <!-- start -->
+        default
+        <!-- end -->
+        tail
+    """)
+
+    local_content = '<!-- start -->\ncustom\n<!-- end -->\ntail\n'
+
+    result = apply_keep_replacements(
+        template,
+        KeepPatterns(
+            blocks={
+                'one': KeepBlockSpec(start='<!-- start -->', end='<!-- end -->'),
+                'two': KeepBlockSpec(start='<!-- start -->', end='<!-- end -->'),
+            },
+            rest={},
+            header={},
+        ),
+        local_file_content=local_content,
+    )
+
+    assert result == local_content
+
+
+def test_apply_keep_block_stacked_run_warns_for_spec_without_region() -> None:
+    """A stacked spec with no region in the segment warns and ships verbatim.
+
+    The sibling spec's region is still preserved.
+    """
+    template = dedent("""\
+        # repolish:keep-block[a] start="<!-- a-start -->" end="<!-- a-end -->"
+        # repolish:keep-block[b] start="<!-- b-start -->" end="<!-- b-end -->"
+        <!-- a-start -->
+        a default
+        <!-- a-end -->
+        plain content
+    """)
+
+    with mock.patch('repolish.directives.keep.logger.warning') as warning_mock:
+        result = apply_keep_replacements(
+            template,
+            KeepPatterns(
+                blocks={
+                    'a': KeepBlockSpec(start='<!-- a-start -->', end='<!-- a-end -->'),
+                    'b': KeepBlockSpec(start='<!-- b-start -->', end='<!-- b-end -->'),
+                },
+                rest={},
+                header={},
+            ),
+            local_file_content=('<!-- a-start -->\na custom\n<!-- a-end -->\nplain content\n'),
+        )
+
+    assert result == '<!-- a-start -->\na custom\n<!-- a-end -->\nplain content\n'
+    warning_mock.assert_called_once()
+    assert warning_mock.call_args.args[0] == 'keep_block_template_region_not_found'
+    assert warning_mock.call_args.kwargs['name'] == 'b'
+
+
+def test_apply_keep_block_stacked_run_stops_at_other_phase_directive() -> None:
+    """A directive of the other phase does not join the run.
+
+    It stays in the segment as content and is processed by its own pass, as
+    the pipeline does.
+    """
+    template = dedent("""\
+        # repolish:keep-block[b] start="<!-- b-start -->" end="<!-- b-end -->"
+        # repolish:keep-block[a|after-render] start="<!-- a-start -->" end="<!-- a-end -->"
+        <!-- b-start -->
+        b default
+        <!-- b-end -->
+        <!-- a-start -->
+        a default
+        <!-- a-end -->
+    """)
+
+    patterns = KeepPatterns(
+        blocks={
+            'b': KeepBlockSpec(start='<!-- b-start -->', end='<!-- b-end -->'),
+            'a': KeepBlockSpec(start='<!-- a-start -->', end='<!-- a-end -->'),
+        },
+        rest={},
+        header={},
+    )
+    local_content = dedent("""\
+        <!-- b-start -->
+        b custom
+        <!-- b-end -->
+        <!-- a-start -->
+        a custom
+        <!-- a-end -->
+    """)
+
+    pre = apply_keep_replacements(
+        template,
+        patterns,
+        local_content,
+        phase='pre-render',
+    )
+    result = apply_keep_replacements(
+        pre,
+        patterns,
+        local_content,
+        phase='after-render',
+    )
+
+    assert result == local_content

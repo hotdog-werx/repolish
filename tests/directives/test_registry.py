@@ -61,7 +61,7 @@ def test_patterns_flat_accessors_match_family_payloads() -> None:
     patterns = extract_patterns(TEMPLATE)
 
     assert patterns.keep_blocks == {
-        'notes': ('<!-- n:on -->', '<!-- n:off -->', None),
+        'notes': ('<!-- n:on -->', None, '<!-- n:off -->', None),
     }
     assert patterns.keep_rest == {'tail': '## tail'}
     assert patterns.keep_header == {}

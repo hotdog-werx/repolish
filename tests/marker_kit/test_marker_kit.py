@@ -69,10 +69,32 @@ def test_bounded_region_helpers_cover_literal_and_regex_bounds() -> None:
     assert find_first_line_index(lines, 'body', start=0) == 2
     assert find_bounded_region(lines, 0, boundary) == (1, 3)
     assert find_all_bounded_regions(lines, boundary) == [(1, 3)]
-    assert occurrence_key(boundary) == ('<!-- on -->', '<!-- off -->', '')
+    assert occurrence_key(boundary) == ('<!-- on -->', '', '<!-- off -->', '')
 
     regex_boundary = RegionBoundary(start='<!-- on -->', end_regex=r'^<!-- off')
     assert find_bounded_region(lines, 0, regex_boundary) == (1, 3)
+
+    start_regex_boundary = RegionBoundary(
+        start_regex=r'^<!-- on',
+        end='<!-- off -->',
+    )
+    assert find_bounded_region(lines, 0, start_regex_boundary) == (1, 3)
+    assert occurrence_key(start_regex_boundary) == (
+        '',
+        '^<!-- on',
+        '<!-- off -->',
+        '',
+    )
+
+
+def test_bounded_region_start_regex_without_match_returns_none() -> None:
+    """A start-regex that matches nothing finds no region, never the literal."""
+    # The blank line would match a literal '' start fallback — pin that the
+    # regex path owns the dispatch and yields no region instead.
+    lines = ['intro\n', '\n', '<!-- off -->\n']
+    boundary = RegionBoundary(start_regex=r'^<!-- never', end='<!-- off -->')
+
+    assert find_bounded_region(lines, 0, boundary) is None
 
 
 def test_prefixed_regions_skip_unbounded_zones() -> None:

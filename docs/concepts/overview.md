@@ -237,6 +237,28 @@ substitutions are logged alongside each command. An unrecognized `{placeholder}`
 fails the run listing the supported names. Commands run in order; if any exits
 non-zero, repolish stops immediately.
 
+### Scopes
+
+An entry may declare the files it applies to. A plain string always runs; a
+mapping with `command` and `files` runs only when the run generated a file
+matching one of its path entries (the same pattern language as `paused_files`:
+exact path, directory, or glob where `*` crosses separators, matched against
+project-relative destinations), and is recorded as `skipped` otherwise.
+
+```yaml
+post_process:
+  - ruff format --no-respect-gitignore {render_dir}
+  - command: dprint --config {config_dir}/dprint.json fmt
+    files: ['*.md', '*.json']
+```
+
+The scope sees everything the run staged in the render tree, not only files that
+differ from the project: apply and check must select identical commands or check
+would compare unformatted staged output against formatted project files and
+report false drift. This is also why fast lanes benefit for free: a lane's
+render tree holds only the lane's files, so a lane generating only Python files
+skips dprint and runs ruff with no per-lane configuration.
+
 ---
 
 ## Check or apply

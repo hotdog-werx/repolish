@@ -10,7 +10,7 @@ slow areas later; default display adds only that one footer line.
 
 import json
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -26,7 +26,7 @@ class PhaseTimer:
         self._durations: dict[str, float] = {}
 
     @contextmanager
-    def phase(self, name: str) -> Iterator[None]:
+    def phase(self, name: str) -> Generator[None]:
         """Time the block under *name* (repeat names accumulate)."""
         start = time.perf_counter()
         try:

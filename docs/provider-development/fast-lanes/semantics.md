@@ -42,13 +42,13 @@ lane's dests for collision detection.
 
 ## Per-lane post_process
 
-A lane may deal with one file family only, and the project's `post_process` may
-be wrong for it: a python-only lane has no business running dprint. Named lane
-runs never run the project's top-level `post_process`. Each lane runs the
-commands configured for it under `fast_lanes.config`, and a lane with no entry
-runs none at all. `all` (and a full `repolish apply`) runs the project's
-commands: content that is part of the apply abides by the global
-post-processing.
+A named lane inherits the project's top-level `post_process`: a lane's output
+should land formatted the way the next full apply would format it, or that apply
+churnes the file (and check mode flags it). A lane that needs different commands
+declares its own list under `fast_lanes.config`, replacing the project's for
+that lane — and an explicit empty list opts the lane out entirely, for when a
+lane genuinely has no business running the project's formatters. `all` (and a
+full `repolish apply`) always runs the project's commands.
 
 ```yaml
 fast_lanes:
@@ -56,7 +56,17 @@ fast_lanes:
     actions:
       post_process:
         - ruff format {render_dir}
+    python-only:
+      post_process: [] # opt out of the project's formatters
 ```
+
+Scoped entries (the `command`/`files` mapping form in the top-level
+`post_process`) usually make per-lane config unnecessary: a lane's render tree
+holds only the lane's files, so the runner keeps the formatters whose scope
+matched and skips the rest. A lane generating only `.py` files runs the
+project's Python formatter and skips dprint, no lane entry needed; the
+`post_process: []` opt-out stays for lanes that have no business running any
+formatter at all.
 
 The commands run against the lane's render tree, in apply and `--check` mode
 alike, so check still compares post-processed output.

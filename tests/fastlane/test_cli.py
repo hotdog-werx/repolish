@@ -811,13 +811,14 @@ class TestParamParity:
         assert (project / 'lane.txt').exists()
         assert not (project / 'project.txt').exists()  # project commands skipped
 
-    def test_lane_without_config_entry_runs_no_post_process(
+    def test_lane_without_config_entry_inherits_project_post_process(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # The point of per-lane config: a lane with no entry runs nothing at
-        # all, so a python-only lane never runs the project's dprint.
+        # A lane with no entry inherits the project's post_process so its
+        # output lands formatted like the next full apply would format it;
+        # only an explicit entry (even `post_process: []`) takes control.
         provider_cls = _make_provider_pkg(
             tmp_path,
             _LANE_PROVIDER,
@@ -834,7 +835,40 @@ class TestParamParity:
         result = runner.invoke(app, ['actions'])
 
         assert result.exit_code == 0, result.output
-        assert not (project / 'project.txt').exists()
+        assert (project / 'project.txt').exists()
+
+    def test_scoped_project_post_process_selects_by_lane_output(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Scoped project entries need no per-lane config: the lane's render
+        # tree holds only its own files, so the runner keeps the formatters
+        # whose scope matched and skips the rest.
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _LANE_PROVIDER,
+            templates=_TEMPLATES,
+        )
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
+        project = _stage_project(
+            provider_cls,
+            tmp_path,
+            extra_config={
+                'post_process': [
+                    {'command': 'touch yaml-ran.txt', 'files': ['*.yaml']},
+                    {'command': 'touch py-ran.txt', 'files': ['*.py']},
+                ],
+            },
+        )
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['actions'])
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'action1' / 'action.yaml').exists()
+        assert (project / 'yaml-ran.txt').exists()
+        assert not (project / 'py-ran.txt').exists()
 
     def test_all_subcommand_runs_project_post_process(
         self,

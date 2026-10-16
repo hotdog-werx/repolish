@@ -40,6 +40,9 @@ class WriteBackResult:
 def _preserve_block_whitespace(body: str) -> tuple[str, str]:
     """Return the body margins that should be preserved around replacement text."""
     lines = body.splitlines()
+    if not lines:
+        # Adjacent markers (e.g. inline html on the same line) leave no body at all.
+        return '', ''
     leading = f'{lines[0]}\n'
     last_line = lines[-1] if len(lines) > 1 else ''
     trailing = last_line[len(last_line.rstrip()) :]

@@ -45,10 +45,13 @@ REGEX_DIRECTIVE_RE = re.compile(
     re.MULTILINE,
 )
 
-# ``repolish:keep-block[name] start="..." end="..."`` (or end-regex="...")
-# Capturing groups are name, start marker, end mode, end value, in that order.
+# ``repolish:keep-block[name] start="..." end="..."`` (or start-regex=,
+# end-regex=). Capturing groups are name, start mode, start marker, end mode,
+# end value, in that order.
 KEEP_BLOCK_DIRECTIVE_RE = re.compile(
-    r'^[^\n]*repolish[-:]keep-block\[(.+?)\]:?\s*start=("(?:\\.|[^"])*")\s+(end|end-regex)=("(?:\\.|[^"])*")\s*$',
+    r'^[^\n]*repolish[-:]keep-block\[(.+?)\]:?\s*'
+    r'(start|start-regex)=("(?:\\.|[^"])*")\s+'
+    r'(end|end-regex)=("(?:\\.|[^"])*")\s*$',
     re.MULTILINE,
 )
 

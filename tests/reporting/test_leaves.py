@@ -539,3 +539,24 @@ def test_unmapped_sources_render_yellow_paths() -> None:
     assert [node.label.plain for node in nodes] == ['_repolish.orphan.toml']
     assert nodes[0].label.style == 'yellow'
     assert render_unmapped_sources([]) == []
+
+
+def test_command_row_skipped_renders_unmatched_patterns() -> None:
+    node = render_command_row(
+        CommandRow(
+            raw='dprint fmt',
+            state=CommandState.SKIPPED,
+            scope=('*.md', '*.json'),
+        ),
+    )
+    assert node.label.plain == '- dprint fmt  skipped (no generated files match: *.md, *.json)'
+
+
+def test_post_process_group_renders_skipped_count() -> None:
+    group = PostProcessGroup(
+        label='pkg',
+        commands=(CommandRow(raw='dprint fmt', state=CommandState.SKIPPED, scope=('*.md',)),),
+        skipped=1,
+    )
+    node = render_post_process_group(group)
+    assert node.label.plain == 'pkg  1 skipped'

@@ -73,19 +73,14 @@ blocks in developer-owned files.
 
 Known gaps, tracked as future work rather than documented behavior:
 
-- **Repeated regex / multiregex occurrences** — regex and multiregex apply is
-  _single-occurrence_: with loop-generated duplicates, only the first rendered
-  occurrence is reconciled against your file; the rest keep template defaults.
-  Keep directives already solve this (`end-regex` + first-to-first occurrence
-  pairing); extending the same pairing to regex/multiregex is the follow-up.
+- **Repeated multiregex occurrences** — multiregex apply is _single-occurrence_:
+  with loop-generated duplicate sections, only the first rendered block is
+  reconciled against your file. Regex directives pair repeated occurrences
+  first-to-first; extending that pairing to multiregex sections is the
+  follow-up.
 - **Multiregex directive lines in unmatched blocks** — when the block pattern
   finds nothing in your current file, its directive lines survive into the
   output instead of being stripped; this includes fresh projects with no local
   file at all. Quirk, not design (preview-verified).
-- **Stacked keep-block directives** — a keep-block directive's section ends at
-  the next keep directive line, so several adjacent directive lines leave the
-  earlier regions unmanaged. Documented as a placement rule in
-  [Keep Blocks](keep-block.md#syntax); making stacked directives just work is a
-  possible non-breaking change for a later version.
 
 <!-- Usage examples to be drawn from: tests/directives/, tests/insertions/, tests/integration/test_directives_after_render.py -->

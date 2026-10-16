@@ -162,15 +162,20 @@ providers:
 The registration protocol is identical: the same `.provider-info.json` is
 written, so everything downstream (auto-discovery, symlinks, copies) works the
 same as with `cli`. Both entries may coexist, with `module` taking precedence
-and `cli` kept as a fallback. See the
+and `cli` kept as a fallback. The config shorthand also prefers this path: a
+bare string under `providers:` is resolved module first and only falls back to
+`cli` when it does not name a package. See the
 [providers section](config-file.md#providers-subsection) for the layout
 overrides and the resolution rules.
 
-<!-- v2 note (2026-09): if module: proves out in dogfooding, the cli: config
-entry is a deprecation candidate: repolish would stop asking providers to
-ship a link CLI for registration. The resource_linker CLI utility itself
-stays, independently of repolish config, for any library that wants to link
-its own resources into a repo. -->
+<!-- v2 note (updated 2026-10): module: proved out in dogfooding, and the
+provider shorthand now resolves module first. The cli: config entry is a
+deprecation candidate for v2: repolish would stop asking providers to ship a
+link CLI for registration, and the shorthand would require a valid module
+name (configs already get a warning when the shorthand falls back to a
+command). The resource_linker CLI utility itself stays, independently of
+repolish config, for any library that wants to link its own resources into
+a repo. -->
 
 ### Updating Resources
 

@@ -17,11 +17,15 @@ root (``provider_root=`` to :func:`repolish.fastlane.provider_cli`), and the
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from repolish.commands.apply.options import LaneSessionConfig
 from repolish.config import RepolishConfig, load_config_file
 from repolish.config.models.project import FastLanesSection, RepolishConfigFile
 from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
+
+if TYPE_CHECKING:
+    from repolish.postprocess.models import PostProcessEntry
 
 
 def _package_name(provider_root: Path) -> str:
@@ -99,13 +103,16 @@ def _select_post_process(
     lane: str | None,
     *,
     cli_name: str,
-) -> list[str]:
+) -> list[str | PostProcessEntry]:
     """Return the commands the run's post-process step should execute.
 
-    ``all`` mirrors a full provider pass: the project's commands apply.
-    A named lane runs only its own ``fast_lanes.config`` commands, and a
-    lane with no entry runs none at all: a python-only lane never runs the
-    project's dprint just because the project does.
+    ``all`` mirrors a full provider pass: the project's commands apply. A
+    named lane inherits those same commands unless its ``fast_lanes.config``
+    entry declares its own ``post_process`` — an explicit empty list opts
+    the lane out — so lane output lands formatted the way the next full
+    apply would format it. Scoped entries (the command/files mapping form)
+    pass through: the runner matches them against the run's own generated
+    files, so a lane automatically runs only the applicable subset.
     """
     if raw is None:
         return []
@@ -113,7 +120,9 @@ def _select_post_process(
         return raw.post_process
     lane_key = f'{cli_name}:{lane}'
     lane_config = raw.fast_lanes.config.get(lane_key)
-    return lane_config.post_process if lane_config is not None else []
+    if lane_config is None or 'post_process' not in lane_config.model_fields_set:
+        return raw.post_process
+    return lane_config.post_process
 
 
 def prepare_lane_config(  # noqa: PLR0913 - mirrors the run_lane flag set on purpose
@@ -135,9 +144,10 @@ def prepare_lane_config(  # noqa: PLR0913 - mirrors the run_lane flag set on pur
     ``resources_dir``). Project-wide keys are honored when the config file
     exists, whether or not the provider is listed in it.
 
-    Post process selection: a named lane runs only its own
-    ``fast_lanes.config[<lane>].post_process`` commands (none when unset) —
-    the project's top-level ``post_process`` never applies to a named lane.
+    Post process selection: a named lane inherits the project's top-level
+    ``post_process`` unless its ``fast_lanes.config[<lane>]`` entry declares
+    its own ``post_process`` (an explicit empty list runs none) — so lane
+    output lands formatted the way the next full apply would format it.
     ``all`` (``lane=None``) mirrors a full provider pass and runs the
     project's commands.
 

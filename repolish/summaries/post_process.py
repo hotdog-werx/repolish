@@ -24,11 +24,12 @@ if TYPE_CHECKING:
 
 
 # Outcome status strings -> command states. Anything else fails loudly:
-# the runner produces these three values, so an unmapped one is a bug.
+# the runner produces these four values, so an unmapped one is a bug.
 _COMMAND_STATE: dict[str, CommandState] = {
     'ok': CommandState.OK,
     'failed': CommandState.FAILED,
     'not_run': CommandState.NOT_RUN,
+    'skipped': CommandState.SKIPPED,
 }
 
 
@@ -60,15 +61,17 @@ def _command_row(outcome: CommandOutcome) -> CommandRow:
         duration_ms=outcome.duration_ms,
         error=outcome.error,
         returncode=outcome.returncode,
+        scope=outcome.scope,
     )
 
 
-def _counts(outcomes: Sequence[CommandOutcome]) -> tuple[int, int, int]:
-    """Return the (ok, failed, not_run) counts for a group label suffix."""
+def _counts(outcomes: Sequence[CommandOutcome]) -> tuple[int, int, int, int]:
+    """Return the (ok, failed, not_run, skipped) counts for a group label."""
     ok = sum(1 for o in outcomes if o.status == 'ok')
     failed = sum(1 for o in outcomes if o.status == 'failed')
     not_run = sum(1 for o in outcomes if o.status == 'not_run')
-    return ok, failed, not_run
+    skipped = sum(1 for o in outcomes if o.status == 'skipped')
+    return ok, failed, not_run, skipped
 
 
 def _labeled_subgroup(
@@ -77,7 +80,7 @@ def _labeled_subgroup(
     report_path: Path,
 ) -> PostProcessGroup:
     """Build one labeled subgroup with its own report link and counts."""
-    ok, failed, not_run = _counts(run.outcomes)
+    ok, failed, not_run, skipped = _counts(run.outcomes)
     return PostProcessGroup(
         label=label,
         link=report_path,
@@ -85,6 +88,7 @@ def _labeled_subgroup(
         ok=ok,
         failed=failed,
         not_run=not_run,
+        skipped=skipped,
     )
 
 
@@ -97,7 +101,7 @@ def post_process_rows(
         if not session.post_process_runs:
             continue
         all_outcomes = [outcome for _label, run in session.post_process_runs for outcome in run.outcomes]
-        ok, failed, not_run = _counts(all_outcomes)
+        ok, failed, not_run, skipped = _counts(all_outcomes)
         session_link: Path | None = None
         commands: tuple[CommandRow, ...] = ()
         subgroups: list[PostProcessGroup] = []
@@ -120,6 +124,7 @@ def post_process_rows(
                 ok=ok,
                 failed=failed,
                 not_run=not_run,
+                skipped=skipped,
             ),
         )
     return groups

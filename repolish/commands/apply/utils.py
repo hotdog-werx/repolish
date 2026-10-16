@@ -2,7 +2,7 @@
 
 import contextlib
 import os
-from collections.abc import Iterator
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,7 +24,7 @@ class CoordinateOptions:
 
 
 @contextlib.contextmanager
-def chdir(path: Path) -> Iterator[None]:
+def chdir(path: Path) -> Generator[None]:
     """Context manager that temporarily changes the working directory."""
     old = Path.cwd()
     try:

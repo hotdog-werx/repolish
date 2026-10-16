@@ -52,6 +52,31 @@ def test_apply_insertions_file_persists_only_when_changed(
     assert not again.changed
 
 
+def test_apply_insertions_file_blank_line_body_is_stable_across_runs(
+    tmp_path: Path,
+) -> None:
+    """A block whose body is only blank lines must not crash or grow on re-runs.
+
+    The second run used to raise IndexError (empty body after the markers
+    absorbed the blank lines); the parser now keeps marker matches on their
+    own line, so re-rendering replaces the body with identical output.
+    """
+    target = tmp_path / 'empty.txt'
+    target.write_text('# repolish:on insert-empty\n# repolish:off\n', encoding='utf-8')
+    registry = {'insert-empty': lambda: '\n\n\n'}
+
+    first = apply_insertions_file(target, registry, file_path='empty.txt')
+    assert first is not None
+    assert first.changed
+    expected = '# repolish:on insert-empty\n\n\n\n# repolish:off\n'
+    assert target.read_text(encoding='utf-8') == expected
+
+    second = apply_insertions_file(target, registry, file_path='empty.txt')
+    assert second is not None
+    assert not second.changed
+    assert target.read_text(encoding='utf-8') == expected
+
+
 def test_insertions_file_node_skips_missing_and_binary(tmp_path: Path) -> None:
     assert render_insertions_file(tmp_path / 'absent.md', REGISTRY) is None
 

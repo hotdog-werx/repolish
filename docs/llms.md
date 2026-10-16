@@ -6,14 +6,14 @@ values before render and put them back.
 
 ## Commands
 
-| Command                   | Does                                              |
-| ------------------------- | ------------------------------------------------- |
-| `repolish scaffold .`     | Generate provider package (always start here)     |
-| `repolish link`           | Copy provider resources to `.repolish/<alias>/`   |
-| `repolish apply`          | Render + write files                              |
-| `repolish apply --check`  | Same pipeline, report drift, write nothing        |
-| `repolish preview f.yaml` | Debug one template's directives (pre-render only) |
-| `repolish lint`           | Check provider templates against context model    |
+| Command                   | Does                                                |
+| ------------------------- | --------------------------------------------------- |
+| `repolish scaffold .`     | Generate provider package (always start here)       |
+| `repolish link`           | Copy provider resources to `.repolish/<alias>/`     |
+| `repolish apply`          | Render + write files                                |
+| `repolish apply --check`  | Same pipeline, report drift, write nothing          |
+| `repolish preview f.yaml` | Debug one template through the full render pipeline |
+| `repolish lint`           | Check provider templates against context model      |
 
 ## New provider
 
@@ -84,15 +84,15 @@ never write it.
 All directive lines are stripped from output. Default phase: pre-render; suffix
 `|after-render` inside the tag runs on rendered file (`[name|after-render]`).
 
-| Marker                                                              | Use                                    | Rule                                                                                                                                                                                                                                         |
-| ------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `## repolish:start[n]` … `## repolish:end[n]`                       | provider fills region (anchors)        | pre-render only; names are global — namespace them (`docker-init`)                                                                                                                                                                           |
-| `## repolish:regex[n] <pattern>`                                    | adopt one value from project file      | capture group = preserved value; pattern must also match template default; single-occurrence                                                                                                                                                 |
-| `## repolish:multiregex-block[n]` + `## repolish:multiregex[n]`     | merge `key = "value"` section          | provider owns keys, project owns values; local-only keys dropped; template needs `[n]` section header                                                                                                                                        |
-| `## repolish:keep-block[n] start="..." end="..."` (or `end-regex=`) | preserve region in template-owned file | directive directly above its region; repeated blocks pair first-to-first                                                                                                                                                                     |
-| `## repolish:keep-rest[n] marker="..."`                             | preserve marker→EOF                    | aliases: keep-the-rest, keep-footer                                                                                                                                                                                                          |
-| `## repolish:keep-header[n] marker="..."`                           | preserve top→marker                    | must be template's first line                                                                                                                                                                                                                |
-| `## repolish:insert[n] start="..." end="..."`                       | provider-branded, function-filled zone | tag `n` is the fn name by default (`function="alias:fn"` overrides); opening marker carries args (prefix match); dev arg edits survive; body always refilled; unknown/failing/disabled fn → template default stays; colon-only, no dash form |
+| Marker                                                                             | Use                                    | Rule                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `## repolish:start[n]` … `## repolish:end[n]`                                      | provider fills region (anchors)        | pre-render only; names are global — namespace them (`docker-init`)                                                                                                                                                                           |
+| `## repolish:regex[n] <pattern>`                                                   | adopt values from project file         | capture group = preserved value; pattern must also match template default; repeated occurrences pair first-to-first (extras keep defaults)                                                                                                   |
+| `## repolish:multiregex-block[n]` + `## repolish:multiregex[n]`                    | merge `key = "value"` section          | provider owns keys, project owns values; local-only keys dropped; template needs `[n]` section header                                                                                                                                        |
+| `## repolish:keep-block[n] start="..." end="..."` (or `start-regex=`/`end-regex=`) | preserve region in template-owned file | directive governs its regions up to the next keep directive; consecutive directives stack (shared segment); repeated blocks pair first-to-first                                                                                              |
+| `## repolish:keep-rest[n] marker="..."`                                            | preserve marker→EOF                    | aliases: keep-the-rest, keep-footer                                                                                                                                                                                                          |
+| `## repolish:keep-header[n] marker="..."`                                          | preserve top→marker                    | must be template's first line                                                                                                                                                                                                                |
+| `## repolish:insert[n] start="..." end="..."`                                      | provider-branded, function-filled zone | tag `n` is the fn name by default (`function="alias:fn"` overrides); opening marker carries args (prefix match); dev arg edits survive; body always refilled; unknown/failing/disabled fn → template default stays; colon-only, no dash form |
 
 ## Insertions (file markers, not directives)
 
@@ -115,8 +115,10 @@ fallback for unknown/failing/disabled functions.
 ## Debug workflow
 
 `repolish preview scratch.yaml` — keys: `template`, `target` (simulated project
-file), `config.anchors`. Iterate directives there before a real apply. Add
-`--show-patterns --show-steps -vv` to see what matched.
+file), `config.anchors`, `config.context` (Jinja vars),
+`config.insertions.functions` (entry points like `.prototype:display_year`, a
+leading `.` importing from the scratch directory). Iterate directives there
+before a real apply. Add `--show-patterns --show-steps -vv` to see what matched.
 
 ## Linking
 
