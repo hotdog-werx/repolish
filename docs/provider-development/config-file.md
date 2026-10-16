@@ -107,11 +107,12 @@ Repolish cannot run without at least one provider configured.
     contribution wins; lane runs skip the dest). Without an entry here, such a
     collision stops the run naming both declaration sites.
   - **`config`** _(mapping of lane name to mapping)_ - per-lane settings, keyed
-    by lane name. The one field today is `post_process` (a list of commands),
-    which replaces the project's top-level `post_process` in that lane's named
-    CLI run; a lane with no entry runs no post_process at all. The project's own
-    `post_process` still applies to `repolish apply` and the CLI's `all`
-    subcommand.
+    by lane name. The one field today is `post_process` (a list of commands). A
+    named lane inherits the project's top-level `post_process` so its output
+    lands formatted like a full apply would format it; an entry that declares
+    `post_process` replaces the list for that lane, and an explicit empty list
+    opts the lane out. The project's own `post_process` still applies to
+    `repolish apply` and the CLI's `all` subcommand.
 
   ```yaml
   fast_lanes:

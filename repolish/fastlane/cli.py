@@ -496,7 +496,9 @@ def provider_cli(
     help_text = dedent(f"""
         Generated CLI for the "{provider_name}" provider.
 
-        Configure lane post_process entries in repolish.yaml with CLI-scoped keys:
+        Named lanes inherit the project's post_process. Configure a lane's own
+        commands in repolish.yaml with CLI-scoped keys (`post_process: []`
+        opts a lane out):
 
         ```yaml
         fast_lanes:

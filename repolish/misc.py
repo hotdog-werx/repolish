@@ -48,9 +48,9 @@ def ctx_keys(ctx_obj: object | None) -> list[str]:
     values without materializing a full dictionary.
     """
     if isinstance(ctx_obj, BaseModel):
-        return cast('list[str]', list(ctx_obj.model_dump().keys()))
+        return list(ctx_obj.model_dump().keys())
     if isinstance(ctx_obj, dict):
-        return cast('list[str]', list(ctx_obj.keys()))
+        return list(ctx_obj.keys())
     return []
 
 

@@ -397,6 +397,8 @@ class TestPostProcessSelection:
                         'demo-cli:actions': {
                             'post_process': ['touch lane.txt'],
                         },
+                        'demo-cli:docs': {},
+                        'demo-cli:fmt': {'post_process': []},
                     },
                 },
             },
@@ -421,7 +423,22 @@ class TestPostProcessSelection:
 
         assert prepared.config.post_process == ['touch lane.txt']
 
-    def test_lane_without_entry_runs_nothing(
+    def test_lane_without_entry_inherits_project_commands(
+        self,
+        provider_root: Path,
+        config_path: Path,
+    ) -> None:
+        prepared = prepare_lane_config(
+            provider_root,
+            'build',
+            cli_name=_CLI_NAME,
+            alias=None,
+            config_path=config_path,
+        )
+
+        assert prepared.config.post_process == ['touch project.txt']
+
+    def test_lane_entry_without_post_process_inherits_project_commands(
         self,
         provider_root: Path,
         config_path: Path,
@@ -429,6 +446,21 @@ class TestPostProcessSelection:
         prepared = prepare_lane_config(
             provider_root,
             'docs',
+            cli_name=_CLI_NAME,
+            alias=None,
+            config_path=config_path,
+        )
+
+        assert prepared.config.post_process == ['touch project.txt']
+
+    def test_lane_declared_empty_post_process_runs_nothing(
+        self,
+        provider_root: Path,
+        config_path: Path,
+    ) -> None:
+        prepared = prepare_lane_config(
+            provider_root,
+            'fmt',
             cli_name=_CLI_NAME,
             alias=None,
             config_path=config_path,
