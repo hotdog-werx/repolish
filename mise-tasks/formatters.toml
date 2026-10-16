@@ -1,0 +1,19 @@
+# Formatters. format-python is the ruff pair the repo actually follows:
+# autofixes, then a format pass at the configured line length (119). The
+# codeguide pipeline this replaces (an 80-column wrap, add-trailing-comma,
+# a 120-column unwrap) was never used here — its output diverges from
+# plain `ruff format` and would rewrite the whole tree.
+[format-python]
+description = "format python code"
+run = """
+uvx ruff@0.13.0 --config ./ruff.toml check --fix --fix-only . &&
+uvx ruff@0.13.0 --config ./ruff.toml format .
+"""
+
+[format-dprint]
+description = "format dprint-managed files"
+run = "dprint fmt"
+
+[format]
+description = "run all formatters"
+depends = ["format-python", "format-dprint"]

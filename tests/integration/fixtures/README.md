@@ -9,7 +9,7 @@ modified during a normal `pytest` run.
 First make sure all example providers are installed:
 
 ```bash
-poe install-devkit-providers
+mise run install-devkit-providers
 ```
 
 Then `cd` into the fixture and run `repolish apply`:

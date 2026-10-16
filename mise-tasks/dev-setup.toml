@@ -1,0 +1,8 @@
+# Dev environment setup.
+[setup]
+description = "sync the uv environment"
+run = "uv sync --all-groups"
+
+[install-devkit-providers]
+description = "install all example providers in editable mode"
+run = "uv pip install -e provider-examples/devkit/workspace -e provider-examples/devkit/python -e provider-examples/simple-provider -e provider-examples/scaffold-provider"

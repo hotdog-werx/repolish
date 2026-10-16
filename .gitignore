@@ -1,4 +1,3 @@
-.codeguide*
 .venv
 build/
 dist/
@@ -12,10 +11,8 @@ test_ignored.py
 htmlcov/
 book/
 .pytest_cache/*
-.pkglink
 tmp*
 *.tmp.*
-/.editorconfig
 .repolish
 site
 *.lock
