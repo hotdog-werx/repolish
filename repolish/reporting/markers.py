@@ -114,6 +114,7 @@ MARKERS: dict[Enum, Marker] = {
     CommandState.OK: Marker('✓ ', 'green'),
     CommandState.FAILED: Marker('✗ ', 'red'),
     CommandState.NOT_RUN: Marker('✗ ', 'yellow'),
+    CommandState.SKIPPED: Marker('- ', 'dim'),
     LintState.OK: Marker('✓ ', 'green'),
     LintState.FAILED: Marker('✗ ', 'red'),
 }

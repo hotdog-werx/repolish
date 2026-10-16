@@ -714,6 +714,7 @@ def test_post_process_promoted_files_updates_changed_outputs(
         _commands: object,
         cwd: Path,
         config_dir: Path,
+        **_kwargs: object,
     ) -> PostProcessRun:
         seen_config_dirs.append(config_dir)
         (cwd / 'out.md').write_text('after\n', encoding='utf-8')

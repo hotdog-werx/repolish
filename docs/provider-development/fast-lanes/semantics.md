@@ -60,6 +60,14 @@ fast_lanes:
       post_process: [] # opt out of the project's formatters
 ```
 
+Scoped entries (the `command`/`files` mapping form in the top-level
+`post_process`) usually make per-lane config unnecessary: a lane's render tree
+holds only the lane's files, so the runner keeps the formatters whose scope
+matched and skips the rest. A lane generating only `.py` files runs the
+project's Python formatter and skips dprint, no lane entry needed; the
+`post_process: []` opt-out stays for lanes that have no business running any
+formatter at all.
+
 The commands run against the lane's render tree, in apply and `--check` mode
 alike, so check still compares post-processed output.
 

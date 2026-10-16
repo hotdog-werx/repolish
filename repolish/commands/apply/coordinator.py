@@ -449,6 +449,10 @@ def _post_process_promoted_files(
             post_process,
             tmp_root,
             root_session.config.config_dir,
+            # Scopes match against the promoted files alone: this pass runs
+            # over just those, so a formatter with no promoted match runs
+            # against nothing if it runs at all.
+            generated_files=candidate_paths,
         )
         if not run.outcomes:
             return False

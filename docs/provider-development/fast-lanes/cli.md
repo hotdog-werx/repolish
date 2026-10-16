@@ -36,16 +36,16 @@ developer; repolish never invents one.
 
 ## What a lane run reads from the config
 
-| key                                      | honored | notes                                                               |
-| ---------------------------------------- | ------- | ------------------------------------------------------------------- |
-| `paused_files`                           | yes     | applies to lane dests and copies                                    |
-| `fast_lanes.resolutions`                 | yes     | coupled and decoupled lanes alike                                   |
-| `fast_lanes.config[<lane>].post_process` | yes     | replaces the inherited project post_process in named lane runs      |
-| own entry fields                         | yes     | symlinks, `overrides`, `resources_dir`; the located root wins       |
-| `template_overrides`                     | yes     | keeps render parity                                                 |
-| project `post_process`                   | yes     | named lanes inherit it; an entry's list replaces it (`[]` opts out) |
-| other providers                          | no      | never loaded, imported, or registered                               |
-| `delete_files`                           | no      | lanes never delete                                                  |
+| key                                      | honored | notes                                                                                                                    |
+| ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `paused_files`                           | yes     | applies to lane dests and copies                                                                                         |
+| `fast_lanes.resolutions`                 | yes     | coupled and decoupled lanes alike                                                                                        |
+| `fast_lanes.config[<lane>].post_process` | yes     | replaces the inherited project post_process in named lane runs                                                           |
+| own entry fields                         | yes     | symlinks, `overrides`, `resources_dir`; the located root wins                                                            |
+| `template_overrides`                     | yes     | keeps render parity                                                                                                      |
+| project `post_process`                   | yes     | named lanes inherit it; an entry's list replaces it (`[]` opts out); scoped entries match against the lane's own outputs |
+| other providers                          | no      | never loaded, imported, or registered                                                                                    |
+| `delete_files`                           | no      | lanes never delete                                                                                                       |
 
 ## Wiring the CLI into a provider
 

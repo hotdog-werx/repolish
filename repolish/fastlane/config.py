@@ -17,11 +17,15 @@ root (``provider_root=`` to :func:`repolish.fastlane.provider_cli`), and the
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from repolish.commands.apply.options import LaneSessionConfig
 from repolish.config import RepolishConfig, load_config_file
 from repolish.config.models.project import FastLanesSection, RepolishConfigFile
 from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
+
+if TYPE_CHECKING:
+    from repolish.postprocess.models import PostProcessEntry
 
 
 def _package_name(provider_root: Path) -> str:
@@ -99,14 +103,16 @@ def _select_post_process(
     lane: str | None,
     *,
     cli_name: str,
-) -> list[str]:
+) -> list[str | PostProcessEntry]:
     """Return the commands the run's post-process step should execute.
 
     ``all`` mirrors a full provider pass: the project's commands apply. A
     named lane inherits those same commands unless its ``fast_lanes.config``
     entry declares its own ``post_process`` — an explicit empty list opts
     the lane out — so lane output lands formatted the way the next full
-    apply would format it.
+    apply would format it. Scoped entries (the command/files mapping form)
+    pass through: the runner matches them against the run's own generated
+    files, so a lane automatically runs only the applicable subset.
     """
     if raw is None:
         return []

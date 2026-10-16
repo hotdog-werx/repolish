@@ -125,3 +125,17 @@ def test_write_post_process_report_creates_parents(tmp_path: Path):
     assert result == report_path
     assert report_path.exists()
     assert '  ok (5ms)' in report_path.read_text(encoding='utf-8')
+
+
+def test_skipped_block_lists_the_unmatched_patterns(tmp_path: Path):
+    run = _run(
+        tmp_path,
+        CommandOutcome(
+            raw=('dprint', 'fmt'),
+            argv=('dprint', 'fmt'),
+            status='skipped',
+            scope=('*.md', '*.json'),
+        ),
+    )
+    text = render_report(run)
+    assert '  skipped (no generated files match: *.md, *.json)' in text

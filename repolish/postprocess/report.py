@@ -30,6 +30,9 @@ def _outcome_lines(outcome: CommandOutcome, cwd: Path) -> list[str]:
         lines.append(f'  ok ({format_duration(outcome.duration_ms)})')
     elif outcome.status == 'not_run':
         lines.append('  not run (previous command failed)')
+    elif outcome.status == 'skipped':
+        patterns = ', '.join(outcome.scope or ())
+        lines.append(f'  skipped (no generated files match: {patterns})')
     elif outcome.error is not None:
         lines.append(f'  FAILED ({format_duration(outcome.duration_ms)})')
         lines.append(f'  {outcome.error}')

@@ -1,9 +1,39 @@
 import tomllib
+from collections.abc import Iterable
+from fnmatch import fnmatchcase
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from pydantic import BaseModel
+
+_GLOB_CHARS = frozenset('*?[')
+
+
+def path_entry_matches(path: str, entry: str) -> bool:
+    """Return whether a POSIX *path* is covered by one config path entry.
+
+    An entry may take three forms: an exact path, a directory (trailing
+    slash optional — the entry matches everything under it), or a
+    case-sensitive ``fnmatch`` glob where ``*`` also crosses directory
+    separators. Backslashes in the entry are normalized to ``/`` so a
+    config typed with Windows separators still works; *path* must already
+    be POSIX, so only the entry side needs it.
+
+    Shared by ``paused_files`` and ``post_process`` file scopes so the one
+    pattern language has one authority (see ``repolish.config.paused``).
+    """
+    normalized = entry.replace('\\', '/')
+    if path == normalized:
+        return True
+    if _GLOB_CHARS.intersection(normalized):
+        return fnmatchcase(path, normalized)
+    return path.startswith(normalized.rstrip('/') + '/')
+
+
+def path_matches_any(path: str, entries: Iterable[str]) -> bool:
+    """Return whether *path* is covered by any of the *entries*."""
+    return any(path_entry_matches(path, entry) for entry in entries)
 
 
 @lru_cache(maxsize=128)

@@ -36,15 +36,15 @@ Repolish cannot run without at least one provider configured.
   Negation is evaluated in list order. This is useful when a provider's
   `FileMode.DELETE` mapping removes a file that your project still needs.
 
-- **`post_process`** _(list of strings)_ - shell commands to run after
-  rendering, inside the `.repolish/_/render/` directory. This is where
-  formatters live — running `ruff format .` or `prettier --write .` here ensures
-  the diff and apply steps always operate on correctly formatted output.
-  Commands run in order, once per session, with the render directory as their
-  working directory. These commands apply to `repolish apply` and to a fast lane
-  CLI's `all` subcommand; a named lane run uses that lane's own
-  `fast_lanes.config` commands instead (see `fast_lanes` below). Three
-  placeholders are substituted before execution:
+- **`post_process`** _(list of strings or command/files mappings)_ - shell
+  commands to run after rendering, inside the `.repolish/_/render/` directory.
+  This is where formatters live — running `ruff format .` or
+  `prettier --write .` here ensures the diff and apply steps always operate on
+  correctly formatted output. Commands run in order, once per session, with the
+  render directory as their working directory. They apply to `repolish apply`
+  and to fast lane runs alike: a named lane inherits this list, and a lane entry
+  that declares its own `post_process` replaces it (see `fast_lanes` below).
+  Three placeholders are substituted before execution:
 
   - `{render_dir}` — absolute path to the render tree holding the final content
     before it is copied into the project (normally also the working directory)
@@ -62,6 +62,32 @@ Repolish cannot run without at least one provider configured.
     - ruff format --no-respect-gitignore {render_dir}
     - python {config_dir}/scripts/tidy.py {render_dir}
   ```
+
+  An entry may declare the files it applies to. A plain string always runs; a
+  mapping with `command` and `files` runs only when the run generated a file
+  matching one of the path entries, and is recorded as `skipped` otherwise (the
+  summary tree and the post-process report show the skip and the unmatched
+  patterns). If a run only generated `.py` files, dprint never starts while ruff
+  still runs. This is what makes fast lanes cheap: a lane's render tree holds
+  only the lane's files, so a lane generating only Python files selects the
+  applicable formatters with no per-lane config at all.
+
+  ```yaml
+  post_process:
+    - ruff format --no-respect-gitignore {render_dir}
+    - command: dprint --config {config_dir}/dprint.json fmt
+      files: ['*.md', '*.json']
+  ```
+
+  `files` uses the same pattern language as `paused_files`: an exact path, a
+  directory (everything under it), or a case-sensitive `fnmatch` glob where `*`
+  also crosses directory separators. Patterns match project-relative
+  destinations, so an exact entry like `.prettierrc` covers the extension-less
+  config files the same as a glob entry covers `pyproject.toml` and `mise.toml`
+  at once (`**/*.py` style spellings work too, since `*` already crosses
+  separators). The list is required and non-empty in the mapping form: the
+  mapping exists to declare a scope, so an absent or empty `files` is a
+  configuration error rather than a silent no-op.
 
   When a tool does not find its configuration by walking up from the working
   directory, prefer its `--config` flag (ruff, dprint, and most formatters offer
@@ -107,12 +133,14 @@ Repolish cannot run without at least one provider configured.
     contribution wins; lane runs skip the dest). Without an entry here, such a
     collision stops the run naming both declaration sites.
   - **`config`** _(mapping of lane name to mapping)_ - per-lane settings, keyed
-    by lane name. The one field today is `post_process` (a list of commands). A
-    named lane inherits the project's top-level `post_process` so its output
-    lands formatted like a full apply would format it; an entry that declares
-    `post_process` replaces the list for that lane, and an explicit empty list
-    opts the lane out. The project's own `post_process` still applies to
-    `repolish apply` and the CLI's `all` subcommand.
+    by lane name. The one field today is `post_process` (a list of commands,
+    including the scoped command/files mapping form, which matches against the
+    lane's own generated files). A named lane inherits the project's top-level
+    `post_process` so its output lands formatted like a full apply would format
+    it; an entry that declares `post_process` replaces the list for that lane,
+    and an explicit empty list opts the lane out. The project's own
+    `post_process` still applies to `repolish apply` and the CLI's `all`
+    subcommand.
 
   ```yaml
   fast_lanes:

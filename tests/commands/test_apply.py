@@ -1,3 +1,4 @@
+import sys
 import textwrap
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from repolish.commands.apply.options import (
 )
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import (
+    _run_post_process_if_needed,
     apply_session,
 )
 from repolish.commands.apply.session import (
@@ -35,7 +37,7 @@ from repolish.config.models.provider import (
     ProviderSymlink,
 )
 from repolish.linker.health import ProviderReadinessResult
-from repolish.postprocess.models import CommandOutcome, PostProcessRun
+from repolish.postprocess.models import CommandOutcome, PostProcessEntry, PostProcessRun
 from repolish.providers import SessionBundle
 from repolish.providers.models import (
     Action,
@@ -449,6 +451,59 @@ def test_apply_session_returns_1_when_post_process_fails(
         report=str(tmp_path / '.repolish' / '_' / 'post-process.txt'),
         note='see the post-process summary tree for per-command details',
     )
+
+
+def test_post_process_scopes_match_the_staged_render_tree(tmp_path: Path) -> None:
+    """Scoped commands select against the render tree's project-relative dests.
+
+    A mapped file stages as ``_repolish.<name>``; the scope must see the
+    dest (``src/app.py``) or an exact-path pattern silently matches nothing.
+    Commands whose scope matches nothing this run staged are skipped.
+    """
+    py_ran = tmp_path / 'py-ran.txt'
+    md_never = tmp_path / 'md-ran.txt'
+    touch_py = [sys.executable, '-c', f'from pathlib import Path; Path({str(py_ran)!r}).touch()']
+    touch_md = [sys.executable, '-c', f'from pathlib import Path; Path({str(md_never)!r}).touch()']
+    config = RepolishConfig(
+        config_dir=tmp_path,
+        post_process=[
+            PostProcessEntry(command=touch_py, files=['src/app.py']),
+            PostProcessEntry(command=touch_md, files=['*.md']),
+        ],
+    )
+    session = ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+        providers=SessionBundle(provider_contexts={}),
+        aliases=[],
+        alias_to_pid={},
+        pid_to_alias={},
+        resolved_symlinks={},
+    )
+
+    setup_output = tmp_path / 'out'
+    render_tree = setup_output / 'repolish'
+    write_file(render_tree / 'src' / '_repolish.app.py', 'rendered')
+
+    failed = _run_post_process_if_needed(
+        session,
+        setup_output,
+        skip_post_process=False,
+        base_dir=tmp_path,
+    )
+
+    assert not failed
+    assert py_ran.exists()
+    assert not md_never.exists()
+    (label, run), report_path = session.post_process_runs[0], session.post_process_reports[0]
+    assert (label, report_path) == (
+        'session',
+        tmp_path / '.repolish' / '_' / 'post-process.txt',
+    )
+    assert [outcome.status for outcome in run.outcomes] == ['ok', 'skipped']
 
 
 def test_finish_check_returns_2_when_diffs_found(

@@ -4,14 +4,16 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
-from repolish.config import load_config
+from repolish.config import load_config, load_config_file
 from repolish.exceptions import (
     ConfigValidationError,
     DirectoryValidationError,
     ProviderConfigError,
     ProviderOrderError,
 )
+from repolish.postprocess.models import PostProcessEntry
 from repolish.utils import open_utf8
 from tests.config.conftest import (
     ProviderSetupFixture,
@@ -467,3 +469,49 @@ def test_load_config_providers_order_optional(
 
     # Should process providers in the order they appear in the YAML (dict key order)
     assert list(config.providers.keys()) == ['base', 'python', 'extras']
+
+
+def test_load_config_scoped_post_process_entries(
+    yaml_config_file: YamlConfigFileFixture,
+    template_dir: TemplateDirFixture,
+):
+    """Scoped post_process entries parse and round-trip beside plain strings.
+
+    A mapping entry (command + files) becomes a PostProcessEntry; plain
+    strings keep their always-run meaning. The union survives resolution
+    into the runtime config unchanged.
+    """
+    dir1 = template_dir('scoped')
+    config_data = {
+        'providers': {'base': {'provider_root': str(dir1)}},
+        'post_process': [
+            'ruff format .',
+            {'command': 'dprint fmt', 'files': ['*.md', '*.json']},
+        ],
+    }
+    config_path = yaml_config_file(config_data)
+
+    config = load_config(config_path)
+
+    assert config.post_process == [
+        'ruff format .',
+        PostProcessEntry(command='dprint fmt', files=['*.md', '*.json']),
+    ]
+
+
+def test_load_config_rejects_scopeless_post_process_mapping(
+    yaml_config_file: YamlConfigFileFixture,
+):
+    """The mapping form exists to declare a scope: missing or empty files fails.
+
+    A silently scopeless mapping would be a formatter that never runs — the
+    exact failure mode the required, non-empty ``files`` field prevents.
+    """
+    config_path = yaml_config_file(
+        {
+            'providers': {'base': {'provider_root': str(Path('/nope'))}},
+            'post_process': [{'command': 'dprint fmt'}],
+        },
+    )
+    with pytest.raises(ValidationError, match='files'):
+        load_config_file(config_path)

@@ -13,6 +13,7 @@ from pydantic import (
 
 from repolish.config.models.provider import ProviderConfig, ResolvedProviderInfo
 from repolish.exceptions import ConfigValidationError
+from repolish.postprocess.models import PostProcessEntry
 
 logger = get_logger(__name__)
 
@@ -77,13 +78,15 @@ class FastLaneConfig(BaseModel):
     per-lane settings land here.
     """
 
-    post_process: list[str] = Field(
+    post_process: list[str | PostProcessEntry] = Field(
         default_factory=list,
         description=(
             'Post-process commands for this lane, run against the render '
             'tree in apply and check mode alike. Replaces the project-wide '
             'post_process in a named lane run (a lane with no entry runs '
-            'no post_process at all).'
+            'no post_process at all). Entries may be scoped with the '
+            'command/files mapping form, matching against the generated '
+            'files of the lane run.'
         ),
     )
 
@@ -113,9 +116,13 @@ class RepolishConfigFile(BaseModel):
     convert this to RepolishConfig using resolve_config().
     """
 
-    post_process: list[str] = Field(
+    post_process: list[str | PostProcessEntry] = Field(
         default_factory=list,
-        description='List of shell commands to run after generating files (formatters)',
+        description=(
+            'Commands to run after generating files (formatters). Plain '
+            'strings always run; a command/files mapping runs only when '
+            'the run generated a file matching one of its path entries.'
+        ),
     )
     delete_files: list[str] = Field(
         default_factory=list,
@@ -233,9 +240,12 @@ class RepolishConfig(BaseModel):
     config_dir: Path = Field(
         description='Directory containing the repolish.yaml file',
     )
-    post_process: list[str] = Field(
+    post_process: list[str | PostProcessEntry] = Field(
         default_factory=list,
-        description='List of shell commands to run after generating files',
+        description=(
+            'Commands to run after generating files; plain strings always '
+            'run, command/files mappings run only on matching generations'
+        ),
     )
     delete_files: list[str] = Field(
         default_factory=list,

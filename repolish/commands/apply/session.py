@@ -108,8 +108,15 @@ def _run_post_process_if_needed(
     setup_output: Path,
     *,
     skip_post_process: bool,
+    base_dir: Path,
 ) -> bool:
     """Run configured post-processing only when a real rendered tree exists.
+
+    Scoped commands (the command/files mapping form) match against the
+    project-relative dests the run staged in the render tree — everything
+    generated this session, not only files that differ from the project,
+    so apply and check select identical commands and a formatter is never
+    skipped that check mode would need to compare formatted output.
 
     Records the run and its report path on *session* (the summary tree links
     to the report). Returns whether the run failed — the caller then aborts
@@ -122,7 +129,17 @@ def _run_post_process_if_needed(
     post_cwd = setup_output / 'repolish'
     if not (post_cwd.exists() and any(post_cwd.iterdir())):
         return False
-    run = run_post_process(config.post_process, post_cwd, config.config_dir)
+    generated_files = [
+        pair.local_path.relative_to(base_dir).as_posix()
+        for pair in rendered_file_pairs(setup_output, base_dir)
+        if pair.local_path is not None
+    ]
+    run = run_post_process(
+        config.post_process,
+        post_cwd,
+        config.config_dir,
+        generated_files=generated_files,
+    )
     if not run.outcomes:
         return False
     report_path = config.config_dir / '.repolish' / '_' / 'post-process.txt'
@@ -382,6 +399,7 @@ def _apply_session(
             session,
             setup_output,
             skip_post_process=skip_post_process,
+            base_dir=base_dir,
         )
     if post_failed:
         logger.error(
