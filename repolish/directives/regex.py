@@ -164,7 +164,13 @@ def _find_indented_line_regions(
             line_body = stripped.rstrip('\r\n')
             match = pattern.fullmatch(line_body)
             if match:
-                regions.append(_trimmed_region(content, match, offset + (len(line) - len(stripped))))
+                regions.append(
+                    _trimmed_region(
+                        content,
+                        match,
+                        offset + (len(line) - len(stripped)),
+                    ),
+                )
         offset += len(line)
     return regions
 
@@ -235,7 +241,10 @@ def apply_regex_replacements(
             continue
 
         # Replace the paired regions with local content
-        content = apply_splices(content, _pair_occurrences(regions, local_captures))
+        content = apply_splices(
+            content,
+            _pair_occurrences(regions, local_captures),
+        )
 
     return content
 

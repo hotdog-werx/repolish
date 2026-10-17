@@ -114,8 +114,8 @@ def _run_single_validator(  # noqa: PLR0913 - private helper
     validator_entry: FileValidatorEntry,
     provider_contexts: dict[str, BaseContext],
     workspace_root: Path,
-    render_root: Path | None = None,
     *,
+    render_root: Path | None = None,
     prefer_render: bool = False,
 ) -> ValidatorOutcome:
     """Execute one validator and return its raw outcome (status, reason, trace)."""
@@ -184,7 +184,7 @@ def _run_validators_for_file(  # noqa: PLR0913 - private helper
             validator_entry,
             provider_contexts,
             workspace_root,
-            render_root,
+            render_root=render_root,
             prefer_render=prefer_render,
         )
         entries.append(ValidatorReportEntry.from_outcome(outcome))

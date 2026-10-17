@@ -1,4 +1,4 @@
-import datetime
+import datetime as dt
 from unittest import mock
 
 import pytest
@@ -203,7 +203,7 @@ def test_basecontext_includes_repolish_field():
     assert hasattr(bc.repolish.repo, 'name')
     # year should reflect the current calendar year; using datetime here
     # keeps the test stable regardless of when it's executed.
-    assert bc.repolish.year == datetime.datetime.now(datetime.UTC).year
+    assert bc.repolish.year == dt.datetime.now(dt.UTC).year
 
 
 def test_get_global_context_falls_back_when_git_raises() -> None:

@@ -159,8 +159,10 @@ Each file's path inside the folder is relative to the destination directory. Use
 ```python
 from repolish import BaseContext, BaseInputs, Provider, map_folder
 
+
 class Ctx(BaseContext):
     use_github: bool = True
+
 
 class MyProvider(Provider[Ctx, BaseInputs]):
     def create_file_mappings(self, context: Ctx):

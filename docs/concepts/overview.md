@@ -126,9 +126,9 @@ sources, override precedence, and when anchors are the right tool.
 
     ```python
     def create_anchors(self, context: Ctx) -> dict[str, str]:
-        extras = ",".join(["dev", *context.extra_groups])
+        extras = ','.join(['dev', *context.extra_groups])
         return {
-            "install-extras": f'pip install -e ".[{extras}]"',
+            'install-extras': f'pip install -e ".[{extras}]"',
         }
     ```
 

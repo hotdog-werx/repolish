@@ -67,7 +67,10 @@ def _venv_spec(repolish: RepolishContext) -> FastLaneSpec:
 class LocalProvider(Provider[LocalProviderContext, BaseInputs]):
     """Project-local provider: quick templates and insertion functions."""
 
-    def create_fast_lanes(self, repolish: RepolishContext) -> dict[str, FastLaneDeclaration]:
+    def create_fast_lanes(
+        self,
+        repolish: RepolishContext,
+    ) -> dict[str, FastLaneDeclaration]:
         """Declare the `docs` and `venv` lanes.
 
         No `@override`: the repo floor is 3.11 (ty assumes it from the root

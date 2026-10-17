@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeAlias, TypeVar
 
@@ -82,7 +82,7 @@ class FileValidatorOptions(BaseProviderMethodOptions):
     validators: dict[str, bool] = Field(default_factory=dict)
 
 
-class ValidationStatus(str, Enum):
+class ValidationStatus(StrEnum):
     """Status used to classify the outcome of a validator."""
 
     PASS = 'pass'  # noqa: S105 - things can have a pass sir!!. Not everything is a password
@@ -182,7 +182,7 @@ FileInsertionContribution: TypeAlias = InsertionRegistryByPath | InsertionTarget
 """Provider insertion contribution (explicit per-file map or shared-target list)."""
 
 
-class Action(str, Enum):
+class Action(StrEnum):
     """Enumeration of possible actions for a path."""
 
     delete = 'delete'

@@ -316,9 +316,11 @@ result = apply_provider(
     MyProvider,
     project,
     alias='my-provider',
-    config={'providers': {
-        'ci': {'provider_root': str(CI_TEMPLATES_ROOT)},
-    }},
+    config={
+        'providers': {
+            'ci': {'provider_root': str(CI_TEMPLATES_ROOT)},
+        }
+    },
 )
 ```
 
@@ -369,7 +371,11 @@ This captures the common flow in a single call:
 ```python
 from pathlib import Path
 
-from repolish.testing import SnapshotRunOptions, run_snapshot_case, include_paths
+from repolish.testing import (
+    SnapshotRunOptions,
+    run_snapshot_case,
+    include_paths,
+)
 from my_provider.repolish.provider import MyProvider
 from my_provider.repolish.models import MyProviderInputs
 
@@ -443,8 +449,8 @@ filtered = include_paths(
     exact={'README.md', 'config.toml'},
     prefixes=('tasks/',),
     exclude_prefixes=('tasks/sessions/',),
-    include_regex=(r'.*\.jinja$',),      # Also include any .jinja files
-    exclude_regex=(r'.*\.tmp$',),        # Exclude any .tmp files
+    include_regex=(r'.*\.jinja$',),  # Also include any .jinja files
+    exclude_regex=(r'.*\.tmp$',),  # Exclude any .tmp files
 )
 
 # Or exclude specific paths from the full output
@@ -586,8 +592,17 @@ def test_workspace_with_python_inputs() -> None:
 ### Full example: CI-checks reading from Poe
 
 ```python
-from repolish import BaseContext, FinalizeContextOptions, Provider, get_provider_context
-from repolish.testing import SnapshotRunOptions, run_snapshot_case, mock_provider_entry
+from repolish import (
+    BaseContext,
+    FinalizeContextOptions,
+    Provider,
+    get_provider_context,
+)
+from repolish.testing import (
+    SnapshotRunOptions,
+    run_snapshot_case,
+    mock_provider_entry,
+)
 
 
 class PoeCtx(BaseContext):
@@ -737,15 +752,15 @@ Each method calls the corresponding provider hook through the same dispatch path
 that `repolish apply` uses, including mode-handler routing:
 
 ```python
-bed.file_mappings()         # -> dict[str, str | TemplateMapping | None]
-bed.anchors()               # -> dict[str, str]
-bed.symlinks()              # -> list[Symlink]
-bed.promote_file_mappings() # -> dict[str, str | TemplateMapping | None]
-bed.validators()            # -> dict[str, dict[str, FileValidatorEntry]]
-bed.insertions()            # -> FileInsertionContribution
-bed.insertion_registry()    # -> InsertionRegistry
-bed.copies()                # -> list[ResourceCopy]
-bed.provide_inputs()        # -> Sequence[BaseInputs]
+bed.file_mappings()  # -> dict[str, str | TemplateMapping | None]
+bed.anchors()  # -> dict[str, str]
+bed.symlinks()  # -> list[Symlink]
+bed.promote_file_mappings()  # -> dict[str, str | TemplateMapping | None]
+bed.validators()  # -> dict[str, dict[str, FileValidatorEntry]]
+bed.insertions()  # -> FileInsertionContribution
+bed.insertion_registry()  # -> InsertionRegistry
+bed.copies()  # -> list[ResourceCopy]
+bed.provide_inputs()  # -> Sequence[BaseInputs]
 bed.finalize(received_inputs=[])  # -> context
 ```
 
@@ -822,6 +837,7 @@ a single template can fan out to multiple files with different content:
 class SessionCtx(BaseModel):
     session_name: str
 
+
 class MyProvider(Provider[Ctx, BaseInputs]):
     def create_file_mappings(self, context: Ctx):
         return {
@@ -831,6 +847,7 @@ class MyProvider(Provider[Ctx, BaseInputs]):
             )
             for s in context.session_tasks
         }
+
 
 bed = ProviderTestBed(MyProvider)
 rendered = bed.render_all()
@@ -853,11 +870,13 @@ above for the recommended pattern using `run_snapshot_case()`. For direct
 ```python
 SNAPSHOT_DIR = Path(__file__).parent / 'snapshots' / 'my_provider'
 
+
 def test_render_all_pipeline_output() -> None:
     # First run: no local_files_dir, snapshots don't exist yet
     bed = ProviderTestBed(MyProvider, preprocess=True)
     rendered = bed.render_all()
     assert_snapshots(rendered, SNAPSHOT_DIR)
+
 
 def test_render_all_pipeline_output_with_local_files() -> None:
     # Subsequent runs: feed snapshots back as local content
@@ -1005,7 +1024,11 @@ from pytest_mock import MockerFixture
 
 from my_provider.repolish.models import MyProviderContext, MyProviderInputs
 from my_provider.repolish.provider import MyProvider
-from repolish.testing import SnapshotRunOptions, run_snapshot_case, include_paths
+from repolish.testing import (
+    SnapshotRunOptions,
+    run_snapshot_case,
+    include_paths,
+)
 
 SNAPSHOT_DIR = Path(__file__).parent / 'snapshots' / 'my_provider'
 
@@ -1053,6 +1076,7 @@ def test_root_mode_filtered(mocker: MockerFixture) -> None:
 
 def test_mutate_context() -> None:
     """Use mutate_context for one-off context customizations."""
+
     def apply_overrides(ctx: MyProviderContext) -> None:
         ctx.project_name = 'overridden-project'
         ctx.feature_flag = True

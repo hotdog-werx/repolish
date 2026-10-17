@@ -62,7 +62,10 @@ def test_apply_insertions_file_blank_line_body_is_stable_across_runs(
     own line, so re-rendering replaces the body with identical output.
     """
     target = tmp_path / 'empty.txt'
-    target.write_text('# repolish:on insert-empty\n# repolish:off\n', encoding='utf-8')
+    target.write_text(
+        '# repolish:on insert-empty\n# repolish:off\n',
+        encoding='utf-8',
+    )
     registry = {'insert-empty': lambda: '\n\n\n'}
 
     first = apply_insertions_file(target, registry, file_path='empty.txt')

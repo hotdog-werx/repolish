@@ -11,7 +11,7 @@ from textwrap import dedent
 def _extract_failed_file(f: str, snapshot_dir: Path) -> str:
     """Extract the failed file path from a failure message."""
     if f.startswith('missing snapshot:'):
-        return f.split('\n')[0].replace('missing snapshot: ', '')
+        return f.split('\n', maxsplit=1)[0].replace('missing snapshot: ', '')
     for line in f.split('\n'):
         if line.startswith('--- snapshot/'):
             return str(snapshot_dir / line.replace('--- snapshot/', ''))

@@ -142,6 +142,7 @@ def _process_marker(  # noqa: PLR0913 - helper function, only used in module
     open_stack: dict[str, InsertionBlock],
     diagnostics: list[ParseDiagnostic],
     text: str,
+    *,
     file_path: str = '',
 ) -> InsertionBlock | None:
     """Process a single marker match and return a completed block if closing."""
@@ -156,8 +157,8 @@ def _process_marker(  # noqa: PLR0913 - helper function, only used in module
             style,
             match,
             open_stack,
-            diagnostics,
-            file_path,
+            diagnostics=diagnostics,
+            file_path=file_path,
         )
         return None
 
@@ -170,6 +171,7 @@ def _handle_open_marker(  # noqa: PLR0913 - helper function, refactor later
     style: CommentStyle,
     match: re.Match[str],
     open_stack: dict[str, InsertionBlock],
+    *,
     diagnostics: list[ParseDiagnostic],
     file_path: str = '',
 ) -> None:
@@ -262,7 +264,7 @@ def parse_text(
             open_stack,
             diagnostics,
             text,
-            file_path,
+            file_path=file_path,
         )
         if block is not None:
             blocks.append(block)

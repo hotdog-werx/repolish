@@ -88,6 +88,7 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
     own_model: BaseContext,
     validated_inputs: list[BaseInputs],
     all_providers_list: list[ProviderEntry],
+    *,
     idx: int,
     provider_id: str,
 ) -> BaseContext:
@@ -162,6 +163,7 @@ def _finalize_facet_contexts(  # noqa: PLR0913
     own_ctx: BaseContext,
     by_facet: dict[str, list[BaseInputs]],
     all_providers_list: list[ProviderEntry],
+    *,
     idx: int,
     global_context: GlobalContext | None,
 ) -> None:
@@ -227,6 +229,7 @@ def finalize_provider_contexts(  # noqa: PLR0913
     received_inputs: dict[str, list[BaseInputs]],
     provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
+    *,
     global_context: GlobalContext | None = None,
 ) -> None:
     """Mutate `provider_contexts` by running finalize_context on each instance."""
@@ -256,8 +259,8 @@ def finalize_provider_contexts(  # noqa: PLR0913
             own_model,
             validated_inputs,
             all_providers_list,
-            idx,
-            provider_id,
+            idx=idx,
+            provider_id=provider_id,
         )
         provider_contexts[provider_id] = new_ctx
 
@@ -268,6 +271,6 @@ def finalize_provider_contexts(  # noqa: PLR0913
                 new_ctx,
                 by_facet,
                 all_providers_list,
-                idx,
-                global_context,
+                idx=idx,
+                global_context=global_context,
             )

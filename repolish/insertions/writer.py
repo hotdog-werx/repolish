@@ -106,7 +106,7 @@ def _build_call_kwargs(
         if is_insertion_block_annotation(p.annotation):
             call_kwargs['block'] = block
 
-    return call_kwargs if call_kwargs else None
+    return call_kwargs or None
 
 
 def _get_positional_params(

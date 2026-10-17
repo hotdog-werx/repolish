@@ -22,7 +22,16 @@ def env_site_packages(env: str, root: Path) -> Path:
         msg = f'uvtb not found on PATH; cannot resolve env {env!r} for {root}'
         raise RuntimeError(msg)
     proc = subprocess.run(  # noqa: S603 - fixed argv, binary resolved via shutil.which
-        [uvtb_bin, 'exec', '--env', env, '--', 'python3', '-c', _SITE_PACKAGES_CMD],
+        [
+            uvtb_bin,
+            'exec',
+            '--env',
+            env,
+            '--',
+            'python3',
+            '-c',
+            _SITE_PACKAGES_CMD,
+        ],
         cwd=root,
         capture_output=True,
         text=True,

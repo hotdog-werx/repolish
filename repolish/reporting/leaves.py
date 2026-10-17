@@ -231,14 +231,23 @@ def render_command_row(row: CommandRow) -> SummaryNode:
         node.append('  not run (previous command failed)', style='dim yellow')
     elif row.state is CommandState.SKIPPED:
         patterns = ', '.join(row.scope or ())
-        node.append(f'  skipped (no generated files match: {patterns})', style='dim')
+        node.append(
+            f'  skipped (no generated files match: {patterns})',
+            style='dim',
+        )
     else:
         note = row.error or f'exit {row.returncode}'
         node.append(f'  FAILED {note}', style='red')
     return SummaryNode(label=node)
 
 
-def _group_suffix(label: str, ok: int, failed: int, not_run: int, skipped: int) -> Text:
+def _group_suffix(
+    label: str,
+    ok: int,
+    failed: int,
+    not_run: int,
+    skipped: int,
+) -> Text:
     """Compose a post-process group label with its outcome counts."""
     text = Text(label, style='bold')
     parts = [
@@ -263,7 +272,13 @@ def _group_suffix(label: str, ok: int, failed: int, not_run: int, skipped: int) 
 
 def render_post_process_group(group: PostProcessGroup) -> SummaryNode:
     """Draw one post-process group: counted label, report link, command rows."""
-    label = _group_suffix(group.label, group.ok, group.failed, group.not_run, group.skipped)
+    label = _group_suffix(
+        group.label,
+        group.ok,
+        group.failed,
+        group.not_run,
+        group.skipped,
+    )
     if group.link is not None:
         details_link(label, group.link)
     children = [render_command_row(row) for row in group.commands]

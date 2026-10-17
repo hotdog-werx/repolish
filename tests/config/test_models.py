@@ -198,7 +198,10 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
 class ProviderShorthandCase:
     name: str
     providers_config: dict
-    expected_module: dict[str, str | None]  # provider_name -> expected module name
+    expected_module: dict[
+        str,
+        str | None,
+    ]  # provider_name -> expected module name
     expected_cli: dict[str, str | None]  # provider_name -> expected cli value
     expected_provider_root: dict[
         str,
@@ -267,7 +270,9 @@ class ProviderShorthandCase:
 )
 def test_provider_shorthand_normalization(case: ProviderShorthandCase):
     """Test that provider shorthand syntax is normalized to full ProviderConfig."""
-    with mock.patch('repolish.config.models.project.logger.warning') as warning_mock:
+    with mock.patch(
+        'repolish.config.models.project.logger.warning',
+    ) as warning_mock:
         config = RepolishConfigFile(providers=case.providers_config)
 
     assert len(config.providers) == len(case.expected_cli)
@@ -298,7 +303,9 @@ def test_provider_shorthand_cli_fallback_warns_when_command_exists() -> None:
             'repolish.config.models.project.shutil.which',
             return_value='/usr/bin/codeguide-link',
         ),
-        mock.patch('repolish.config.models.project.logger.warning') as warning_mock,
+        mock.patch(
+            'repolish.config.models.project.logger.warning',
+        ) as warning_mock,
     ):
         config = RepolishConfigFile(providers={'base': 'codeguide-link'})
 

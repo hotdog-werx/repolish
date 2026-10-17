@@ -19,7 +19,7 @@ the :class:`ModeSet` protocol).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from repolish.providers import SessionBundle
 
 
-class FileMode(str, Enum):
+class FileMode(StrEnum):
     """Per-file behavior for a `TemplateMapping`.
 
     - REGULAR: render and materialize as normal (default)

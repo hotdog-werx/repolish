@@ -16,7 +16,7 @@ re-exported here for convenience.
 
 from __future__ import annotations
 
-import datetime
+import datetime as dt
 from dataclasses import dataclass
 
 from pydantic import (
@@ -106,9 +106,11 @@ class GlobalContext(BaseModel):
     # instantiated so repeated loader runs within the same year remain
     # consistent yet automatically advance at New Year's.
     year: int = Field(
-        default_factory=lambda: datetime.datetime.now(
-            datetime.UTC,
-        ).year,
+        default_factory=lambda: (
+            dt.datetime.now(
+                dt.UTC,
+            ).year
+        ),
     )
     workspace: WorkspaceContext = Field(default_factory=WorkspaceContext)
 
@@ -152,7 +154,7 @@ def get_global_context() -> GlobalContext:
         owner = name = 'Unknown'
     return GlobalContext(
         repo=GithubRepo(owner=owner, name=name),
-        year=datetime.datetime.now(datetime.UTC).year,
+        year=dt.datetime.now(dt.UTC).year,
     )
 
 

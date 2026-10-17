@@ -261,7 +261,10 @@ def test_duplicate_facet_names_raise() -> None:
         pass
 
     class DupProvider(FacetsProvider):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [DupA, DupB]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            DupA,
+            DupB,
+        ]
 
     contexts: dict[str, BaseContext] = {'dup': OwnCtx()}
     with pytest.raises(ValueError, match='duplicate facet name'):
@@ -285,7 +288,10 @@ def test_facet_create_context_failure_skips_facet(tmp_path: Path) -> None:
             return FacetSpec()
 
     class Partial(FacetsProvider):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [Broken, AlphaFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            Broken,
+            AlphaFacet,
+        ]
 
     inst = Partial()
     inst.alias = 'partial'
@@ -373,7 +379,9 @@ def test_facet_emitted_inputs_skip_missing_context() -> None:
             return [AlphaInputs(text='from-facet')]
 
     class Sender(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [EmittingFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            EmittingFacet,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()
@@ -400,7 +408,9 @@ def test_emitted_inputs_include_facet_payloads() -> None:
             return [AlphaInputs(text='from-facet')]
 
     class Sender(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [EmittingFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            EmittingFacet,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()
@@ -480,8 +490,8 @@ def test_finalize_facet_contexts_writes_subset_back() -> None:
         own,
         by_facet,
         [],
-        0,
-        None,
+        idx=0,
+        global_context=None,
     )
     assert own.facets['alpha'].text == 'delivered'
     assert own.facets['beta'].title == 'plain'
@@ -509,8 +519,8 @@ def test_broken_facet_finalize_keeps_context() -> None:
         own,
         {'broken': [AlphaInputs()]},
         [],
-        0,
-        None,
+        idx=0,
+        global_context=None,
     )
     assert own.facets['broken'].text == 'pre-finalize'
 
@@ -526,8 +536,8 @@ def test_finalize_skips_facets_without_contexts() -> None:
         own,
         {},
         [],
-        0,
-        None,
+        idx=0,
+        global_context=None,
     )
     assert 'beta' not in own.facets
 
@@ -549,8 +559,8 @@ def test_finalize_accepts_non_model_facet_context() -> None:
         own,
         {},
         [],
-        0,
-        None,
+        idx=0,
+        global_context=None,
     )
     # The default finalize returns the mapping unchanged; non-BaseContext
     # results are not written back, so the value survives as-is.
@@ -568,13 +578,17 @@ def test_facet_emitted_inputs_route_to_peer_entries() -> None:
             return [AlphaInputs(text='from-facet')]
 
     class Sender(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [EmittingFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            EmittingFacet,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()
 
     class Receiver(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [AlphaFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            AlphaFacet,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()
@@ -661,7 +675,9 @@ def test_facet_insertions_and_validators_collect() -> None:
             )
 
     class RichProvider(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [RichFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            RichFacet,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()
@@ -700,7 +716,10 @@ def test_broken_create_spec_is_skipped_with_warning() -> None:
             raise RuntimeError(msg)
 
     class WithBroken(FacetsProvider):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [BrokenSpec, BetaFacet]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            BrokenSpec,
+            BetaFacet,
+        ]
 
     inst = WithBroken()
     inst.alias = 'broken-spec'
@@ -728,7 +747,9 @@ def test_facet_vs_regular_collision_raises() -> None:
             return FacetSpec(file_mappings={'README.md': 'README.md.jinja'})
 
     class CollidingProvider(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [Colliding]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            Colliding,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()
@@ -762,7 +783,10 @@ def test_facet_vs_facet_collision_raises() -> None:
             return FacetSpec(file_mappings={'shared.txt': 'right.txt.jinja'})
 
     class Overlapping(Provider[OwnCtx, OwnInputs]):
-        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [Left, Right]
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            Left,
+            Right,
+        ]
 
         def create_context(self) -> OwnCtx:
             return OwnCtx()

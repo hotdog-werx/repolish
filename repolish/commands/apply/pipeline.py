@@ -60,7 +60,9 @@ def _load_session_config(
                 alias: raw_config.providers[alias] for alias in aliases if alias in raw_config.providers
             }
         else:
-            aliases = raw_config.providers_order if raw_config.providers_order else list(raw_config.providers.keys())
+            aliases = raw_config.providers_order or list(
+                raw_config.providers.keys(),
+            )
             filtered_raw_providers = raw_config.providers
     with timer.phase('providers_ready'):
         readiness = ensure_providers_ready(

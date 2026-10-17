@@ -41,66 +41,66 @@ executor function.
 from pydantic import BaseModel
 
 from repolish import (
-  BaseContext,
-  BaseInputs,
-  FastLaneSpec,
-  Provider,
-  ProviderCommandContext,
-  ProviderCommandContract,
-  TemplateMapping,
+    BaseContext,
+    BaseInputs,
+    FastLaneSpec,
+    Provider,
+    ProviderCommandContext,
+    ProviderCommandContract,
+    TemplateMapping,
 )
 
 
 class ReactComponentArgs(BaseModel):
-  name: str
-  style: str = 'css-module'
+    name: str
+    style: str = 'css-module'
 
 
 def build_component(
-  args: ReactComponentArgs,
-  ctx: ProviderCommandContext,
+    args: ReactComponentArgs,
+    ctx: ProviderCommandContext,
 ) -> FastLaneSpec:
-  pascal = ''.join(part.capitalize() for part in args.name.split('-'))
-  base = f'src/components/{pascal}'
+    pascal = ''.join(part.capitalize() for part in args.name.split('-'))
+    base = f'src/components/{pascal}'
 
-  # Optional provider-side debug output is allowed.
-  print(f'Generating React component: {pascal}')
+    # Optional provider-side debug output is allowed.
+    print(f'Generating React component: {pascal}')
 
-  return FastLaneSpec(
-    file_mappings={
-      f'{base}/{pascal}.tsx': TemplateMapping(
-        '_repolish.react-component.tsx.jinja',
-        extra_context={
-          'component_name': pascal,
-          'style_mode': args.style,
-          'provider_alias': ctx.repolish.provider.alias,
+    return FastLaneSpec(
+        file_mappings={
+            f'{base}/{pascal}.tsx': TemplateMapping(
+                '_repolish.react-component.tsx.jinja',
+                extra_context={
+                    'component_name': pascal,
+                    'style_mode': args.style,
+                    'provider_alias': ctx.repolish.provider.alias,
+                },
+            ),
+            f'{base}/{pascal}.test.tsx': TemplateMapping(
+                '_repolish.react-component.test.tsx.jinja',
+                extra_context={'component_name': pascal},
+            ),
+            f'{base}/{pascal}.module.css': TemplateMapping(
+                '_repolish.react-component.module.css.jinja',
+                extra_context={'component_name': pascal},
+            ),
         },
-      ),
-      f'{base}/{pascal}.test.tsx': TemplateMapping(
-        '_repolish.react-component.test.tsx.jinja',
-        extra_context={'component_name': pascal},
-      ),
-      f'{base}/{pascal}.module.css': TemplateMapping(
-        '_repolish.react-component.module.css.jinja',
-        extra_context={'component_name': pascal},
-      ),
-    },
-  )
+    )
 
 
 class ReactProvider(Provider[BaseContext, BaseInputs]):
-  def create_context(self):
-    return BaseContext()
+    def create_context(self):
+        return BaseContext()
 
-  @classmethod
-  def create_provider_commands(cls):
-    return {
-      'component': ProviderCommandContract(
-        args_model=ReactComponentArgs,
-        executor=build_component,
-        summary='Generate a React component module',
-      ),
-    }
+    @classmethod
+    def create_provider_commands(cls):
+        return {
+            'component': ProviderCommandContract(
+                args_model=ReactComponentArgs,
+                executor=build_component,
+                summary='Generate a React component module',
+            ),
+        }
 ```
 
 With standard CLI wiring (`main = provider_cli(ReactProvider)`), usage looks

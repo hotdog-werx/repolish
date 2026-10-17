@@ -72,8 +72,7 @@ file** flow; a template can ship the same markers too (see
                 if brief == 'yes':
                     return '\n'.join(f'- `{name}`' for name in Options.model_fields)
                 return '\n'.join(
-                    f'- `{name}` — {f.description} (default: `{f.default}`)'
-                    for name, f in Options.model_fields.items()
+                    f'- `{name}` — {f.description} (default: `{f.default}`)' for name, f in Options.model_fields.items()
                 )
 
             return {'README.md': {'config-options': config_options}}

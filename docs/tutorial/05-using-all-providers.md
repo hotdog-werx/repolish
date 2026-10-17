@@ -77,10 +77,10 @@ Go back to the devkit monorepo and fill in the stub:
 class PythonStandaloneHandler(ModeHandler[PythonProviderContext, PythonProviderInputs]):
     @override
     def provide_inputs(self, opt):
-        tasks = '''\
+        tasks = """\
 check-ruff.help = "run ruff linter and formatter check"
 check-ruff.cmd = "uvx ruff check ."
-'''
+"""
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 ```
 

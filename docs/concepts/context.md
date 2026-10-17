@@ -29,9 +29,9 @@ so later providers can react to earlier ones.
 The `repolish` key is always present and is populated before any provider runs:
 
 ```python
-ctx.repolish.repo.owner   # GitHub org / username inferred from git remote
-ctx.repolish.repo.name    # repository name
-ctx.repolish.year         # current calendar year (useful for license headers)
+ctx.repolish.repo.owner  # GitHub org / username inferred from git remote
+ctx.repolish.repo.name  # repository name
+ctx.repolish.year  # current calendar year (useful for license headers)
 ```
 
 In templates:

@@ -31,12 +31,12 @@ jobs:
 
       - name: check-dprint
         run: mise run check-dprint
-      - name: check-python
-        run: mise run check-python
-      - name: check-ty
-        run: mise run check-ty
-      - name: check-complexity
-        run: mise run check-complexity
+      - name: python-check-ruff
+        run: mise run python:check:ruff
+      - name: python-check-types
+        run: mise run python:check:types
+      - name: python-check-complexity
+        run: mise run python:check:complexity
       - name: workspace-repolish-check
         run: mise run workspace:repolish:check
       - name: check-coverage

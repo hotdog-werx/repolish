@@ -205,7 +205,7 @@ PLUGINS = []
 # repolish:keep-block[envs] start="# -- envs-start" end="# -- envs-end"
 
 # -- envs-start
-ALLOWED_ENVIRONMENTS = ["development"]
+ALLOWED_ENVIRONMENTS = ['development']
 # -- envs-end
 ```
 
@@ -257,6 +257,7 @@ class SomeService(SomeBase):
     def handle(self, request):
         raise NotImplementedError
 
+
 # -- service-end
 ```
 
@@ -270,6 +271,7 @@ region opens at the class line _you_ wrote, whatever name or base it carries:
 class CachedService(SomeOtherBase):
     def handle(self, request):
         return self.cache.get(request)
+
 
 # -- service-end
 ```

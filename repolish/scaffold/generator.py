@@ -95,11 +95,11 @@ def _derive_context(
     if mode == 'namespace' and ns_root is not None:
         repo_name = f'{ns_root}-{sub}'.replace('_', '-')
         pkg_dir: Path = Path(ns_root) / sub
-        raw_prefix = prefix if prefix else sub.split('_')[-1]
+        raw_prefix = prefix or sub.split('_')[-1]
     else:
         repo_name = pkg.replace('_', '-')
         pkg_dir = Path(pkg)
-        raw_prefix = prefix if prefix else pkg.split('_')[-1]
+        raw_prefix = prefix or pkg.split('_')[-1]
 
     short_prefix = raw_prefix.capitalize()
     return ScaffoldContext(

@@ -5,10 +5,14 @@
 # plain `ruff format` and would rewrite the whole tree.
 [format-python]
 description = "format python code"
-run = """
-uvx ruff@0.13.0 --config ./ruff.toml check --fix --fix-only . &&
-uvx ruff@0.13.0 --config ./ruff.toml format .
-"""
+usage = '''
+arg "[format_target]" var=#true default="." help="Files to format"
+'''
+run = [
+  "$DK_UVTB_TOOLS_EXEC ruff format --config ./ruff.toml --line-length=80 ${usage_format_target}",
+  "$DK_UVTB_TOOLS_EXEC ruff check --config ./ruff.toml --extend-select COM812 --fix --fix-only ${usage_format_target}",
+  "$DK_UVTB_TOOLS_EXEC ruff format --config ./ruff.toml ${usage_format_target}",
+]
 
 [format-dprint]
 description = "format dprint-managed files"

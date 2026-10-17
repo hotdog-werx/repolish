@@ -40,6 +40,7 @@ def _dir_copy_ignore(  # noqa: PLR0913 - filter inputs plus the collector for pa
     target_path: Path,
     paused_files: frozenset[str],
     disabled_copies: frozenset[str],
+    *,
     paused_dests: list[str],
 ) -> Callable[[str, list[str]], list[str]]:
     """Build a copytree ``ignore`` callable that skips paused/owned files.
@@ -111,7 +112,7 @@ def _materialize_one_copy(
             target_path,
             paused_files,
             disabled_copies,
-            paused_dests,
+            paused_dests=paused_dests,
         )
     else:
         shutil.copy2(source_path, target_path)
@@ -130,6 +131,7 @@ def _copy_directory(  # noqa: PLR0913 - filter inputs plus the collector for pau
     target_path: Path,
     paused_files: frozenset[str],
     disabled_copies: frozenset[str],
+    *,
     paused_dests: list[str],
 ) -> None:
     """Copy a directory tree, filtering paused/owned files out of the walk."""
@@ -140,7 +142,7 @@ def _copy_directory(  # noqa: PLR0913 - filter inputs plus the collector for pau
             target_path,
             paused_files,
             disabled_copies,
-            paused_dests,
+            paused_dests=paused_dests,
         )
         if paused_files or disabled_copies
         else None

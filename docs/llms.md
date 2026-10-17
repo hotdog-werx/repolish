@@ -37,13 +37,13 @@ class Ctx(BaseContext):
 
 
 class MyProvider(Provider[Ctx, BaseInputs]):
-    def create_context(self) -> Ctx: ...                     # typed Jinja context
+    def create_context(self) -> Ctx: ...  # typed Jinja context
     def create_file_mappings(self, ctx) -> dict[str, TemplateMapping]: ...  # files it owns
-    def promote_file_mappings(self, ctx): ...                # monorepo member mode (root-relative)
-    def create_anchors(self, ctx) -> dict[str, str]: ...     # fills tag blocks
-    def create_file_insertions(self, ctx): ...               # fn-filled blocks in any file
-    def create_file_validators(self, ctx): ...               # inspect final files
-    def create_default_symlinks(self): ...                   # root symlinks
+    def promote_file_mappings(self, ctx): ...  # monorepo member mode (root-relative)
+    def create_anchors(self, ctx) -> dict[str, str]: ...  # fills tag blocks
+    def create_file_insertions(self, ctx): ...  # fn-filled blocks in any file
+    def create_file_validators(self, ctx): ...  # inspect final files
+    def create_default_symlinks(self): ...  # root symlinks
 ```
 
 All hooks optional. All public types import from `repolish` top level. Templates
@@ -131,9 +131,9 @@ are absolute → gitignore them; fresh clones re-run `repolish link`.
 ```python
 from repolish.testing import ProviderTestBed, assert_snapshots, make_context
 
-bed = ProviderTestBed(MyProvider, mode='root')   # or 'member'/'standalone'
-rendered = bed.render_all()                       # {dest: content}
-assert_snapshots(rendered, 'tests/snapshots')     # golden files, diff on fail
+bed = ProviderTestBed(MyProvider, mode='root')  # or 'member'/'standalone'
+rendered = bed.render_all()  # {dest: content}
+assert_snapshots(rendered, 'tests/snapshots')  # golden files, diff on fail
 ```
 
 ## repolish does NOT

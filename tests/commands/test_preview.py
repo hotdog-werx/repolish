@@ -129,7 +129,11 @@ def _run_scratch(
     debug_file.write_text(textwrap.dedent(content), encoding='utf-8')
     f = io.StringIO()
     with redirect_stdout(f):
-        result = run_debug(debug_file, show_patterns=False, show_steps=show_steps)
+        result = run_debug(
+            debug_file,
+            show_patterns=False,
+            show_steps=show_steps,
+        )
     return result, f.getvalue()
 
 
@@ -393,7 +397,9 @@ def test_preview_fills_insertion_zones(tmp_path: Path):
     assert 'Default badge row' not in output
 
 
-def test_preview_insertion_entry_points_import_installed_modules(tmp_path: Path):
+def test_preview_insertion_entry_points_import_installed_modules(
+    tmp_path: Path,
+):
     """Entry points without a leading dot import normally installed modules."""
     result, output = _run_scratch(
         tmp_path,

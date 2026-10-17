@@ -84,13 +84,15 @@ If you need a custom success message, use the `@resource_linker` decorator:
 # mylib/cli_link.py
 from repolish.linker import resource_linker
 
+
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',  # Relative to package root
 )
 def main():
     """Link mylib resources to your project."""
-    print("✓ mylib resources are now available!")
+    print('✓ mylib resources are now available!')
+
 
 if __name__ == '__main__':
     main()
@@ -263,6 +265,7 @@ package root and resolves the path.
 ```python
 from repolish.linker import resource_linker
 
+
 @resource_linker(
     library_name='codeguide',
     default_source_dir='resources',  # Resolves to <package-root>/resources
@@ -276,6 +279,7 @@ def main():
 ```python
 from repolish.linker import resource_linker, Symlink
 
+
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',
@@ -285,7 +289,7 @@ from repolish.linker import resource_linker, Symlink
     ],
 )
 def main():
-    print("✓ Resources linked!")
+    print('✓ Resources linked!')
 ```
 
 When users run `mylib-link`, these symlinks will be created automatically unless
@@ -368,7 +372,7 @@ from repolish.linker import Symlink
 
 symlink = Symlink(
     source='configs/.editorconfig',  # relative to the provider's resources dir
-    target='.editorconfig',          # relative to the repo root
+    target='.editorconfig',  # relative to the repo root
 )
 ```
 
@@ -418,7 +422,7 @@ create_additional_link(
     resources_dir=Path('.repolish/mylib'),
     provider_name='mylib',
     source='configs/.editorconfig',  # Relative to resources_dir
-    target='.editorconfig',           # Relative to repo root
+    target='.editorconfig',  # Relative to repo root
     force=False,
 )
 ```
@@ -464,6 +468,7 @@ will typically want in their project root:
 ```python
 from repolish.linker import resource_linker, Symlink
 
+
 @resource_linker(
     library_name='code-style',
     default_source_dir='resources',
@@ -474,7 +479,7 @@ from repolish.linker import resource_linker, Symlink
     ],
 )
 def main():
-    print("✓ Code style configs linked!")
+    print('✓ Code style configs linked!')
 ```
 
 Users get these symlinks automatically when they run `code-style-link`, but can
@@ -525,12 +530,14 @@ mylib/
 ```python
 from repolish.linker import resource_linker
 
+
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',
 )
 def main():
-    print("✓ mylib resources linked!")
+    print('✓ mylib resources linked!')
+
 
 if __name__ == '__main__':
     main()
@@ -558,7 +565,8 @@ A library can provide multiple link CLIs for different resource sets:
     default_source_dir='templates',
 )
 def main():
-    print("✓ Templates linked!")
+    print('✓ Templates linked!')
+
 
 # mylib/cli_link_configs.py
 @resource_linker(
@@ -566,7 +574,7 @@ def main():
     default_source_dir='configs',
 )
 def main():
-    print("✓ Configs linked!")
+    print('✓ Configs linked!')
 ```
 
 Register both:

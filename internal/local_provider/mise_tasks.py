@@ -73,7 +73,10 @@ def collect_mise_tasks(root: Path) -> list[TaskGroup]:
     for entry in entries:
         name = str(entry['name'])
         grouped.setdefault(_group_name(name), []).append(
-            MiseTask(name=name, description=str(entry.get('description') or '')),
+            MiseTask(
+                name=name,
+                description=str(entry.get('description') or ''),
+            ),
         )
     groups: list[TaskGroup] = []
     for group_name, tasks in grouped.items():

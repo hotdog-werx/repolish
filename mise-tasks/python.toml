@@ -1,0 +1,16 @@
+# Python checks. ruff and complexipy run from the uv-toolbox `tools` env;
+# ty is a mise-managed tool (0.0.89; older pins emit false positives).
+["python:check:types"]
+description = "type check with ty"
+run = "ty check"
+
+["python:check:complexity"]
+description = "complexity gate (fails above 20 on the complexipy 8.x scale)"
+run = '$DK_UVTB_TOOLS_EXEC complexipy --max-complexity-allowed $DK_COMPLEXIPY_THRESHOLD .'
+
+["python:check:ruff"]
+description = "ruff lint and format check (tools-env 0.17.1)"
+run = [
+  '$DK_UVTB_TOOLS_EXEC ruff --config ./ruff.toml check .',
+  '$DK_UVTB_TOOLS_EXEC ruff --config ./ruff.toml format --check .',
+]

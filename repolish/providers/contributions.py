@@ -742,6 +742,7 @@ def _apply_facet_spec(  # noqa: PLR0913 - mirrors the regular handler signatures
     provider_id: str,
     provider_name: str,
     fctx: BaseContext,
+    *,
     accum: Accumulators,
 ) -> None:
     """Merge one facet's spec exactly as if the provider had declared it.
@@ -819,7 +820,7 @@ def _handle_provider_facets(
             provider_id,
             provider_name,
             fctx,
-            accum,
+            accum=accum,
         )
 
 

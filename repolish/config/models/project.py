@@ -1,5 +1,5 @@
 import shutil
-from enum import Enum
+from enum import StrEnum
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -63,7 +63,7 @@ class WorkspaceConfig(BaseModel):
     """Explicit repo-relative member paths. Overrides uv workspace detection."""
 
 
-class FastLaneResolution(str, Enum):
+class FastLaneResolution(StrEnum):
     """Which side wins when a regular hook and a fast lane declare one dest."""
 
     FAST_LANE = 'fast_lane'

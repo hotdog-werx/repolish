@@ -1,20 +1,8 @@
-# The CI gate, expressed directly: type checks, complexity budget, dprint,
-# ruff, and the full test suite with coverage at 100%.
-[check-ty]
-description = "type check with ty (0.0.89; older pins like 0.0.14 emit false positives)"
-run = "ty check"
-
-[check-complexity]
-description = "complexity gate (fails above 20 on the complexipy 8.x scale)"
-run = '$DK_UVTB_TOOLS_EXEC complexipy --max-complexity-allowed $DK_COMPLEXIPY_THRESHOLD .'
-
+# The CI gate: python checks live in python.toml, drift and formatting
+# checks here, plus the full test suite with coverage at 100%.
 [check-dprint]
 description = "check dprint-managed formatting"
 run = "dprint check"
-
-[check-python]
-description = "ruff lint and format check"
-run = "uvx ruff@0.13.0 --config ./ruff.toml check . && uvx ruff@0.13.0 --config ./ruff.toml format --check ."
 
 [check-coverage]
 description = "run the test suite with coverage (100% required)"
@@ -23,10 +11,10 @@ run = "uv run pytest -vv --tb=short --cov-config=./coveragerc.toml --cov=repolis
 [ci-checks]
 description = "run all checks for CI"
 depends = [
-  "check-ty",
-  "check-complexity",
+  "python:check:types",
+  "python:check:complexity",
+  "python:check:ruff",
   "check-dprint",
   "workspace:repolish:check",
-  "check-python",
   "check-coverage",
 ]

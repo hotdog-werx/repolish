@@ -489,7 +489,7 @@ def _get_template_file_path(
     if mapping.preprocessed_source:
         template_file = project_root / mapping.preprocessed_source
         if not template_file.exists():  # pragma: no cover
-            logger.exception(
+            logger.error(
                 'preprocessed_source_not_found',
                 preprocessed_source=mapping.preprocessed_source,
                 project_root=str(project_root),

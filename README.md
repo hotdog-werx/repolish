@@ -65,11 +65,8 @@ Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
 | -------------------------- | ----------------------------------------------------------------------------------------- |
 | `build`                    | build the package (requires VERSION env var)                                              |
 | `build-docs`               | build the static documentation site                                                       |
-| `check-complexity`         | complexity gate (fails above 20 on the complexipy 8.x scale)                              |
 | `check-coverage`           | run the test suite with coverage (100% required)                                          |
 | `check-dprint`             | check dprint-managed formatting                                                           |
-| `check-python`             | ruff lint and format check                                                                |
-| `check-ty`                 | type check with ty (0.0.89; older pins like 0.0.14 emit false positives)                  |
 | `ci-checks`                | run all checks for CI                                                                     |
 | `clean-docs`               | clean docs build artifacts                                                                |
 | `cov-contexts`             | record per-test coverage contexts for the whole suite into .coverage                      |
@@ -85,6 +82,14 @@ Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
 | `regen-changelog`          | regenerate the changelog with releez                                                      |
 | `setup`                    | sync the uv env, install the uv-toolbox envs, refresh ty.toml                             |
 | `start-releez`             | release start with releez                                                                 |
+
+**python**
+
+| Task                      | Description                                                  |
+| ------------------------- | ------------------------------------------------------------ |
+| `python:check:complexity` | complexity gate (fails above 20 on the complexipy 8.x scale) |
+| `python:check:ruff`       | ruff lint and format check (tools-env 0.17.1)                |
+| `python:check:types`      | type check with ty                                           |
 
 **workspace**
 
