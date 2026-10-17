@@ -37,6 +37,8 @@ jobs:
         run: mise run check-ty
       - name: check-complexity
         run: mise run check-complexity
+      - name: workspace-repolish-check
+        run: mise run workspace:repolish:check
       - name: check-coverage
         run: mise run check-coverage
       - name: build-docs

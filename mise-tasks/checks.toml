@@ -5,8 +5,8 @@ description = "type check with ty (0.0.89; older pins like 0.0.14 emit false pos
 run = "ty check"
 
 [check-complexity]
-description = "complexity gate (fails above 10)"
-run = "uvx complexipy@4.0.2 -mx 10 ."
+description = "complexity gate (fails above 20 on the complexipy 8.x scale)"
+run = '$DK_UVTB_TOOLS_EXEC complexipy --max-complexity-allowed $DK_COMPLEXIPY_THRESHOLD .'
 
 [check-dprint]
 description = "check dprint-managed formatting"
@@ -22,10 +22,11 @@ run = "uv run pytest -vv --tb=short --cov-config=./coveragerc.toml --cov=repolis
 
 [ci-checks]
 description = "run all checks for CI"
-run = """
-mise run check-ty &&
-mise run check-complexity &&
-mise run check-dprint &&
-mise run check-python &&
-mise run check-coverage
-"""
+depends = [
+  "check-ty",
+  "check-complexity",
+  "check-dprint",
+  "workspace:repolish:check",
+  "check-python",
+  "check-coverage",
+]

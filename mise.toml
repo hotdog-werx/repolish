@@ -9,6 +9,9 @@ includes = [
 ]
 
 [env]
+_.file = [
+  "mise-tasks/default.env",
+]
 GITHUB_REPO_OWNER = "hotdog-werx"
 GITHUB_REPO_NAME = "{{ config_root | basename }}"
 GITHUB_REPO = "{{ env.GITHUB_REPO_OWNER }}/{{ env.GITHUB_REPO_NAME }}"

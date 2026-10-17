@@ -65,7 +65,7 @@ Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
 | -------------------------- | ----------------------------------------------------------------------------------------- |
 | `build`                    | build the package (requires VERSION env var)                                              |
 | `build-docs`               | build the static documentation site                                                       |
-| `check-complexity`         | complexity gate (fails above 10)                                                          |
+| `check-complexity`         | complexity gate (fails above 20 on the complexipy 8.x scale)                              |
 | `check-coverage`           | run the test suite with coverage (100% required)                                          |
 | `check-dprint`             | check dprint-managed formatting                                                           |
 | `check-python`             | ruff lint and format check                                                                |
@@ -85,5 +85,12 @@ Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
 | `regen-changelog`          | regenerate the changelog with releez                                                      |
 | `setup`                    | sync the uv env, install the uv-toolbox envs, refresh ty.toml                             |
 | `start-releez`             | release start with releez                                                                 |
+
+**workspace**
+
+| Task                       | Description                                               |
+| -------------------------- | --------------------------------------------------------- |
+| `workspace:repolish`       | apply repolish (local provider via the uvtb repolish env) |
+| `workspace:repolish:check` | verify the repo matches repolish output (fails on drift)  |
 
 <!-- repolish:off:mise -->
