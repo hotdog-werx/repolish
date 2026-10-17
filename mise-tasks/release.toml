@@ -11,11 +11,11 @@ run = "scripts/release/publish.sh"
 
 [regen-changelog]
 description = "regenerate the changelog with releez"
-run = 'uvx --from "git+https://github.com/hotdog-werx/releez@1.0.1" releez changelog regenerate'
+run = 'uvx --from "releez==1.1.1" releez changelog regenerate'
 
 [start-releez]
 description = "release start with releez"
 run = """
 git pull --tags -f &&
-uvx --from "git+https://github.com/hotdog-werx/releez@1.0.1" releez release start
+uvx --from "releez==1.1.1" releez release start
 """

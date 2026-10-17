@@ -34,7 +34,6 @@ version.path = 'repolish/version.py'
 
 [tool.releez]
 create-pr = true
-run-changelog-format = true
 
 [tool.releez.hooks]
 post-changelog = [

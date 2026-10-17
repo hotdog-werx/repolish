@@ -28,7 +28,7 @@ git-cliff = "2.12.0"
 actionlint = "1.7.10"
 shellcheck = "0.11.0"
 
-"pipx:hotdog-werx/releez" = "1.0.1"
+"pipx:releez" = "1.1.1"
 "pipx:zensical" = "0.0.62"
 "pipx:ty" = "0.0.89"
 

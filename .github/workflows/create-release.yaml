@@ -34,16 +34,16 @@ jobs:
 
       - name: releez-finalize
         id: releez
-        uses: hotdog-werx/releez-finalize-action@v0
+        # the unified releez action installs its own uv and uses the
+        # pipx-installed releez from mise (both at the same version)
+        uses: hotdog-werx/releez@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
           RELEEZ_GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_API_URL: ${{ github.api_url }}
         with:
-          github-token: ${{ github.token }}
-          # pinning to specific version since new versions output multiple versions and this breaks the action
-          releez-version: 0.2.6
+          mode: finalize
 
       - name: enhance-release-notes
         id: enhance-notes

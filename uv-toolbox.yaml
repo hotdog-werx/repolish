@@ -6,7 +6,7 @@ environments:
       - ruff==0.17.1
       - complexipy==8.0.1
       - zensical==0.0.71
-      - releez==1.0.1
+      - releez==1.1.1
 
   - name: repolish
     dependencies:

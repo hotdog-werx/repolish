@@ -1,7 +1,7 @@
 version: 2
 environments:
   tools:
-    fingerprint: sha256:d61892f0f5ce4abb83bc1ef337a69154fdf53f7412acc4b5543bed6ee67a835a
+    fingerprint: sha256:37088cdeb383005342680aee0a70f3e9386b9e2dfdd8da8270efd2e4f180c076
     uv_lock: |
       version = 1
       revision = 3
@@ -926,7 +926,7 @@ environments:
 
       [[package]]
       name = "releez"
-      version = "1.0.1"
+      version = "1.1.1"
       source = { registry = "https://pypi.org/simple" }
       dependencies = [
           { name = "cyclopts" },
@@ -939,9 +939,9 @@ environments:
           { name = "semver" },
           { name = "tomli-w" },
       ]
-      sdist = { url = "https://files.pythonhosted.org/packages/3e/22/a5fd1d5cb7d164c5a953dc24b5323f89b397520fd28d55f5fb745c27f4b7/releez-1.0.1.tar.gz", hash = "sha256:5b4925c1e233f53931c27b1f009f00d08a36caeffd93916792b253b8e1a267c2", size = 41026, upload-time = "2026-05-27T03:09:05.756Z" }
+      sdist = { url = "https://files.pythonhosted.org/packages/16/1b/45a7af5e46be61f632c85a7fc3281c658476c10d18c16d0416e8adee288a/releez-1.1.1.tar.gz", hash = "sha256:a5a55229390fa9b913bc0a7694dedf9749cb210b2b38b3fce3dd9b2428f0fa33", size = 44517, upload-time = "2026-10-12T21:48:09.828Z" }
       wheels = [
-          { url = "https://files.pythonhosted.org/packages/9e/cd/705ceb5d4ef9ba22e776e7f8d1f14b40c20d60770d1cab57d25ec14554f5/releez-1.0.1-py3-none-any.whl", hash = "sha256:29c8f067d5537969b66ec04f0ffd51b796c50cf20fd43770946f6e14b4bc8e06", size = 56325, upload-time = "2026-05-27T03:09:04.802Z" },
+          { url = "https://files.pythonhosted.org/packages/cb/73/57955d43fba75140f05be53f00796601b9d2260a719d3dc7527a30258985/releez-1.1.1-py3-none-any.whl", hash = "sha256:d3b79d078914420a59fedb828e47ef938aaf32c808dbe77f7fe4109ef9b73166", size = 58722, upload-time = "2026-10-12T21:48:08.878Z" },
       ]
 
       [[package]]
@@ -1144,7 +1144,7 @@ environments:
       [package.metadata]
       requires-dist = [
           { name = "complexipy", specifier = "==8.0.1" },
-          { name = "releez", specifier = "==1.0.1" },
+          { name = "releez", specifier = "==1.1.1" },
           { name = "ruff", specifier = "==0.17.1" },
           { name = "zensical", specifier = "==0.0.71" },
       ]
