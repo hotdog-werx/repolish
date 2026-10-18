@@ -55,17 +55,17 @@ def test_link_uses_cache_when_already_linked(tmp_path: Path) -> None:
     """A second plain `repolish link` uses cache and shows (cached) message."""
     _stage_static_provider(tmp_path)
 
-    # First run - should link fresh
+    # First run - should link fresh, naming the directory actually linked
     output1 = _run_link([], tmp_path)
-    assert 'are now available' in output1
+    assert '- provider/resources from test are now available' in output1
 
     # Verify provider-info was created
     info_file = tmp_path / '.repolish' / '_' / 'provider-info.test.json'
     assert info_file.exists()
 
-    # Second run - should use cache and show (cached) message
+    # Second run - should use cache, still naming the linked directory
     output2 = _run_link([], tmp_path)
-    assert '(cached)' in output2
+    assert '- provider/resources from test (cached)' in output2
 
 
 def test_link_force_ignores_cache(tmp_path: Path) -> None:

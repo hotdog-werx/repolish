@@ -6,10 +6,10 @@ from hotlog import get_logger
 from repolish.commands.apply.symlinks import apply_copies, apply_symlinks
 from repolish.commands.apply.utils import chdir
 from repolish.config import (
-    ProviderConfig,
     RepolishConfigFile,
     load_config_file,
 )
+from repolish.config.providers import load_provider_info
 from repolish.config.resolution import resolve_config
 from repolish.config.topology import (
     detect_workspace,
@@ -73,55 +73,68 @@ def _get_provider_names(config: RepolishConfigFile) -> list[str]:
     return list(config.providers.keys())
 
 
+def _linked_path(alias: str, config_dir: Path) -> str:
+    """Return the directory *alias* actually linked to, for display.
+
+    Reads the provider-info written at registration so the message always
+    names the real directory (the module name under ``module_links``, the
+    distribution or provider root otherwise) instead of guessing from the
+    config shape. Falls back to the alias when no info exists.
+    """
+    info = load_provider_info(alias, config_dir)
+    if info is None:  # pragma: no cover - readiness guarantees the info exists
+        return f'.repolish/{alias}'
+    resources = Path(info.resources_dir)
+    # The recorded path is tried as-is before resolving: a module provider's
+    # .repolish/ entry is a symlink into the package, and resolving it lands
+    # outside the repo, which would defeat the relativization.
+    for candidate in (resources, resources.resolve()):
+        try:
+            return candidate.relative_to(config_dir).as_posix()
+        except ValueError:
+            continue
+    return str(resources)
+
+
 def _format_provider_message(
     alias: str,
-    provider_config: ProviderConfig,
+    config_dir: Path,
     location_context: str | None = None,
+    *,
+    cached: bool = False,
 ) -> str:
-    """Format a success message for a linked provider.
+    """Format link feedback for one provider.
 
-    Uses the alias (user-configured name) since that's how the user
-    refers to the provider. Shows the resources directory path.
-    In monorepo mode, the location context is appended.
+    Names the directory the provider actually linked to and the alias the
+    user configured it under; cached providers show a '(cached)' indicator
+    so a run reports what is linked, not just what changed. In monorepo
+    mode, the location context is appended.
     """
-    if provider_config.cli or provider_config.module:
-        resources_dir = '.repolish/' + alias
-    elif provider_config.provider_root:
-        resources_dir = str(provider_config.provider_root)
-    else:
-        # Unreachable: ProviderConfig validator requires provider_root when cli is absent
-        resources_dir = alias  # pragma: no cover
-
-    base_msg = f'- [bold cyan]{resources_dir}[/bold cyan] from [bold green]{alias}[/bold green] are now available'
+    linked = _linked_path(alias, config_dir)
+    base = f'- [bold cyan]{linked}[/bold cyan] from [bold green]{alias}[/bold green]'
+    msg = f'{base} (cached)' if cached else f'{base} are now available'
     if location_context:
-        return f'{base_msg} in "{location_context}"'
-    return base_msg
+        return f'{msg} in "{location_context}"'
+    return msg
 
 
 def _print_link_success(
     result: ProviderReadinessResult,
-    config: RepolishConfigFile,
+    config_dir: Path,
     location_context: str | None = None,
 ) -> None:
     """Print success feedback for linked providers.
 
-    Uses the same formatting as the provider CLI decorator for consistency.
-    Cached providers show a brief '(cached)' indicator. CLI and static
-    providers show the resources directory and provider alias.
+    Cached providers first, then freshly linked ones; both name the linked
+    directory so the run tells the user what is in place, not only what
+    changed.
     """
     for alias in result.cached:
-        console.print(f'[dim]- {alias} (cached)[/dim]')
+        console.print(_format_provider_message(alias, config_dir, location_context, cached=True))
 
     for alias in result.ready:
         if alias not in result.cached:
-            provider_config = config.providers.get(alias)
-            if provider_config:
-                msg = _format_provider_message(
-                    alias,
-                    provider_config,
-                    location_context,
-                )
-                console.print(msg)
+            console.print(_format_provider_message(alias, config_dir, location_context))
 
 
 def _empty_link_result() -> LinkResult:
@@ -175,7 +188,7 @@ def _link_config(
             _display_level=1,
         )
         return 1, _empty_link_result()
-    _print_link_success(result, config, location_context)
+    _print_link_success(result, config_path.resolve().parent, location_context)
     with timer.phase('resolve'):
         resolved = resolve_config(config)
     with timer.phase('symlinks'):
