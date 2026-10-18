@@ -1,3 +1,5 @@
+module_links: true
+
 providers:
   local:
     provider_root: internal/templates

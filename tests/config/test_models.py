@@ -562,6 +562,35 @@ def test_module_mapping_normalizes_with_overrides():
     assert provider.module.provider_root == 'pkg-templates'
 
 
+def test_module_links_flag_defaults_off():
+    """Without the project flag, module entries inherit distribution naming."""
+    config = RepolishConfigFile(providers={'ws': {'module': 'devkit.workspace'}})
+    ws = config.providers['ws'].module
+
+    assert config.module_links is False
+    assert ws is not None
+    assert ws.module_links is False
+
+
+def test_module_links_flag_propagates_to_module_entries():
+    """module_links: true covers every module provider that does not deviate."""
+    config = RepolishConfigFile(
+        module_links=True,
+        providers={
+            'ws': {'module': 'devkit.workspace'},
+            'py': {'module': {'name': 'devkit.python', 'module_links': False}},
+        },
+    )
+    ws = config.providers['ws'].module
+    py = config.providers['py'].module
+
+    assert ws is not None
+    assert py is not None
+    assert ws.module_links is True
+    # an explicit per-provider entry overrides the project flag
+    assert py.module_links is False
+
+
 def test_module_alone_satisfies_validation():
     """A provider configured with only module: passes the at-least-one rule."""
     provider = ProviderConfig(module='devkit.workspace')

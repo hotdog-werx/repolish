@@ -170,14 +170,31 @@ bare string under `providers:` is resolved module first and only falls back to
 [providers section](config-file.md#providers-subsection) for the layout
 overrides and the resolution rules.
 
+By default the resources link under the distribution name the module was
+installed as (`.repolish/<project-name>/`). When the distribution name carries
+an org prefix the project-level `module_links: true` flag links under the module
+name instead, with `.` and `_` normalized to `-`, so `devkit.workspace` links as
+`.repolish/devkit-workspace/` no matter which org-prefixed distribution
+installed it.
+
+The module-named directory is the canonical form: the module is what the
+resources belong to, and repolish warns when a module provider links under a
+distribution name. Providers whose resources or docs reference
+`.repolish/<name>/` by hand (mise task includes, install guides) should point
+them at the module-named directory and set `module_links: true` in the
+`repolish.yaml` they document.
+
 <!-- v2 note (updated 2026-10): module: proved out in dogfooding, and the
 provider shorthand now resolves module first. The cli: config entry is a
 deprecation candidate for v2: repolish would stop asking providers to ship a
 link CLI for registration, and the shorthand would require a valid module
 name (configs already get a warning when the shorthand falls back to a
-command). The resource_linker CLI utility itself stays, independently of
-repolish config, for any library that wants to link its own resources into
-a repo. -->
+command). module_links is the other v2 default: linking by module name is the
+canon (the distribution name can differ from the module arbitrarily), so v2
+drops the flag and always links module providers under the module name;
+configs already get a warning while it is off. The resource_linker CLI
+utility itself stays, independently of repolish config, for any library that
+wants to link its own resources into a repo. -->
 
 ### Updating Resources
 

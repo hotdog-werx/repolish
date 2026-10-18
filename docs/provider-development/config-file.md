@@ -235,6 +235,24 @@ Both layout fields are package-relative, unlike the project-local
 fallback, which keeps the option available while a provider environment is being
 consolidated into the one repolish runs in.
 
+By default `<library-name>` is the distribution name the module was installed
+under. The project-level `module_links: true` flag switches every module
+provider to the module name instead, with `.` and `_` normalized to `-`
+(`devkit.workspace` links as `.repolish/devkit-workspace/`), and a module entry
+may set `module_links` explicitly in the mapping form to deviate per provider::
+
+```yaml
+module_links: true
+
+providers:
+  workspace:
+    module: devkit.workspace
+```
+
+The module name is stable across distributions: a provider published by any org
+as `<org>-devkit-workspace` still links as `devkit-workspace`, so the link
+directory always names the module that owns the resources.
+
 - **`cli`** - a shell command (string) that will be executed by `repolish link`.
   The command must write a `.provider-info.json` file under the
   `.repolish/<alias>` directory; this JSON describes the template directory and

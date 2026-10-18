@@ -8,6 +8,7 @@ target, plus the failure modes.
 """
 
 from pathlib import Path
+from unittest import mock
 
 import pytest
 import pytest_mock
@@ -54,6 +55,45 @@ def test_probe_honors_layout_overrides(
     assert info.provider_root == str(
         config_dir / '.repolish' / 'mylib-ws' / 'tpl',
     )
+
+
+def test_probe_module_links_names_the_module(
+    module_pkg: dict[str, Path],
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """module_links links under the module name, not the distribution name.
+
+    The identity is patched so the package reports an org-prefixed
+    distribution, the case the flag exists for: devkit.workspace installed
+    as hotdogwerx-devkit-workspace still links as devkit-workspace. The
+    distribution-naming branch warns (module naming is the v2 canon);
+    the module branch stays silent.
+    """
+    mocker.patch(
+        'repolish.linker.module_link.resolve_package_identity',
+        return_value=('devkit.workspace', 'hotdogwerx-devkit-workspace'),
+    )
+    config_dir = tmp_path / 'proj'
+    default = probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
+    assert default.resources_dir == str(config_dir / '.repolish' / 'hotdogwerx-devkit-workspace')
+    mocker.resetall()
+
+    with mock.patch('repolish.linker.module_link.logger.warning') as warning:
+        linked = probe_module_info(
+            ModuleProviderConfig(name='mylib_ws', module_links=True),
+            config_dir,
+        )
+    warning.assert_not_called()
+    assert linked.resources_dir == str(config_dir / '.repolish' / 'devkit-workspace')
+
+    with mock.patch('repolish.linker.module_link.logger.warning') as warning:
+        probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
+    warning.assert_called_once()
+    call = warning.call_args
+    assert call.args[0] == 'module_links_distribution_naming'
+    assert call.kwargs['module'] == 'mylib_ws'
+    assert 'module_links: true' in call.kwargs['hint']
 
 
 def test_probe_missing_module_raises(tmp_path: Path) -> None:

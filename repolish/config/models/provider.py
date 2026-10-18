@@ -246,6 +246,15 @@ class ModuleProviderConfig(BaseModel):
             'Subdirectory within resources_dir where repolish.py and the template tree live (default: templates).'
         ),
     )
+    module_links: bool | None = Field(
+        default=None,
+        description=(
+            'Link under the module name with ``.`` and ``_`` normalized to ``-`` '
+            '(e.g. devkit.workspace -> .repolish/devkit-workspace/) instead of the '
+            'distribution name. None inherits the project-level ``module_links`` '
+            'flag; set it explicitly in the mapping form to deviate per provider.'
+        ),
+    )
 
 
 class ProviderConfig(BaseModel):
