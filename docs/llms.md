@@ -122,9 +122,11 @@ before a real apply. Add `--show-patterns --show-steps -vv` to see what matched.
 
 ## Linking
 
-`repolish link` → resources land in `.repolish/<alias>/` (stable short path,
-like `node_modules/pkg/config.yaml`). Root `symlinks:` entries in repolish.yaml
-are absolute → gitignore them; fresh clones re-run `repolish link`.
+`repolish link` → resources land in `.repolish/<library-name>/` (the module name
+under `module_links: true`, else the distribution name — not the alias; stable
+short path, like `node_modules/pkg/config.yaml`). Root `symlinks:` entries in
+repolish.yaml are absolute → gitignore them; fresh clones re-run
+`repolish link`.
 
 ## Testing
 
@@ -148,4 +150,5 @@ cookiecutter `{{ cookiecutter.x }}` (gone in v1).
 [config schema](provider-development/config-file.md) ·
 [markers](markers/index.md) · [grammar](markers/grammar.md) ·
 [insertions](markers/insertions.md) · [insertion zones](markers/insert-zones.md)
-· [testing](provider-development/testing.md)
+· [migrating to v2](migrating-to-v2.md) ·
+[testing](provider-development/testing.md)

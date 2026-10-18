@@ -10,6 +10,7 @@ nav:
       - Get Started:
           - Installation: getting-started/installation.md
           - Quick Start: getting-started/quick-start.md
+      - Migrating to v2: migrating-to-v2.md
       - Tutorial:
           - Introduction: tutorial/index.md
           - 1. Workspace Provider: tutorial/01-workspace-provider.md
