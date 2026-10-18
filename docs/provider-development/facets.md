@@ -92,6 +92,17 @@ can read what its siblings decided.
 The spec has no `file_copies` field on purpose: plain copies belong to the
 provider because they are part of its resource set, not one file's work.
 
+## A facet is a leaf
+
+Everything about the facet's file lives in the facet's own module: its context
+model, its input model, and the facet class, all next to each other. The
+provider's models module stays for provider-level context; nothing about a
+facet's file is declared there. A provider connects a facet by listing the class
+in `facets`, and senders that emit a facet's payload import the input model from
+the facet module. Every path that touches the file points at the one unit that
+owns it, and a facet can be understood (or moved, or deleted) without reading
+anything but its own module.
+
 ## Registration
 
 Declare facets with the explicit ordered `facets` class attribute, the same
