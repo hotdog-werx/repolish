@@ -38,9 +38,11 @@ from repolish.providers.models import (
     FacetSpec,
     FacetSpecOptions,
     GlobalContext,
+    ProvideInputsOptions,
     Provider,
     ProviderEntry,
     ProviderFacet,
+    ProviderInfo,
     SessionBundle,
     TemplateMapping,
     ValidationResult,
@@ -48,6 +50,7 @@ from repolish.providers.models import (
     WorkspaceContext,
     instantiate_facets,
 )
+from repolish.providers.models.context import RepolishContext
 from repolish.providers.pipeline import (
     _build_all_providers_list,
     _populate_facet_contexts,
@@ -435,7 +438,12 @@ def test_emitted_inputs_include_facet_payloads() -> None:
     )
     # Facet payloads ride in the emitted byproduct alongside the
     # provider's own outputs; a member session forwards them to the root.
-    assert emitted == [AlphaInputs(text='from-facet')]
+    # The hand-built context carries no identity, so the stamp is the
+    # default (empty) ProviderInfo.
+    assert len(emitted) == 1
+    assert isinstance(emitted[0], AlphaInputs)
+    assert emitted[0].text == 'from-facet'
+    assert emitted[0].sender == ProviderInfo()
 
 
 def test_partition_facet_inputs() -> None:
@@ -617,9 +625,104 @@ def test_facet_emitted_inputs_route_to_peer_entries() -> None:
         all_providers,
     )
     # The sender's facet payload reaches the receiver (and the sender
-    # itself, since routing delivers to every schema-matching provider).
-    assert received['receiver'] == [AlphaInputs(text='from-facet')]
-    assert received['sender'] == [AlphaInputs(text='from-facet')]
+    # itself, since routing delivers to every schema-matching provider);
+    # each delivered copy is stamped with the sender's (empty) identity.
+    routed = cast('list[AlphaInputs]', received['receiver'])
+    echoed = cast('list[AlphaInputs]', received['sender'])
+    assert [p.text for p in routed] == ['from-facet']
+    assert [p.text for p in echoed] == ['from-facet']
+    assert routed[0].sender == ProviderInfo()
+
+
+def test_emitted_inputs_carry_sender_identity() -> None:
+    """The framework stamps every emitted BaseInputs payload with its sender."""
+
+    class EmittingFacet(AlphaFacet):
+        def provide_inputs(
+            self,
+            opt: FacetInputsOptions[AlphaCtx],
+        ) -> list[AlphaInputs]:
+            return [AlphaInputs(text='from-facet')]
+
+    class Sender(Provider[OwnCtx, OwnInputs]):
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            EmittingFacet,
+        ]
+
+        def create_context(self) -> OwnCtx:
+            return OwnCtx()
+
+        def provide_inputs(
+            self,
+            opt: ProvideInputsOptions[OwnCtx],
+        ) -> list[Any]:
+            # a BaseInputs payload plus a non-BaseInputs object: only the
+            # former can carry the stamp, the latter rides through untouched
+            return [OwnInputs(value='own'), {'raw': 1}]
+
+    class Receiver(Provider[OwnCtx, OwnInputs]):
+        facets: ClassVar[list[type[ProviderFacet[Any, Any]]] | None] = [
+            AlphaFacet,
+        ]
+
+        def create_context(self) -> OwnCtx:
+            return OwnCtx()
+
+    sender_info = ProviderInfo(
+        alias='sender',
+        version='1.2.3',
+        package_name='pkg-sender',
+    )
+    module_cache: list[tuple[str, dict]] = [('sender', {}), ('receiver', {})]
+    sender_inst, receiver_inst = Sender(), Receiver()
+    sender_inst.alias = 'sender'
+    receiver_inst.alias = 'receiver'
+    instances: list[Provider[Any, Any] | None] = [sender_inst, receiver_inst]
+    provider_contexts: dict[str, BaseContext] = {
+        'sender': OwnCtx(
+            repolish=RepolishContext(provider=sender_info),
+        ),
+        'receiver': OwnCtx(),
+    }
+    for pid, inst in (('sender', sender_inst), ('receiver', receiver_inst)):
+        _populate_facet_contexts(inst, pid, provider_contexts, GlobalContext())
+
+    all_providers = _build_all_providers_list(
+        module_cache,
+        instances,
+        provider_contexts,
+    )
+    received, emitted = gather_received_inputs(
+        module_cache,
+        instances,
+        provider_contexts,
+        all_providers,
+    )
+    # Both the provider's own payload and its facet's payload are stamped
+    # with the identity the loader put on the sender's context; the raw
+    # dict is not a BaseInputs and passes through untouched.
+    own, facet_payload = emitted[0], emitted[2]
+    assert isinstance(own, OwnInputs)
+    assert isinstance(facet_payload, AlphaInputs)
+    assert own.value == 'own'
+    assert own.sender == sender_info
+    assert emitted[1] == {'raw': 1}
+    assert facet_payload.text == 'from-facet'
+    assert facet_payload.sender == sender_info
+    # The receiver sees the same stamped payloads, so any provider (or
+    # facet) can ask who sent an input without the sender self-declaring.
+    # The raw dict cannot carry the stamp but still rides through the
+    # provider-level structural fallback (pydantic ignores the extra key).
+    routed = received['receiver']
+    assert len(routed) == 3
+    assert routed[0].sender == sender_info
+    assert routed[1] == {'raw': 1}
+    assert routed[2].sender == sender_info
+    # The stamp is part of model equality: content-equal payloads from
+    # different senders are not equal, and a hand-built payload without a
+    # stamp never compares equal to a routed one.
+    assert emitted[0] != OwnInputs(value='own')
+    assert OwnInputs(value='own').sender is None
 
 
 # ---------------------------------------------------------------------------

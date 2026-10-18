@@ -12,10 +12,20 @@ environments:
     dependencies:
       - repolish
       - internal-tools
+      # consumed via `module: devkit.workspace` in repolish.yaml (the
+      # gitignore facet test). TEMPORARY local editable install of the
+      # sibling devkit checkout — revert to the git ref
+      # {git: https://github.com/hotdog-werx/devkit,
+      #  branch: topic/workspace-provider, subdirectory: packages/devkit-workspace}
+      # once that branch is pushed.
+      - devkit-workspace
     sources:
       repolish:
         path: .
         editable: true
       internal-tools:
         path: ./internal
+        editable: true
+      devkit-workspace:
+        path: /home/jmlopez/hotdog-werx/devkit/packages/devkit-workspace
         editable: true

@@ -134,6 +134,13 @@ Exact match is deliberate for facet schemas: a structural `model_validate`
 fallback against an all-default facet model would deliver one payload to every
 facet. The structural fallback stays restricted to the provider's own schema.
 
+Every routed payload also identifies its sender: the framework stamps each
+emitted `BaseInputs` payload with the emitting provider's `ProviderInfo`
+(`payload.sender`), so a facet can branch on who sent an input without the
+sender self-declaring. The gitignore facet at the top of this page could label
+one section per sender by reading `payload.sender.alias` instead of asking each
+sender to pick a section name. See `context.md` for the full contract.
+
 ## Collection and the collision rule
 
 After the provider's regular hooks are collected, each facet's `create_spec`

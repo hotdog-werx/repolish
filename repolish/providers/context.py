@@ -1,5 +1,5 @@
 import copy
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from repolish.providers._log import logger
 from repolish.providers.models import BaseContext
@@ -125,6 +125,37 @@ def _apply_override_to_list(
 # ---------------------------------------------------------------------------
 
 
+def _refacet_contexts(
+    ctx: BaseContext,
+    data: dict[str, object],
+    facet_types: dict[str, type[BaseContext]],
+    provider: str | None,
+) -> None:
+    """Re-validate each facet dict on ``ctx`` back into its runtime class.
+
+    Companion to the override round-trip in :func:`_apply_overrides_to_model`:
+    ``ctx.model_validate(data)`` reconstructs the ``facets`` map against its
+    declared ``dict[str, BaseContext]`` type, so a facet context subclass
+    (e.g. a gitignore facet carrying ``entries``) loses its specific fields.
+    ``facet_types`` holds the runtime class of each facet as it lived on the
+    pre-override context; the dump's facet dicts — with any dotted facet
+    overrides applied — are re-validated into those classes and written back.
+    A facet that fails validation keeps the base-coerced context and logs a
+    warning, so one bad override never blocks the run.
+    """
+    facets_data = cast('dict[str, object]', data.get('facets') or {})
+    for name, facet_cls in facet_types.items():
+        try:
+            ctx.facets[name] = facet_cls.model_validate(facets_data[name])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                'facet_context_override_validation_failed',
+                provider=provider,
+                facet=name,
+                error=str(exc),
+            )
+
+
 def _apply_overrides_to_model(
     ctx: BaseContext,
     overrides: dict[str, object],
@@ -149,6 +180,16 @@ def _apply_overrides_to_model(
     if data == original:
         return ctx
 
+    # Facet contexts serialize by runtime type (BaseContext.facets carries a
+    # field_serializer), but the ``facets`` field is declared as
+    # ``dict[str, BaseContext]`` — plain re-validation below coerces each one
+    # back to the declared base class, silently dropping every facet-specific
+    # field (e.g. a gitignore facet's ``entries``). Snapshot the runtime
+    # classes and re-validate each facet dict back into its own type, so a
+    # context override round-trip keeps facet fields and dotted facet
+    # overrides (``facets.<name>.<field>``) land on the real model.
+    facet_types = {name: type(facet_ctx) for name, facet_ctx in getattr(ctx, 'facets', {}).items()}
+
     try:
         new_ctx = ctx.model_validate(data)
     except Exception as exc:  # noqa: BLE001
@@ -158,6 +199,8 @@ def _apply_overrides_to_model(
             error=str(exc),
         )
         return ctx
+
+    _refacet_contexts(new_ctx, data, facet_types, provider=provider)
 
     new_data = new_ctx.model_dump()
     if new_data != data:

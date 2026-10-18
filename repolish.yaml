@@ -1,6 +1,14 @@
 providers:
   local:
     provider_root: internal/templates
+  workspace:
+    module: devkit.workspace
+    # repolish keeps its own editorconfig/dprint.json and its own inline
+    # CI workflows (the devkit ones assume mise task names this repo does
+    # not have). Only the gitignore facet is consumed here.
+    symlinks: []
+    context_overrides:
+      manage_workflows: false
 
 post_process:
   - command: dprint --config {config_dir}/dprint.json fmt --no-gitignore

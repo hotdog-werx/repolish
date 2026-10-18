@@ -441,9 +441,12 @@ def test_emitted_inputs_recorded(tmp_path: Path) -> None:
     result = apply_provider(provider_cls, project)
 
     assert result.exit_code == 0
-    assert [inp.model_dump() for inp in result.emitted_inputs] == [
+    # The payload content rides along untouched, and the framework has
+    # stamped the sender with the provider's identity.
+    assert [inp.model_dump(exclude={'sender'}) for inp in result.emitted_inputs] == [
         {'ci_tasks': ['lint', 'test']},
     ]
+    assert [inp.sender.alias for inp in result.emitted_inputs if inp.sender] == ['test-provider']
 
 
 def test_extra_inputs_reach_finalize(tmp_path: Path) -> None:
@@ -558,10 +561,12 @@ def test_peer_provider_registered_via_config(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert (project / 'ci-workflows.toml').read_text(encoding='utf-8') == ('tasks = ci\n')
-    # The peer's emission is visible on the session alongside the receiver's
-    assert [inp.model_dump() for inp in result.emitted_inputs] == [
+    # The peer's emission is visible on the session alongside the receiver's,
+    # stamped with the peer's config alias as the sender.
+    assert [inp.model_dump(exclude={'sender'}) for inp in result.emitted_inputs] == [
         {'ci_tasks': ['ci']},
     ]
+    assert [inp.sender.alias for inp in result.emitted_inputs if inp.sender] == ['peer']
 
 
 def test_global_context_is_deterministic_without_git(

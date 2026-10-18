@@ -312,6 +312,32 @@ class WorkspaceProvider(Provider[WorkspaceCtx, PythonInput]):
         return opt.own_context
 ```
 
+### Sender identity
+
+Every routed payload knows who sent it. When inputs are collected, the framework
+stamps each emitted `BaseInputs` payload with the emitting provider's
+`ProviderInfo` as `payload.sender`, so a receiver can branch on provenance
+without the sender declaring itself in the payload. A provider that wants to
+ignore a peer's entries below a section header, or apply another provider's
+input only at a compatible version, reads the stamp instead of asking senders to
+pass their own `opt.own_context.repolish.provider` along by hand.
+
+```python
+def finalize_context(self, opt):
+    for payload in opt.received_inputs:
+        print(payload.sender.alias, payload.sender.version)
+    return opt.own_context
+```
+
+The stamp is framework-owned: providers never set it, and the framework always
+overwrites whatever a provider returns, so a sender cannot pose as another
+provider. In a monorepo, member payloads forwarded to the root pass keep their
+member identity (`payload.sender.session.member_name`).
+
+Only `BaseInputs` subclasses carry the stamp. Input models that inherit from a
+bare `BaseModel` are routed but arrive without a sender, so a provider that
+wants to be identifiable should inherit from `BaseInputs`.
+
 ### `finalize_context()`
 
 Override `finalize_context()` when you need to derive values after all providers

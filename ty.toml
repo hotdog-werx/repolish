@@ -1,7 +1,7 @@
 [environment]
 # site-packages of the uv-toolbox `repolish` environment, where repolish and
 # internal-tools are editable-installed; kept current by the `venv` lane.
-extra-paths = [".uv-toolbox/0d579d9b18ba/lib/python3.12/site-packages"]
+extra-paths = [".uv-toolbox/6a8f4b4f04b7/lib/python3.12/site-packages"]
 
 # project ty settings
 # Everything from the marker down is repo-owned; the `venv` lane only

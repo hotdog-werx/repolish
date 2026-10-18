@@ -1177,7 +1177,7 @@ environments:
           { url = "https://files.pythonhosted.org/packages/96/33/af4aac6d08bb63a3de2549e3582467c9277083b033ce18d92ae776514009/zensical-0.0.71-cp311-abi3-win_arm64.whl", hash = "sha256:433c5a6fecae7b6b5014b7efbc52bb5e0776d715afca60e2832a12162e7d571a", size = 18253924, upload-time = "2026-10-16T14:19:34.521Z" },
       ]
   repolish:
-    fingerprint: sha256:0ce74c0715bc6dc351acb799f5d8a399f45059fd335dacd7049a232cef3b4d6f
+    fingerprint: sha256:35ccf5df48c4c0f457d32f918e09edba89450a73eba38c5d3986d48cee35c2f0
     uv_lock: |
       version = 1
       revision = 3
@@ -1214,6 +1214,23 @@ environments:
       sdist = { url = "https://files.pythonhosted.org/packages/28/c1/3debeeb6e0eb74a51d6f8cf1f273ed7c479e3321631cbf89fb9700e65e28/cyclopts-5.2.0.tar.gz", hash = "sha256:b63c1b1beaadf3ead19214385a0f90b990f152c4107c174e1724c45dc71e9541", size = 246542, upload-time = "2026-10-06T15:02:39.212Z" }
       wheels = [
           { url = "https://files.pythonhosted.org/packages/d4/dd/3f73d04c95f6acc6a54700011637e49362e337139b518be895edf4786f87/cyclopts-5.2.0-py3-none-any.whl", hash = "sha256:5da2a5d65164e03008621fc4795946b88a722b881398b5dfa58afa6218342cff", size = 289196, upload-time = "2026-10-06T15:02:37.57Z" },
+      ]
+
+      [[package]]
+      name = "devkit-workspace"
+      version = "0.1.0"
+      source = { editable = "/home/jmlopez/hotdog-werx/devkit/packages/devkit-workspace" }
+      dependencies = [
+          { name = "repolish" },
+      ]
+
+      [package.metadata]
+      requires-dist = [{ name = "repolish", editable = "../../../" }]
+
+      [package.metadata.requires-dev]
+      dev = [
+          { name = "pytest" },
+          { name = "pytest-mock" },
       ]
 
       [[package]]
@@ -1665,12 +1682,14 @@ environments:
       version = "0.0.0"
       source = { virtual = "." }
       dependencies = [
+          { name = "devkit-workspace" },
           { name = "internal-tools" },
           { name = "repolish" },
       ]
 
       [package.metadata]
       requires-dist = [
+          { name = "devkit-workspace", editable = "/home/jmlopez/hotdog-werx/devkit/packages/devkit-workspace" },
           { name = "internal-tools", editable = "../../../internal" },
           { name = "repolish", editable = "../../../" },
       ]

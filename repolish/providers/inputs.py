@@ -13,6 +13,7 @@ from repolish.providers.models import (
     FacetInputsOptions,
     ProvideInputsOptions,
     ProviderEntry,
+    ProviderInfo,
     call_provider_method,
     instantiate_facets,
 )
@@ -200,6 +201,29 @@ class _GatherState:
     """
 
 
+def _stamp_sender(
+    inputs: Sequence[object],
+    provider_contexts: dict[str, BaseContext],
+    provider_id: str,
+) -> list[object]:
+    """Return the payloads with the emitting provider's identity stamped on.
+
+    The sender's own context carries its ``ProviderInfo`` from the loader
+    (see ``_inject_provider_identity``), so the framework knows who is
+    emitting without any provider cooperation and the identity cannot be
+    spoofed. Only ``BaseInputs`` payloads can carry the stamp; payloads of
+    other model classes pass through untouched.
+
+    The stamped copies are what get routed, finalized, and forwarded to a
+    monorepo root pass, so sender identity survives the session boundary:
+    a payload arriving from a member session still identifies its member.
+    """
+    own_ctx = provider_contexts.get(provider_id)
+    info = getattr(getattr(own_ctx, 'repolish', None), 'provider', None)
+    sender = info if isinstance(info, ProviderInfo) else None
+    return [inp.model_copy(update={'sender': sender}) if isinstance(inp, BaseInputs) else inp for inp in inputs]
+
+
 def _collect_for_provider(
     idx: int,
     provider_id: str,
@@ -235,6 +259,7 @@ def _collect_for_provider(
         else []
     )
     inputs = [*cast('list[object]', inputs or []), *facet_inputs]
+    inputs = _stamp_sender(inputs, state.provider_contexts, provider_id)
 
     if inputs:
         state.emitted_inputs.extend(cast('list[BaseInputs]', inputs))

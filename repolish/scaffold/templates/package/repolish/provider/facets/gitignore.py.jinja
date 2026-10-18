@@ -13,6 +13,9 @@ The example demonstrates the aggregating-inputs pattern: any peer provider
 can contribute ignore entries by emitting ``GitignoreInputs`` payloads; the
 framework routes them here by schema, and ``finalize_context`` folds them
 into the facet's context without the facet ever filtering payloads itself.
+Each routed payload also carries ``payload.sender`` (the framework-stamped
+``ProviderInfo`` of the provider that emitted it), so the facet can tell
+senders apart without them declaring themselves in the payload.
 """
 
 from __future__ import annotations

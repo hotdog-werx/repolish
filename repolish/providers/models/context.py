@@ -254,3 +254,19 @@ class BaseInputs(BaseModel):
     for type checking and tooling.  SessionBundle that declare an input schema
     but don't need any fields can use this empty class as a default.
     """
+
+    sender: ProviderInfo | None = None
+    """Identity of the provider that emitted this payload.
+
+    Stamped by the framework when inputs are collected: every routed payload
+    whose class inherits from ``BaseInputs`` carries the emitting provider's
+    identity, so any receiver can ask who sent it without the sender
+    declaring itself in the payload. The framework always overwrites the
+    value, so a provider cannot spoof it. Payloads that do not inherit from
+    ``BaseInputs`` carry no sender; providers that want to be identifiable
+    should inherit from ``BaseInputs``.
+
+    Part of model equality: two content-equal payloads from different senders
+    are not equal, so comparisons against hand-built expectations must
+    account for the stamp.
+    """
