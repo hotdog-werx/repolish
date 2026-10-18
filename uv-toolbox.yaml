@@ -18,7 +18,7 @@ environments:
       # {git: https://github.com/hotdog-werx/devkit,
       #  branch: topic/workspace-provider, subdirectory: packages/devkit-workspace}
       # once that branch is pushed.
-      - devkit-workspace
+      - hotdogwerx-devkit-workspace
     sources:
       repolish:
         path: .
@@ -26,6 +26,6 @@ environments:
       internal-tools:
         path: ./internal
         editable: true
-      devkit-workspace:
+      hotdogwerx-devkit-workspace:
         path: /home/jmlopez/hotdog-werx/devkit/packages/devkit-workspace
         editable: true

@@ -171,7 +171,15 @@ class ProviderInfo(BaseModel):
     alias: str = ''
     version: str = ''
     package_name: str = ''
+    """Importable dotted module name, e.g. ``devkit.workspace``.
+
+    The name of the code that generated the file, independent of the
+    distribution name it was installed under."""
     project_name: str = ''
+    """Distribution (PyPI) name, e.g. ``acme-devkit-workspace``.
+
+    The label the package is installed by; often carries an org prefix
+    the module name does not."""
     session: ProviderSession = Field(
         default_factory=ProviderSession,
     )
@@ -208,19 +216,24 @@ class RepolishContext(GlobalContext):
     def generated_header(self) -> str:
         """Standard header for generated files, e.g. ``# {{ repolish.generated_header }}``.
 
-        One line that tells a reader the file is generated, by which project
+        One line that tells a reader the file is generated, by which module
         (and member, in a monorepo), at which version, and that hand edits
-        may not survive the next apply.  Providers should stamp their managed
-        files with it instead of hand-rolling their own message; a provider
-        that needs a truly custom header can still define its own
-        ``generated_header`` computed field on its context, which shadows
-        this one for its templates.
+        may not survive the next apply.  The module name
+        (``provider.package_name``) comes first so the header names what
+        actually generated the file — the same module reads the same
+        regardless of which distribution installed it — falling back to the
+        distribution name (``provider.project_name``), the alias, and finally
+        ``repolish``.  Providers should stamp their managed files with it
+        instead of hand-rolling their own message; a provider that needs a
+        truly custom header can still define its own ``generated_header``
+        computed field on its context, which shadows this one for its
+        templates.
 
         The comment marker (``#``, ``//``, ``<!--``) is the template's job:
         this returns bare text so the same line works for any file type.
         """
         info = self.provider
-        name = info.project_name or info.alias or 'repolish'
+        name = info.package_name or info.project_name or info.alias or 'repolish'
         raw_member = info.session.member_name
         member = '' if raw_member in ('', '_root') else raw_member
         slug = f'{name}(in {member})' if member else name
