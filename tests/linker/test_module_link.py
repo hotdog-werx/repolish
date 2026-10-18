@@ -96,6 +96,30 @@ def test_probe_module_links_names_the_module(
     assert 'module_links: true' in call.kwargs['hint']
 
 
+def test_probe_silent_when_distribution_name_matches_module(
+    module_pkg: dict[str, Path],
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A distribution that already normalizes to the module name is left alone.
+
+    Projects that do not publish to PyPI typically carry the module name in
+    `project.name` (devkit.workspace published as devkit-workspace): the
+    distribution and module forms produce the same link directory, so the
+    config is already at the standard and no warning fires. The hint is
+    reserved for names that genuinely diverge.
+    """
+    mocker.patch(
+        'repolish.linker.module_link.resolve_package_identity',
+        return_value=('devkit.workspace', 'devkit-workspace'),
+    )
+    config_dir = tmp_path / 'proj'
+    with mock.patch('repolish.linker.module_link.logger.warning') as warning:
+        info = probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
+    warning.assert_not_called()
+    assert info.resources_dir == str(config_dir / '.repolish' / 'devkit-workspace')
+
+
 def test_probe_missing_module_raises(tmp_path: Path) -> None:
     with pytest.raises(ModuleLinkError, match='no_such_module_xyz'):
         probe_module_info(

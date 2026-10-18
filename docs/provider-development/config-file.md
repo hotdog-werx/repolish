@@ -251,7 +251,11 @@ providers:
 
 The module name is stable across distributions: a provider published by any org
 as `<org>-devkit-workspace` still links as `devkit-workspace`, so the link
-directory always names the module that owns the resources.
+directory always names the module that owns the resources. When the flag is off,
+repolish links under the distribution name and warns only when that name
+diverges from the module name — a distribution that already normalizes to the
+module name (the common case for packages not published to PyPI) produces the
+same directory either way, so the flag is optional there.
 
 - **`cli`** - a shell command (string) that will be executed by `repolish link`.
   The command must write a `.provider-info.json` file under the

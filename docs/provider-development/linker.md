@@ -178,11 +178,15 @@ name instead, with `.` and `_` normalized to `-`, so `devkit.workspace` links as
 installed it.
 
 The module-named directory is the canonical form: the module is what the
-resources belong to, and repolish warns when a module provider links under a
-distribution name. Providers whose resources or docs reference
-`.repolish/<name>/` by hand (mise task includes, install guides) should point
-them at the module-named directory and set `module_links: true` in the
-`repolish.yaml` they document.
+resources belong to. Repolish compares the two names before warning: a
+distribution that already normalizes to the module name produces the same
+directory either way, so the flag is optional there and nothing fires. When the
+names diverge and the flag is off, repolish warns
+(`module_links_distribution_naming`) to encourage the migration. Providers whose
+resources or docs reference `.repolish/<name>/` by hand (mise task includes,
+install guides) should point them at the module-named directory and set
+`module_links: true` in the `repolish.yaml` they document. See the
+[migration page](../migrating-to-v2.md) for the full v2 plan.
 
 <!-- v2 note (updated 2026-10): module: proved out in dogfooding, and the
 provider shorthand now resolves module first. The cli: config entry is a
@@ -192,7 +196,8 @@ name (configs already get a warning when the shorthand falls back to a
 command). module_links is the other v2 default: linking by module name is the
 canon (the distribution name can differ from the module arbitrarily), so v2
 drops the flag and always links module providers under the module name;
-configs already get a warning while it is off. The resource_linker CLI
+configs whose distribution name diverges already get a warning while it is
+off. The resource_linker CLI
 utility itself stays, independently of repolish config, for any library that
 wants to link its own resources into a repo. -->
 
