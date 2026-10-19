@@ -8,6 +8,30 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.17.0] <a name="1.17.0" href="#1.17.0">-</a> October 19, 2026
+
+### 🚀 Features
+
+- Full-pipeline preview, smarter keep directives, scoped post_process (#111) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#111](https://github.com/hotdog-werx/repolish/pull/111)
+- Provider facets, validated by a real consumer (#113) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#113](https://github.com/hotdog-werx/repolish/pull/113)
+
+### 🐛 Bug Fixes
+
+- Release and docs-deploy workflows drop work they do not need by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+### ⚙️ Miscellaneous Tasks
+
+- Make the repo self-contained, drop codeguide, pkglink, poe, and tbelt (#112)
+  by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#112](https://github.com/hotdog-werx/repolish/pull/112)
+
+[1.17.0]: https://github.com/hotdog-werx/repolish/compare/1.16.0...1.17.0
+
 ## [1.16.0] <a name="1.16.0" href="#1.16.0">-</a> September 29, 2026
 
 ### 🚀 Features
