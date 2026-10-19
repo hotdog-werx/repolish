@@ -1,11 +1,6 @@
 [settings]
 experimental = true
 python.uv_venv_auto = true
-# Inline task scripts are POSIX ($DK_UVTB_*_EXEC indirection, multi-line
-# blocks), but mise runs them with `cmd /c` on Windows, and cmd cannot
-# expand $VAR - so the env-var routing works only after this override.
-# GitHub's windows runners ship Git Bash, so bash is on PATH there.
-windows_default_inline_shell_args = "bash -c -o errexit"
 
 [task_config]
 includes = [

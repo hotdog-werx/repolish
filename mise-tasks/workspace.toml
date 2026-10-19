@@ -3,8 +3,8 @@
 # own these tasks; for now the repo hosts them.
 ["workspace:repolish"]
 description = "apply repolish (local provider via the uvtb repolish env)"
-run = '$DK_UVTB_REPOLISH_EXEC repolish apply'
+run = '{{ env.DK_UVTB_REPOLISH_EXEC }} repolish apply'
 
 ["workspace:repolish:check"]
 description = "verify the repo matches repolish output (fails on drift)"
-run = '$DK_UVTB_REPOLISH_EXEC repolish apply --check --strict'
+run = '{{ env.DK_UVTB_REPOLISH_EXEC }} repolish apply --check --strict'

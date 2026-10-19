@@ -9,9 +9,9 @@ usage = '''
 arg "[format_target]" var=#true default="." help="Files to format"
 '''
 run = [
-  "$DK_UVTB_TOOLS_EXEC ruff format --config ./ruff.toml --line-length=80 ${usage_format_target}",
-  "$DK_UVTB_TOOLS_EXEC ruff check --config ./ruff.toml --extend-select COM812 --fix --fix-only ${usage_format_target}",
-  "$DK_UVTB_TOOLS_EXEC ruff format --config ./ruff.toml ${usage_format_target}",
+  "{{ env.DK_UVTB_TOOLS_EXEC }} ruff format --config ./ruff.toml --line-length=80 {{ usage.format_target | join(sep=' ') }}",
+  "{{ env.DK_UVTB_TOOLS_EXEC }} ruff check --config ./ruff.toml --extend-select COM812 --fix --fix-only {{ usage.format_target | join(sep=' ') }}",
+  "{{ env.DK_UVTB_TOOLS_EXEC }} ruff format --config ./ruff.toml {{ usage.format_target | join(sep=' ') }}",
 ]
 
 [format-dprint]
