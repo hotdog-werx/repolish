@@ -88,7 +88,27 @@ def probe_module_info(
     """
     pkg_root = _package_root(module.name)
     pkg_name, project_name = resolve_package_identity(module.name)
-    library_name = project_name or pkg_name.replace('_', '-')
+    module_name = pkg_name.replace('_', '-').replace('.', '-')
+    if module.module_links:
+        # The link directory names the module that owns the resources, so a
+        # provider installed as an org-prefixed distribution still lands under
+        # the same directory as its module: devkit.workspace -> devkit-workspace.
+        library_name = module_name
+    else:
+        library_name = project_name or pkg_name.replace('_', '-')
+        # v2 boundary: the module name is the canonical link name and
+        # module_links defaults to true, so this branch disappears with the
+        # flag itself. Configs whose distribution name already normalizes to
+        # the module name produce the same directory either way, so there is
+        # nothing to migrate and they are left in peace.
+        if library_name != module_name:
+            logger.warning(
+                'module_links_distribution_naming',
+                module=module.name,
+                library_name=library_name,
+                hint='v2 links module providers by module name (devkit.workspace -> devkit-workspace); '
+                'set module_links: true and update any hand-referenced .repolish/ paths',
+            )
     resources_dir = config_dir / '.repolish' / library_name
     logger.debug(
         'module_provider_probed',

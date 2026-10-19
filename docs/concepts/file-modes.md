@@ -30,7 +30,13 @@ A create-only file is written once and never touched again. Ideal for scaffolded
 stubs that the developer will own from the start:
 
 ```python
-from repolish import BaseContext, BaseInputs, FileMode, Provider, TemplateMapping
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    FileMode,
+    Provider,
+    TemplateMapping,
+)
 
 
 class MyProvider(Provider[BaseContext, BaseInputs]):
@@ -124,11 +130,7 @@ templates/repolish/
 
 ```python
 def create_file_mappings(self, context):
-    src = (
-        '_repolish.ci.github.yml'
-        if context.use_github
-        else '_repolish.ci.gitlab.yml'
-    )
+    src = '_repolish.ci.github.yml' if context.use_github else '_repolish.ci.gitlab.yml'
     return {'.github/workflows/ci.yml': src}
 ```
 
@@ -150,6 +152,7 @@ Use `map_folder` to build the mapping dict automatically:
 
 ```python
 from repolish import map_folder
+
 
 def create_file_mappings(self, context):
     tpl = self.templates_root / 'repolish'
@@ -173,7 +176,7 @@ def create_file_mappings(self, context):
     if context.use_github:
         return {
             '.github/workflows/ci.yml': '_repolish.ci.github/workflows/ci.yml',
-            '.github/dependabot.yml':   '_repolish.ci.github/dependabot.yml',
+            '.github/dependabot.yml': '_repolish.ci.github/dependabot.yml',
         }
     return {'.gitlab-ci.yml': '_repolish.ci.gitlab/.gitlab-ci.yml'}
 ```

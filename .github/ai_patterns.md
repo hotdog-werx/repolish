@@ -59,16 +59,16 @@ class TCase:
     order: tuple[str, ...]
     expected: str
 
+
 @pytest.mark.parametrize(
-    "case",
+    'case',
     [
-        TCase("A last -> B wins", ("provider_b",...), "provider_b"),
-        TCase("A first -> default", ("provider_a",...), "provider_a"),
+        TCase('A last -> B wins', ('provider_b', ...), 'provider_b'),
+        TCase('A first -> default', ('provider_a', ...), 'provider_a'),
     ],
-    ids=lambda c: c.name
+    ids=lambda c: c.name,
 )
-def test_something(tmp_path: Path, case: TCase):
-    ...
+def test_something(tmp_path: Path, case: TCase): ...
 ```
 
 This is a recurring pattern in the repository, so future agents and

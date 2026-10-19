@@ -34,7 +34,6 @@ version.path = 'repolish/version.py'
 
 [tool.releez]
 create-pr = true
-run-changelog-format = true
 
 [tool.releez.hooks]
 post-changelog = [
@@ -54,8 +53,3 @@ post-changelog = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.ty.src]
-# provider-examples are standalone packages with their own cross-dependencies
-# (e.g. devkit.workspace) that are not installed in this venv.
-exclude = ["provider-examples"]

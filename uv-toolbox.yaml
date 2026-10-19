@@ -1,0 +1,32 @@
+venv_path: .uv-toolbox
+
+environments:
+  - name: tools
+    dependencies:
+      - ruff==0.17.1
+      - complexipy==8.0.1
+      - zensical==0.0.71
+      - releez==1.1.1
+
+  - name: repolish
+    dependencies:
+      - repolish
+      - internal-tools
+      # consumed via `module: devkit.workspace` in repolish.yaml (the
+      # gitignore facet test). TEMPORARY pin to the workspace-provider
+      # branch until a facets release ships. Toggle for local dev: comment
+      # out the git lines and uncomment the path form below.
+      - hotdogwerx-devkit-workspace
+    sources:
+      repolish:
+        path: .
+        editable: true
+      internal-tools:
+        path: ./internal
+        editable: true
+      hotdogwerx-devkit-workspace:
+        git: https://github.com/hotdog-werx/devkit
+        branch: topic/workspace-provider
+        subdirectory: packages/devkit-workspace
+        # path: /home/jmlopez/hotdog-werx/devkit/packages/devkit-workspace
+        # editable: true

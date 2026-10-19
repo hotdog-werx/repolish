@@ -71,7 +71,7 @@ class WorkspaceProviderContext(BaseContext):
     dprint_version: str = '0.49.0'
     uv_version: str = '0.5.0'
     poe_version: str = '0.29.0'
-    extra_poe_tasks: list[str] = []       # populated by finalize_context
+    extra_poe_tasks: list[str] = []  # populated by finalize_context
 
 
 class WorkspaceProviderInputs(BaseInputs):
@@ -95,13 +95,13 @@ class WorkspaceProvider(Provider[WorkspaceProviderContext, WorkspaceProviderInpu
         self,
         opt: ProvideInputsOptions[WorkspaceProviderContext],
     ) -> list[BaseInputs]:
-        tasks = '''\
+        tasks = """\
 format.help = "run all formatters"
 format.sequence = ["format-dprint"]
 
 format-dprint.help = "run dprint"
 format-dprint.cmd = "dprint fmt"
-'''
+"""
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 
     @override
@@ -187,10 +187,10 @@ class PythonProvider(Provider[PythonProviderContext, PythonProviderInputs]):
         self,
         opt: ProvideInputsOptions[PythonProviderContext],
     ) -> list[BaseInputs]:
-        tasks = '''\
+        tasks = """\
 check-ruff.help = "run ruff linter and formatter check"
 check-ruff.cmd = "uvx ruff check ."
-'''
+"""
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 ```
 
@@ -271,9 +271,10 @@ Add one:
 ```python
 # python_script.py
 def main():
-    print("Hello, World!")
+    print('Hello, World!')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()
 ```
 

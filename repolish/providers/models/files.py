@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeAlias, TypeVar
 
@@ -82,7 +82,7 @@ class FileValidatorOptions(BaseProviderMethodOptions):
     validators: dict[str, bool] = Field(default_factory=dict)
 
 
-class ValidationStatus(str, Enum):
+class ValidationStatus(StrEnum):
     """Status used to classify the outcome of a validator."""
 
     PASS = 'pass'  # noqa: S105 - things can have a pass sir!!. Not everything is a password
@@ -182,7 +182,7 @@ FileInsertionContribution: TypeAlias = InsertionRegistryByPath | InsertionTarget
 """Provider insertion contribution (explicit per-file map or shared-target list)."""
 
 
-class Action(str, Enum):
+class Action(StrEnum):
     """Enumeration of possible actions for a path."""
 
     delete = 'delete'
@@ -653,6 +653,13 @@ class SessionBundle(BaseModel):
     Provider modules loaded dynamically may subclass their own ``BaseInputs``
     identity (see ``repolish.providers.inputs._schema_matches``), so strict
     validation here would reject structurally-valid inputs."""
+    facet_owners: dict[str, tuple[str, str]] = Field(default_factory=dict)
+    """Destination path (POSIX) → ``(provider_id, facet_name)`` for every
+    dest a facet declared through ``ProviderFacet.create_spec``. The
+    renderer reads it to inject the owning facet's context as
+    ``{{ facet.* }}`` for that one file; every template keeps access to
+    all sibling facets through ``{{ facets.<name>.* }}`` on the provider
+    context."""
 
 
 def _records_from_template_sources(
@@ -919,3 +926,7 @@ class Accumulators:
     fast_lanes: dict[str, dict[str, FastLaneEntry]] = field(
         default_factory=dict,
     )
+    # destination path (POSIX) → (provider_id, facet_name) for every dest a
+    # facet declared via ProviderFacet.create_spec; carried onto the bundle
+    # so the renderer can inject the owning facet's context as `facet`.
+    facet_owners: dict[str, tuple[str, str]] = field(default_factory=dict)

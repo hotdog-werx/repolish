@@ -7,7 +7,30 @@ from pathlib import Path
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
+from repolish.commands.link import _linked_path
+from repolish.config.models.metadata import ProviderFileInfo
+from repolish.linker.providers import write_provider_info_file
 from tests.conftest import init_git_repo, write_repolish_config
+
+
+def test_linked_path_falls_back_to_the_recorded_path(tmp_path: Path) -> None:
+    """A recorded resources dir outside the repo displays as its absolute path.
+
+    The recorded path is tried as-is and then resolved before giving up (a
+    module provider's `.repolish/` entry is a symlink into its package), so
+    only a directory that is truly outside the config dir reaches the
+    absolute-path fallback.
+    """
+    config_dir = tmp_path / 'proj'
+    config_dir.mkdir()
+    outside = tmp_path / 'elsewhere' / 'resources'
+    outside.mkdir(parents=True)
+    write_provider_info_file(
+        'odd',
+        ProviderFileInfo(resources_dir=str(outside)),
+        config_dir,
+    )
+    assert _linked_path('odd', config_dir) == str(outside)
 
 
 def _run_link(args: list[str], cwd: Path) -> str:
@@ -55,17 +78,17 @@ def test_link_uses_cache_when_already_linked(tmp_path: Path) -> None:
     """A second plain `repolish link` uses cache and shows (cached) message."""
     _stage_static_provider(tmp_path)
 
-    # First run - should link fresh
+    # First run - should link fresh, naming the directory actually linked
     output1 = _run_link([], tmp_path)
-    assert 'are now available' in output1
+    assert '- provider/resources from test are now available' in output1
 
     # Verify provider-info was created
     info_file = tmp_path / '.repolish' / '_' / 'provider-info.test.json'
     assert info_file.exists()
 
-    # Second run - should use cache and show (cached) message
+    # Second run - should use cache, still naming the linked directory
     output2 = _run_link([], tmp_path)
-    assert '(cached)' in output2
+    assert '- provider/resources from test (cached)' in output2
 
 
 def test_link_force_ignores_cache(tmp_path: Path) -> None:

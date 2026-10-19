@@ -37,17 +37,16 @@ Provider code:
 ```python
 from repolish import BaseContext, BaseInputs, Provider, TemplateMapping
 
+
 class Ctx(BaseContext):
     use_poetry: bool = True
 
+
 class MyProvider(Provider[Ctx, BaseInputs]):
-    def create_file_mappings(
-        self, context: Ctx
-    ) -> dict[str, str | TemplateMapping | None]:
+    def create_file_mappings(self, context: Ctx) -> dict[str, str | TemplateMapping | None]:
         return {
-            "pyproject.toml": (
-                "_repolish.pyproject.poetry.toml" if context.use_poetry
-                else "_repolish.pyproject.setup.toml"
+            'pyproject.toml': (
+                '_repolish.pyproject.poetry.toml' if context.use_poetry else '_repolish.pyproject.setup.toml'
             ),
         }
 ```
@@ -68,10 +67,18 @@ common option is `enabled`, which lets a provider keep a template in its source
 code but opt that destination in or out at runtime:
 
 ```python
-from repolish import BaseContext, BaseInputs, FileMappingOptions, Provider, TemplateMapping
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    FileMappingOptions,
+    Provider,
+    TemplateMapping,
+)
+
 
 class Ctx(BaseContext):
     include_ci: bool = False
+
 
 class MyProvider(Provider[Ctx, BaseInputs]):
     def create_file_mappings(self, context: Ctx):
@@ -127,13 +134,13 @@ dict you can inspect and adjust before spreading it into the final mapping:
 ```python
 from repolish import BaseContext, BaseInputs, Provider, map_folder
 
+
 class Ctx(BaseContext):
     use_github: bool = True
 
+
 class MyProvider(Provider[Ctx, BaseInputs]):
-    def create_file_mappings(
-        self, context: Ctx
-    ) -> dict[str, str | TemplateMapping | None]:
+    def create_file_mappings(self, context: Ctx) -> dict[str, str | TemplateMapping | None]:
         tpl = self.templates_root / 'repolish'
         if context.use_github:
             github_files = map_folder('.github', '_repolish.ci.github', tpl)
@@ -165,25 +172,34 @@ Use `FileMode.CREATE_ONLY` to seed files that a developer will own after the
 first apply. Subsequent runs skip those files even when the template changes.
 
 ```python
-from repolish import BaseContext, BaseInputs, FileMode, Provider, TemplateMapping
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    FileMode,
+    Provider,
+    TemplateMapping,
+)
+
 
 class Ctx(BaseContext):
     package_name: str = 'mypackage'
 
+
 class MyProvider(Provider[Ctx, BaseInputs]):
-    def create_file_mappings(
-        self, context: Ctx
-    ) -> dict[str, str | TemplateMapping | None]:
+    def create_file_mappings(self, context: Ctx) -> dict[str, str | TemplateMapping | None]:
         pkg = context.package_name
         return {
             f'src/{pkg}/__init__.py': TemplateMapping(
-                '_repolish.init.py', file_mode=FileMode.CREATE_ONLY,
+                '_repolish.init.py',
+                file_mode=FileMode.CREATE_ONLY,
             ),
             f'src/{pkg}/py.typed': TemplateMapping(
-                '_repolish.py.typed', file_mode=FileMode.CREATE_ONLY,
+                '_repolish.py.typed',
+                file_mode=FileMode.CREATE_ONLY,
             ),
             'tests/test_main.py': TemplateMapping(
-                '_repolish.test_main.py', file_mode=FileMode.CREATE_ONLY,
+                '_repolish.test_main.py',
+                file_mode=FileMode.CREATE_ONLY,
             ),
         }
 ```

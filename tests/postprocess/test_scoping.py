@@ -28,8 +28,14 @@ def _touch(target: Path) -> list[str]:
 
 
 def test_normalize_entry_leaves_plain_commands_unscoped() -> None:
-    assert runner._normalize_entry('ruff format .') == (('ruff', 'format', '.'), None)
-    assert runner._normalize_entry(['ruff', 'format']) == (('ruff', 'format'), None)
+    assert runner._normalize_entry('ruff format .') == (
+        ('ruff', 'format', '.'),
+        None,
+    )
+    assert runner._normalize_entry(['ruff', 'format']) == (
+        ('ruff', 'format'),
+        None,
+    )
 
 
 def test_normalize_entry_carries_the_mapping_scope() -> None:
@@ -40,7 +46,9 @@ def test_normalize_entry_carries_the_mapping_scope() -> None:
     )
 
 
-def test_scoped_command_runs_when_a_generated_file_matches(tmp_path: Path) -> None:
+def test_scoped_command_runs_when_a_generated_file_matches(
+    tmp_path: Path,
+) -> None:
     configure_logging(verbosity=resolve_verbosity(verbose=0))
     ran = tmp_path / 'ran.txt'
     run = run_post_process(
@@ -73,7 +81,9 @@ def test_scoped_command_skipped_when_no_file_matches(tmp_path: Path) -> None:
     assert outcome.returncode is None
 
 
-def test_scope_matches_exact_directory_and_dotfile_forms(tmp_path: Path) -> None:
+def test_scope_matches_exact_directory_and_dotfile_forms(
+    tmp_path: Path,
+) -> None:
     """All three pattern-language forms scope: exact, directory, glob.
 
     The dotfile case is the one an "extensions" model cannot express:
@@ -113,7 +123,9 @@ def test_generated_files_none_runs_scoped_entries(tmp_path: Path) -> None:
     assert ran.exists()
 
 
-def test_unknown_placeholder_in_scoped_command_fails_up_front(tmp_path: Path) -> None:
+def test_unknown_placeholder_in_scoped_command_fails_up_front(
+    tmp_path: Path,
+) -> None:
     """Placeholders resolve before the loop, scoped entries included."""
     never = tmp_path / 'never.txt'
     with pytest.raises(ValueError, match='renderdir'):
@@ -160,7 +172,10 @@ def test_entry_files_required_and_non_empty() -> None:
 
 
 def test_entry_accepts_string_command() -> None:
-    entry = PostProcessEntry(command='dprint --config {config_dir}/dprint.json fmt', files=['*.json'])
+    entry = PostProcessEntry(
+        command='dprint --config {config_dir}/dprint.json fmt',
+        files=['*.json'],
+    )
     assert runner._normalize_entry(entry) == (
         ('dprint', '--config', '{config_dir}/dprint.json', 'fmt'),
         ('*.json',),

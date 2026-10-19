@@ -304,7 +304,7 @@ def apply_provider(  # noqa: PLR0913 - mirrors ApplyOptions on purpose
     }
     config_data['providers'] = providers_config
     config_path = project_dir / 'repolish.yaml'
-    config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8')
+    config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8', newline='')
 
     global_context = GlobalContext(
         repo=GithubRepo(owner=repo_owner, name=repo_name),
@@ -369,7 +369,7 @@ def apply_fast_lane(  # noqa: PLR0913 - mirrors apply_provider on purpose
     }
     config_data['providers'] = providers_config
     config_path = project_dir / 'repolish.yaml'
-    config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8')
+    config_path.write_text(yaml.safe_dump(config_data), encoding='utf-8', newline='')
 
     global_context = GlobalContext(
         repo=GithubRepo(owner=repo_owner, name=repo_name),

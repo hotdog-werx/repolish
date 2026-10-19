@@ -17,6 +17,7 @@ Old providers exposed bare module-level functions. The v1 API uses a typed
 def create_context():
     return {'shared_prefix': 'lib'}
 
+
 def create_file_mappings(ctx):
     return {'src/a.py': 'templates/mod.jinja'}
 ```
@@ -25,7 +26,13 @@ def create_file_mappings(ctx):
 
 ```python
 # repolish.py (v1 class-based)
-from repolish import BaseContext, BaseInputs, FileMode, Provider, TemplateMapping
+from repolish import (
+    BaseContext,
+    BaseInputs,
+    FileMode,
+    Provider,
+    TemplateMapping,
+)
 
 
 class Ctx(BaseContext):
@@ -83,6 +90,7 @@ powered the provider's link CLI:
 # v0.8 — repolish.linker decorator
 from repolish.linker import resource_linker, Symlink
 
+
 @resource_linker(
     library_name='myprovider',
     default_symlinks=[
@@ -101,6 +109,7 @@ In v1, symlinks are declared directly on the `Provider` class via
 ```python
 # v1 — Provider method
 from repolish import BaseContext, BaseInputs, Provider, Symlink
+
 
 class MyProvider(Provider[BaseContext, BaseInputs]):
     def create_default_symlinks(self) -> list[Symlink]:

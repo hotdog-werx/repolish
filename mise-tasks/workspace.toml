@@ -1,0 +1,10 @@
+# Workspace tasks: repolish runs from the uv-toolbox `repolish` env so the
+# local provider package is importable. The devkit workspace provider will
+# own these tasks; for now the repo hosts them.
+["workspace:repolish"]
+description = "apply repolish (local provider via the uvtb repolish env)"
+run = '{{ env.DK_UVTB_REPOLISH_EXEC }} repolish apply'
+
+["workspace:repolish:check"]
+description = "verify the repo matches repolish output (fails on drift)"
+run = '{{ env.DK_UVTB_REPOLISH_EXEC }} repolish apply --check --strict'

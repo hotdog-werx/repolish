@@ -179,6 +179,8 @@ def test_generate_creates_all_expected_files_monorepo(tmp_path: Path) -> None:
         'acme_base/repolish/provider/root.py',
         'acme_base/repolish/provider/member.py',
         'acme_base/repolish/provider/standalone.py',
+        'acme_base/repolish/provider/facets/__init__.py',
+        'acme_base/repolish/provider/facets/gitignore.py',
         'acme_base/resources/templates/repolish.py',
         'acme_base/resources/templates/repolish/.gitkeep',
         'tests/__init__.py',

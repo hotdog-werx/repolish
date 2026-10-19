@@ -166,8 +166,8 @@ class MyProvider(Provider[Ctx, BaseInputs]):
             # context.args -> tuple of positional args from the marker
             # context.repolish -> full repolish context (workspace, repo, provider)
             if context.args:
-                return f"Called with: {', '.join(context.args)}"
-            return "No args provided"
+                return f'Called with: {", ".join(context.args)}'
+            return 'No args provided'
 
         return {
             'README.md': {
@@ -182,9 +182,10 @@ class MyProvider(Provider[Ctx, BaseInputs]):
 For simple cases, use positional parameters with clear names:
 
 ```python
-def env_info(env_var: str, default: str = "unknown") -> str:
+def env_info(env_var: str, default: str = 'unknown') -> str:
     """Get environment variable with a default."""
     import os
+
     return os.environ.get(env_var, default)
 ```
 
@@ -197,7 +198,7 @@ omissions without placeholder values.
 
 ```python
 def render_config(arg1: str | None, arg2: str | None, third_arg: str) -> str:
-        return f"{arg1=} {arg2=} {third_arg=}"
+    return f'{arg1=} {arg2=} {third_arg=}'
 ```
 
 Marker examples:
@@ -228,7 +229,7 @@ Only use `*args` when you need truly flexible arity for marker arguments:
 ```python
 def join_items(*args: str) -> str:
     """Join arbitrary number of items."""
-    return ", ".join(args)
+    return ', '.join(args)
 ```
 
 Marker: `<!-- repolish:on:items join-items apple banana cherry -->`
@@ -244,7 +245,7 @@ For static content:
 ```python
 def static_header() -> str:
     """Return a fixed header."""
-    return "## Generated Section\n"
+    return '## Generated Section\n'
 ```
 
 ### Key points about strong typing
@@ -500,16 +501,20 @@ class PydanticDocsProvider(Provider[Ctx, BaseInputs]):
     def create_file_insertions(self, context: Ctx):
         def describe_model(model_path: str) -> str:
             """Load a Pydantic model and return formatted field documentation.
-            
+
             Usage: describe_model('myapp.models:UserCreate')
             """
             module_path, class_name = model_path.rsplit(':', 1)
             module = importlib.import_module(module_path)
             model_class = getattr(module, class_name)
-            
+
             lines = [f'### {class_name}', '']
             for field_name, field_info in model_class.model_fields.items():
-                field_type = getattr(field_info.annotation, '__name__', str(field_info.annotation))
+                field_type = getattr(
+                    field_info.annotation,
+                    '__name__',
+                    str(field_info.annotation),
+                )
                 description = field_info.description or 'No description'
                 lines.append(f'- **{field_name}** (`{field_type}`): {description}')
             return '\n'.join(lines)
@@ -557,8 +562,11 @@ class GitHubProvider(Provider[Ctx, BaseInputs]):
             response = httpx.get('https://api.github.com/orgs/myorg/repos')
             response.raise_for_status()
             repos = response.json()
-            
-            lines = ['| Repository | Description | Stars |', '|-------------|-------------|-------|']
+
+            lines = [
+                '| Repository | Description | Stars |',
+                '|-------------|-------------|-------|',
+            ]
             for repo in sorted(repos, key=lambda r: r['stargazers_count'], reverse=True):
                 name = repo['name']
                 desc = repo['description'] or 'No description'

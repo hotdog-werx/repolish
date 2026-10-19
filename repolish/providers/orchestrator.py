@@ -139,6 +139,7 @@ def _build_fast_path_bundle(
         return SessionBundle(
             provider_contexts=provider_contexts,
             fast_lanes=state.accumulators.fast_lanes,
+            facet_owners=state.accumulators.facet_owners,
         )
 
     return None
@@ -197,6 +198,7 @@ def _run_standard_pipeline(
         fast_lanes=accumulators.fast_lanes,
         provider_entries=state.all_providers[: len(module_cache)],
         emitted_inputs=emitted_inputs,
+        facet_owners=accumulators.facet_owners,
     )
 
 

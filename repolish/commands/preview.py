@@ -121,7 +121,10 @@ def _run_preview(
     try:
         registry = _build_insertion_registry(section.insertions, debug_file)
     except _EntryPointError as exc:
-        logger.exception('preview_insertion_registration_failed', error=str(exc))
+        logger.exception(
+            'preview_insertion_registration_failed',
+            error=str(exc),
+        )
         return 1
 
     console.rule('[bold]Debug Preprocessing')
@@ -143,7 +146,11 @@ def _run_preview(
             section.anchors,
             source_path=str(debug_file),
         )
-        rendered = render_text(pre_rendered, section.context, filename=debug_file)
+        rendered = render_text(
+            pre_rendered,
+            section.context,
+            filename=debug_file,
+        )
     except (UndefinedError, TemplateSyntaxError) as exc:
         logger.exception('preview_render_failed', error=str(exc))
         return 1
@@ -181,7 +188,11 @@ def _run_preview(
 def _show_patterns(template: str, debug_file: Path) -> None:
     """Print the patterns extracted from the template, per phase."""
     for phase in (DirectivePhase.PRE_RENDER, DirectivePhase.AFTER_RENDER):
-        patterns = extract_patterns(template, phase=phase, source_path=str(debug_file))
+        patterns = extract_patterns(
+            template,
+            phase=phase,
+            source_path=str(debug_file),
+        )
         console.rule(f'[bold]Extracted Patterns ({phase.value})')
         logger.info(
             'extracted_patterns',

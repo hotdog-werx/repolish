@@ -20,7 +20,7 @@ page was validated with it.
 
 ```python
 ## repolish:regex[version] ^__version__\s*=\s*"(.+?)"$
-__version__ = "0.0.0"
+__version__ = '0.0.0'
 ```
 
 - The directive line sits directly above the line it manages and is always

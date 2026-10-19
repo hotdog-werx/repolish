@@ -37,7 +37,11 @@ from repolish.config.models.provider import (
     ProviderSymlink,
 )
 from repolish.linker.health import ProviderReadinessResult
-from repolish.postprocess.models import CommandOutcome, PostProcessEntry, PostProcessRun
+from repolish.postprocess.models import (
+    CommandOutcome,
+    PostProcessEntry,
+    PostProcessRun,
+)
 from repolish.providers import SessionBundle
 from repolish.providers.models import (
     Action,
@@ -453,7 +457,9 @@ def test_apply_session_returns_1_when_post_process_fails(
     )
 
 
-def test_post_process_scopes_match_the_staged_render_tree(tmp_path: Path) -> None:
+def test_post_process_scopes_match_the_staged_render_tree(
+    tmp_path: Path,
+) -> None:
     """Scoped commands select against the render tree's project-relative dests.
 
     A mapped file stages as ``_repolish.<name>``; the scope must see the
@@ -462,8 +468,16 @@ def test_post_process_scopes_match_the_staged_render_tree(tmp_path: Path) -> Non
     """
     py_ran = tmp_path / 'py-ran.txt'
     md_never = tmp_path / 'md-ran.txt'
-    touch_py = [sys.executable, '-c', f'from pathlib import Path; Path({str(py_ran)!r}).touch()']
-    touch_md = [sys.executable, '-c', f'from pathlib import Path; Path({str(md_never)!r}).touch()']
+    touch_py = [
+        sys.executable,
+        '-c',
+        f'from pathlib import Path; Path({str(py_ran)!r}).touch()',
+    ]
+    touch_md = [
+        sys.executable,
+        '-c',
+        f'from pathlib import Path; Path({str(md_never)!r}).touch()',
+    ]
     config = RepolishConfig(
         config_dir=tmp_path,
         post_process=[
@@ -498,7 +512,10 @@ def test_post_process_scopes_match_the_staged_render_tree(tmp_path: Path) -> Non
     assert not failed
     assert py_ran.exists()
     assert not md_never.exists()
-    (label, run), report_path = session.post_process_runs[0], session.post_process_reports[0]
+    (label, run), report_path = (
+        session.post_process_runs[0],
+        session.post_process_reports[0],
+    )
     assert (label, report_path) == (
         'session',
         tmp_path / '.repolish' / '_' / 'post-process.txt',

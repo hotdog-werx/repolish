@@ -84,13 +84,15 @@ If you need a custom success message, use the `@resource_linker` decorator:
 # mylib/cli_link.py
 from repolish.linker import resource_linker
 
+
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',  # Relative to package root
 )
 def main():
     """Link mylib resources to your project."""
-    print("✓ mylib resources are now available!")
+    print('✓ mylib resources are now available!')
+
 
 if __name__ == '__main__':
     main()
@@ -168,14 +170,36 @@ bare string under `providers:` is resolved module first and only falls back to
 [providers section](config-file.md#providers-subsection) for the layout
 overrides and the resolution rules.
 
+By default the resources link under the distribution name the module was
+installed as (`.repolish/<project-name>/`). When the distribution name carries
+an org prefix the project-level `module_links: true` flag links under the module
+name instead, with `.` and `_` normalized to `-`, so `devkit.workspace` links as
+`.repolish/devkit-workspace/` no matter which org-prefixed distribution
+installed it.
+
+The module-named directory is the canonical form: the module is what the
+resources belong to. Repolish compares the two names before warning: a
+distribution that already normalizes to the module name produces the same
+directory either way, so the flag is optional there and nothing fires. When the
+names diverge and the flag is off, repolish warns
+(`module_links_distribution_naming`) to encourage the migration. Providers whose
+resources or docs reference `.repolish/<name>/` by hand (mise task includes,
+install guides) should point them at the module-named directory and set
+`module_links: true` in the `repolish.yaml` they document. See the
+[migration page](../migrating-to-v2.md) for the full v2 plan.
+
 <!-- v2 note (updated 2026-10): module: proved out in dogfooding, and the
 provider shorthand now resolves module first. The cli: config entry is a
 deprecation candidate for v2: repolish would stop asking providers to ship a
 link CLI for registration, and the shorthand would require a valid module
 name (configs already get a warning when the shorthand falls back to a
-command). The resource_linker CLI utility itself stays, independently of
-repolish config, for any library that wants to link its own resources into
-a repo. -->
+command). module_links is the other v2 default: linking by module name is the
+canon (the distribution name can differ from the module arbitrarily), so v2
+drops the flag and always links module providers under the module name;
+configs whose distribution name diverges already get a warning while it is
+off. The resource_linker CLI
+utility itself stays, independently of repolish config, for any library that
+wants to link its own resources into a repo. -->
 
 ### Updating Resources
 
@@ -263,6 +287,7 @@ package root and resolves the path.
 ```python
 from repolish.linker import resource_linker
 
+
 @resource_linker(
     library_name='codeguide',
     default_source_dir='resources',  # Resolves to <package-root>/resources
@@ -276,6 +301,7 @@ def main():
 ```python
 from repolish.linker import resource_linker, Symlink
 
+
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',
@@ -285,7 +311,7 @@ from repolish.linker import resource_linker, Symlink
     ],
 )
 def main():
-    print("✓ Resources linked!")
+    print('✓ Resources linked!')
 ```
 
 When users run `mylib-link`, these symlinks will be created automatically unless
@@ -368,7 +394,7 @@ from repolish.linker import Symlink
 
 symlink = Symlink(
     source='configs/.editorconfig',  # relative to the provider's resources dir
-    target='.editorconfig',          # relative to the repo root
+    target='.editorconfig',  # relative to the repo root
 )
 ```
 
@@ -418,7 +444,7 @@ create_additional_link(
     resources_dir=Path('.repolish/mylib'),
     provider_name='mylib',
     source='configs/.editorconfig',  # Relative to resources_dir
-    target='.editorconfig',           # Relative to repo root
+    target='.editorconfig',  # Relative to repo root
     force=False,
 )
 ```
@@ -464,6 +490,7 @@ will typically want in their project root:
 ```python
 from repolish.linker import resource_linker, Symlink
 
+
 @resource_linker(
     library_name='code-style',
     default_source_dir='resources',
@@ -474,7 +501,7 @@ from repolish.linker import resource_linker, Symlink
     ],
 )
 def main():
-    print("✓ Code style configs linked!")
+    print('✓ Code style configs linked!')
 ```
 
 Users get these symlinks automatically when they run `code-style-link`, but can
@@ -525,12 +552,14 @@ mylib/
 ```python
 from repolish.linker import resource_linker
 
+
 @resource_linker(
     library_name='mylib',
     default_source_dir='resources',
 )
 def main():
-    print("✓ mylib resources linked!")
+    print('✓ mylib resources linked!')
+
 
 if __name__ == '__main__':
     main()
@@ -558,7 +587,8 @@ A library can provide multiple link CLIs for different resource sets:
     default_source_dir='templates',
 )
 def main():
-    print("✓ Templates linked!")
+    print('✓ Templates linked!')
+
 
 # mylib/cli_link_configs.py
 @resource_linker(
@@ -566,7 +596,7 @@ def main():
     default_source_dir='configs',
 )
 def main():
-    print("✓ Configs linked!")
+    print('✓ Configs linked!')
 ```
 
 Register both:

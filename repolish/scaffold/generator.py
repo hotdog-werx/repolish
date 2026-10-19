@@ -95,11 +95,11 @@ def _derive_context(
     if mode == 'namespace' and ns_root is not None:
         repo_name = f'{ns_root}-{sub}'.replace('_', '-')
         pkg_dir: Path = Path(ns_root) / sub
-        raw_prefix = prefix if prefix else sub.split('_')[-1]
+        raw_prefix = prefix or sub.split('_')[-1]
     else:
         repo_name = pkg.replace('_', '-')
         pkg_dir = Path(pkg)
-        raw_prefix = prefix if prefix else pkg.split('_')[-1]
+        raw_prefix = prefix or pkg.split('_')[-1]
 
     short_prefix = raw_prefix.capitalize()
     return ScaffoldContext(
@@ -140,6 +140,8 @@ _MONOREPO_ONLY: frozenset[str] = frozenset(
         'package/repolish/provider/root.py.jinja',
         'package/repolish/provider/member.py.jinja',
         'package/repolish/provider/standalone.py.jinja',
+        'package/repolish/provider/facets/__init__.py.jinja',
+        'package/repolish/provider/facets/gitignore.py.jinja',
     },
 )
 _SIMPLE_ONLY: frozenset[str] = frozenset(
@@ -292,7 +294,7 @@ def generate_local(
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         rendered = env.get_template(template_rel).render(context_dict)
-        dest.write_text(rendered, encoding='utf-8')
+        dest.write_text(rendered, encoding='utf-8', newline='')
         written.append(dest)
 
     return written
@@ -344,7 +346,7 @@ def generate(
         rendered = env.get_template(template_rel.as_posix()).render(
             context_dict,
         )
-        dest.write_text(rendered, encoding='utf-8')
+        dest.write_text(rendered, encoding='utf-8', newline='')
         written.append(dest)
 
     return written

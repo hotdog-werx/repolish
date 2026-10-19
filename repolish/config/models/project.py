@@ -1,5 +1,5 @@
 import shutil
-from enum import Enum
+from enum import StrEnum
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -63,7 +63,7 @@ class WorkspaceConfig(BaseModel):
     """Explicit repo-relative member paths. Overrides uv workspace detection."""
 
 
-class FastLaneResolution(str, Enum):
+class FastLaneResolution(StrEnum):
     """Which side wins when a regular hook and a fast lane declare one dest."""
 
     FAST_LANE = 'fast_lane'
@@ -162,6 +162,18 @@ class RepolishConfigFile(BaseModel):
         default_factory=dict,
         description='Provider configurations for resource linking and orchestration',
     )
+    module_links: bool = Field(
+        default=False,
+        description=(
+            'Module-declared providers link under .repolish/<module-name>/ with '
+            '``.`` and ``_`` normalized to ``-`` (devkit.workspace -> '
+            '.repolish/devkit-workspace/) instead of the distribution name, so '
+            'the link directory names the module that owns the resources '
+            'regardless of which distribution installed it. Opt-in: the '
+            'distribution name stays the default. A module entry may set '
+            'module_links explicitly to deviate per provider.'
+        ),
+    )
     workspace: WorkspaceConfig | None = Field(
         default=None,
         description=(
@@ -224,6 +236,21 @@ class RepolishConfigFile(BaseModel):
             if unknown:
                 msg = f'template_overrides references undefined providers: {sorted(unknown)}'
                 raise ConfigValidationError(msg)
+        return self
+
+    @model_validator(mode='after')
+    def propagate_module_links(self) -> 'RepolishConfigFile':
+        """Resolve each module entry's module_links against the project flag.
+
+        A module entry that does not set ``module_links`` explicitly inherits
+        the project-level flag, so ``module_links: true`` once in
+        ``repolish.yaml`` covers every ``module:`` provider; the mapping form
+        can still deviate per provider.
+        """
+        for provider_config in self.providers.values():
+            module = provider_config.module
+            if module is not None and module.module_links is None:
+                module.module_links = self.module_links
         return self
 
 

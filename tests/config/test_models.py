@@ -198,7 +198,10 @@ def test_provider_info_from_file(tmp_path: Path, case: ProviderInfoCase):
 class ProviderShorthandCase:
     name: str
     providers_config: dict
-    expected_module: dict[str, str | None]  # provider_name -> expected module name
+    expected_module: dict[
+        str,
+        str | None,
+    ]  # provider_name -> expected module name
     expected_cli: dict[str, str | None]  # provider_name -> expected cli value
     expected_provider_root: dict[
         str,
@@ -267,7 +270,9 @@ class ProviderShorthandCase:
 )
 def test_provider_shorthand_normalization(case: ProviderShorthandCase):
     """Test that provider shorthand syntax is normalized to full ProviderConfig."""
-    with mock.patch('repolish.config.models.project.logger.warning') as warning_mock:
+    with mock.patch(
+        'repolish.config.models.project.logger.warning',
+    ) as warning_mock:
         config = RepolishConfigFile(providers=case.providers_config)
 
     assert len(config.providers) == len(case.expected_cli)
@@ -298,7 +303,9 @@ def test_provider_shorthand_cli_fallback_warns_when_command_exists() -> None:
             'repolish.config.models.project.shutil.which',
             return_value='/usr/bin/codeguide-link',
         ),
-        mock.patch('repolish.config.models.project.logger.warning') as warning_mock,
+        mock.patch(
+            'repolish.config.models.project.logger.warning',
+        ) as warning_mock,
     ):
         config = RepolishConfigFile(providers={'base': 'codeguide-link'})
 
@@ -553,6 +560,37 @@ def test_module_mapping_normalizes_with_overrides():
     assert provider.module.name == 'devkit.workspace'
     assert provider.module.resources_dir == 'src/resources'
     assert provider.module.provider_root == 'pkg-templates'
+
+
+def test_module_links_flag_defaults_off():
+    """Without the project flag, module entries inherit distribution naming."""
+    config = RepolishConfigFile(
+        providers={'ws': {'module': 'devkit.workspace'}},
+    )
+    ws = config.providers['ws'].module
+
+    assert config.module_links is False
+    assert ws is not None
+    assert ws.module_links is False
+
+
+def test_module_links_flag_propagates_to_module_entries():
+    """module_links: true covers every module provider that does not deviate."""
+    config = RepolishConfigFile(
+        module_links=True,
+        providers={
+            'ws': {'module': 'devkit.workspace'},
+            'py': {'module': {'name': 'devkit.python', 'module_links': False}},
+        },
+    )
+    ws = config.providers['ws'].module
+    py = config.providers['py'].module
+
+    assert ws is not None
+    assert py is not None
+    assert ws.module_links is True
+    # an explicit per-provider entry overrides the project flag
+    assert py.module_links is False
 
 
 def test_module_alone_satisfies_validation():

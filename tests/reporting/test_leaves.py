@@ -555,7 +555,13 @@ def test_command_row_skipped_renders_unmatched_patterns() -> None:
 def test_post_process_group_renders_skipped_count() -> None:
     group = PostProcessGroup(
         label='pkg',
-        commands=(CommandRow(raw='dprint fmt', state=CommandState.SKIPPED, scope=('*.md',)),),
+        commands=(
+            CommandRow(
+                raw='dprint fmt',
+                state=CommandState.SKIPPED,
+                scope=('*.md',),
+            ),
+        ),
         skipped=1,
     )
     node = render_post_process_group(group)

@@ -56,6 +56,13 @@ class ProviderEntry(BaseModel):
         the schema returned by :meth:`Provider.get_inputs_schema`, equivalent
         to the third element of the old tuple.  `None` for providers that do
         not accept inputs.
+    input_types:
+        the provider's own input schema plus every declared facet's schema,
+        in that order. Routing delivers a payload to the provider when it
+        exactly matches any schema here; the structural ``model_validate``
+        fallback applies to ``input_type`` only. Entries built by hand that
+        set only ``input_type`` keep working (routing treats it as a
+        one-element list).
     """
 
     provider_id: str
@@ -68,3 +75,4 @@ class ProviderEntry(BaseModel):
     context: object = Field(default_factory=dict)
     context_type: type[BaseModel] | None = None
     input_type: type[BaseModel] | None = None
+    input_types: list[type[BaseModel]] = Field(default_factory=list)

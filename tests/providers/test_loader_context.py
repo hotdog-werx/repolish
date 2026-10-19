@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pytest_mock import MockerFixture
 
 from repolish.providers.context import (
@@ -175,5 +175,63 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
     assert out2 is instance
     assert mock_logger.warning.call_count == 1
     assert 'context_override_validation_failed' in str(
+        mock_logger.warning.call_args[0][0],
+    )
+
+
+def test_apply_overrides_to_model_keeps_facet_context_types(
+    mocker: MockerFixture,
+):
+    """The override round-trip must not coerce facet contexts to BaseContext.
+
+    ``facets`` is declared ``dict[str, BaseContext]``, so re-validating a
+    dumped provider context reconstructs each facet as the bare base class
+    and silently drops its specific fields. The helper re-validates each
+    facet dict into its runtime class instead.
+    """
+
+    class GitignoreFacetContext(BaseContext):
+        entries: list[str] = Field(default_factory=list)
+
+    class M(BaseContext):
+        a: int = 0
+
+    mock_logger = mocker.patch('repolish.providers.context.logger')
+
+    instance = M()
+    instance.facets['gitignore'] = GitignoreFacetContext(entries=['.repolish/'])
+
+    # a provider-level override triggers the dump/validate round-trip; the
+    # facet's runtime type and fields must survive it.
+    new = _apply_overrides_to_model(instance, {'a': 5}, provider='pid')
+    assert isinstance(new, M)
+    assert new.a == 5
+    assert isinstance(new.facets['gitignore'], GitignoreFacetContext)
+    assert new.facets['gitignore'].entries == ['.repolish/']
+    assert mock_logger.warning.call_count == 0
+
+    # a dotted facet override lands on the facet's own model
+    new2 = _apply_overrides_to_model(
+        instance,
+        {'facets.gitignore.entries': ['.tmp']},
+        provider='pid',
+    )
+    assert isinstance(new2.facets['gitignore'], GitignoreFacetContext)
+    assert new2.facets['gitignore'].entries == ['.tmp']
+    assert mock_logger.warning.call_count == 0
+
+    # a facet override that fails validation keeps the base-coerced context
+    # and warns instead of blocking the run
+    mock_logger.reset_mock()
+    new3 = _apply_overrides_to_model(
+        instance,
+        {'facets.gitignore.entries': 5},
+        provider='pid',
+    )
+    assert isinstance(new3, M)
+    assert new3.a == instance.a
+    assert type(new3.facets['gitignore']) is BaseContext
+    assert mock_logger.warning.call_count == 1
+    assert 'facet_context_override_validation_failed' in str(
         mock_logger.warning.call_args[0][0],
     )

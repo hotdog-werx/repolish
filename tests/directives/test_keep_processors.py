@@ -1005,8 +1005,14 @@ def test_apply_keep_block_stacked_identical_markers_emit_region_once() -> None:
         template,
         KeepPatterns(
             blocks={
-                'one': KeepBlockSpec(start='<!-- start -->', end='<!-- end -->'),
-                'two': KeepBlockSpec(start='<!-- start -->', end='<!-- end -->'),
+                'one': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
+                'two': KeepBlockSpec(
+                    start='<!-- start -->',
+                    end='<!-- end -->',
+                ),
             },
             rest={},
             header={},
@@ -1036,8 +1042,14 @@ def test_apply_keep_block_stacked_run_warns_for_spec_without_region() -> None:
             template,
             KeepPatterns(
                 blocks={
-                    'a': KeepBlockSpec(start='<!-- a-start -->', end='<!-- a-end -->'),
-                    'b': KeepBlockSpec(start='<!-- b-start -->', end='<!-- b-end -->'),
+                    'a': KeepBlockSpec(
+                        start='<!-- a-start -->',
+                        end='<!-- a-end -->',
+                    ),
+                    'b': KeepBlockSpec(
+                        start='<!-- b-start -->',
+                        end='<!-- b-end -->',
+                    ),
                 },
                 rest={},
                 header={},

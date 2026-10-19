@@ -375,7 +375,9 @@ def _emit_block_segment(
         if local_region is None:
             result.extend(ctx.template_lines[region[0] : region[1] + 1])
         else:
-            result.extend(ctx.local_lines[local_region[0] : local_region[1] + 1])
+            result.extend(
+                ctx.local_lines[local_region[0] : local_region[1] + 1],
+            )
             matched_names.add(claim.name)
         cursor = region[1] + 1
 
@@ -383,7 +385,10 @@ def _emit_block_segment(
     _log_block_claims(claims, matched_names)
 
 
-def _log_block_claims(claims: list[_BlockClaim], matched_names: set[str]) -> None:
+def _log_block_claims(
+    claims: list[_BlockClaim],
+    matched_names: set[str],
+) -> None:
     """Report per directive whether any local region was spliced."""
     for claim in claims:
         event = 'keep_block_matched_in_target' if claim.name in matched_names else 'keep_block_no_match_in_target'

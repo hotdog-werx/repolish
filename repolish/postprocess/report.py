@@ -61,5 +61,5 @@ def render_report(run: PostProcessRun) -> str:
 def write_post_process_report(report_path: Path, run: PostProcessRun) -> Path:
     """Write the report for *run* to *report_path* (parents created)."""
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(render_report(run), encoding='utf-8')
+    report_path.write_text(render_report(run), encoding='utf-8', newline='')
     return report_path

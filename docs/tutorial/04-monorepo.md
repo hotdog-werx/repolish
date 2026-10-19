@@ -241,10 +241,12 @@ from repolish.loader import create_providers
 
 
 def test_python_provider_contributes_tasks(tmp_path):
-    providers = create_providers([
-        str(workspace_resources_dir),
-        str(python_resources_dir),
-    ])
+    providers = create_providers(
+        [
+            str(workspace_resources_dir),
+            str(python_resources_dir),
+        ]
+    )
 
     # Workspace provider should have received the ruff tasks block
     ctx = providers.provider_contexts['devkit-workspace']
@@ -274,15 +276,15 @@ Every provider has access to two related but distinct objects:
 providers in a session:
 
 ```python
-ctx.repolish.workspace.mode        # 'root', 'member', or 'standalone'
-ctx.repolish.workspace.root_dir    # absolute path to the monorepo root
-ctx.repolish.workspace.members     # list of all member packages
+ctx.repolish.workspace.mode  # 'root', 'member', or 'standalone'
+ctx.repolish.workspace.root_dir  # absolute path to the monorepo root
+ctx.repolish.workspace.members  # list of all member packages
 ```
 
 **`repolish.provider.session`**: this specific run's identity:
 
 ```python
-ctx.repolish.provider.session.mode         # same as workspace.mode
+ctx.repolish.provider.session.mode  # same as workspace.mode
 ctx.repolish.provider.session.member_name  # e.g. 'devkit-workspace'
 ctx.repolish.provider.session.member_path  # e.g. 'packages/workspace'
 ```
@@ -350,10 +352,12 @@ The session identity fields make this useful:
 member_name = opt.own_context.repolish.provider.session.member_name
 member_path = opt.own_context.repolish.provider.session.member_path
 
-return [WorkspaceInputs(
-    poe_tasks_block=f'# tasks for {member_name}\n...',
-    member_path=member_path,  # root uses this to know where the tasks came from
-)]
+return [
+    WorkspaceInputs(
+        poe_tasks_block=f'# tasks for {member_name}\n...',
+        member_path=member_path,  # root uses this to know where the tasks came from
+    )
+]
 ```
 
 ### Using `ModeHandler` for cleaner separation
@@ -426,7 +430,9 @@ from devkit.workspace.repolish.models import (
 )
 from devkit.workspace.repolish.provider.member import WorkspaceMemberHandler
 from devkit.workspace.repolish.provider.root import WorkspaceRootHandler
-from devkit.workspace.repolish.provider.standalone import WorkspaceStandaloneHandler
+from devkit.workspace.repolish.provider.standalone import (
+    WorkspaceStandaloneHandler,
+)
 
 
 class WorkspaceProvider(Provider[WorkspaceProviderContext, WorkspaceProviderInputs]):
@@ -446,13 +452,13 @@ class WorkspaceRootHandler(ModeHandler[WorkspaceProviderContext, WorkspaceProvid
         opt: ProvideInputsOptions[WorkspaceProviderContext],
     ) -> list[BaseInputs]:
         """Broadcast data to other providers from a root workspace."""
-        tasks = '''\
+        tasks = """\
 format.help = "run all formatters"
 format.sequence = ["format-dprint"]
 
 format-dprint.help = "run dprint"
 format-dprint.cmd = "dprint fmt --config .repolish/devkit-workspace/configs/dprint.json"
-'''
+"""
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 
     @override
@@ -461,11 +467,7 @@ format-dprint.cmd = "dprint fmt --config .repolish/devkit-workspace/configs/dpri
         opt: FinalizeContextOptions[WorkspaceProviderContext, WorkspaceProviderInputs],
     ) -> WorkspaceProviderContext:
         """Merge inputs received from other providers (root workspace)."""
-        blocks = [
-            inp.poe_tasks_block
-            for inp in opt.received_inputs
-            if inp.poe_tasks_block
-        ]
+        blocks = [inp.poe_tasks_block for inp in opt.received_inputs if inp.poe_tasks_block]
         opt.own_context.extra_poe_tasks = blocks
         return opt.own_context
 
@@ -508,21 +510,17 @@ class WorkspaceStandaloneHandler(ModeHandler[WorkspaceProviderContext, Workspace
         }
 
     def provide_inputs(self, opt):
-        tasks = '''\
+        tasks = """\
 format.help = "run all formatters"
 format.sequence = ["format-dprint"]
 
 format-dprint.help = "run dprint"
 format-dprint.cmd = "dprint fmt --config .repolish/devkit-workspace/configs/dprint.json"
-'''
+"""
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 
     def finalize_context(self, opt):
-        blocks = [
-            inp.poe_tasks_block
-            for inp in opt.received_inputs
-            if inp.poe_tasks_block
-        ]
+        blocks = [inp.poe_tasks_block for inp in opt.received_inputs if inp.poe_tasks_block]
         opt.own_context.extra_poe_tasks = blocks
         return opt.own_context
 ```
@@ -538,10 +536,10 @@ In the monorepo, the member handler emits ruff tasks upward to the root session:
 # member.py
 class PythonMemberHandler(ModeHandler[PythonProviderContext, PythonProviderInputs]):
     def provide_inputs(self, opt):
-        tasks = '''\
+        tasks = """\
 check-ruff.help = "run ruff linter and formatter check"
 check-ruff.cmd = "uvx ruff check ."
-'''
+"""
         return [WorkspaceProviderInputs(poe_tasks_block=tasks)]
 ```
 
