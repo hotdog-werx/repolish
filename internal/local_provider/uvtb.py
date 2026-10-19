@@ -15,7 +15,9 @@ def env_site_packages(env: str, root: Path) -> Path:
     """Return *env*'s site-packages directory in the uv-toolbox layout.
 
     uvtb resolves the content-addressed venv for *env*; asking it (rather
-    than guessing paths) stays correct as environments re-lock.
+    than guessing paths) stays correct as environments re-lock. The
+    interpreter is invoked as `python`, not `python3`: Windows venvs ship
+    only `python.exe` in `Scripts/`, while POSIX venvs have both.
     """
     uvtb_bin = shutil.which('uvtb')
     if uvtb_bin is None:
@@ -28,7 +30,7 @@ def env_site_packages(env: str, root: Path) -> Path:
             '--env',
             env,
             '--',
-            'python3',
+            'python',
             '-c',
             _SITE_PACKAGES_CMD,
         ],

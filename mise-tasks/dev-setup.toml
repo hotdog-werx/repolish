@@ -1,13 +1,17 @@
-# Dev environment setup.
+# Dev environment setup. Array form on purpose: mise runs each element
+# itself and stops at the first failure on every platform, while a
+# multi-line `run` string goes through the system shell (`cmd /c` on
+# Windows), which neither stops at failures nor executes the full block.
 [setup]
 description = "sync the uv env, install the uv-toolbox envs, refresh ty.toml"
-run = """
-uv sync --all-groups
-uvtb install
-# after uvtb installs, re-resolve the repolish env's site-packages for ty
-uvtb exec --env repolish -- repolish link
-uvtb exec --env repolish -- local-cli venv
-"""
+run = [
+  "uv sync --all-groups",
+  "uvtb install",
+  # after uvtb installs, link providers and re-resolve the repolish
+  # env's site-packages for ty
+  "uvtb exec --env repolish -- repolish link",
+  "uvtb exec --env repolish -- local-cli venv",
+]
 
 [install-devkit-providers]
 description = "install all example providers in editable mode"
