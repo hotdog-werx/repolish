@@ -22,15 +22,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: setup-uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: '**/pyproject.toml'
+      # No project environment needed: releez finalizes from its own
+      # install, the notes step uses system python, and the changelog
+      # regenerates through the pipx releez that mise installs here
+      # (same shape as checks-complete-action's create-release).
       - name: mise
         uses: jdx/mise-action@v3
-      - name: dependencies
-        run: mise run setup
 
       - name: releez-finalize
         id: releez

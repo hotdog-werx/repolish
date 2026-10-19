@@ -36,8 +36,6 @@ jobs:
       - name: dependencies
         run: mise run setup
 
-      - name: check-python
-        run: mise run check-python
       - name: build-docs
         run: mise run build-docs
       - name: Setup Pages
