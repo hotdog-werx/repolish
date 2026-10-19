@@ -75,8 +75,13 @@ def test_probe_module_links_names_the_module(
         return_value=('devkit.workspace', 'hotdogwerx-devkit-workspace'),
     )
     config_dir = tmp_path / 'proj'
-    default = probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
-    assert default.resources_dir == str(config_dir / '.repolish' / 'hotdogwerx-devkit-workspace')
+    default = probe_module_info(
+        ModuleProviderConfig(name='mylib_ws'),
+        config_dir,
+    )
+    assert default.resources_dir == str(
+        config_dir / '.repolish' / 'hotdogwerx-devkit-workspace',
+    )
     mocker.resetall()
 
     with mock.patch('repolish.linker.module_link.logger.warning') as warning:
@@ -85,7 +90,9 @@ def test_probe_module_links_names_the_module(
             config_dir,
         )
     warning.assert_not_called()
-    assert linked.resources_dir == str(config_dir / '.repolish' / 'devkit-workspace')
+    assert linked.resources_dir == str(
+        config_dir / '.repolish' / 'devkit-workspace',
+    )
 
     with mock.patch('repolish.linker.module_link.logger.warning') as warning:
         probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
@@ -115,9 +122,14 @@ def test_probe_silent_when_distribution_name_matches_module(
     )
     config_dir = tmp_path / 'proj'
     with mock.patch('repolish.linker.module_link.logger.warning') as warning:
-        info = probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
+        info = probe_module_info(
+            ModuleProviderConfig(name='mylib_ws'),
+            config_dir,
+        )
     warning.assert_not_called()
-    assert info.resources_dir == str(config_dir / '.repolish' / 'devkit-workspace')
+    assert info.resources_dir == str(
+        config_dir / '.repolish' / 'devkit-workspace',
+    )
 
 
 def test_probe_missing_module_raises(tmp_path: Path) -> None:

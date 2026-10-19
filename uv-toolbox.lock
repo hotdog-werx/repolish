@@ -1177,7 +1177,7 @@ environments:
           { url = "https://files.pythonhosted.org/packages/96/33/af4aac6d08bb63a3de2549e3582467c9277083b033ce18d92ae776514009/zensical-0.0.71-cp311-abi3-win_arm64.whl", hash = "sha256:433c5a6fecae7b6b5014b7efbc52bb5e0776d715afca60e2832a12162e7d571a", size = 18253924, upload-time = "2026-10-16T14:19:34.521Z" },
       ]
   repolish:
-    fingerprint: sha256:a527795939a1a1692647c2b5857ed1057ceed8d09c92d87403a6e9119b50ff2e
+    fingerprint: sha256:bffb34b6250cce185e2ea92c36c8e89445d547780523f13fc05e1ca676c8605f
     uv_lock: |
       version = 1
       revision = 3
@@ -1228,18 +1228,9 @@ environments:
       [[package]]
       name = "hotdogwerx-devkit-workspace"
       version = "0.1.0"
-      source = { editable = "../../../../../hotdog-werx/devkit/packages/devkit-workspace" }
+      source = { git = "https://github.com/hotdog-werx/devkit?subdirectory=packages%2Fdevkit-workspace&branch=topic%2Fworkspace-provider#e450c447e5532c26b209c97c78b2b992a12cb075" }
       dependencies = [
           { name = "repolish" },
-      ]
-
-      [package.metadata]
-      requires-dist = [{ name = "repolish", editable = "../../../" }]
-
-      [package.metadata.requires-dev]
-      dev = [
-          { name = "pytest" },
-          { name = "pytest-mock" },
       ]
 
       [[package]]
@@ -1689,7 +1680,7 @@ environments:
 
       [package.metadata]
       requires-dist = [
-          { name = "hotdogwerx-devkit-workspace", editable = "../../../../../hotdog-werx/devkit/packages/devkit-workspace" },
+          { name = "hotdogwerx-devkit-workspace", git = "https://github.com/hotdog-werx/devkit?subdirectory=packages%2Fdevkit-workspace&branch=topic%2Fworkspace-provider" },
           { name = "internal-tools", editable = "../../../internal" },
           { name = "repolish", editable = "../../../" },
       ]

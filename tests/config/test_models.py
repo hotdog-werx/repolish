@@ -564,7 +564,9 @@ def test_module_mapping_normalizes_with_overrides():
 
 def test_module_links_flag_defaults_off():
     """Without the project flag, module entries inherit distribution naming."""
-    config = RepolishConfigFile(providers={'ws': {'module': 'devkit.workspace'}})
+    config = RepolishConfigFile(
+        providers={'ws': {'module': 'devkit.workspace'}},
+    )
     ws = config.providers['ws'].module
 
     assert config.module_links is False

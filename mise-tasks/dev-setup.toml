@@ -5,6 +5,7 @@ run = """
 uv sync --all-groups
 uvtb install
 # after uvtb installs, re-resolve the repolish env's site-packages for ty
+uvtb exec --env repolish -- repolish link
 uvtb exec --env repolish -- local-cli venv
 """
 

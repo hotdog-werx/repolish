@@ -179,7 +179,9 @@ def test_apply_overrides_to_model_helper(mocker: MockerFixture):
     )
 
 
-def test_apply_overrides_to_model_keeps_facet_context_types(mocker: MockerFixture):
+def test_apply_overrides_to_model_keeps_facet_context_types(
+    mocker: MockerFixture,
+):
     """The override round-trip must not coerce facet contexts to BaseContext.
 
     ``facets`` is declared ``dict[str, BaseContext]``, so re-validating a

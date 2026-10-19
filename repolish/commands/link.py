@@ -130,11 +130,20 @@ def _print_link_success(
     changed.
     """
     for alias in result.cached:
-        console.print(_format_provider_message(alias, config_dir, location_context, cached=True))
+        console.print(
+            _format_provider_message(
+                alias,
+                config_dir,
+                location_context,
+                cached=True,
+            ),
+        )
 
     for alias in result.ready:
         if alias not in result.cached:
-            console.print(_format_provider_message(alias, config_dir, location_context))
+            console.print(
+                _format_provider_message(alias, config_dir, location_context),
+            )
 
 
 def _empty_link_result() -> LinkResult:
