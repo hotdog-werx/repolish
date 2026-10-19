@@ -294,7 +294,7 @@ def generate_local(
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         rendered = env.get_template(template_rel).render(context_dict)
-        dest.write_text(rendered, encoding='utf-8')
+        dest.write_text(rendered, encoding='utf-8', newline='')
         written.append(dest)
 
     return written
@@ -346,7 +346,7 @@ def generate(
         rendered = env.get_template(template_rel.as_posix()).render(
             context_dict,
         )
-        dest.write_text(rendered, encoding='utf-8')
+        dest.write_text(rendered, encoding='utf-8', newline='')
         written.append(dest)
 
     return written

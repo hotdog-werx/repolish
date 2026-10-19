@@ -27,7 +27,7 @@ def ensure_dot_repolish(base_dir: Path) -> Path:
     repolish_dir.mkdir(parents=True, exist_ok=True)
     gitignore = repolish_dir / '.gitignore'
     if not gitignore.exists():
-        gitignore.write_text('*\n!_/\n', encoding='utf-8')
+        gitignore.write_text('*\n!_/\n', encoding='utf-8', newline='')
     return repolish_dir
 
 
@@ -44,13 +44,20 @@ def ensure_meta_dir(base_dir: Path) -> Path:
     meta_dir.mkdir(parents=True, exist_ok=True)
     gitignore = meta_dir / '.gitignore'
     if not gitignore.exists():
-        gitignore.write_text('*\n', encoding='utf-8')
+        gitignore.write_text('*\n', encoding='utf-8', newline='')
     return meta_dir
 
 
 def open_utf8(path: Path, mode: str = 'r') -> IO[str]:
-    """Open a file with UTF-8 encoding."""
-    return path.open(mode, encoding='utf-8')
+    r"""Open a file with UTF-8 encoding.
+
+    Write modes are byte-exact (`newline=''`): `\n` never translates to
+    `os.linesep` (CRLF on Windows), so repolish output is identical on
+    every platform. Read modes keep universal newlines, so files checked
+    out with CRLF still compare equal to rendered text.
+    """
+    newline = '' if any(letter in mode for letter in 'wxa') else None
+    return path.open(mode, encoding='utf-8', newline=newline)
 
 
 def path_slug(path: str, sep: str = '--') -> str:

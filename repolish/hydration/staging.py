@@ -132,7 +132,7 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
         source_name = Path(args.source_template).name
         preproc_name = f'_preproc_{dest_safe}_{source_name}'
         preproc_path = args.ctx.setup_input / 'repolish' / preproc_name
-        preproc_path.write_text(result.content, encoding='utf-8')
+        preproc_path.write_text(result.content, encoding='utf-8', newline='')
         preproc_path.chmod(args.tpl_path.stat().st_mode)
         args.mappings_dict[args.dest_path] = TemplateMapping(
             source_template=args.source_val.source_template,

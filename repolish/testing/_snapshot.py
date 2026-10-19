@@ -62,7 +62,7 @@ def _write_snapshots(
     for dest_path, content in sorted(rendered.items()):
         snap_file = snapshot_dir / dest_path
         snap_file.parent.mkdir(parents=True, exist_ok=True)
-        snap_file.write_text(content, encoding='utf-8')
+        snap_file.write_text(content, encoding='utf-8', newline='')
 
 
 def assert_snapshots(

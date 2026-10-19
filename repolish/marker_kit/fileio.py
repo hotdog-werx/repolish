@@ -19,7 +19,12 @@ def read_text_or_none(path: Path) -> str | None:
 
 
 def write_mode_preserved(path: Path, content: str) -> None:
-    """Write *content* to *path* (UTF-8), restoring the file's previous mode."""
+    r"""Write *content* to *path* (UTF-8), restoring the file's previous mode.
+
+    The write is byte-exact (`newline=''`): `\n` never translates to
+    `os.linesep` (CRLF on Windows), so repolish output is identical on
+    every platform.
+    """
     mode = path.stat().st_mode
-    path.write_text(content, encoding='utf-8')
+    path.write_text(content, encoding='utf-8', newline='')
     path.chmod(mode)

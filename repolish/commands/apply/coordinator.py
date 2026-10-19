@@ -297,7 +297,9 @@ def _write_promoted_file(ctx: PromotedWriteContext) -> str:
     if ctx.rendered_text is None:
         shutil.copy2(ctx.winner.source_file, ctx.dest_file)
     else:
-        ctx.dest_file.write_text(ctx.rendered_text, encoding='utf-8')
+        # newline='': managed files are byte-identical on every platform,
+        # never translated to os.linesep (CRLF on Windows)
+        ctx.dest_file.write_text(ctx.rendered_text, encoding='utf-8', newline='')
         if ctx.source_mode is not None:
             ctx.dest_file.chmod(ctx.source_mode)
 

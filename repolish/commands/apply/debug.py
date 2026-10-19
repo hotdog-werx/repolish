@@ -107,6 +107,7 @@ def write_provider_debug_files(
         out_path.write_text(
             json.dumps(_to_jsonable(data), indent=2),
             encoding='utf-8',
+            newline='',
         )
 
 
@@ -160,4 +161,5 @@ def write_file_context_debug_files(
         out_path.write_text(
             json.dumps(_to_jsonable(data), indent=2),
             encoding='utf-8',
+            newline='',
         )

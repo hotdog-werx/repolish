@@ -119,6 +119,7 @@ def write_validator_report(
     report_file.write_text(
         json.dumps(report.model_dump(), indent=2),
         encoding='utf-8',
+        newline='',
     )
     return report_file.as_posix()
 

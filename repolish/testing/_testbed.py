@@ -290,7 +290,7 @@ class ProviderTestBed(Generic[CtxT, InpT]):
             if isinstance(content, bytes):
                 target.write_bytes(content)
             else:
-                target.write_text(content, encoding='utf-8')
+                target.write_text(content, encoding='utf-8', newline='')
 
         results: dict[str, dict[str, ValidationResult]] = {}
         for dest, entries in self.validators().items():

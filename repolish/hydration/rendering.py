@@ -180,7 +180,7 @@ def _render_file(
         rendered_txt = _jinja_render(env, txt, ctx_to_use, filename=src)
     except (UndefinedError, TemplateSyntaxError) as exc:
         return str(exc)
-    dest.write_text(rendered_txt, encoding='utf-8')
+    dest.write_text(rendered_txt, encoding='utf-8', newline='')
     dest.chmod(src.stat().st_mode)
     return None
 
@@ -465,7 +465,7 @@ def _render_single_mapping(
             mapping,
             providers,
         )
-        target.write_text(rendered, encoding='utf-8')
+        target.write_text(rendered, encoding='utf-8', newline='')
 
     # Update mapping for downstream processing
     mappings[dest_path] = TemplateMapping(

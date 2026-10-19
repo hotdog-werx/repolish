@@ -211,6 +211,7 @@ def _process_provider_insertions(
         report_file.write_text(
             json.dumps(report.model_dump(), indent=2),
             encoding='utf-8',
+            newline='',
         )
 
         report_paths.append(report_file.as_posix())
@@ -256,7 +257,7 @@ def _stage_file_insertions(
     if staged_file.exists():
         write_mode_preserved(staged_file, rendered.text)
     else:
-        staged_file.write_text(rendered.text, encoding='utf-8')
+        staged_file.write_text(rendered.text, encoding='utf-8', newline='')
     ctx.zone_blocks = zone_blocks
 
     parsed = parse_text(source_text, file_path=ctx.rel_path)
