@@ -7,7 +7,30 @@ from pathlib import Path
 
 from repolish.cli.main import app
 from repolish.cli.testing import CliRunner
+from repolish.commands.link import _linked_path
+from repolish.config.models.metadata import ProviderFileInfo
+from repolish.linker.providers import write_provider_info_file
 from tests.conftest import init_git_repo, write_repolish_config
+
+
+def test_linked_path_falls_back_to_the_recorded_path(tmp_path: Path) -> None:
+    """A recorded resources dir outside the repo displays as its absolute path.
+
+    The recorded path is tried as-is and then resolved before giving up (a
+    module provider's `.repolish/` entry is a symlink into its package), so
+    only a directory that is truly outside the config dir reaches the
+    absolute-path fallback.
+    """
+    config_dir = tmp_path / 'proj'
+    config_dir.mkdir()
+    outside = tmp_path / 'elsewhere' / 'resources'
+    outside.mkdir(parents=True)
+    write_provider_info_file(
+        'odd',
+        ProviderFileInfo(resources_dir=str(outside)),
+        config_dir,
+    )
+    assert _linked_path('odd', config_dir) == str(outside)
 
 
 def _run_link(args: list[str], cwd: Path) -> str:
