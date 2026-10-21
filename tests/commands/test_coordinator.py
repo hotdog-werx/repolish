@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from repolish.commands.apply.coordinator import (
     PromotedWriteContext,
     PromotionWinner,
+    _apply_member_sessions,
     _apply_promotion_pass,
     _apply_winners,
     _post_process_promoted_files,
@@ -28,7 +29,11 @@ from repolish.commands.apply.utils import CoordinateOptions
 from repolish.config.models import RepolishConfig
 from repolish.postprocess.models import CommandOutcome, PostProcessRun
 from repolish.providers import SessionBundle
-from repolish.providers.models import GlobalContext, TemplateMapping
+from repolish.providers.models import (
+    GlobalContext,
+    HookFailure,
+    TemplateMapping,
+)
 from repolish.providers.models.files import FileMode, FileRecord
 from repolish.providers.models.workspace import MemberInfo, WorkspaceContext
 
@@ -470,6 +475,176 @@ def test_apply_promotion_pass_write_mode_unchanged_when_dest_matches(
         check_only=False,
     )
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Hook failures: members continue past, the aggregate rc escalates
+# ---------------------------------------------------------------------------
+
+
+def _member_session(config_dir: Path) -> ResolvedSession:
+    (config_dir).mkdir(parents=True, exist_ok=True)
+    return _make_session(config_dir)
+
+
+def _member_triple(
+    tmp_path: Path,
+    name: str,
+    session: ResolvedSession,
+) -> tuple[MemberInfo, ResolvedSession, ApplyOptions]:
+    return (
+        _member(name, name),
+        session,
+        ApplyOptions(config_path=session.config_path),
+    )
+
+
+def test_apply_member_sessions_continues_past_hook_failure_members(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A member whose only error family is hook failures does not abort the rest.
+
+    Its rc is escalated later by the coordinate_sessions aggregate; here
+    the run keeps going so the remaining members still apply.
+    """
+    applied: list[str] = []
+
+    def fake_apply(
+        session: ResolvedSession,
+        *,
+        check_only: bool,
+        skip_post_process: bool,
+        fail_on_warnings: bool,
+    ) -> int:
+        applied.append(session.config.config_dir.name)
+        return 1 if session.providers.hook_failures else 0
+
+    mocker.patch(
+        'repolish.commands.apply.coordinator.apply_session',
+        side_effect=fake_apply,
+    )
+    broken = _member_session(tmp_path / 'broken')
+    broken.providers.hook_failures = [
+        HookFailure(provider_id='broken', hook='create_spec', error='boom'),
+    ]
+    healthy = _member_session(tmp_path / 'healthy')
+    sessions = [
+        _member_triple(tmp_path, 'broken', broken),
+        _member_triple(tmp_path, 'healthy', healthy),
+    ]
+
+    rc, completed = _apply_member_sessions(
+        sessions,
+        CoordinateOptions(check_only=False),
+    )
+
+    assert applied == ['broken', 'healthy']
+    assert rc == 0
+    assert completed == [broken, healthy]
+
+
+def test_apply_member_sessions_stops_on_real_failures(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A member that fails for any other reason still aborts the rest."""
+    applied: list[str] = []
+
+    def fake_apply(
+        session: ResolvedSession,
+        *,
+        check_only: bool,
+        skip_post_process: bool,
+        fail_on_warnings: bool,
+    ) -> int:
+        applied.append(session.config.config_dir.name)
+        return 1
+
+    mocker.patch(
+        'repolish.commands.apply.coordinator.apply_session',
+        side_effect=fake_apply,
+    )
+    first = _member_session(tmp_path / 'first')
+    second = _member_session(tmp_path / 'second')
+    sessions = [
+        _member_triple(tmp_path, 'first', first),
+        _member_triple(tmp_path, 'second', second),
+    ]
+
+    rc, completed = _apply_member_sessions(
+        sessions,
+        CoordinateOptions(check_only=False),
+    )
+
+    assert applied == ['first']
+    assert rc == 1
+    assert completed == [first]
+
+
+def _coordinate_with_apply_phase(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    phase_rc: int,
+    completed: list[ResolvedSession],
+) -> int:
+    """Run coordinate_sessions with _run_apply_phase stubbed to *phase_rc*."""
+    config_path = tmp_path / 'repolish.yaml'
+    config_path.write_text('providers: {}\n')
+    mocker.patch(
+        'repolish.commands.apply.coordinator.load_config_file',
+        return_value=mocker.MagicMock(workspace=None),
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator.detect_workspace',
+        return_value=WorkspaceContext(mode='root', members=[]),
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator.resolve_session',
+        return_value=_make_session(tmp_path),
+    )
+    mocker.patch(
+        'repolish.commands.apply.coordinator._run_apply_phase',
+        return_value=(phase_rc, completed),
+    )
+    mocker.patch('repolish.commands.apply.coordinator.print_run_summary')
+    return coordinate_sessions(config_path, CoordinateOptions(check_only=False))
+
+
+def test_coordinate_sessions_escalates_clean_rc_to_1_on_hook_failures(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """A completed session that recorded hook failures makes the run exit 1."""
+    session = _member_session(tmp_path)
+    session.providers.hook_failures = [
+        HookFailure(provider_id='p', hook='create_context', error='boom'),
+    ]
+    rc = _coordinate_with_apply_phase(tmp_path, mocker, 0, [session])
+    assert rc == 1
+
+
+def test_coordinate_sessions_escalates_drift_rc_to_1_on_hook_failures(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Hook failures outrank drift: rc 2 flips to 1, not the other way round."""
+    session = _member_session(tmp_path)
+    session.providers.hook_failures = [
+        HookFailure(provider_id='p', hook='create_context', error='boom'),
+    ]
+    rc = _coordinate_with_apply_phase(tmp_path, mocker, 2, [session])
+    assert rc == 1
+
+
+def test_coordinate_sessions_keeps_clean_rc_without_hook_failures(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """No recorded failures: the apply phase rc passes through untouched."""
+    session = _member_session(tmp_path)
+    assert _coordinate_with_apply_phase(tmp_path, mocker, 0, [session]) == 0
+    assert _coordinate_with_apply_phase(tmp_path, mocker, 2, [session]) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ from repolish.providers.models import (
     FileRecord,
     FileValidatorEntry,
     FileValidatorSpec,
+    HookFailure,
 )
 from repolish.providers.models.files import ValidationStatus
 from repolish.summaries.rows import (
@@ -33,6 +34,8 @@ from repolish.summaries.rows import (
     CopyState,
     FileRow,
     FileState,
+    HookFailureRow,
+    HookFailureState,
     InsertionLine,
     InsertionState,
     PendingStats,
@@ -588,6 +591,33 @@ def _attach_insertion_owner_records(
                 )
 
 
+def _hook_failure_rows(
+    alias: str,
+    session: SummarySession,
+) -> list[HookFailureRow]:
+    """Build one row per hook failure recorded against *alias*'s provider.
+
+    A failure belongs to the branch when it was recorded for the alias's
+    provider id, or (when no pid resolves) under the same alias.
+    """
+    pid = session.alias_to_pid.get(alias)
+
+    def _row(failure: HookFailure) -> HookFailureRow:
+        return HookFailureRow(
+            hook=failure.hook,
+            state=HookFailureState.FAILED,
+            facet_name=failure.facet_name,
+            message=failure.error,
+            link=Path(failure.report_path) if failure.report_path else None,
+        )
+
+    return [
+        _row(failure)
+        for failure in session.providers.hook_failures
+        if (pid is not None and failure.provider_id == pid) or failure.alias == alias
+    ]
+
+
 def _provider_branch(
     alias: str,
     records_by_owner: dict[str, list[FileRecord]],
@@ -600,7 +630,11 @@ def _provider_branch(
     records = records_by_owner.get(alias, [])
     syms = session.resolved_symlinks.get(alias, [])
     copies = session.resolved_copies.get(alias, [])
-    rows: list[FileRow | SymlinkRow | CopyRow] = [file_row(record, session) for record in records]
+    # Failure rows lead the branch: they explain work that is missing
+    # below them, so they come before the files the provider did deliver.
+    rows: list[FileRow | SymlinkRow | CopyRow | HookFailureRow] = []
+    rows.extend(_hook_failure_rows(alias, session))
+    rows.extend(file_row(record, session) for record in records)
     rows.extend(symlink_row(sl) for sl in syms)
     paused_paths = frozenset(session.paused_copies.get(alias, ()))
     paused_files = frozenset(session.config.paused_files)

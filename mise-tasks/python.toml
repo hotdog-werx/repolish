@@ -1,11 +1,17 @@
-# Python checks. ruff and complexipy run from the uv-toolbox `tools` env;
-# ty is a mise-managed tool (0.0.89; older pins emit false positives).
+# Python checks. ruff and complexipy run from the uv-toolbox `tools` env.
+# Type checks are split by ownership boundary:
+# - `python:check:types` checks repolish and root tests.
+# - `python:check:types:internal` checks the internal tool tree.
 # The DK_UVTB_*_EXEC indirection is rendered by mise templating
 # ({{ env.* }}), not shell expansion: inline task runs go through
 # `cmd /c` on Windows, where $VAR never expands.
 ["python:check:types"]
-description = "type check with ty"
-run = "ty check"
+description = "type check repolish source and root tests"
+run = ["ty check repolish", "ty check tests"]
+
+["python:check:types:internal"]
+description = "type check internal tools tree with repolish venv ty"
+run = '{{ env.DK_UVTB_REPOLISH_EXEC }} ty check internal'
 
 ["python:check:complexity"]
 description = "complexity gate (fails above 20 on the complexipy 8.x scale)"

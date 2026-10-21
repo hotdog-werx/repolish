@@ -53,7 +53,10 @@ def finish_check(ctx: CheckContext) -> tuple[int, dict[str, str]]:
     """Run check mode: report diffs and symlink issues; return (rc, check_result).
 
     ``check_result`` maps each drifted path to ``'drift'`` for use in the
-    summary tree.  ``rc`` is 2 when any issues are found, else 0.
+    summary tree.  ``rc`` is 2 when any issues are found, else 0; this is
+    the source of the exit-code 2 row in `APPLY_EXIT_CODES`
+    (repolish/commands/apply/session.py), which `_session_exit_rc`
+    receives as its `fallback_rc`.
     """
     diffs = check_generated_output(
         ctx.setup_output,

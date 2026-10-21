@@ -12,6 +12,8 @@ implementation detail:
 - `facet` — `ProviderFacet`, `FacetSpec`, the facet options bundles, `instantiate_facets`
 - `files` — `Action`, `Decision`, `FileMode`, `TemplateMapping`, `FileRecord`,
   `SessionBundle`, `Accumulators`, `build_file_records`
+- `hooks` — `HookFailure`, `HookFailureCollector`, `HOOK_SKIP_SEMANTICS`
+  (records of provider/facet hooks that raised and were skipped)
 - `provider` — `ProviderEntry`, `Provider`, `ModeHandler`, `ProvideInputsOptions`,
   `FinalizeContextOptions`, `get_provider_inputs_schema`,
   `get_provider_inputs`, `get_provider_context`
@@ -73,6 +75,11 @@ from repolish.providers.models.files import (
     build_file_records,
     map_folder,
 )
+from repolish.providers.models.hooks import (
+    HOOK_SKIP_SEMANTICS,
+    HookFailure,
+    HookFailureCollector,
+)
 from repolish.providers.models.pipeline import (
     PipelineOptions,
     ProviderContributions,
@@ -98,6 +105,7 @@ from repolish.providers.models.workspace import (
 )
 
 __all__ = [
+    'HOOK_SKIP_SEMANTICS',
     'Accumulators',
     'Action',
     'BaseContext',
@@ -126,6 +134,8 @@ __all__ = [
     'FinalizeContextOptions',
     'GithubRepo',
     'GlobalContext',
+    'HookFailure',
+    'HookFailureCollector',
     'InputT',
     'InsertionRegistry',
     'InsertionRenderer',

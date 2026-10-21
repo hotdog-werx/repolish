@@ -70,5 +70,9 @@ def write_phase_timings(
         ],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8', newline='')
+    path.write_text(
+        json.dumps(payload, indent=2) + '\n',
+        encoding='utf-8',
+        newline='',
+    )
     return path

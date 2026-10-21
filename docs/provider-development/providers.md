@@ -143,6 +143,42 @@ is incomplete:
 - run: repolish apply --strict
 ```
 
+### Behaviour when a hook fails
+
+A provider or facet hook that raises never aborts the run. repolish catches the
+exception, records it, and skips that hook. The table below is generated from
+the pipeline's skip-semantics registry, so it always covers every guarded hook
+and matches what the code actually falls back to:
+
+<!-- repolish:on:skip-semantics hook-skip-semantics -->
+
+| Hook                     | Skipped as                                                |
+| ------------------------ | --------------------------------------------------------- |
+| `create_context`         | the provider is left with an empty context                |
+| `provide_inputs`         | the provider is treated as emitting no inputs             |
+| `finalize_context`       | the provider keeps its pre-finalize context               |
+| `promote_file_mappings`  | the provider declares no promoted mappings                |
+| `create_file_mappings`   | the provider contributes no file mappings                 |
+| `create_file_validators` | the provider declares no validators                       |
+| `create_file_insertions` | the provider declares no insertion functions              |
+| `create_fast_lanes`      | the provider declares no fast lanes                       |
+| `create_spec`            | the facet contributes no spec, so its file goes unmanaged |
+| `create_anchors`         | the provider declares no anchors                          |
+
+<!-- repolish:off:skip-semantics -->
+
+The rest of the run continues with the provider incomplete, not dead. Every
+recorded failure appears as a red `✗ <hook> failed` row in the summary tree
+under the provider's branch, with a `[details]` link to a JSON report in
+`.repolish/_/hook-failures/` containing the message and full traceback. Both
+`repolish apply` and `repolish apply --check` exit 1 when any hook failed, the
+same severity validator errors and post-process failures carry.
+
+A return value that breaks the hook's contract (for example `create_anchors`
+returning a non-dict) is recorded the same way. Load-time authoring mistakes
+(duplicate facet names, destination collisions between hooks) still raise
+immediately.
+
 ### Aliases missing from the providers map
 
 If `providers_order` lists an alias that has no entry in the `providers` map, a

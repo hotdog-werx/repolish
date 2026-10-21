@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel as _BaseModel
 
-from repolish.providers._log import logger
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 from repolish.providers.models import (
@@ -14,6 +12,7 @@ from repolish.providers.models import (
     FacetFinalizeOptions,
     FinalizeContextOptions,
     GlobalContext,
+    HookFailureCollector,
     ProviderEntry,
     ProviderFacet,
     ProviderInfo,
@@ -91,8 +90,9 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
     *,
     idx: int,
     provider_id: str,
+    hook_failures: HookFailureCollector,
 ) -> BaseContext:
-    """Call `finalize_context` with consistent logging on failure."""
+    """Call `finalize_context`, keeping the pre-finalize context on failure."""
     try:
         return cast(
             'BaseContext',
@@ -107,13 +107,14 @@ def _invoke_finalize(  # noqa: PLR0913 - we'll get this refactor for v1
                 ),
             ),
         )
-    except Exception:
-        logger.exception(
-            'finalize_context_failed',
-            provider=provider_id,
-            index=idx,
+    except Exception as exc:  # noqa: BLE001 - one broken provider must not stop the run
+        hook_failures.record(
+            provider_id=provider_id,
+            alias=getattr(inst, 'alias', '') or provider_id,
+            hook='finalize_context',
+            exc=exc,
         )
-        raise
+        return own_model
 
 
 def _claiming_facet(
@@ -157,6 +158,12 @@ def _partition_facet_inputs(
     return own_inputs, by_facet
 
 
+def _context_alias(ctx: BaseContext, provider_id: str) -> str:
+    """Return the provider alias stamped on *ctx*, falling back to provider_id."""
+    info = getattr(getattr(ctx, 'repolish', None), 'provider', None)
+    return getattr(info, 'alias', '') or provider_id
+
+
 def _finalize_facet_contexts(  # noqa: PLR0913
     facets: Sequence[ProviderFacet],
     provider_id: str,
@@ -166,6 +173,7 @@ def _finalize_facet_contexts(  # noqa: PLR0913
     *,
     idx: int,
     global_context: GlobalContext | None,
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Run each facet's ``finalize_context`` and store the result.
 
@@ -190,11 +198,12 @@ def _finalize_facet_contexts(  # noqa: PLR0913
                 ),
             )
         except Exception as exc:  # noqa: BLE001 - one broken facet must not stop the run
-            logger.warning(
-                'facet_finalize_context_raised',
-                provider=provider_id,
-                facet=facet.name,
-                error=str(exc),
+            hook_failures.record(
+                provider_id=provider_id,
+                alias=_context_alias(own_ctx, provider_id),
+                facet_name=facet.name,
+                hook='finalize_context',
+                exc=exc,
             )
             continue
         if isinstance(new_fctx, BaseContext):
@@ -231,8 +240,10 @@ def finalize_provider_contexts(  # noqa: PLR0913
     all_providers_list: list[ProviderEntry],
     *,
     global_context: GlobalContext | None = None,
+    hook_failures: HookFailureCollector | None = None,
 ) -> None:
     """Mutate `provider_contexts` by running finalize_context on each instance."""
+    failures = hook_failures if hook_failures is not None else HookFailureCollector()
     for idx, (provider_id, _module_dict) in enumerate(module_cache):
         inst = instances[idx]
         if not inst:
@@ -261,6 +272,7 @@ def finalize_provider_contexts(  # noqa: PLR0913
             all_providers_list,
             idx=idx,
             provider_id=provider_id,
+            hook_failures=failures,
         )
         provider_contexts[provider_id] = new_ctx
 
@@ -273,4 +285,5 @@ def finalize_provider_contexts(  # noqa: PLR0913
                 all_providers_list,
                 idx=idx,
                 global_context=global_context,
+                hook_failures=failures,
             )

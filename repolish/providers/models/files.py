@@ -27,6 +27,7 @@ from repolish.providers.models.context import (
     ResourceCopy,
 )
 from repolish.providers.models.entry import ProviderEntry  # noqa: TC001 - pydantic resolves this at schema build time
+from repolish.providers.models.hooks import HookFailure  # noqa: TC001 - pydantic resolves this at schema build time
 from repolish.providers.models.template_path import RepolishTemplatePath
 
 
@@ -660,6 +661,12 @@ class SessionBundle(BaseModel):
     ``{{ facet.* }}`` for that one file; every template keeps access to
     all sibling facets through ``{{ facets.<name>.* }}`` on the provider
     context."""
+    hook_failures: list[HookFailure] = Field(default_factory=list)
+    """One record per provider or facet hook that raised during this
+    session's pipeline. The hook was skipped and its contribution is
+    absent from the run; the apply session writes per-failure JSON
+    reports under ``.repolish/_/hook-failures/`` and links them from the
+    summary tree. Any entry makes apply and check exit 1."""
 
 
 def _records_from_template_sources(

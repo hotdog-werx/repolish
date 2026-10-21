@@ -35,6 +35,8 @@ jobs:
         run: mise run python:check:ruff
       - name: python-check-types
         run: mise run python:check:types
+      - name: python-check-types-internal
+        run: mise run python:check:types:internal
       - name: python-check-complexity
         run: mise run python:check:complexity
       - name: workspace-repolish-check

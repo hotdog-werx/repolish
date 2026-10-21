@@ -95,6 +95,17 @@ class LintState(Enum):
     FAILED = 'failed'
 
 
+class HookFailureState(Enum):
+    """The outcome of one provider or facet hook that raised mid-run.
+
+    The hook was skipped and its contribution is absent, so a FAILED row is
+    an error, not an advisory: it makes the run exit 1 in both apply and
+    check mode.
+    """
+
+    FAILED = 'failed'
+
+
 @dataclass(frozen=True)
 class ValidatorLine:
     """One validator entry beneath a file row."""
@@ -162,6 +173,22 @@ class PromotedRow:
 
 
 @dataclass(frozen=True)
+class HookFailureRow:
+    """One provider or facet hook that raised, beneath the provider's branch.
+
+    The hook was skipped, so its contribution is missing from the run; the
+    row leads the provider's files to explain the gap. `link` points at the
+    traceback report written under `.repolish/_/hook-failures/`.
+    """
+
+    hook: str
+    state: HookFailureState
+    facet_name: str | None = None
+    message: str = ''
+    link: Path | None = None
+
+
+@dataclass(frozen=True)
 class AppliedStats:
     """Post-apply provider counts appended to a provider branch label."""
 
@@ -189,7 +216,7 @@ class ProviderBranch:
 
     alias: str
     version: str | None = None
-    rows: tuple[FileRow | SymlinkRow | CopyRow, ...] = ()
+    rows: tuple[FileRow | SymlinkRow | CopyRow | HookFailureRow, ...] = ()
     stats: AppliedStats | PendingStats | None = None
     link: Path | None = None
 
@@ -247,6 +274,7 @@ STATE_ENUMS: tuple[type[Enum], ...] = (
     InsertionState,
     CommandState,
     LintState,
+    HookFailureState,
 )
 """Every state enum, in declaration order; tests assert marker coverage."""
 

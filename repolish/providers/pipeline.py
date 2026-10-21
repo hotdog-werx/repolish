@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 from repolish.pkginfo import resolve_package_identity
-from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
     GlobalContext,
+    HookFailureCollector,
     ProviderEntry,
     ProviderInfo,
     ProviderSession,
@@ -132,12 +132,14 @@ def _synthesize_provider_context_for_pid(
     pid: str,
     provider_contexts: dict[str, BaseContext],
     global_context: GlobalContext,
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Ensure `provider_contexts[pid]` contains a typed context for class-based providers.
 
-    Call `create_context`, fall back to existing value on error, and
-    inject the shared `GlobalContext` into provider contexts that declare
-    a `repolish` field (i.e. subclasses of `BaseContext`).
+    Call `create_context`, record the failure and leave the context
+    missing when it raises, and inject the shared `GlobalContext` into
+    provider contexts that declare a `repolish` field (i.e. subclasses
+    of `BaseContext`).
     """
     if isinstance(provider_contexts.get(pid), BaseContext):
         return
@@ -146,10 +148,11 @@ def _synthesize_provider_context_for_pid(
         # create_context is generic but its bound by BaseContext
         ctx = cast('BaseContext', inst.create_context())
     except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
-        logger.warning(
-            'provider_create_context_raised',
-            provider=pid,
-            error=str(exc),
+        hook_failures.record(
+            provider_id=pid,
+            alias=getattr(inst, 'alias', '') or pid,
+            hook='create_context',
+            exc=exc,
         )
         return
 
@@ -164,6 +167,7 @@ def _populate_facet_contexts(
     pid: str,
     provider_contexts: dict[str, BaseContext],
     global_context: GlobalContext,
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Create every declared facet's context into ``provider_contexts[pid].facets``.
 
@@ -188,11 +192,12 @@ def _populate_facet_contexts(
         try:
             ctx = facet.create_context()
         except Exception as exc:  # noqa: BLE001 - one broken facet must not stop the run
-            logger.warning(
-                'facet_create_context_raised',
-                provider=pid,
-                facet=facet.name,
-                error=str(exc),
+            hook_failures.record(
+                provider_id=pid,
+                alias=getattr(inst, 'alias', '') or pid,
+                facet_name=facet.name,
+                hook='create_context',
+                exc=exc,
             )
             continue
         if isinstance(ctx, BaseContext):
@@ -205,6 +210,7 @@ def _populate_provider_context(
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, BaseContext],
     global_context: GlobalContext,
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Populate `provider_contexts` with typed context objects for each provider.
 
@@ -221,8 +227,15 @@ def _populate_provider_context(
             pid,
             provider_contexts,
             global_context,
+            hook_failures,
         )
-        _populate_facet_contexts(inst, pid, provider_contexts, global_context)
+        _populate_facet_contexts(
+            inst,
+            pid,
+            provider_contexts,
+            global_context,
+            hook_failures,
+        )
 
 
 def _set_provider_basic_metadata(

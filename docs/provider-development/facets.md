@@ -74,15 +74,20 @@ class GitignoreFacet(ProviderFacet[GitignoreCtx, GitignoreInputs]):
 ```
 
 Only `create_spec` is abstract: a facet exists to declare its file. The hooks
-mirror the provider's:
+mirror the provider's. The table below is generated from the `ProviderFacet`
+method docstrings, so it cannot drift:
 
-| Hook                | Purpose                                                           |
-| ------------------- | ----------------------------------------------------------------- |
-| `create_context`    | Initial context. Default infers from the generics.                |
-| `get_inputs_schema` | Input model for routing. Default infers; `None` for `BaseInputs`. |
-| `provide_inputs`    | Emit payloads to other providers. Default: none.                  |
-| `finalize_context`  | Apply the routed payloads. Default: pass through.                 |
-| `create_spec`       | Declare the file's mappings, insertions, validators.              |
+<!-- repolish:on:facet-hooks facet-hooks -->
+
+| Hook                | Purpose                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| `create_context`    | Return this facet's initial context object.                         |
+| `get_inputs_schema` | Return the Pydantic model class for this facet's input type.        |
+| `provide_inputs`    | Return payload objects this facet wants to send to other providers. |
+| `finalize_context`  | Apply the inputs routed to this facet and return the new context.   |
+| `create_spec`       | Return this facet's contributions for its one managed file.         |
+
+<!-- repolish:off:facet-hooks -->
 
 `create_spec` runs after finalize with two contexts: `opt.own_context` is the
 facet's finalized context, and `opt.provider_context` is the enclosing
@@ -165,6 +170,16 @@ mappings, insertions, or validators) raises at collection. The same applies to a
 destination claimed by two sibling facets. These are load-time authoring
 mistakes, the same rule lane-vs-regular collisions follow. Dest claims across
 two different providers follow the normal merge rules.
+
+A facet hook that raises (`create_context`, `provide_inputs`,
+`finalize_context`, or `create_spec`) is treated exactly like the same failure
+on the provider: the exception is recorded, the hook is skipped, and the run
+continues. A facet whose `create_context` fails is skipped; a failed
+`finalize_context` keeps the facet's pre-finalize context; a failed
+`create_spec` contributes nothing. Each failure shows as a red
+`✗ <hook> failed (facet <name>)` row in the apply summary with a `[details]`
+link to its traceback report, and the run exits 1. One broken facet never stops
+its siblings or the provider; see `providers.md` for the full error model.
 
 ## Templates
 

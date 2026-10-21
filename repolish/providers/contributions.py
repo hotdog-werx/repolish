@@ -27,6 +27,7 @@ from repolish.providers.models import (
     FileValidatorEntry,
     FileValidatorOptions,
     FileValidatorSpec,
+    HookFailureCollector,
     InsertionRegistry,
     LazyLaneSpec,
     ProviderContributions,
@@ -447,13 +448,23 @@ def _handle_promote_file_mappings(
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Call promote_file_mappings and route the result based on workspace mode."""
     workspace_mode = own_ctx.repolish.workspace.mode
-    pfm = cast(
-        'dict[str, str | TemplateMapping | None]',
-        call_provider_method(inst, 'promote_file_mappings', own_ctx),
-    )
+    try:
+        pfm = cast(
+            'dict[str, str | TemplateMapping | None]',
+            call_provider_method(inst, 'promote_file_mappings', own_ctx),
+        )
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        hook_failures.record(
+            provider_id=provider_id,
+            alias=inst.alias or provider_id,
+            hook='promote_file_mappings',
+            exc=exc,
+        )
+        return
     if workspace_mode == 'member':
         if pfm:
             _collect_promoted_fm(provider_id, pfm, accum)
@@ -499,23 +510,34 @@ def _suppress_auto_staged_files(
                 accum.suppressed_sources.add(dest)
 
 
-def _handle_provider_file_mappings(
+def _handle_provider_file_mappings(  # noqa: PLR0913, PLR0917
     inst: _ProviderBase,
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
     provider_overrides: ProviderOverrides | None,
+    hook_failures: HookFailureCollector,
 ) -> set[str]:
     """Collect and normalize file_mappings contributions for one provider.
 
     Returns the dest paths the provider declared through the regular hook
     (opt-out ``None`` sources excluded); facet collection uses the set to
-    raise on a dest claimed by both a facet and a regular hook.
+    raise on a dest claimed by both a facet and a regular hook. A raising
+    hook contributes nothing and is recorded.
     """
-    fm = cast(
-        'dict[str, str | TemplateMapping | None]',
-        call_provider_method(inst, 'create_file_mappings', own_ctx),
-    )
+    try:
+        fm = cast(
+            'dict[str, str | TemplateMapping | None]',
+            call_provider_method(inst, 'create_file_mappings', own_ctx),
+        )
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        hook_failures.record(
+            provider_id=provider_id,
+            alias=inst.alias or provider_id,
+            hook='create_file_mappings',
+            exc=exc,
+        )
+        return set()
     fm_config_opts = provider_overrides.file_mappings if provider_overrides else None
     _process_provider_fm(
         provider_id,
@@ -532,6 +554,7 @@ def _handle_provider_validators(
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
+    hook_failures: HookFailureCollector,
 ) -> set[str]:
     """Collect validator registrations for one provider.
 
@@ -543,23 +566,34 @@ def _handle_provider_validators(
 
     Returns the dest paths the provider declared (see
     ``_handle_provider_file_mappings`` for how facet collection uses this).
+    A raising hook contributes nothing and is recorded.
     """
-    validators = cast(
-        'dict[str, dict[str, FileValidatorEntry]]',
-        call_provider_method(inst, 'create_file_validators', own_ctx),
-    )
+    try:
+        validators = cast(
+            'dict[str, dict[str, FileValidatorEntry]]',
+            call_provider_method(inst, 'create_file_validators', own_ctx),
+        )
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        hook_failures.record(
+            provider_id=provider_id,
+            alias=inst.alias or provider_id,
+            hook='create_file_validators',
+            exc=exc,
+        )
+        return set()
     for path, path_validators in validators.items():
         accum.file_validators.setdefault(path, {}).update(path_validators)
         accum.validator_sources[path] = provider_id
     return set(validators)
 
 
-def _handle_provider_insertions(
+def _handle_provider_insertions(  # noqa: PLR0913, PLR0917
     inst: _ProviderBase,
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
     provider_overrides: ProviderOverrides | None = None,
+    hook_failures: HookFailureCollector | None = None,
 ) -> set[str]:
     """Collect insertion-function registrations for one provider.
 
@@ -570,17 +604,32 @@ def _handle_provider_insertions(
     Returns the dest paths the provider declared through the hook, before
     config-driven ``insertions_extend_files`` additions (see
     ``_handle_provider_file_mappings`` for how facet collection uses this).
+    A raising hook contributes nothing and is recorded.
     """
-    contribution = cast(
-        'FileInsertionContribution',
-        call_provider_method(inst, 'create_file_insertions', own_ctx),
-    )
-    shared_registry: InsertionRegistry = {}
-    if isinstance(contribution, list):
-        shared_registry = cast(
-            'InsertionRegistry',
-            call_provider_method(inst, 'create_insertion_registry', own_ctx),
+    failures = hook_failures or HookFailureCollector()
+    try:
+        contribution = cast(
+            'FileInsertionContribution',
+            call_provider_method(inst, 'create_file_insertions', own_ctx),
         )
+        shared_registry: InsertionRegistry = {}
+        if isinstance(contribution, list):
+            shared_registry = cast(
+                'InsertionRegistry',
+                call_provider_method(
+                    inst,
+                    'create_insertion_registry',
+                    own_ctx,
+                ),
+            )
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        failures.record(
+            provider_id=provider_id,
+            alias=inst.alias or provider_id,
+            hook='create_file_insertions',
+            exc=exc,
+        )
+        return set()
 
     insertions = _normalize_provider_insertions(contribution, shared_registry)
     declared = set(insertions)
@@ -665,6 +714,7 @@ def _handle_provider_fast_lanes(
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Collect fast lane declarations for one provider.
 
@@ -681,7 +731,16 @@ def _handle_provider_fast_lanes(
     them, so a lane whose factory imports heavily costs nothing until a run
     actually selects it.
     """
-    lanes = inst.create_fast_lanes(own_ctx.repolish)
+    try:
+        lanes = inst.create_fast_lanes(own_ctx.repolish)
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        hook_failures.record(
+            provider_id=provider_id,
+            alias=inst.alias or provider_id,
+            hook='create_fast_lanes',
+            exc=exc,
+        )
+        return
 
     for lane_name, declaration in lanes.items():
         if isinstance(declaration, FastLaneSpec):
@@ -774,18 +833,19 @@ def _apply_facet_spec(  # noqa: PLR0913 - mirrors the regular handler signatures
         )
 
 
-def _handle_provider_facets(
+def _handle_provider_facets(  # noqa: PLR0913, PLR0917
     inst: _ProviderBase,
     own_ctx: BaseContext,
     provider_id: str,
     accum: Accumulators,
     regular_dests: set[str],
+    hook_failures: HookFailureCollector,
 ) -> None:
     """Collect each declared facet's spec into the accumulators.
 
     Facets run after the provider's regular hooks so ``regular_dests`` can be
     checked for collisions. A facet whose context is missing (creation failed
-    earlier) or whose ``create_spec`` raises is skipped with a warning: one
+    earlier) or whose ``create_spec`` raises is skipped and recorded: one
     broken facet must not stop the run, matching how facet context creation
     and finalize are treated.
     """
@@ -800,11 +860,12 @@ def _handle_provider_facets(
                 FacetSpecOptions(own_context=fctx, provider_context=own_ctx),
             )
         except Exception as exc:  # noqa: BLE001 - one broken facet must not stop the run
-            logger.warning(
-                'facet_create_spec_raised',
-                provider=provider_id,
-                facet=facet.name,
-                error=str(exc),
+            hook_failures.record(
+                provider_id=provider_id,
+                alias=provider_name,
+                facet_name=facet.name,
+                hook='create_spec',
+                exc=exc,
             )
             continue
         _check_facet_dest_collisions(
@@ -1052,29 +1113,41 @@ def _apply_insertion_overrides(
                 accum.file_insertions.pop(dest, None)
 
 
-def _collect_provider_contribution(
+def _collect_provider_contribution(  # noqa: PLR0913, PLR0917
     provider_id: str,
     module_dict: dict,
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
     contributions: ProviderContributions | None = None,
+    hook_failures: HookFailureCollector | None = None,
 ) -> None:
     """Process a single provider's anchors, file mappings, and promotions."""
     inst_ctx = _get_inst_and_ctx(provider_id, module_dict, provider_contexts)
     if not inst_ctx:
         return
     inst, own_ctx = inst_ctx
+    failures = hook_failures or HookFailureCollector()
 
     # Look up this provider's overrides from contributions once.
     provider_overrides: ProviderOverrides | None = contributions.overrides.get(provider_id) if contributions else None
 
-    val = call_provider_method(inst, 'create_anchors', own_ctx)
-    if not isinstance(val, dict):
-        msg = 'create_anchors() must return a dict'
-        raise TypeError(msg)
-    accum.merged_anchors.update(cast('dict[str, str]', val))
-    if provider_overrides and provider_overrides.anchors:
-        accum.merged_anchors.update(provider_overrides.anchors)
+    try:
+        val = call_provider_method(inst, 'create_anchors', own_ctx)
+        # A contract-breaking return is the hook's failure, not the run's:
+        # raised inside the try so it is recorded like any other exception.
+        if not isinstance(val, dict):
+            msg = 'create_anchors() must return a dict'
+            raise TypeError(msg)  # noqa: TRY301 - deliberately recorded below
+        accum.merged_anchors.update(cast('dict[str, str]', val))
+        if provider_overrides and provider_overrides.anchors:
+            accum.merged_anchors.update(provider_overrides.anchors)
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        failures.record(
+            provider_id=provider_id,
+            alias=inst.alias or provider_id,
+            hook='create_anchors',
+            exc=exc,
+        )
 
     regular_dests = _handle_provider_file_mappings(
         inst,
@@ -1082,12 +1155,14 @@ def _collect_provider_contribution(
         provider_id,
         accum,
         provider_overrides,
+        failures,
     )
     regular_dests |= _handle_provider_validators(
         inst,
         own_ctx,
         provider_id,
         accum,
+        failures,
     )
     regular_dests |= _handle_provider_insertions(
         inst,
@@ -1095,27 +1170,38 @@ def _collect_provider_contribution(
         provider_id,
         accum,
         provider_overrides,
+        failures,
     )
     if provider_overrides:
         _apply_validator_overrides(provider_overrides.validators or {}, accum)
         _apply_insertion_overrides(provider_overrides.insertions or {}, accum)
-    _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
-    _handle_promote_file_mappings(inst, own_ctx, provider_id, accum)
-    _handle_provider_facets(inst, own_ctx, provider_id, accum, regular_dests)
+    _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum, failures)
+    _handle_promote_file_mappings(inst, own_ctx, provider_id, accum, failures)
+    _handle_provider_facets(
+        inst,
+        own_ctx,
+        provider_id,
+        accum,
+        regular_dests,
+        failures,
+    )
 
 
-def collect_provider_contributions(
+def collect_provider_contributions(  # noqa: PLR0913
     module_cache: list[tuple[str, dict]],
     provider_contexts: dict[str, BaseContext],
     accum: Accumulators,
     contributions: ProviderContributions | None = None,
     *,
     fast_lanes_only: bool = False,
+    hook_failures: HookFailureCollector | None = None,
 ) -> None:
     """Collect anchors, file mappings, and delete/create-only decisions from all providers.
 
-    This mutates the provided accumulators in-place.
+    This mutates the provided accumulators in-place. Provider and facet
+    hooks that raise are recorded into *hook_failures* and skipped.
     """
+    failures = hook_failures or HookFailureCollector()
     for provider_id, module_dict in module_cache:
         if fast_lanes_only:
             inst = module_dict.get('_repolish_provider_instance')
@@ -1124,7 +1210,13 @@ def collect_provider_contributions(
                 own_ctx,
                 BaseContext,
             ):
-                _handle_provider_fast_lanes(inst, own_ctx, provider_id, accum)
+                _handle_provider_fast_lanes(
+                    inst,
+                    own_ctx,
+                    provider_id,
+                    accum,
+                    failures,
+                )
             continue
         _collect_provider_contribution(
             provider_id,
@@ -1132,4 +1224,5 @@ def collect_provider_contributions(
             provider_contexts,
             accum,
             contributions=contributions,
+            hook_failures=failures,
         )

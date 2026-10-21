@@ -21,6 +21,7 @@ from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     FinalizeContextOptions,
+    HookFailureCollector,
     ProvideInputsOptions,
     SessionBundle,
     TemplateMapping,
@@ -69,10 +70,14 @@ def test_validate_raw_inputs_coerces_compatible_base_inputs() -> None:
     assert result_instance.x == 7
 
 
-def test_retrieve_instance_inputs_raises_on_collect_error() -> None:
+def test_retrieve_instance_inputs_records_collect_error() -> None:
     pc = {'p': {'foo': 'bar'}}
-    with pytest.raises(RuntimeError):
-        _retrieve_instance_inputs('p', 0, BadInst(), pc, [])
+    failures = HookFailureCollector()
+    assert _retrieve_instance_inputs('p', 0, BadInst(), pc, [], failures) is None
+    assert len(failures.failures) == 1
+    recorded = failures.failures[0]
+    assert recorded.hook == 'provide_inputs'
+    assert recorded.provider_id == 'p'
 
 
 def test_validate_raw_inputs_wrong_model() -> None:
@@ -98,14 +103,21 @@ def test_finalize_provider_contexts_error_path() -> None:
             raise RuntimeError
 
     provider_contexts = cast('dict[str, list[BaseInputs]]', {'p': [1]})
-    with pytest.raises(RuntimeError):
-        finalize_provider_contexts(
-            [('p', {})],
-            [F()],
-            provider_contexts,
-            {},
-            [],
-        )
+    failures = HookFailureCollector()
+    finalize_provider_contexts(
+        [('p', {})],
+        [F()],
+        provider_contexts,
+        {},
+        [],
+        hook_failures=failures,
+    )
+    # The failure is recorded and the pre-finalize context kept: the run
+    # continues with the provider incomplete, not dead.
+    assert len(failures.failures) == 1
+    recorded = failures.failures[0]
+    assert recorded.hook == 'finalize_context'
+    assert recorded.provider_id == 'p'
 
 
 def test_load_and_validate_template_handles_binary_file(

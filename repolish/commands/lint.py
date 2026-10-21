@@ -44,12 +44,19 @@ from repolish.directives import (
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.providers import create_providers
 from repolish.providers.models import SessionBundle
-from repolish.reporting import print_command_timings, print_summary_trees
+from repolish.reporting import (
+    SummaryNode,
+    print_command_timings,
+    print_summary_trees,
+)
 from repolish.reporting.leaves import (
+    render_hook_failure_row,
     render_lint_templates,
     render_unmapped_sources,
 )
 from repolish.summaries import (
+    HookFailureRow,
+    HookFailureState,
     LintIssue,
     LintState,
     TemplateResult,
@@ -313,6 +320,25 @@ def _resolve_context(
     return ctx.model_dump(), type(ctx)
 
 
+def _hook_failure_nodes(providers: SessionBundle) -> list[SummaryNode]:
+    """Render one summary row per recorded hook failure.
+
+    Lint has no `.repolish/_` debug dir, so the rows carry no details link:
+    the message line is the whole story here.
+    """
+    return [
+        render_hook_failure_row(
+            HookFailureRow(
+                hook=failure.hook,
+                state=HookFailureState.FAILED,
+                facet_name=failure.facet_name,
+                message=failure.error,
+            ),
+        )
+        for failure in providers.hook_failures
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Command entry point
 # ---------------------------------------------------------------------------
@@ -337,6 +363,22 @@ def command(provider_dir: Path) -> int:
         print_command_timings('lint', (perf_counter() - started) * 1000)
 
 
+LINT_EXIT_CODES: dict[int, str] = {
+    0: 'All templates rendered cleanly, no hook failed during the load, and every conditional source is mapped.',
+    1: (
+        'A template failed, the provider failed to load, a conditional '
+        'source is unmapped, or a recorded hook failure printed.'
+    ),
+}
+"""The `repolish lint` exit-code contract.
+
+Composed in `_lint_provider`: early 1s for the missing script, template
+directory, or load failure, and the final composition counting template
+rows, unmapped conditional sources, and recorded hook failures. The local
+provider renders the lint docs' exit-code table from this registry.
+"""
+
+
 def _lint_provider(provider_dir: Path) -> int:
     """Lint body; :func:`command` wraps this for the timing footer."""
     provider_dir = provider_dir.resolve()
@@ -357,7 +399,10 @@ def _lint_provider(provider_dir: Path) -> int:
         logger.error('templates_dir_missing', path=str(tpl_root))
         return 1
 
-    # Load provider and get finalized context (no inputs - single-provider run)
+    # Load provider and get finalized context (no inputs - single-provider run).
+    # A failed create_context still leaves a bare BaseContext behind (the
+    # finalize pass writes it back), so the context always resolves; the
+    # recorded hook failures below are what explain the empty one.
     try:
         providers = create_providers([str(provider_dir)])
         pid = provider_dir.as_posix()
@@ -413,6 +458,16 @@ def _lint_provider(provider_dir: Path) -> int:
     print_summary_trees(
         [
             ('repolish lint', render_lint_templates(rows)),
+            *(
+                [
+                    (
+                        'Hook failures (hooks skipped during load)',
+                        _hook_failure_nodes(providers),
+                    ),
+                ]
+                if providers.hook_failures
+                else []
+            ),
             (
                 'Unmapped conditional sources (never referenced by create_file_mappings)',
                 render_unmapped_sources(unmapped_source_rows(unmapped)),
@@ -421,7 +476,7 @@ def _lint_provider(provider_dir: Path) -> int:
     )
 
     console.print()
-    if all(row.state is LintState.OK for row in rows) and not unmapped:
+    if all(row.state is LintState.OK for row in rows) and not unmapped and not providers.hook_failures:
         console.rule('[bold green]All templates OK[/bold green]')
         logger.info('lint_passed', templates=len(results))
         return 0
@@ -432,5 +487,6 @@ def _lint_provider(provider_dir: Path) -> int:
         issues=issues_total,
         render_errors=render_errors_total,
         unmapped_conditionals=len(unmapped),
+        hook_failures=len(providers.hook_failures),
     )
     return 1

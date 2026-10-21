@@ -13,6 +13,7 @@ from repolish.reporting.leaves import (
     render_command_row,
     render_copy_row,
     render_file_row,
+    render_hook_failure_row,
     render_insertion_catalog,
     render_lint_templates,
     render_post_process_group,
@@ -33,6 +34,8 @@ from repolish.summaries.rows import (
     CopyState,
     FileRow,
     FileState,
+    HookFailureRow,
+    HookFailureState,
     InsertionCatalogGroup,
     InsertionFunctionRow,
     InsertionLine,
@@ -217,6 +220,42 @@ def test_file_row_link_without_hyperlink_support(
 # --- symlinks and copies --------------------------------------------------
 
 
+def test_hook_failure_row_renders_red_cross_and_message() -> None:
+    row = HookFailureRow(
+        hook='create_spec',
+        state=HookFailureState.FAILED,
+        facet_name='notes',
+        message='boom',
+    )
+    node = render_hook_failure_row(row)
+    assert node.label.plain == '✗ create_spec failed (facet notes)  boom'
+    assert 'red' in _styles(node)
+
+
+def test_hook_failure_row_renders_provider_hook_without_facet() -> None:
+    node = render_hook_failure_row(
+        HookFailureRow(hook='finalize_context', state=HookFailureState.FAILED),
+    )
+    assert node.label.plain == '✗ finalize_context failed'
+
+
+def test_hook_failure_row_gets_details_link(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    mocker.patch('repolish.reporting.nodes.supports_hyperlinks', new=True)
+    report = tmp_path / 'hook-failure.p.create_spec.json'
+    node = render_hook_failure_row(
+        HookFailureRow(
+            hook='create_spec',
+            state=HookFailureState.FAILED,
+            link=report,
+        ),
+    )
+    assert node.label.plain.endswith(' [details]')
+    assert any(str(report) in str(span.style) for span in node.label.spans)
+
+
 def test_symlink_row_renders_arrow_target_source() -> None:
     node = render_symlink_row(SymlinkRow(target='.venv', source='p/.venv'))
     assert node.label.plain == '↗ .venv  → p/.venv'
@@ -317,6 +356,22 @@ def test_provider_branch_renders_symlink_children() -> None:
     node = render_provider_branch(branch)
     assert [child.label.plain for child in node.children] == [
         '↗ .venv  → p/.venv',
+    ]
+
+
+def test_provider_branch_renders_hook_failure_children() -> None:
+    """A failure row under its provider branch draws like any other row."""
+    branch = ProviderBranch(
+        alias='p',
+        rows=(
+            HookFailureRow(hook='create_spec', state=HookFailureState.FAILED),
+            FileRow(path='a.md', state=FileState.WRITTEN),
+        ),
+    )
+    node = render_provider_branch(branch)
+    assert [child.label.plain for child in node.children] == [
+        '✗ create_spec failed',
+        '✓ a.md',
     ]
 
 
