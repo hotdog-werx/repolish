@@ -1,9 +1,11 @@
 """Docs insertion functions: tables derived from product code, end to end.
 
 Unit tests pin each renderer against the registry it derives from; the
-lane e2e runs the real `docs` fast lane (the same shape LocalProvider
-declares) against fixture docs files, asserting the blocks fill, stay
-idempotent under `--check`, and fail the check when corrupted.
+provider e2e runs the shared-registry hook form (the same shape
+LocalProvider declares: `create_file_insertions` lists the files,
+`create_insertion_registry` the functions) against fixture docs files,
+asserting the blocks fill, stay idempotent under `--check`, and fail the
+check when corrupted.
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from local_provider.docs_insertions import (
+    DOCS_INSERTION_FILES,
+    DOCS_INSERTION_REGISTRY,
     exit_codes,
     facet_hooks,
     hook_skip_semantics,
@@ -25,7 +29,7 @@ from local_provider.docs_insertions import (
 from repolish.providers.models import HOOK_SKIP_SEMANTICS
 from repolish.providers.models.facet import ProviderFacet
 from repolish.summaries.rows import STATE_ENUMS
-from repolish.testing import apply_fast_lane
+from repolish.testing import apply_provider
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -121,12 +125,13 @@ def test_hook_skip_semantics_rows_match_registry() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Lane e2e: the `docs` lane shape LocalProvider declares, against fixture docs
+# Provider e2e: the shared-registry hook shape LocalProvider declares,
+# against fixture docs files
 # ---------------------------------------------------------------------------
 
-_LANE_PROVIDER = """\
-    from repolish import BaseContext, BaseInputs, FastLaneSpec, Provider
-    from local_provider.docs_insertions import DOCS_INSERTIONS
+_HOOK_PROVIDER = """\
+    from repolish import BaseContext, BaseInputs, Provider
+    from local_provider.docs_insertions import DOCS_INSERTION_FILES, DOCS_INSERTION_REGISTRY
 
     class Ctx(BaseContext):
         pass
@@ -135,8 +140,11 @@ _LANE_PROVIDER = """\
         def create_context(self):
             return Ctx()
 
-        def create_fast_lanes(self, repolish):
-            return {'docs': FastLaneSpec(file_insertions=DOCS_INSERTIONS)}
+        def create_file_insertions(self, context):
+            return list(DOCS_INSERTION_FILES)
+
+        def create_insertion_registry(self, context):
+            return dict(DOCS_INSERTION_REGISTRY)
     """
 
 _BLOCKS: dict[str, list[str]] = {
@@ -166,12 +174,12 @@ def _block(marker: str) -> str:
     return f'{marker}\n\n<!-- repolish:off:{tag} -->\n'
 
 
-def _make_lane_provider(base: Path) -> type[Provider[Any, Any]]:
-    """Write the docs-lane fixture provider package and import its class."""
+def _make_hook_provider(base: Path) -> type[Provider[Any, Any]]:
+    """Write the shared-registry fixture provider package and import its class."""
     provider_root = base / 'pkg' / 'resources' / 'templates'
     (provider_root / 'repolish').mkdir(parents=True)
     (provider_root / 'repolish.py').write_text(
-        textwrap.dedent(_LANE_PROVIDER),
+        textwrap.dedent(_HOOK_PROVIDER),
         encoding='utf-8',
     )
     mod = _load_module(provider_root / 'repolish.py')
@@ -194,14 +202,25 @@ def _make_project(project: Path) -> None:
         )
 
 
-def test_docs_lane_fills_every_block_and_check_stays_clean(
+def test_docs_files_and_registry_stay_pinned() -> None:
+    """The allowlist and the registry are the two halves of the declaration."""
+    assert tuple(_BLOCKS) == DOCS_INSERTION_FILES
+    assert set(DOCS_INSERTION_REGISTRY) == {
+        'summary-markers',
+        'exit-codes',
+        'facet-hooks',
+        'hook-skip-semantics',
+    }
+
+
+def test_docs_provider_fills_every_block_and_check_stays_clean(
     tmp_path: Path,
 ) -> None:
-    provider_cls = _make_lane_provider(tmp_path)
+    provider_cls = _make_hook_provider(tmp_path)
     project = tmp_path / 'project'
     _make_project(project)
 
-    result = apply_fast_lane(provider_cls, project, 'docs', alias='local')
+    result = apply_provider(provider_cls, project, alias='local')
 
     assert result.exit_code == 0
     trees = (project / 'docs/reference/summary-trees.md').read_text(
@@ -217,21 +236,20 @@ def test_docs_lane_fills_every_block_and_check_stays_clean(
     )
     assert '| `create_anchors` |' in providers_doc
 
-    clean = apply_fast_lane(
+    clean = apply_provider(
         provider_cls,
         project,
-        'docs',
         alias='local',
         check_only=True,
     )
     assert clean.exit_code == 0
 
 
-def test_docs_lane_check_flags_a_corrupted_block(tmp_path: Path) -> None:
-    provider_cls = _make_lane_provider(tmp_path)
+def test_docs_provider_check_flags_a_corrupted_block(tmp_path: Path) -> None:
+    provider_cls = _make_hook_provider(tmp_path)
     project = tmp_path / 'project'
     _make_project(project)
-    applied = apply_fast_lane(provider_cls, project, 'docs', alias='local')
+    applied = apply_provider(provider_cls, project, alias='local')
     assert applied.exit_code == 0
 
     target = project / 'docs/reference/apply.md'
@@ -239,10 +257,9 @@ def test_docs_lane_check_flags_a_corrupted_block(tmp_path: Path) -> None:
         target.read_text(encoding='utf-8').replace('| `2` |', '| `3` |'),
         encoding='utf-8',
     )
-    drift = apply_fast_lane(
+    drift = apply_provider(
         provider_cls,
         project,
-        'docs',
         alias='local',
         check_only=True,
     )

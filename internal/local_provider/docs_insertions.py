@@ -5,8 +5,9 @@ product package next to the behavior it documents: `MARKERS` descriptions,
 the exit-code contracts, `HOOK_SKIP_SEMANTICS`, and the `ProviderFacet`
 docstrings. The docs data tables cannot drift from the implementation,
 because `workspace:repolish:check` re-renders every block in CI.
-`DOCS_INSERTIONS` maps each docs file to its functions; the `docs` fast
-lane spreads it next to the README's `dev-tasks`.
+`DOCS_INSERTION_FILES` is the allowlist `create_file_insertions` returns;
+`DOCS_INSERTION_REGISTRY` is the shared function registry
+`create_insertion_registry` hands back for those files.
 """
 
 from collections.abc import Callable
@@ -115,13 +116,23 @@ def hook_skip_semantics() -> str:
     return _table(('Hook', 'Skipped as'), rows)
 
 
-DOCS_INSERTIONS: dict[str, dict[str, Callable[..., str]]] = {
-    'docs/reference/summary-trees.md': {'summary-markers': summary_markers},
-    'docs/reference/apply.md': {'exit-codes': exit_codes},
-    'docs/reference/lint.md': {'exit-codes': exit_codes},
-    'docs/provider-development/facets.md': {'facet-hooks': facet_hooks},
-    'docs/provider-development/providers.md': {
-        'hook-skip-semantics': hook_skip_semantics,
-    },
+DOCS_INSERTION_FILES: tuple[str, ...] = (
+    'docs/reference/summary-trees.md',
+    'docs/reference/apply.md',
+    'docs/reference/lint.md',
+    'docs/provider-development/facets.md',
+    'docs/provider-development/providers.md',
+)
+"""Docs files that may carry this provider's insertion blocks."""
+
+
+DOCS_INSERTION_REGISTRY: dict[str, Callable[..., str]] = {
+    'summary-markers': summary_markers,
+    'exit-codes': exit_codes,
+    'facet-hooks': facet_hooks,
+    'hook-skip-semantics': hook_skip_semantics,
 }
-"""The docs insertion registry: destination file -> function name -> callable."""
+"""The shared insertion functions, keyed by marker function name.
+
+Every listed file resolves against this whole registry; the marker in the
+file picks the function, so a new block needs no provider change."""
