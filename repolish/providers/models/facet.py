@@ -202,7 +202,7 @@ class ProviderFacet(ABC, Generic[FacetCtxT, FacetInpT]):
             return cast('FacetCtxT', BaseContext())
 
     def get_inputs_schema(self) -> type[FacetInpT] | None:
-        """Return the Pydantic model class for this facet's *input* type.
+        """Return the Pydantic model class for this facet's input type.
 
         The framework routes a payload to the facet when it exactly
         isinstance-matches this schema (see

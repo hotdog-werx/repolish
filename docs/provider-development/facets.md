@@ -82,7 +82,7 @@ method docstrings, so it cannot drift:
 | Hook                | Purpose                                                             |
 | ------------------- | ------------------------------------------------------------------- |
 | `create_context`    | Return this facet's initial context object.                         |
-| `get_inputs_schema` | Return the Pydantic model class for this facet's _input_ type.      |
+| `get_inputs_schema` | Return the Pydantic model class for this facet's input type.        |
 | `provide_inputs`    | Return payload objects this facet wants to send to other providers. |
 | `finalize_context`  | Apply the inputs routed to this facet and return the new context.   |
 | `create_spec`       | Return this facet's contributions for its one managed file.         |
