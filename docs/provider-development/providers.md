@@ -145,14 +145,27 @@ is incomplete:
 
 ### Behaviour when a hook fails
 
-A provider hook that raises (`create_context`, `provide_inputs`,
-`finalize_context`, or any of the `create_*` contribution hooks) never aborts
-the run. repolish catches the exception, records it, and skips that hook:
+A provider or facet hook that raises never aborts the run. repolish catches the
+exception, records it, and skips that hook. The table below is generated from
+the pipeline's skip-semantics registry, so it always covers every guarded hook
+and matches what the code actually falls back to:
 
-- `create_context` leaves the provider with an empty context.
-- `provide_inputs` is treated as emitting no inputs.
-- `finalize_context` keeps the pre-finalize context.
-- A failed `create_*` hook contributes nothing to the session.
+<!-- repolish:on:skip-semantics hook-skip-semantics -->
+
+| Hook                     | Skipped as                                                |
+| ------------------------ | --------------------------------------------------------- |
+| `create_context`         | the provider is left with an empty context                |
+| `provide_inputs`         | the provider is treated as emitting no inputs             |
+| `finalize_context`       | the provider keeps its pre-finalize context               |
+| `promote_file_mappings`  | the provider declares no promoted mappings                |
+| `create_file_mappings`   | the provider contributes no file mappings                 |
+| `create_file_validators` | the provider declares no validators                       |
+| `create_file_insertions` | the provider declares no insertion functions              |
+| `create_fast_lanes`      | the provider declares no fast lanes                       |
+| `create_spec`            | the facet contributes no spec, so its file goes unmanaged |
+| `create_anchors`         | the provider declares no anchors                          |
+
+<!-- repolish:off:skip-semantics -->
 
 The rest of the run continues with the provider incomplete, not dead. Every
 recorded failure appears as a red `✗ <hook> failed` row in the summary tree

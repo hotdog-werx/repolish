@@ -74,15 +74,20 @@ class GitignoreFacet(ProviderFacet[GitignoreCtx, GitignoreInputs]):
 ```
 
 Only `create_spec` is abstract: a facet exists to declare its file. The hooks
-mirror the provider's:
+mirror the provider's. The table below is generated from the `ProviderFacet`
+method docstrings, so it cannot drift:
 
-| Hook                | Purpose                                                           |
-| ------------------- | ----------------------------------------------------------------- |
-| `create_context`    | Initial context. Default infers from the generics.                |
-| `get_inputs_schema` | Input model for routing. Default infers; `None` for `BaseInputs`. |
-| `provide_inputs`    | Emit payloads to other providers. Default: none.                  |
-| `finalize_context`  | Apply the routed payloads. Default: pass through.                 |
-| `create_spec`       | Declare the file's mappings, insertions, validators.              |
+<!-- repolish:on:facet-hooks facet-hooks -->
+
+| Hook                | Purpose                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| `create_context`    | Return this facet's initial context object.                         |
+| `get_inputs_schema` | Return the Pydantic model class for this facet's _input_ type.      |
+| `provide_inputs`    | Return payload objects this facet wants to send to other providers. |
+| `finalize_context`  | Apply the inputs routed to this facet and return the new context.   |
+| `create_spec`       | Return this facet's contributions for its one managed file.         |
+
+<!-- repolish:off:facet-hooks -->
 
 `create_spec` runs after finalize with two contexts: `opt.own_context` is the
 facet's finalized context, and `opt.provider_context` is the enclosing

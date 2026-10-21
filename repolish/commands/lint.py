@@ -363,6 +363,22 @@ def command(provider_dir: Path) -> int:
         print_command_timings('lint', (perf_counter() - started) * 1000)
 
 
+LINT_EXIT_CODES: dict[int, str] = {
+    0: 'All templates rendered cleanly, no hook failed during the load, and every conditional source is mapped.',
+    1: (
+        'A template failed, the provider failed to load, a conditional '
+        'source is unmapped, or a recorded hook failure printed.'
+    ),
+}
+"""The `repolish lint` exit-code contract.
+
+Composed in `_lint_provider`: early 1s for the missing script, template
+directory, or load failure, and the final composition counting template
+rows, unmapped conditional sources, and recorded hook failures. The local
+provider renders the lint docs' exit-code table from this registry.
+"""
+
+
 def _lint_provider(provider_dir: Path) -> int:
     """Lint body; :func:`command` wraps this for the timing footer."""
     provider_dir = provider_dir.resolve()

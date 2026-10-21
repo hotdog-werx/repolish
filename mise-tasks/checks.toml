@@ -4,14 +4,23 @@
 description = "check dprint-managed formatting"
 run = "dprint check"
 
+["check-coverage:repolish"]
+description = "run repolish tests with repolish coverage"
+run = "COVERAGE_FILE=.coverage-files/.coverage.repolish uv run pytest -vv --tb=short tests --cov-config=./coveragerc.toml --cov=repolish --cov-report=term-missing --cov-report=html:.coverage-files/htmlcov -n auto"
+
+["check-coverage:internal"]
+description = "run internal tests with internal coverage"
+run = 'COVERAGE_FILE=.coverage-files/.coverage.internal {{ env.DK_UVTB_REPOLISH_EXEC }} pytest -vv --tb=short internal/tests --cov-config=./coveragerc.toml --cov=internal/local_provider --cov-report=term-missing --cov-report=html:.coverage-files/htmlcov-internal -n auto'
+
 [check-coverage]
-description = "run the test suite with coverage (100% required)"
-run = "uv run pytest -vv --tb=short --cov-config=./coveragerc.toml --cov=repolish --cov-report=term-missing --cov-report=html:.coverage-files/htmlcov -n auto"
+description = "run repolish and internal coverage suites"
+depends = ["check-coverage:repolish", "check-coverage:internal"]
 
 [ci-checks]
 description = "run all checks for CI"
 depends = [
   "python:check:types",
+  "python:check:types:internal",
   "python:check:complexity",
   "python:check:ruff",
   "check-dprint",

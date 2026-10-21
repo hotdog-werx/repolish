@@ -20,6 +20,7 @@ from repolish.commands.apply.options import (
 )
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import (
+    APPLY_EXIT_CODES,
     _run_post_process_if_needed,
     _session_exit_rc,
     apply_session,
@@ -504,6 +505,13 @@ def test_session_exit_rc_escalates_hook_failures_over_drift(
     assert _session_exit_rc(broken, fail_on_warnings=False, fallback_rc=0) == 1
     assert _session_exit_rc(clean, fail_on_warnings=False, fallback_rc=2) == 2
     assert _session_exit_rc(clean, fail_on_warnings=False, fallback_rc=0) == 0
+
+
+def test_apply_exit_codes_table_pinned() -> None:
+    """The docs exit-code table is rendered from this contract."""
+    assert set(APPLY_EXIT_CODES) == {0, 1, 2}
+    for code, meaning in APPLY_EXIT_CODES.items():
+        assert meaning, f'exit code {code} has an empty description'
 
 
 def test_hook_failures_only_separates_incomplete_from_broken(

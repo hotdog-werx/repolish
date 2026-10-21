@@ -6,6 +6,7 @@ here and import them normally (e.g. `from local_provider.helpers import x`).
 what repolish.yaml's provider_root points at and must not grow code itself.
 """
 
+from local_provider.docs_insertions import DOCS_INSERTIONS
 from local_provider.mise_tasks import collect_mise_tasks
 from local_provider.uvtb import env_site_packages
 from repolish import (
@@ -73,13 +74,16 @@ class LocalProvider(Provider[LocalProviderContext, BaseInputs]):
     ) -> dict[str, FastLaneDeclaration]:
         """Declare the `docs` and `venv` lanes.
 
-        No `@override`: the repo floor is 3.11 (ty assumes it from the root
+        The `docs` lane fills the README's mise-task table and the docs
+        data tables rendered from product code (see docs_insertions). No
+        `@override`: the repo floor is 3.11 (ty assumes it from the root
         pyproject) and product code skips the decorator for the same reason.
         """
         return {
             'docs': FastLaneSpec(
                 file_insertions={
                     'README.md': {'dev-tasks': _dev_tasks},
+                    **DOCS_INSERTIONS,
                 },
             ),
             'venv': lambda: _venv_spec(repolish),

@@ -5,6 +5,7 @@ from textwrap import dedent
 import pytest
 
 from repolish.commands.lint import (
+    LINT_EXIT_CODES,
     _has_brand_token,
     _zone_marker_warnings,
     command,
@@ -437,3 +438,10 @@ def test_unbranded_zone_does_not_fail_the_lint(tmp_path: Path) -> None:
         {'README.md': template},
     )
     assert command(provider_dir) == 0
+
+
+def test_lint_exit_codes_table_pinned() -> None:
+    """The docs exit-code table is rendered from this contract."""
+    assert set(LINT_EXIT_CODES) == {0, 1}
+    for code, meaning in LINT_EXIT_CODES.items():
+        assert meaning, f'exit code {code} has an empty description'

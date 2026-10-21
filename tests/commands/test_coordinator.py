@@ -29,7 +29,11 @@ from repolish.commands.apply.utils import CoordinateOptions
 from repolish.config.models import RepolishConfig
 from repolish.postprocess.models import CommandOutcome, PostProcessRun
 from repolish.providers import SessionBundle
-from repolish.providers.models import GlobalContext, HookFailure, TemplateMapping
+from repolish.providers.models import (
+    GlobalContext,
+    HookFailure,
+    TemplateMapping,
+)
 from repolish.providers.models.files import FileMode, FileRecord
 from repolish.providers.models.workspace import MemberInfo, WorkspaceContext
 

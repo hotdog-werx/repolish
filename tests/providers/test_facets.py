@@ -1127,3 +1127,12 @@ def test_two_facet_provider_end_to_end(tmp_path: Path) -> None:
     ) == 'note: from-sender\n'
     # ...while the sibling map is readable from any of the provider's files.
     assert (project / 'HEADER.txt').read_text(encoding='utf-8') == ('title: plain\nnote: from-sender\n')
+
+
+def test_every_public_facet_hook_has_a_docstring_summary() -> None:
+    """The docs facet-hook table renders from these docstring first lines."""
+    for name, method in vars(ProviderFacet).items():
+        if name.startswith('_') or not callable(method):
+            continue
+        summary = (method.__doc__ or '').strip().split('\n')[0]
+        assert summary, f'ProviderFacet.{name} has no docstring summary'

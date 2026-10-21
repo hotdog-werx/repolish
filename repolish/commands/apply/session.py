@@ -211,6 +211,27 @@ def _log_validation_failure(session: ResolvedSession) -> None:
     )
 
 
+APPLY_EXIT_CODES: dict[int, str] = {
+    0: ('The run completed: no validator, post-process, or hook failures. In check mode, also no drift.'),
+    1: (
+        'A validator failed, a post-process command failed, or a provider '
+        'or facet hook raised and was skipped. In check mode, this outranks '
+        'a drift finding.'
+    ),
+    2: (
+        'Check mode found drift: the project files differ from what apply would write. Apply mode never returns this.'
+    ),
+}
+"""The `repolish apply` exit-code contract, in composition order.
+
+Each row is composed here: 1 by `_validation_failure_rc`, `_session_exit_rc`
+(hook failures), and the post-process failure return; 2 by
+`finish_check` (repolish/commands/apply/check.py), passed in as the
+`fallback_rc`. The local provider renders the apply docs' exit-code table
+from this registry, so the docs cannot drift from the composition.
+"""
+
+
 def _validation_failure_rc(
     session: ResolvedSession,
     *,

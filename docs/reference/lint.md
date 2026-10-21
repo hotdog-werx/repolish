@@ -29,10 +29,17 @@ This catches typos and missing fields before you run `repolish apply`.
 
 ## Exit codes
 
-| Code | Meaning                                                                             |
-| ---- | ----------------------------------------------------------------------------------- |
-| 0    | All templates rendered cleanly and no hook failed during the load.                  |
-| 1    | A template failed, the provider failed to load, or a recorded hook failure printed. |
+The table below is generated from the lint exit-code contract in the command
+code, so it cannot drift.
+
+<!-- repolish:on:exit-codes exit-codes lint -->
+
+| Code | Meaning                                                                                                               |
+| ---- | --------------------------------------------------------------------------------------------------------------------- |
+| `0`  | All templates rendered cleanly, no hook failed during the load, and every conditional source is mapped.               |
+| `1`  | A template failed, the provider failed to load, a conditional source is unmapped, or a recorded hook failure printed. |
+
+<!-- repolish:off:exit-codes -->
 
 ## Example
 

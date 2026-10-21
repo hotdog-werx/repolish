@@ -46,11 +46,18 @@ repolish apply --check
 
 ## Exit codes
 
-| Code | Meaning                                                                                |
-| ---- | -------------------------------------------------------------------------------------- |
-| 0    | The run completed: no validator, post-process, or hook failures, and no drift.         |
-| 1    | A validator failed, a post-process command failed, or a provider or facet hook raised. |
-| 2    | Check mode found drift: the project files differ from what apply would write.          |
+The table below is generated from the exit-code contract in the apply session
+code, so it cannot drift.
+
+<!-- repolish:on:exit-codes exit-codes apply -->
+
+| Code | Meaning                                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | The run completed: no validator, post-process, or hook failures. In check mode, also no drift.                                                       |
+| `1`  | A validator failed, a post-process command failed, or a provider or facet hook raised and was skipped. In check mode, this outranks a drift finding. |
+| `2`  | Check mode found drift: the project files differ from what apply would write. Apply mode never returns this.                                         |
+
+<!-- repolish:off:exit-codes -->
 
 Hook failures count as errors in both modes: the run finishes the remaining
 work, prints each failure as a red `✗ <hook> failed` row with a `[details]` link

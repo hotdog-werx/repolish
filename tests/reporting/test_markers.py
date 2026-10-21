@@ -29,6 +29,12 @@ def test_every_marker_has_a_glyph() -> None:
         assert marker.glyph, f'{state!r} has an empty glyph'
 
 
+def test_every_marker_has_a_description() -> None:
+    """Descriptions render the docs marker tables; an empty one drifts."""
+    for state, marker in MARKERS.items():
+        assert marker.description, f'{state!r} has an empty description'
+
+
 def test_marker_for_unknown_state_fails_loudly() -> None:
     """A state without a marker raises instead of rendering a fallback glyph."""
 

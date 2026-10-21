@@ -17,8 +17,11 @@ import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 from repolish.providers import create_providers
 from repolish.providers.models import (
+    HOOK_SKIP_SEMANTICS,
     HookFailureCollector,
     SessionBundle,
 )
@@ -112,6 +115,34 @@ def test_traceback_lines_matches_format_exception() -> None:
     except ValueError as exc:
         lines = traceback_lines(exc)
     assert ''.join(lines).strip().endswith('ValueError: nope')
+
+
+def test_record_rejects_an_unregistered_hook_name() -> None:
+    """A capture site must document its skip semantics in the registry."""
+    collector = HookFailureCollector()
+    with pytest.raises(ValueError, match='HOOK_SKIP_SEMANTICS'):
+        collector.record(
+            provider_id='p',
+            hook='create_default_copies',
+            exc=RuntimeError('boom'),
+        )
+    assert collector.failures == []
+
+
+def test_hook_skip_semantics_cover_every_recorded_hook() -> None:
+    """The registry is exactly the 10 hook names the pipeline records."""
+    assert set(HOOK_SKIP_SEMANTICS) == {
+        'create_anchors',
+        'create_context',
+        'create_fast_lanes',
+        'create_file_insertions',
+        'create_file_mappings',
+        'create_file_validators',
+        'create_spec',
+        'finalize_context',
+        'promote_file_mappings',
+        'provide_inputs',
+    }
 
 
 # ---------------------------------------------------------------------------
