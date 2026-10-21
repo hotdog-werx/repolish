@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.17.1] <a name="1.17.1" href="#1.17.1">-</a> October 21, 2026
+
+### 🐛 Bug Fixes
+
+- Hooks that raise are recorded and skipped everywhere, exit 1 in both modes
+  (#115) by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#115](https://github.com/hotdog-werx/repolish/pull/115)
+
+[1.17.1]: https://github.com/hotdog-werx/repolish/compare/1.17.0...1.17.1
+
 ## [1.17.0] <a name="1.17.0" href="#1.17.0">-</a> October 19, 2026
 
 ### 🚀 Features
