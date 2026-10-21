@@ -19,6 +19,7 @@ from repolish.providers.models import (
     FileMode,
     FileRecord,
     GlobalContext,
+    HookFailure,
     SessionBundle,
     ValidationResult,
     ValidationStatus,
@@ -49,6 +50,8 @@ from repolish.summaries.rows import (
     CopyState,
     FileRow,
     FileState,
+    HookFailureRow,
+    HookFailureState,
     InsertionState,
     PendingStats,
     PromotedState,
@@ -85,6 +88,7 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for derivatio
     alias_to_pid: dict | None = None,
     pid_to_alias: dict | None = None,
     provider_contexts: dict | None = None,
+    hook_failures: list[HookFailure] | None = None,
 ) -> ResolvedSession:
     config = RepolishConfig(
         config_dir=tmp_path,
@@ -100,6 +104,7 @@ def _make_session(  # noqa: PLR0913 - per-aspect session overrides for derivatio
         insertion_sources=insertion_sources or {},
         disabled_file_mappings=disabled_file_mappings or {},
         provider_contexts=provider_contexts or {},
+        hook_failures=hook_failures or [],
     )
     session = ResolvedSession(
         config_path=tmp_path / 'repolish.yaml',
@@ -630,6 +635,86 @@ def test_root_group_carries_promoted_rows(tmp_path: Path) -> None:
     (promoted,) = root_group.promoted
     assert promoted.path == 'pkg.md'
     assert promoted.promoted_from == 'pkg-a'
+
+
+def test_hook_failure_rows_lead_their_provider_branch(tmp_path: Path) -> None:
+    """A recorded failure becomes a red row above the delivered files."""
+    session = _make_session(
+        tmp_path,
+        hook_failures=[
+            HookFailure(
+                provider_id='pid',
+                alias='p',
+                facet_name='alpha',
+                hook='create_spec',
+                error='boom',
+            ),
+            # Another provider's failure: belongs to its branch, not this one.
+            HookFailure(
+                provider_id='pid-other',
+                alias='other',
+                hook='create_context',
+                error='bang',
+            ),
+        ],
+    )
+    (group,) = session_groups(session)
+    (branch,) = group.branches
+    first = branch.rows[0]
+    assert isinstance(first, HookFailureRow)
+    assert first.hook == 'create_spec'
+    assert first.state is HookFailureState.FAILED
+    assert first.facet_name == 'alpha'
+    assert first.message == 'boom'
+    assert first.link is None
+    assert sum(isinstance(row, HookFailureRow) for row in branch.rows) == 1
+
+
+def test_hook_failure_row_links_the_debug_report(tmp_path: Path) -> None:
+    """A failure whose report was written carries the link to it."""
+    session = _make_session(
+        tmp_path,
+        hook_failures=[
+            HookFailure(
+                provider_id='pid',
+                alias='p',
+                hook='finalize_context',
+                error='boom',
+                report_path='.repolish/_/hook-failures/hook-failure.p.finalize_context.json',
+            ),
+        ],
+    )
+    (group,) = session_groups(session)
+    (branch,) = group.branches
+    (row,) = branch.rows
+    assert isinstance(row, HookFailureRow)
+    assert row.link == Path(
+        '.repolish/_/hook-failures/hook-failure.p.finalize_context.json',
+    )
+
+
+def test_hook_failure_row_matches_by_alias_when_pid_unknown(
+    tmp_path: Path,
+) -> None:
+    """With no pid resolution the alias match keeps the row on its branch."""
+    session = _make_session(
+        tmp_path,
+        aliases=['p', 'q'],
+        alias_to_pid={'q': 'pid-q'},
+        pid_to_alias={'pid-q': 'q'},
+        hook_failures=[
+            HookFailure(
+                provider_id='unresolved',
+                alias='p',
+                hook='provide_inputs',
+                error='boom',
+            ),
+        ],
+    )
+    (group,) = session_groups(session)
+    p_branch, q_branch = group.branches
+    assert sum(isinstance(row, HookFailureRow) for row in p_branch.rows) == 1
+    assert sum(isinstance(row, HookFailureRow) for row in q_branch.rows) == 0
 
 
 def test_apply_summary_rows_merges_sessions_in_order(tmp_path: Path) -> None:

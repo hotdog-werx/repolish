@@ -2,7 +2,6 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
-from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,7 +17,6 @@ from repolish.misc import ctx_keys, ctx_to_dict
 from repolish.providers import (
     BaseContext,
     create_providers,
-    logger,
 )
 from repolish.providers import Provider as _ProviderBase
 from repolish.providers.context import (
@@ -43,6 +41,7 @@ from repolish.providers.models import (
     FileMode,
     FinalizeContextOptions,
     GlobalContext,
+    HookFailureCollector,
     ProviderContributions,
     TemplateMapping,
 )
@@ -165,12 +164,12 @@ def test_synthesize_provider_context_skips_already_populated() -> None:
         'p',
         provider_contexts,
         GlobalContext(),
+        HookFailureCollector(),
     )
     assert provider_contexts['p'] is existing
 
 
 def test_build_all_providers_list_swallows_broken_schema(
-    caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Exception branches for `get_inputs_schema` and `create_context` are swallowed.
@@ -203,19 +202,23 @@ def test_build_all_providers_list_swallows_broken_schema(
     assert entry.input_type is None
     assert entry.provider_id == 'bp'
 
-    # create_context raising must not add an entry to provider_contexts
-    mock_warn = mock.MagicMock()
-    monkeypatch.setattr(logger, 'warning', mock_warn)
-
+    # create_context raising leaves no context behind and records the
+    # failure instead of logging it away.
+    failures = HookFailureCollector()
     _synthesize_provider_context_for_pid(
         inst,
         'bp',
         provider_contexts,
         GlobalContext(),
+        failures,
     )
-    assert mock_warn.call_count == 1
-    assert 'provider_create_context_raised' in str(mock_warn.call_args[0][0])
     assert 'bp' not in provider_contexts
+    assert len(failures.failures) == 1
+    recorded = failures.failures[0]
+    assert recorded.hook == 'create_context'
+    assert recorded.provider_id == 'bp'
+    assert recorded.error == 'broken create_context'
+    assert recorded.traceback
 
 
 # ---- exchange helpers ------------------------------------------------------
@@ -630,7 +633,13 @@ def test_handle_promote_file_mappings_warns_in_standalone_mode(
     mock_warn = mocker.patch('repolish.providers.contributions.logger.warning')
     accum = Accumulators()
     own_ctx = BaseContext()  # workspace.mode defaults to 'standalone'
-    _handle_promote_file_mappings(mock_inst, own_ctx, 'p', accum)
+    _handle_promote_file_mappings(
+        mock_inst,
+        own_ctx,
+        'p',
+        accum,
+        HookFailureCollector(),
+    )
     mock_warn.assert_called_once()
     event = mock_warn.call_args[0][0]
     assert event == 'promote_file_mappings_ignored_in_non_member_mode'

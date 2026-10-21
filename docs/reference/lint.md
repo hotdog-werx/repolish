@@ -19,14 +19,20 @@ to get the context, then renders every template in the `repolish/` subdirectory
 through Jinja2 in strict mode. Any template variable that is referenced but
 missing from the context is reported as an error.
 
+A hook that raises during the load (`create_context`, `create_file_mappings`,
+`finalize_context`, ...) does not crash the lint: it is recorded, the hook is
+skipped, and the failures print as their own `Hook failures` group in the
+output. A failed `create_context` leaves an empty context, so the templates lint
+against it and their variables surface as findings too.
+
 This catches typos and missing fields before you run `repolish apply`.
 
 ## Exit codes
 
-| Code | Meaning                                                            |
-| ---- | ------------------------------------------------------------------ |
-| 0    | All templates rendered cleanly.                                    |
-| 1    | One or more templates failed (missing variable, load error, etc.). |
+| Code | Meaning                                                                             |
+| ---- | ----------------------------------------------------------------------------------- |
+| 0    | All templates rendered cleanly and no hook failed during the load.                  |
+| 1    | A template failed, the provider failed to load, or a recorded hook failure printed. |
 
 ## Example
 

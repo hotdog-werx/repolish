@@ -240,3 +240,8 @@ class ResolvedSession:
     Emitted as structured debug events at the end of the run and written to
     the run's `.repolish/_/apply-phase-timings.json`, linked from the
     completion footer."""
+    render_failed: bool = field(default=False, repr=False)
+    """Whether template rendering died mid-run (rc 1 from the render phase).
+    Distinguishes a session that never finished from one that completed
+    with recorded hook failures; the coordinator aborts remaining sessions
+    only for the former."""

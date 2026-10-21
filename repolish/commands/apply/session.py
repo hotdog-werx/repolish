@@ -11,6 +11,7 @@ from repolish.commands.apply.check import (
 )
 from repolish.commands.apply.debug import (
     write_file_context_debug_files,
+    write_hook_failure_debug_files,
     write_provider_debug_files,
 )
 from repolish.commands.apply.display import (
@@ -91,6 +92,7 @@ def _write_debug_files(
         providers,
         alias_to_pid,
     )
+    write_hook_failure_debug_files(base_dir, providers)
 
 
 def _log_paused_files(paused: frozenset[str]) -> None:
@@ -219,6 +221,51 @@ def _validation_failure_rc(
         _log_validation_failure(session)
         return 1
     return None
+
+
+def _session_exit_rc(
+    session: ResolvedSession,
+    *,
+    fail_on_warnings: bool,
+    fallback_rc: int,
+) -> int:
+    """Compose the session exit code: validation, hook failures, then *fallback_rc*.
+
+    Hook failures outrank the fallback (drift included) in both modes: the
+    session finished its work, but part of it was skipped, so the run must
+    not report success.
+    """
+    validation_rc = _validation_failure_rc(
+        session,
+        fail_on_warnings=fail_on_warnings,
+    )
+    if validation_rc is not None:
+        return validation_rc
+    if session.providers.hook_failures:
+        return 1
+    return fallback_rc
+
+
+def hook_failures_only(
+    session: ResolvedSession,
+    *,
+    fail_on_warnings: bool,
+) -> bool:
+    """Return whether *session* completed with hook failures as its only error family.
+
+    True when hook failures are recorded but nothing else went wrong: the
+    render did not die, no post-process command failed, and validation
+    passes under the current warning policy. The coordinator uses this to
+    keep applying the remaining sessions when one is incomplete rather
+    than broken.
+    """
+    if not session.providers.hook_failures:
+        return False
+    if session.render_failed:
+        return False
+    if any(run.failed for _, run in session.post_process_runs):
+        return False
+    return _validation_failure_rc(session, fail_on_warnings=fail_on_warnings) is None
 
 
 def _run_after_render_directives(
@@ -361,9 +408,9 @@ def _apply_session(
 
     # Render templates using Jinja2
     with timer.phase('render'):
-        render_failed = render_templates(setup_input, providers, setup_output) != 0
-    if render_failed:
-        return 1
+        if render_templates(setup_input, providers, setup_output) != 0:
+            session.render_failed = True
+            return 1
 
     # Reconcile developer-owned content that is only discoverable after Jinja rendering
     # (for example, directives inside loop-generated sections).
@@ -449,11 +496,11 @@ def _apply_session(
                 setup_output,
                 prefer_render=True,
             )
-        validation_rc = _validation_failure_rc(
+        return _session_exit_rc(
             session,
             fail_on_warnings=fail_on_warnings,
+            fallback_rc=rc,
         )
-        return validation_rc if validation_rc is not None else rc
 
     # Copy the post-processed render tree out to the project. Post-process
     # runs before this copy, never after: formatting a tree that was already
@@ -479,11 +526,11 @@ def _apply_session(
     with timer.phase('validation'):
         _run_session_validation(session, base_dir, setup_output)
 
-    validation_rc = _validation_failure_rc(
+    return _session_exit_rc(
         session,
         fail_on_warnings=fail_on_warnings,
+        fallback_rc=0,
     )
-    return validation_rc if validation_rc is not None else 0
 
 
 def run_session(options: ApplyOptions) -> int:

@@ -12,6 +12,8 @@ from repolish.summaries.rows import (
     CopyState,
     FileRow,
     FileState,
+    HookFailureRow,
+    HookFailureState,
     InsertionLine,
     InsertionState,
     PromotedRow,
@@ -34,6 +36,7 @@ def test_state_enums_lists_every_state_enum() -> None:
         'InsertionState',
         'CommandState',
         'LintState',
+        'HookFailureState',
     ]
 
 
@@ -45,6 +48,7 @@ def test_rows_default_their_link_to_none() -> None:
     assert PromotedRow(path='p.md', state=PromotedState.WRITTEN).link is None
     assert ValidatorLine(name='lint', state=ValidatorState.PASS).link is None
     assert InsertionLine(state=InsertionState.OK, succeeded=1, failed=0).link is None
+    assert HookFailureRow(hook='create_spec', state=HookFailureState.FAILED).link is None
     assert ProviderBranch(alias='p').link is None
     assert SessionGroup(title='Standalone').link is None
     assert CommandRow(raw='true', state=CommandState.OK).link is None

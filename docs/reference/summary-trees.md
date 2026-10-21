@@ -33,34 +33,37 @@ The tree has three levels:
    `2 written · 1 unchanged` after an apply, or
    `[N applied, M not applied, K copies]` before any file was written.
 3. **Rows**: one per managed file, symlink, and resource copy. Files can carry
-   `validators:` and `insertions:` detail lines beneath them. Root groups also
-   nest a `Promoted` section for files promoted from member sessions to the repo
+   `validators:` and `insertions:` detail lines beneath them. A provider whose
+   hook raised during the pipeline leads its branch with one red `hook failed`
+   row per recorded failure, above the work that did land. Root groups also nest
+   a `Promoted` section for files promoted from member sessions to the repo
    root.
 
 ## Markers
 
-| Marker | State                                   | Meaning                                                                                                                 |
-| ------ | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `✓`    | written                                 | The file was written to the project (green).                                                                            |
-| `~`    | unchanged                               | The project file already matched the rendered output (dim cyan).                                                        |
-| `✗`    | deleted                                 | A `delete` file mode removed the file (dim red).                                                                        |
-| `✗`    | drift                                   | The project file differs from the rendered output (red). In check mode this is the state to watch for.                  |
-| `✗`    | paused                                  | A `paused_files` entry matched this file; repolish left it alone (yellow).                                              |
-| `✗`    | suppressed                              | The template is suppressed via a `None` mapping (yellow).                                                               |
-| `✗`    | disabled                                | The template is disabled via config overrides (yellow).                                                                 |
-| `✗`    | not in create_file_mappings (root mode) | In a monorepo root pass the file is not claimed by `create_file_mappings`, so it is never written to the root (yellow). |
-| `◌`    | insertion only                          | Nothing was written for this file; the provider only manages insertion blocks inside it (yellow).                       |
-| `◌`    | validator only                          | Nothing was written for this file; the provider only validates it (yellow).                                             |
-| `📋`   | copy active                             | The resource copy was made (yellow).                                                                                    |
-| `⏸`    | copy paused                             | A `paused_files` entry matched the whole copy target; nothing was copied (yellow).                                      |
-| `◐`    | copy partially paused                   | A directory copy where some files inside it were held back by `paused_files` (yellow).                                  |
-| `↗`    | symlink                                 | The provider symlink was created (blue). The row shows `target → source`.                                               |
-| `↑`    | promoted written                        | A member file was promoted and written to the root (green).                                                             |
-| `↑`    | promoted differs                        | The promoted file differs from what the member session rendered (yellow).                                               |
-| `↑`    | promoted overridden                     | The root pass overrode the promoted file with its own template (yellow, `⚠ overridden by <owner>`).                     |
-| `✓`    | command ok                              | A post-process command exited 0 (green).                                                                                |
-| `✗`    | command failed                          | A post-process command exited non-zero (red, with the error or exit code).                                              |
-| `✗`    | command not run                         | The command was skipped because a previous one failed (yellow).                                                         |
+| Marker | State                                   | Meaning                                                                                                                                              |
+| ------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `✓`    | written                                 | The file was written to the project (green).                                                                                                         |
+| `~`    | unchanged                               | The project file already matched the rendered output (dim cyan).                                                                                     |
+| `✗`    | deleted                                 | A `delete` file mode removed the file (dim red).                                                                                                     |
+| `✗`    | drift                                   | The project file differs from the rendered output (red). In check mode this is the state to watch for.                                               |
+| `✗`    | paused                                  | A `paused_files` entry matched this file; repolish left it alone (yellow).                                                                           |
+| `✗`    | suppressed                              | The template is suppressed via a `None` mapping (yellow).                                                                                            |
+| `✗`    | disabled                                | The template is disabled via config overrides (yellow).                                                                                              |
+| `✗`    | not in create_file_mappings (root mode) | In a monorepo root pass the file is not claimed by `create_file_mappings`, so it is never written to the root (yellow).                              |
+| `◌`    | insertion only                          | Nothing was written for this file; the provider only manages insertion blocks inside it (yellow).                                                    |
+| `◌`    | validator only                          | Nothing was written for this file; the provider only validates it (yellow).                                                                          |
+| `📋`   | copy active                             | The resource copy was made (yellow).                                                                                                                 |
+| `⏸`    | copy paused                             | A `paused_files` entry matched the whole copy target; nothing was copied (yellow).                                                                   |
+| `◐`    | copy partially paused                   | A directory copy where some files inside it were held back by `paused_files` (yellow).                                                               |
+| `↗`    | symlink                                 | The provider symlink was created (blue). The row shows `target → source`.                                                                            |
+| `↑`    | promoted written                        | A member file was promoted and written to the root (green).                                                                                          |
+| `↑`    | promoted differs                        | The promoted file differs from what the member session rendered (yellow).                                                                            |
+| `↑`    | promoted overridden                     | The root pass overrode the promoted file with its own template (yellow, `⚠ overridden by <owner>`).                                                  |
+| `✓`    | command ok                              | A post-process command exited 0 (green).                                                                                                             |
+| `✗`    | command failed                          | A post-process command exited non-zero (red, with the error or exit code).                                                                           |
+| `✗`    | command not run                         | The command was skipped because a previous one failed (yellow).                                                                                      |
+| `✗`    | hook failed                             | A provider or facet hook raised and was skipped (red). The row reads `<hook> failed`, plus `(facet <name>)` for a facet hook, and the error message. |
 
 Validator lines under a file use the same glyphs with their own meanings:
 
@@ -103,7 +106,8 @@ Each opens a local file:
   `provider-context` JSON under `.repolish/_/`.
 - A **`[details]`** suffix links to the report behind a block of rows: the
   per-file validator report under `.repolish/_/validators/`, the insertion
-  report, or the post-process report.
+  report, the post-process report, or the `hook-failures` JSON behind a
+  `hook failed` row.
 
 When the terminal does not support hyperlinks the links are omitted and the
 report paths stay reachable through the `.repolish` directory.

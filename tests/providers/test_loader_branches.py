@@ -1,8 +1,6 @@
 from pathlib import Path
 from textwrap import dedent
 
-import pytest
-
 from repolish.providers import create_providers
 from repolish.providers.models.files import TemplateMapping
 
@@ -14,8 +12,8 @@ def write_provider(tmp_path: Path, src: str) -> str:
     return str(d)
 
 
-def test_create_anchors_wrong_type_raises(tmp_path: Path):
-    """create_anchors() returning a non-dict raises TypeError."""
+def test_create_anchors_wrong_type_is_recorded(tmp_path: Path):
+    """create_anchors() returning a non-dict is recorded as a hook failure."""
     src = dedent(
         """
         from repolish import BaseContext, Provider, BaseInputs
@@ -31,8 +29,14 @@ def test_create_anchors_wrong_type_raises(tmp_path: Path):
                 return ('not', 'a', 'dict')
         """,
     )
-    with pytest.raises(TypeError):
-        create_providers([write_provider(tmp_path, src)])
+    providers = create_providers([write_provider(tmp_path, src)])
+    # A contract-breaking return counts as a failed hook: recorded, the
+    # contribution skipped, the run continues.
+    assert len(providers.hook_failures) == 1
+    recorded = providers.hook_failures[0]
+    assert recorded.hook == 'create_anchors'
+    assert 'dict' in recorded.error
+    assert providers.anchors == {}
 
 
 def test_delete_files_negation_and_history(tmp_path: Path):

@@ -111,6 +111,39 @@ def write_provider_debug_files(
         )
 
 
+def write_hook_failure_debug_files(
+    base_dir: Path,
+    providers: SessionBundle,
+) -> None:
+    """Write one JSON report per recorded hook failure to ``.repolish/_/``.
+
+    Each provider or facet hook that raised during the pipeline gets a
+    ``hook-failures/hook-failure.<alias>.[<facet>.]<hook>.json`` file with
+    the full traceback, and the record's ``report_path`` is stamped so the
+    summary tree can link to it.
+    """
+    if not providers.hook_failures:
+        return
+    out_dir = base_dir / '.repolish' / '_' / 'hook-failures'
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for failure in providers.hook_failures:
+        parts = [
+            'hook-failure',
+            path_slug(failure.alias or failure.provider_id),
+        ]
+        if failure.facet_name:
+            parts.append(path_slug(failure.facet_name))
+        parts.append(path_slug(failure.hook))
+        out_path = out_dir / f'{".".join(parts)}.json'
+        out_path.write_text(
+            json.dumps(_to_jsonable(failure.model_dump()), indent=2),
+            encoding='utf-8',
+            newline='',
+        )
+        failure.report_path = out_path.as_posix()
+
+
 def write_file_context_debug_files(
     base_dir: Path,
     providers: SessionBundle,

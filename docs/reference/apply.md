@@ -27,7 +27,9 @@ repolish apply [OPTIONS]
    registered (or re-registered if its cached paths are stale).
 2. **Context pass** - each provider's `create_context()` is called, then
    `provide_inputs()` and `finalize_context()` run to exchange cross-provider
-   data.
+   data. A hook that raises is recorded and skipped, never fatal: the run
+   continues with that provider incomplete and reports it in the summary tree
+   (see `providers.md` for the exact skip semantics).
 3. **Render pass** - templates are rendered against the merged context and
    written to disk, respecting file modes (`create-only`, `keep`, `delete`).
 4. **Post-process pass** - any `post_process` shell commands from
@@ -41,6 +43,19 @@ that all providers load and produce a context without running a full apply:
 ```bash
 repolish apply --check
 ```
+
+## Exit codes
+
+| Code | Meaning                                                                                |
+| ---- | -------------------------------------------------------------------------------------- |
+| 0    | The run completed: no validator, post-process, or hook failures, and no drift.         |
+| 1    | A validator failed, a post-process command failed, or a provider or facet hook raised. |
+| 2    | Check mode found drift: the project files differ from what apply would write.          |
+
+Hook failures count as errors in both modes: the run finishes the remaining
+work, prints each failure as a red `✗ <hook> failed` row with a `[details]` link
+to its traceback report, and exits 1. A drift finding (exit 2) does not outrank
+them: when both occur the exit code is 1.
 
 ## CI usage
 

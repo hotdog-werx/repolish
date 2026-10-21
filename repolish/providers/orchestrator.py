@@ -19,6 +19,7 @@ from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     GlobalContext,
+    HookFailureCollector,
     Provider,
     ProviderEntry,
     get_global_context,
@@ -48,6 +49,7 @@ class _PipelineState:
     accumulators: Accumulators
     instances: list[Provider | None]
     all_providers: list[ProviderEntry]
+    hook_failures: HookFailureCollector
 
 
 def _prepare_pipeline_state(
@@ -57,6 +59,7 @@ def _prepare_pipeline_state(
 ) -> _PipelineState:
     """Build provider metadata, contexts, overrides, and the input registry."""
     accumulators = Accumulators()
+    hook_failures = HookFailureCollector()
     contributions = options.contributions
     accumulators.promoted_file_mappings.update(
         contributions.promoted_file_mappings,
@@ -86,6 +89,7 @@ def _prepare_pipeline_state(
             instances,
             provider_contexts,
             options.global_context,
+            hook_failures,
         )
 
     with _phase(options, 'provider_pipeline.overrides'):
@@ -114,6 +118,7 @@ def _prepare_pipeline_state(
         accumulators=accumulators,
         instances=instances,
         all_providers=all_providers,
+        hook_failures=hook_failures,
     )
 
 
@@ -125,7 +130,10 @@ def _build_fast_path_bundle(
 ) -> SessionBundle | None:
     """Return a reduced bundle for a command or named fast-lane run."""
     if options.context_only:
-        return SessionBundle(provider_contexts=provider_contexts)
+        return SessionBundle(
+            provider_contexts=provider_contexts,
+            hook_failures=state.hook_failures.failures,
+        )
 
     if options.fast_lanes_only:
         with _phase(options, 'provider_pipeline.fast_lanes'):
@@ -135,11 +143,13 @@ def _build_fast_path_bundle(
                 state.accumulators,
                 contributions=options.contributions,
                 fast_lanes_only=True,
+                hook_failures=state.hook_failures,
             )
         return SessionBundle(
             provider_contexts=provider_contexts,
             fast_lanes=state.accumulators.fast_lanes,
             facet_owners=state.accumulators.facet_owners,
+            hook_failures=state.hook_failures.failures,
         )
 
     return None
@@ -159,6 +169,7 @@ def _run_standard_pipeline(
             provider_contexts,
             state.all_providers,
             extra_inputs=options.extra_inputs,
+            hook_failures=state.hook_failures,
         )
 
     with _phase(options, 'provider_pipeline.finalize'):
@@ -169,6 +180,7 @@ def _run_standard_pipeline(
             provider_contexts,
             state.all_providers,
             global_context=options.global_context,
+            hook_failures=state.hook_failures,
         )
 
     with _phase(options, 'provider_pipeline.contributions'):
@@ -177,6 +189,7 @@ def _run_standard_pipeline(
             provider_contexts,
             state.accumulators,
             contributions=options.contributions,
+            hook_failures=state.hook_failures,
         )
 
     accumulators = state.accumulators
@@ -199,6 +212,7 @@ def _run_standard_pipeline(
         provider_entries=state.all_providers[: len(module_cache)],
         emitted_inputs=emitted_inputs,
         facet_owners=accumulators.facet_owners,
+        hook_failures=state.hook_failures.failures,
     )
 
 
@@ -254,7 +268,9 @@ def create_providers(  # noqa: PLR0913 - skip for now
     When *global_context* is ``None``, it is computed via :func:`get_global_context`.
     The returned :class:`SessionBundle` carries the session's outward
     cross-session data (``provider_entries`` + ``emitted_inputs``), captured
-    during input exchange.
+    during input exchange. A provider or facet hook that raises is never
+    fatal: the exception is recorded on ``hook_failures`` and the hook is
+    skipped, so the run continues with that contribution absent.
 
     Use :class:`ProviderContributions` to pass per-provider overrides, anchors,
     and file mappings in a single consolidated container.

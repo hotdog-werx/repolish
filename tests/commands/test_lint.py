@@ -332,6 +332,68 @@ def test_lint_module_style_provider_fails_load(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Hook failures recorded during the provider load
+# ---------------------------------------------------------------------------
+
+
+_LINT_HOOK_BROKEN_PROVIDER = dedent("""\
+    from repolish import BaseContext, Provider, BaseInputs
+
+    class Ctx(BaseContext):
+        package_name: str = 'my-project'
+
+    class MyProvider(Provider[Ctx, BaseInputs]):
+        def create_context(self) -> Ctx:
+            return Ctx()
+
+        def create_file_mappings(self, context):
+            raise RuntimeError('mappings boom')
+""")
+
+_LINT_CONTEXT_BROKEN_PROVIDER = dedent("""\
+    from repolish import BaseContext, Provider, BaseInputs
+
+    class Ctx(BaseContext):
+        package_name: str = 'my-project'
+
+    class MyProvider(Provider[Ctx, BaseInputs]):
+        def create_context(self) -> Ctx:
+            raise RuntimeError('context boom')
+""")
+
+
+def test_lint_reports_recorded_hook_failures(tmp_path: Path) -> None:
+    """A hook that raises during load is skipped, printed, and fails the lint.
+
+    The templates themselves lint clean; the failure rows are what turn
+    the exit code to 1.
+    """
+    provider_dir = _make_provider(
+        tmp_path,
+        _LINT_HOOK_BROKEN_PROVIDER,
+        {'README.md': '# {{ package_name }}\n'},
+    )
+    assert command(provider_dir) == 1
+
+
+def test_lint_survives_create_context_failure_with_bare_context(
+    tmp_path: Path,
+) -> None:
+    """A failed create_context leaves a bare BaseContext and a failure row.
+
+    Lint still runs against the empty context (the template's variables
+    become findings), and the recorded create_context failure prints as
+    its own group; the combined exit code is 1.
+    """
+    provider_dir = _make_provider(
+        tmp_path,
+        _LINT_CONTEXT_BROKEN_PROVIDER,
+        {'README.md': '# {{ package_name }}\n'},
+    )
+    assert command(provider_dir) == 1
+
+
+# ---------------------------------------------------------------------------
 # Insert-zone marker branding warnings (advisory, never fail the lint)
 # ---------------------------------------------------------------------------
 

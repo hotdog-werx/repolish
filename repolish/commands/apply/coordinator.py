@@ -17,7 +17,11 @@ from repolish.commands.apply.display import (
 )
 from repolish.commands.apply.options import ApplyOptions, ResolvedSession
 from repolish.commands.apply.pipeline import resolve_session
-from repolish.commands.apply.session import apply_session, run_session
+from repolish.commands.apply.session import (
+    apply_session,
+    hook_failures_only,
+    run_session,
+)
 from repolish.commands.apply.utils import (
     CoordinateOptions,
     build_global_context,
@@ -299,7 +303,11 @@ def _write_promoted_file(ctx: PromotedWriteContext) -> str:
     else:
         # newline='': managed files are byte-identical on every platform,
         # never translated to os.linesep (CRLF on Windows)
-        ctx.dest_file.write_text(ctx.rendered_text, encoding='utf-8', newline='')
+        ctx.dest_file.write_text(
+            ctx.rendered_text,
+            encoding='utf-8',
+            newline='',
+        )
         if ctx.source_mode is not None:
             ctx.dest_file.chmod(ctx.source_mode)
 
@@ -612,7 +620,12 @@ def _apply_member_sessions(
     member_sessions: list[tuple[MemberInfo, ResolvedSession, ApplyOptions]],
     opts: CoordinateOptions,
 ) -> tuple[int, list[ResolvedSession]]:
-    """Apply each member session, honouring opts.member as a filter. Returns ``(rc, completed)``."""
+    """Apply each member session, honouring opts.member as a filter. Returns ``(rc, completed)``.
+
+    A session whose only error family is hook failures is incomplete, not
+    broken: the remaining members still apply, and the recorded failures
+    surface through the aggregate rc in :func:`coordinate_sessions`.
+    """
     completed: list[ResolvedSession] = []
     for m, session, apply_opts in member_sessions:
         if opts.member and m.path.as_posix() != opts.member and str(m.path) != opts.member and m.name != opts.member:
@@ -625,7 +638,10 @@ def _apply_member_sessions(
                 fail_on_warnings=opts.fail_on_warnings,
             )
         completed.append(session)
-        if rc != 0:
+        if rc != 0 and not hook_failures_only(
+            session,
+            fail_on_warnings=opts.fail_on_warnings,
+        ):
             return rc, completed
     return 0, completed
 
@@ -772,6 +788,11 @@ def coordinate_sessions(config_path: Path, opts: CoordinateOptions) -> int:
         config_dir,
         opts,
     )
+    # Any completed session that recorded hook failures makes the whole run
+    # exit 1 (unless a worse rc already won): part of the requested work was
+    # skipped, so success and drift alone are both wrong answers.
+    if rc in (0, 2) and any(s.providers.hook_failures for s in completed_sessions):
+        rc = 1
     print_run_summary(completed_sessions)
     print_run_footer(
         completed_sessions,

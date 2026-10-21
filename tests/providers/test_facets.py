@@ -38,6 +38,7 @@ from repolish.providers.models import (
     FacetSpec,
     FacetSpecOptions,
     GlobalContext,
+    HookFailureCollector,
     ProvideInputsOptions,
     Provider,
     ProviderEntry,
@@ -243,6 +244,7 @@ def test_populate_facet_contexts_injects_identity(tmp_path: Path) -> None:
         GlobalContext(
             workspace=WorkspaceContext(mode='standalone', root_dir=tmp_path),
         ),
+        HookFailureCollector(),
     )
     own = contexts['facets']
     assert set(own.facets) == {'alpha', 'beta'}
@@ -276,6 +278,7 @@ def test_duplicate_facet_names_raise() -> None:
             'dup',
             contexts,
             GlobalContext(),
+            HookFailureCollector(),
         )
 
 
@@ -299,6 +302,7 @@ def test_facet_create_context_failure_skips_facet(tmp_path: Path) -> None:
     inst = Partial()
     inst.alias = 'partial'
     contexts: dict[str, BaseContext] = {'partial': OwnCtx()}
+    failures = HookFailureCollector()
     _populate_facet_contexts(
         inst,
         'partial',
@@ -306,10 +310,18 @@ def test_facet_create_context_failure_skips_facet(tmp_path: Path) -> None:
         GlobalContext(
             workspace=WorkspaceContext(mode='standalone', root_dir=tmp_path),
         ),
+        failures,
     )
-    # One broken facet must not stop the run: it is skipped, its healthy
-    # sibling still populates.
+    # One broken facet must not stop the run: it is skipped, recorded, and
+    # its healthy sibling still populates.
     assert set(contexts['partial'].facets) == {'alpha'}
+    assert len(failures.failures) == 1
+    recorded = failures.failures[0]
+    assert recorded.hook == 'create_context'
+    assert recorded.facet_name == 'broken'
+    assert recorded.alias == 'partial'
+    assert recorded.error == 'boom'
+    assert recorded.traceback
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +409,7 @@ def test_facet_emitted_inputs_skip_missing_context() -> None:
             Sender(),
             {'sender': OwnCtx()},
             [],
+            HookFailureCollector(),
         )
         == []
     )
@@ -421,7 +434,13 @@ def test_emitted_inputs_include_facet_payloads() -> None:
     inst = Sender()
     inst.alias = 'sender'
     provider_contexts: dict[str, BaseContext] = {'sender': OwnCtx()}
-    _populate_facet_contexts(inst, 'sender', provider_contexts, GlobalContext())
+    _populate_facet_contexts(
+        inst,
+        'sender',
+        provider_contexts,
+        GlobalContext(),
+        HookFailureCollector(),
+    )
     module_cache: list[tuple[str, dict]] = [('sender', {})]
     instances: list[Provider[Any, Any] | None] = [inst]
     all_providers = _build_all_providers_list(
@@ -500,6 +519,7 @@ def test_finalize_facet_contexts_writes_subset_back() -> None:
         [],
         idx=0,
         global_context=None,
+        hook_failures=HookFailureCollector(),
     )
     assert own.facets['alpha'].text == 'delivered'
     assert own.facets['beta'].title == 'plain'
@@ -521,6 +541,7 @@ def test_broken_facet_finalize_keeps_context() -> None:
 
     own = OwnCtx()
     own.facets['broken'] = AlphaCtx(text='pre-finalize')
+    failures = HookFailureCollector()
     _finalize_facet_contexts(
         [Broken()],
         'p',
@@ -529,8 +550,16 @@ def test_broken_facet_finalize_keeps_context() -> None:
         [],
         idx=0,
         global_context=None,
+        hook_failures=failures,
     )
+    # The facet keeps its pre-finalize context and the failure is recorded
+    # rather than raised: one broken hook must not stop the run.
     assert own.facets['broken'].text == 'pre-finalize'
+    assert len(failures.failures) == 1
+    recorded = failures.failures[0]
+    assert recorded.hook == 'finalize_context'
+    assert recorded.facet_name == 'broken'
+    assert recorded.error == 'boom'
 
 
 def test_finalize_skips_facets_without_contexts() -> None:
@@ -546,6 +575,7 @@ def test_finalize_skips_facets_without_contexts() -> None:
         [],
         idx=0,
         global_context=None,
+        hook_failures=HookFailureCollector(),
     )
     assert 'beta' not in own.facets
 
@@ -569,6 +599,7 @@ def test_finalize_accepts_non_model_facet_context() -> None:
         [],
         idx=0,
         global_context=None,
+        hook_failures=HookFailureCollector(),
     )
     # The default finalize returns the mapping unchanged; non-BaseContext
     # results are not written back, so the value survives as-is.
@@ -611,7 +642,13 @@ def test_facet_emitted_inputs_route_to_peer_entries() -> None:
         'receiver': OwnCtx(),
     }
     for pid, inst in (('sender', sender_inst), ('receiver', receiver_inst)):
-        _populate_facet_contexts(inst, pid, provider_contexts, GlobalContext())
+        _populate_facet_contexts(
+            inst,
+            pid,
+            provider_contexts,
+            GlobalContext(),
+            HookFailureCollector(),
+        )
 
     all_providers = _build_all_providers_list(
         module_cache,
@@ -685,7 +722,13 @@ def test_emitted_inputs_carry_sender_identity() -> None:
         'receiver': OwnCtx(),
     }
     for pid, inst in (('sender', sender_inst), ('receiver', receiver_inst)):
-        _populate_facet_contexts(inst, pid, provider_contexts, GlobalContext())
+        _populate_facet_contexts(
+            inst,
+            pid,
+            provider_contexts,
+            GlobalContext(),
+            HookFailureCollector(),
+        )
 
     all_providers = _build_all_providers_list(
         module_cache,
@@ -742,7 +785,14 @@ def _provider_with_facet_contexts() -> tuple[FacetsProvider, OwnCtx]:
 def test_facet_contributions_land_in_bundle() -> None:
     inst, own = _provider_with_facet_contexts()
     accum = Accumulators()
-    _handle_provider_facets(inst, own, 'facets', accum, regular_dests=set())
+    _handle_provider_facets(
+        inst,
+        own,
+        'facets',
+        accum,
+        regular_dests=set(),
+        hook_failures=HookFailureCollector(),
+    )
     assert set(accum.merged_file_mappings) == {'alpha.txt', 'beta.txt'}
     alpha = accum.merged_file_mappings['alpha.txt']
     assert isinstance(alpha, TemplateMapping)
@@ -790,7 +840,14 @@ def test_facet_insertions_and_validators_collect() -> None:
     own = OwnCtx()
     own.facets['rich'] = AlphaCtx()
     accum = Accumulators()
-    _handle_provider_facets(inst, own, 'rich', accum, regular_dests=set())
+    _handle_provider_facets(
+        inst,
+        own,
+        'rich',
+        accum,
+        regular_dests=set(),
+        hook_failures=HookFailureCollector(),
+    )
     assert 'render-tag' in accum.file_insertions['dev.txt']
     assert 'rich:render-tag' in accum.file_insertions['dev.txt']
     # Insertions bind to the facet's own context.
@@ -806,11 +863,18 @@ def test_facet_without_context_is_skipped_at_collection() -> None:
     # with contexts contribute.
     del own.facets['beta']
     accum = Accumulators()
-    _handle_provider_facets(inst, own, 'facets', accum, regular_dests=set())
+    _handle_provider_facets(
+        inst,
+        own,
+        'facets',
+        accum,
+        regular_dests=set(),
+        hook_failures=HookFailureCollector(),
+    )
     assert set(accum.merged_file_mappings) == {'alpha.txt'}
 
 
-def test_broken_create_spec_is_skipped_with_warning() -> None:
+def test_broken_create_spec_is_recorded_and_skipped() -> None:
     class BrokenSpec(ProviderFacet[AlphaCtx, AlphaInputs]):
         name = 'alpha'
 
@@ -830,16 +894,26 @@ def test_broken_create_spec_is_skipped_with_warning() -> None:
     own.facets['alpha'] = AlphaCtx()
     own.facets['beta'] = BetaCtx()
     accum = Accumulators()
+    failures = HookFailureCollector()
     _handle_provider_facets(
         inst,
         own,
         'broken-spec',
         accum,
         regular_dests=set(),
+        hook_failures=failures,
     )
     # The broken facet contributed nothing; its healthy sibling did.
     assert set(accum.merged_file_mappings) == {'beta.txt'}
     assert accum.facet_owners == {'beta.txt': ('broken-spec', 'beta')}
+    # The failure is recorded, not logged away: it rides the bundle to the
+    # summary tree and the rc 1.
+    assert len(failures.failures) == 1
+    recorded = failures.failures[0]
+    assert recorded.hook == 'create_spec'
+    assert recorded.facet_name == 'alpha'
+    assert recorded.provider_id == 'broken-spec'
+    assert recorded.error == 'boom'
 
 
 def test_facet_vs_regular_collision_raises() -> None:
@@ -869,6 +943,7 @@ def test_facet_vs_regular_collision_raises() -> None:
             'colliding',
             accum,
             regular_dests={'README.md'},
+            hook_failures=HookFailureCollector(),
         )
 
 
@@ -906,6 +981,7 @@ def test_facet_vs_facet_collision_raises() -> None:
             'overlap',
             Accumulators(),
             regular_dests=set(),
+            hook_failures=HookFailureCollector(),
         )
 
 

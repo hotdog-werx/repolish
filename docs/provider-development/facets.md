@@ -166,6 +166,16 @@ destination claimed by two sibling facets. These are load-time authoring
 mistakes, the same rule lane-vs-regular collisions follow. Dest claims across
 two different providers follow the normal merge rules.
 
+A facet hook that raises (`create_context`, `provide_inputs`,
+`finalize_context`, or `create_spec`) is treated exactly like the same failure
+on the provider: the exception is recorded, the hook is skipped, and the run
+continues. A facet whose `create_context` fails is skipped; a failed
+`finalize_context` keeps the facet's pre-finalize context; a failed
+`create_spec` contributes nothing. Each failure shows as a red
+`✗ <hook> failed (facet <name>)` row in the apply summary with a `[details]`
+link to its traceback report, and the run exits 1. One broken facet never stops
+its siblings or the provider; see `providers.md` for the full error model.
+
 ## Templates
 
 The facet's own file renders with `{{ facet.<field> }}` as a shorthand for its

@@ -14,6 +14,7 @@ from repolish.summaries.rows import (
     CommandState,
     CopyState,
     FileState,
+    HookFailureState,
     InsertionState,
     LintState,
     PromotedState,
@@ -117,6 +118,7 @@ MARKERS: dict[Enum, Marker] = {
     CommandState.SKIPPED: Marker('- ', 'dim'),
     LintState.OK: Marker('✓ ', 'green'),
     LintState.FAILED: Marker('✗ ', 'red'),
+    HookFailureState.FAILED: Marker('✗ ', 'red'),
 }
 
 

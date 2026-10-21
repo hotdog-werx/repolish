@@ -143,6 +143,29 @@ is incomplete:
 - run: repolish apply --strict
 ```
 
+### Behaviour when a hook fails
+
+A provider hook that raises (`create_context`, `provide_inputs`,
+`finalize_context`, or any of the `create_*` contribution hooks) never aborts
+the run. repolish catches the exception, records it, and skips that hook:
+
+- `create_context` leaves the provider with an empty context.
+- `provide_inputs` is treated as emitting no inputs.
+- `finalize_context` keeps the pre-finalize context.
+- A failed `create_*` hook contributes nothing to the session.
+
+The rest of the run continues with the provider incomplete, not dead. Every
+recorded failure appears as a red `✗ <hook> failed` row in the summary tree
+under the provider's branch, with a `[details]` link to a JSON report in
+`.repolish/_/hook-failures/` containing the message and full traceback. Both
+`repolish apply` and `repolish apply --check` exit 1 when any hook failed, the
+same severity validator errors and post-process failures carry.
+
+A return value that breaks the hook's contract (for example `create_anchors`
+returning a non-dict) is recorded the same way. Load-time authoring mistakes
+(duplicate facet names, destination collisions between hooks) still raise
+immediately.
+
 ### Aliases missing from the providers map
 
 If `providers_order` lists an alias that has no entry in the `providers` map, a

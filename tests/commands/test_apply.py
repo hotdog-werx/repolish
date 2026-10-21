@@ -21,7 +21,9 @@ from repolish.commands.apply.options import (
 from repolish.commands.apply.pipeline import resolve_session
 from repolish.commands.apply.session import (
     _run_post_process_if_needed,
+    _session_exit_rc,
     apply_session,
+    hook_failures_only,
 )
 from repolish.commands.apply.session import (
     run_session as run_repolish,
@@ -50,7 +52,10 @@ from repolish.providers.models import (
     FastLaneSpec,
     FileMode,
     GlobalContext,
+    HookFailure,
     TemplateMapping,
+    ValidationResult,
+    ValidationStatus,
 )
 from repolish.providers.models.workspace import WorkspaceContext
 
@@ -455,6 +460,163 @@ def test_apply_session_returns_1_when_post_process_fails(
         report=str(tmp_path / '.repolish' / '_' / 'post-process.txt'),
         note='see the post-process summary tree for per-command details',
     )
+
+
+# ---------------------------------------------------------------------------
+# Hook failures: exit-code composition and the hook_failures_only predicate
+# ---------------------------------------------------------------------------
+
+
+def _hook_failure() -> HookFailure:
+    return HookFailure(provider_id='p', hook='create_spec', error='boom')
+
+
+def _session_with_hook_failures(
+    tmp_path: Path,
+    *,
+    hook_failures: list[HookFailure] | None = None,
+) -> ResolvedSession:
+    config = RepolishConfig(config_dir=tmp_path)
+    return ResolvedSession(
+        config_path=tmp_path / 'repolish.yaml',
+        config=config,
+        global_context=GlobalContext(
+            workspace=WorkspaceContext(mode='standalone'),
+        ),
+        providers=SessionBundle(
+            provider_contexts={},
+            hook_failures=hook_failures if hook_failures is not None else [_hook_failure()],
+        ),
+        aliases=[],
+        alias_to_pid={},
+        pid_to_alias={},
+        resolved_symlinks={},
+    )
+
+
+def test_session_exit_rc_escalates_hook_failures_over_drift(
+    tmp_path: Path,
+) -> None:
+    """Hook failures outrank the fallback rc (drift included) in both modes."""
+    broken = _session_with_hook_failures(tmp_path)
+    clean = _session_with_hook_failures(tmp_path, hook_failures=[])
+    assert _session_exit_rc(broken, fail_on_warnings=False, fallback_rc=2) == 1
+    assert _session_exit_rc(broken, fail_on_warnings=False, fallback_rc=0) == 1
+    assert _session_exit_rc(clean, fail_on_warnings=False, fallback_rc=2) == 2
+    assert _session_exit_rc(clean, fail_on_warnings=False, fallback_rc=0) == 0
+
+
+def test_hook_failures_only_separates_incomplete_from_broken(
+    tmp_path: Path,
+) -> None:
+    """True only when hook failures are the session's sole error family."""
+    # No hook failures at all: nothing to be "only" about.
+    assert not hook_failures_only(
+        _session_with_hook_failures(tmp_path, hook_failures=[]),
+        fail_on_warnings=False,
+    )
+    assert hook_failures_only(
+        _session_with_hook_failures(tmp_path),
+        fail_on_warnings=False,
+    )
+    # The render died: not a hook-only failure.
+    render_dead = _session_with_hook_failures(tmp_path)
+    render_dead.render_failed = True
+    assert not hook_failures_only(render_dead, fail_on_warnings=False)
+    # A post-process command failed: a real failure hides the predicate.
+    post_process_dead = _session_with_hook_failures(tmp_path)
+    post_process_dead.post_process_runs = [
+        (
+            'session',
+            PostProcessRun(
+                cwd=tmp_path,
+                outcomes=[
+                    CommandOutcome(
+                        raw=('false',),
+                        argv=('false',),
+                        status='failed',
+                        returncode=1,
+                    ),
+                ],
+            ),
+        ),
+    ]
+    assert not hook_failures_only(post_process_dead, fail_on_warnings=False)
+    # Validator errors fail the run on their own.
+    validation_dead = _session_with_hook_failures(tmp_path)
+    validation_dead.validation_results = {
+        'a.md': {
+            'check': ValidationResult(
+                status=ValidationStatus.ERROR,
+                message='bad',
+                validator_name='check',
+            ),
+        },
+    }
+    assert not hook_failures_only(validation_dead, fail_on_warnings=False)
+    # Warnings only fail the run under --fail-on-warnings.
+    warned = _session_with_hook_failures(tmp_path)
+    warned.validation_results = {
+        'a.md': {
+            'check': ValidationResult(
+                status=ValidationStatus.WARNING,
+                message='meh',
+                validator_name='check',
+            ),
+        },
+    }
+    assert hook_failures_only(warned, fail_on_warnings=False)
+    assert not hook_failures_only(warned, fail_on_warnings=True)
+
+
+@pytest.mark.parametrize('check_only', [False, True])
+def test_apply_session_returns_1_on_hook_failures(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    *,
+    check_only: bool,
+) -> None:
+    """Both apply and check exit 1 when the session recorded hook failures."""
+    session = _session_with_hook_failures(tmp_path)
+
+    mocker.patch(
+        'repolish.commands.apply.session.prepare_staging',
+        return_value=(tmp_path, tmp_path / 'in', tmp_path / 'out'),
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.create_staged_template',
+        return_value={},
+    )
+    mocker.patch('repolish.commands.apply.session.write_provider_debug_files')
+    mocker.patch(
+        'repolish.commands.apply.session.write_file_context_debug_files',
+    )
+    mocker.patch('repolish.commands.apply.session.preprocess_templates')
+    mocker.patch(
+        'repolish.commands.apply.session.render_templates',
+        return_value=0,
+    )
+    mocker.patch('repolish.commands.apply.session._run_after_render_directives')
+    mocker.patch(
+        'repolish.commands.apply.session._merge_ferries',
+        return_value={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.session._relativize_ferry_dests',
+        return_value={},
+    )
+    mocker.patch(
+        'repolish.commands.apply.session.stage_registered_insertions',
+        return_value=({}, {}, set()),
+    )
+
+    rc = apply_session(session, check_only=check_only)
+
+    assert rc == 1
+    # The debug report was written during staging and the record points at it.
+    (failure,) = session.providers.hook_failures
+    assert failure.report_path is not None
+    assert (tmp_path / failure.report_path).is_file()
 
 
 def test_post_process_scopes_match_the_staged_render_tree(

@@ -23,6 +23,7 @@ from repolish.summaries.rows import (
     CopyRow,
     CopyState,
     FileRow,
+    HookFailureRow,
     InsertionCatalogGroup,
     InsertionFunctionRow,
     InsertionLine,
@@ -187,6 +188,21 @@ def _append_stats(label: Text, stats: AppliedStats | PendingStats) -> None:
         label.append(f'  [{stats.applied} {noun}{copy_note}]', style='dim')
 
 
+def render_hook_failure_row(row: HookFailureRow) -> SummaryNode:
+    """Draw one skipped hook: red marker, hook name, facet note, message."""
+    marker = marker_for(row.state)
+    node = Text()
+    node.append(marker.glyph, style=marker.style)
+    node.append(f'{row.hook} failed', style='red')
+    if row.facet_name is not None:
+        node.append(f' (facet {row.facet_name})', style='dim yellow')
+    if row.message:
+        node.append(f'  {row.message}', style='red')
+    if row.link is not None:
+        details_link(node, row.link)
+    return SummaryNode(label=node)
+
+
 def render_provider_branch(branch: ProviderBranch) -> SummaryNode:
     """Draw one provider branch: bold alias, version, stats, child rows."""
     label = Text()
@@ -201,6 +217,8 @@ def render_provider_branch(branch: ProviderBranch) -> SummaryNode:
             children.append(render_file_row(row))
         elif isinstance(row, SymlinkRow):
             children.append(render_symlink_row(row))
+        elif isinstance(row, HookFailureRow):
+            children.append(render_hook_failure_row(row))
         else:
             children.append(render_copy_row(row))
     return SummaryNode(label=label, children=children)

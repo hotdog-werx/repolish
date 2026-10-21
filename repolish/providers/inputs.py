@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import BaseModel as _BaseModel
 from pydantic_core import ValidationError
 
-from repolish.providers._log import logger
 from repolish.providers.models import (
     BaseContext,
     BaseInputs,
     FacetInputsOptions,
+    HookFailureCollector,
     ProvideInputsOptions,
     ProviderEntry,
     ProviderInfo,
@@ -44,7 +44,7 @@ def build_provider_metadata(
     return instances
 
 
-def _retrieve_instance_inputs(
+def _retrieve_instance_inputs(  # noqa: PLR0913, PLR0917
     provider_id: str,
     idx: int,
     inst: _ProviderBase,
@@ -52,11 +52,13 @@ def _retrieve_instance_inputs(
     # complaints when callers hold more specific mappings.
     provider_contexts: dict[str, Any],
     all_providers_list: list[ProviderEntry],
+    hook_failures: HookFailureCollector,
 ) -> list[object] | None:
     """Call an instance's `provide_inputs`.
 
     Uses the previously collected context object which already includes any
     configuration overrides, so `provide_inputs` sees the patched values.
+    A raising `provide_inputs` is recorded and treated as no inputs.
     """
     own_model = provider_contexts.get(provider_id, {})
     try:
@@ -69,13 +71,14 @@ def _retrieve_instance_inputs(
                 provider_index=idx,
             ),
         )
-    except Exception:
-        logger.exception(
-            'provider_inputs_failed',
-            provider=provider_id,
-            provider_index=idx,
+    except Exception as exc:  # noqa: BLE001 - don't let one provider stop the run
+        hook_failures.record(
+            provider_id=provider_id,
+            alias=getattr(inst, 'alias', '') or provider_id,
+            hook='provide_inputs',
+            exc=exc,
         )
-        raise
+        return None
     return cast('list[object]', raw)
 
 
@@ -133,14 +136,19 @@ def _deliver_input(
     )
 
 
-def _facet_emitted_inputs(
+def _facet_emitted_inputs(  # noqa: PLR0913, PLR0917
     idx: int,
     provider_id: str,
     inst: _ProviderBase,
     provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
+    hook_failures: HookFailureCollector,
 ) -> list[object]:
-    """Return the payloads emitted by a provider's declared facets."""
+    """Return the payloads emitted by a provider's declared facets.
+
+    A facet whose ``provide_inputs`` raises is recorded and treated as
+    emitting no inputs, matching the provider-level hook.
+    """
     facets = instantiate_facets(inst)
     if not facets:
         return []
@@ -151,13 +159,23 @@ def _facet_emitted_inputs(
         fctx = facet_ctxs.get(facet.name)
         if fctx is None:
             continue
-        raw = facet.provide_inputs(
-            FacetInputsOptions(
-                own_context=fctx,
-                all_providers=all_providers_list,
-                provider_index=idx,
-            ),
-        )
+        try:
+            raw = facet.provide_inputs(
+                FacetInputsOptions(
+                    own_context=fctx,
+                    all_providers=all_providers_list,
+                    provider_index=idx,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - one broken facet must not stop the run
+            hook_failures.record(
+                provider_id=provider_id,
+                alias=getattr(inst, 'alias', '') or provider_id,
+                facet_name=facet.name,
+                hook='provide_inputs',
+                exc=exc,
+            )
+            continue
         if raw:
             emitted.extend(raw)
     return emitted
@@ -192,6 +210,10 @@ class _GatherState:
     received_inputs: dict[str, list[BaseInputs]]
     emitted_inputs: list[BaseInputs] = field(default_factory=list)
     """Raw pre-routing outputs of the local providers' ``provide_inputs``."""
+    hook_failures: HookFailureCollector = field(
+        default_factory=HookFailureCollector,
+    )
+    """Records provider and facet hook failures; never fatal."""
     routing_list: list[ProviderEntry] | None = None
     """Subset of ``all_providers_list`` used as routing targets.
 
@@ -243,6 +265,7 @@ def _collect_for_provider(
             inst,
             state.provider_contexts,
             state.all_providers_list,
+            state.hook_failures,
         )
         if inst
         else []
@@ -254,6 +277,7 @@ def _collect_for_provider(
             inst,
             state.provider_contexts,
             state.all_providers_list,
+            state.hook_failures,
         )
         if inst is not None
         else []
@@ -266,12 +290,13 @@ def _collect_for_provider(
         _distribute_payloads(inputs, state)
 
 
-def gather_received_inputs(
+def gather_received_inputs(  # noqa: PLR0913, PLR0917
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
     provider_contexts: dict[str, BaseContext],
     all_providers_list: list[ProviderEntry],
     extra_inputs: list[BaseInputs] | None = None,
+    hook_failures: HookFailureCollector | None = None,
 ) -> tuple[dict[str, list[BaseInputs]], list[BaseInputs]]:
     """Collect provider inputs, route them, and return the routing outcome.
 
@@ -304,6 +329,7 @@ def gather_received_inputs(
         provider_contexts=provider_contexts,
         all_providers_list=all_providers_list,
         received_inputs={},
+        hook_failures=hook_failures or HookFailureCollector(),
         routing_list=routing_list,
     )
 
