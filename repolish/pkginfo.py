@@ -15,6 +15,7 @@ a namespace package has ``origin = None`` because it has no ``__init__.py``.
 
 import json
 import re
+import sys
 from importlib.machinery import ModuleSpec
 from importlib.metadata import (
     Distribution,
@@ -25,6 +26,8 @@ from importlib.metadata import (
 from importlib.metadata import version as _v
 from importlib.util import find_spec
 from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from hotlog import get_logger
 
@@ -281,8 +284,29 @@ def _source_path_from_dist(dist: Distribution) -> Path | None:
     raw = dist.read_text('direct_url.json')
     if not raw:
         return None
-    url = json.loads(raw).get('url', '')
-    return Path(url[7:]).resolve() if url.startswith('file://') else None
+    path = _path_from_file_url(json.loads(raw).get('url', ''))
+    return Path(path).resolve() if path else None
+
+
+def _path_from_file_url(url: str) -> str | None:
+    """Return the local path a ``file://`` URL points at, or ``None`` for other schemes.
+
+    Slicing off ``file://`` is not enough: on Windows ``file:///D:/repo``
+    must become a drive-letter path rather than ``/D:/repo``, and
+    percent-escapes such as ``%20`` must be decoded on every platform.
+    ``url2pathname`` handles both. A host other than ``localhost`` is a UNC
+    share on Windows and is kept as the ``//host`` prefix; elsewhere it names
+    no local path (and ``url2pathname`` raises for it from Python 3.14).
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != 'file':
+        return None
+    path = parsed.path
+    if parsed.netloc and parsed.netloc != 'localhost':
+        if sys.platform != 'win32':
+            return None
+        path = f'//{parsed.netloc}{path}'  # pragma: no cover — Windows-only; exercised by the Windows CI job
+    return url2pathname(path)
 
 
 def get_package_version(package_name: str) -> str:

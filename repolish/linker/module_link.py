@@ -95,7 +95,7 @@ def probe_module_info(
         # the same directory as its module: devkit.workspace -> devkit-workspace.
         library_name = module_name
     else:
-        library_name = project_name or pkg_name.replace('_', '-')
+        library_name = project_name or module_name
         # v2 boundary: the module name is the canonical link name and
         # module_links defaults to true, so this branch disappears with the
         # flag itself. Configs whose distribution name already normalizes to
