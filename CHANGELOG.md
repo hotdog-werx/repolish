@@ -8,6 +8,16 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.17.2] <a name="1.17.2" href="#1.17.2">-</a> October 22, 2026
+
+### 🐛 Bug Fixes
+
+- Parse direct_url.json file URLs properly and dash namespace fallback names
+  (#117) by [@jamestrousdale](https://github.com/jamestrousdale) in
+  [#117](https://github.com/hotdog-werx/repolish/pull/117)
+
+[1.17.2]: https://github.com/hotdog-werx/repolish/compare/1.17.1...1.17.2
+
 ## [1.17.1] <a name="1.17.1" href="#1.17.1">-</a> October 21, 2026
 
 ### 🐛 Bug Fixes
