@@ -208,7 +208,7 @@ def resource_linker(
         _package_attr = getattr(caller_module, '__package__', '') or ''
         _pkg_name, _proj_name = resolve_package_identity(_package_attr)
     package_root = _get_package_root(_pkg_name, _caller_file)
-    library_name = _proj_name or _pkg_name.replace('_', '-')
+    library_name = _proj_name or _pkg_name.replace('_', '-').replace('.', '-')
 
     resolved_resources_dir = package_root / Path(resources_dir)
     default_target_base_path = Path(default_target_base)
@@ -324,7 +324,7 @@ def resource_linker_cli(
     # Resolve package identity early so the success message can use the
     # detected library name before the decorator is applied.
     _, _pkg, _proj = _auto_detect_library_name(caller_frame)
-    detected_library_name = _proj or _pkg.replace('_', '-')
+    detected_library_name = _proj or _pkg.replace('_', '-').replace('.', '-')
 
     # Read optional location context from environment (set by repolish link
     # in monorepo mode to indicate where the linker is running).

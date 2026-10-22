@@ -132,6 +132,28 @@ def test_probe_silent_when_distribution_name_matches_module(
     )
 
 
+def test_probe_unresolved_namespace_falls_back_to_dashed_module_name(
+    module_pkg: dict[str, Path],
+    tmp_path: Path,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A namespace module with no resolvable distribution still links dashed.
+
+    When the distribution lookup fails (editable installs on Windows used
+    to hit this), the fallback must normalize the dots as well as the
+    underscores: devkit.workspace -> devkit-workspace, not devkit.workspace.
+    """
+    mocker.patch(
+        'repolish.linker.module_link.resolve_package_identity',
+        return_value=('devkit.workspace', ''),
+    )
+    config_dir = tmp_path / 'proj'
+    info = probe_module_info(ModuleProviderConfig(name='mylib_ws'), config_dir)
+    assert info.resources_dir == str(
+        config_dir / '.repolish' / 'devkit-workspace',
+    )
+
+
 def test_probe_missing_module_raises(tmp_path: Path) -> None:
     with pytest.raises(ModuleLinkError, match='no_such_module_xyz'):
         probe_module_info(

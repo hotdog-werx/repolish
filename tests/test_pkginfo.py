@@ -26,7 +26,11 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from repolish.pkginfo import get_package_version, resolve_package_identity
+from repolish.pkginfo import (
+    _path_from_file_url,
+    get_package_version,
+    resolve_package_identity,
+)
 
 
 @dataclass
@@ -63,7 +67,7 @@ def _write_dist_info(dist_dir: Path, tcase: TCase, tmp_path: Path) -> None:
             encoding='utf-8',
         )
     if tcase.use_direct_url:
-        url = f'file://{tmp_path.as_posix()}'
+        url = tmp_path.as_uri()
         (dist_dir / 'direct_url.json').write_text(
             json.dumps({'url': url}),
             encoding='utf-8',
@@ -299,6 +303,89 @@ def test_importable_package_with_no_matching_distribution(
 
     assert module_name == 'rptest_norep'
     assert project_name == ''
+
+
+def test_editable_install_in_directory_with_escaped_characters(
+    tmp_path: Path,
+) -> None:
+    """A ``direct_url.json`` source path is percent-decoded before matching.
+
+    Installers write ``file:///work/my%20src`` for a checkout under
+    ``/work/my src``. Taking the URL text as a path left the ``%20`` in
+    place, so the source never contained the package and the editable
+    install resolved to no distribution on every platform.
+    """
+    root = tmp_path / 'my src'
+    root.mkdir()
+    tcase = TCase(
+        name='escaped',
+        package_attr='rptest_esc.inner',
+        expected_module='rptest_esc.inner',
+        expected_project='rptest-esc-workspace',
+        dist_name='rptest-esc-workspace',
+        pkg_files=['rptest_esc/inner/__init__.py'],
+        top_level_txt=None,
+        use_direct_url=True,
+    )
+    with _fake_install(root, tcase):
+        module_name, project_name = resolve_package_identity(tcase.package_attr)
+
+    assert module_name == tcase.expected_module
+    assert project_name == tcase.expected_project
+
+
+_ON_WINDOWS = pytest.mark.skipif(
+    sys.platform != 'win32',
+    reason='drive-letter and UNC paths only exist on Windows',
+)
+_ON_POSIX = pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='POSIX path form',
+)
+
+
+@pytest.mark.parametrize(
+    ('url', 'expected'),
+    [
+        pytest.param(
+            'file:///D:/a/devkit/workspace',
+            'D:\\a\\devkit\\workspace',
+            marks=_ON_WINDOWS,
+        ),
+        pytest.param(
+            'file:///C:/Users/me/my%20src',
+            'C:\\Users\\me\\my src',
+            marks=_ON_WINDOWS,
+        ),
+        pytest.param('file://localhost/D:/repo', 'D:\\repo', marks=_ON_WINDOWS),
+        pytest.param(
+            'file://server/share/repo',
+            '\\\\server\\share\\repo',
+            marks=_ON_WINDOWS,
+        ),
+        pytest.param('file:///work/my%20src', '/work/my src', marks=_ON_POSIX),
+        pytest.param(
+            'file://localhost/work/repo',
+            '/work/repo',
+            marks=_ON_POSIX,
+        ),
+        pytest.param(
+            'file://server/share/repo',
+            '//server/share/repo',
+            marks=_ON_POSIX,
+        ),
+        ('https://github.com/example/repo.git', None),
+        ('', None),
+    ],
+)
+def test_path_from_file_url(url: str, expected: str | None) -> None:
+    """``file://`` URLs become native paths: drive letters and UNC on Windows.
+
+    Slicing off ``file://`` produced ``/D:/a/...`` on Windows, which never
+    contains the package location and left editable namespace providers
+    without a distribution name.
+    """
+    assert _path_from_file_url(url) == expected
 
 
 def test_get_package_version_returns_default_for_missing_package() -> None:
