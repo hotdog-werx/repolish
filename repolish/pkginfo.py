@@ -15,6 +15,7 @@ a namespace package has ``origin = None`` because it has no ``__init__.py``.
 
 import json
 import re
+import sys
 from importlib.machinery import ModuleSpec
 from importlib.metadata import (
     Distribution,
@@ -294,14 +295,17 @@ def _path_from_file_url(url: str) -> str | None:
     must become a drive-letter path rather than ``/D:/repo``, and
     percent-escapes such as ``%20`` must be decoded on every platform.
     ``url2pathname`` handles both. A host other than ``localhost`` is a UNC
-    share and is kept as the ``//host`` prefix.
+    share on Windows and is kept as the ``//host`` prefix; elsewhere it names
+    no local path (and ``url2pathname`` raises for it from Python 3.14).
     """
     parsed = urlparse(url)
     if parsed.scheme != 'file':
         return None
     path = parsed.path
     if parsed.netloc and parsed.netloc != 'localhost':
-        path = f'//{parsed.netloc}{path}'
+        if sys.platform != 'win32':
+            return None
+        path = f'//{parsed.netloc}{path}'  # pragma: no cover — Windows-only; exercised by the Windows CI job
     return url2pathname(path)
 
 

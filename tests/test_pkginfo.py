@@ -369,11 +369,7 @@ _ON_POSIX = pytest.mark.skipif(
             '/work/repo',
             marks=_ON_POSIX,
         ),
-        pytest.param(
-            'file://server/share/repo',
-            '//server/share/repo',
-            marks=_ON_POSIX,
-        ),
+        pytest.param('file://server/share/repo', None, marks=_ON_POSIX),
         ('https://github.com/example/repo.git', None),
         ('', None),
     ],
