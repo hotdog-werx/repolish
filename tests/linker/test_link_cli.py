@@ -550,6 +550,7 @@ class P(Provider[BaseContext, BaseInputs]):
 # Additional link.py coverage tests
 # ---------------------------------------------------------------------------
 from repolish.commands.link import (  # noqa: E402
+    _filter_config,
     _link_config,
     _link_members,
     _print_link_summaries,
@@ -1353,3 +1354,346 @@ def test_collect_provider_copies_override_enabled_keeps_target(
     )
 
     assert [c.target for c in result['mylib']] == [Path('dprint.json')]
+
+
+# ---------------------------------------------------------------------------
+# Targeted linking: `repolish link [ALIAS] [MODULE]`
+# ---------------------------------------------------------------------------
+
+
+def _two_cli_providers_config(tmp_path: Path) -> Path:
+    """Write a repolish.yaml with two CLI providers and return its path."""
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text("""
+providers:
+  lib1:
+    cli: lib1-link
+  lib2:
+    cli: lib2-link
+""")
+    return config_file
+
+
+def test_filter_config_keeps_only_the_alias() -> None:
+    """_filter_config reduces providers and providers_order to the alias."""
+    config = RepolishConfigFile(
+        providers={
+            'lib1': ProviderConfig(cli='lib1-link'),
+            'lib2': ProviderConfig(cli='lib2-link'),
+        },
+        providers_order=['lib1', 'lib2'],
+    )
+
+    filtered = _filter_config(config, 'lib2')
+
+    assert list(filtered.providers) == ['lib2']
+    assert filtered.providers_order == ['lib2']
+
+
+def test_filter_config_defaults_order_to_the_alias() -> None:
+    """Without providers_order the filtered copy still names the alias."""
+    config = RepolishConfigFile(
+        providers={
+            'lib1': ProviderConfig(cli='lib1-link'),
+            'lib2': ProviderConfig(cli='lib2-link'),
+        },
+    )
+
+    filtered = _filter_config(config, 'lib1')
+
+    assert filtered.providers_order == ['lib1']
+
+
+def test_filter_config_absent_alias_yields_empty() -> None:
+    """An absent alias filters to nothing: callers treat it as a skip."""
+    config = RepolishConfigFile(
+        providers={'lib1': ProviderConfig(cli='lib1-link')},
+        providers_order=['lib1'],
+    )
+
+    filtered = _filter_config(config, 'nope')
+
+    assert filtered.providers == {}
+    assert filtered.providers_order == []
+
+
+def test_link_alias_selection_links_only_that_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """`link <alias>` registers only the aliased provider."""
+    monkeypatch.chdir(tmp_path)
+    config_file = _two_cli_providers_config(tmp_path)
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(config_file, alias='lib2')
+
+    assert result == 0
+    assert mock_link.call_count == 1
+    assert mock_link.call_args[0][0] == 'lib2'
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.lib2.json').exists()
+    assert not (tmp_path / '.repolish' / '_' / 'provider-info.lib1.json').exists()
+
+
+def test_link_unknown_alias_returns_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """`link <alias>` with an unknown alias fails before registering anything."""
+    monkeypatch.chdir(tmp_path)
+    config_file = _two_cli_providers_config(tmp_path)
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(config_file, alias='nope')
+
+    assert result == 1
+    assert mock_link.call_count == 0
+
+
+def test_link_alias_selection_in_monorepo_links_where_declared(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """In a monorepo the alias links wherever it is declared; the rest skips."""
+    monkeypatch.chdir(tmp_path)
+
+    root_config = tmp_path / 'repolish.yaml'
+    root_config.write_text("""
+providers:
+  root_lib:
+    cli: root-lib-link
+workspace:
+  members:
+    - packages/*
+""")
+
+    for name in ('pkg_a', 'pkg_b'):
+        member_dir = tmp_path / 'packages' / name
+        member_dir.mkdir(parents=True)
+        (member_dir / 'repolish.yaml').write_text(f"""
+providers:
+  {name}_lib:
+    cli: {name}-lib-link
+""")
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(root_config, alias='pkg_a_lib')
+
+    assert result == 0
+    # Only pkg_a declares the alias: root and pkg_b link nothing.
+    assert mock_link.call_count == 1
+    assert mock_link.call_args[0][0] == 'pkg_a_lib'
+
+
+def test_link_unknown_alias_in_monorepo_returns_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+):
+    """The alias is validated against root plus member aliases."""
+    monkeypatch.chdir(tmp_path)
+
+    root_config = tmp_path / 'repolish.yaml'
+    root_config.write_text("""
+providers:
+  root_lib:
+    cli: root-lib-link
+workspace:
+  members:
+    - packages/*
+""")
+
+    pkg_a = tmp_path / 'packages' / 'pkg_a'
+    pkg_a.mkdir(parents=True)
+    (pkg_a / 'repolish.yaml').write_text("""
+providers:
+  pkg_a_lib:
+    cli: pkg-a-lib-link
+""")
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(root_config, alias='nope')
+
+    assert result == 1
+    assert mock_link.call_count == 0
+
+
+def test_link_register_only_skips_symlink_and_copy_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """--register-only leaves provider info in place but no copies materialised."""
+    monkeypatch.chdir(tmp_path)
+    templates = tmp_path / 'templates'
+    templates.mkdir()
+    (templates / 'repolish.py').write_text('# provider')
+    (templates / 'repolish').mkdir()
+    (templates / 'file.txt').write_text('content')
+
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text("""
+providers:
+  test:
+    provider_root: ./templates
+    resources_dir: ./templates
+    copies:
+      - source: file.txt
+        target: file.txt
+""")
+
+    result = run_link(config_file, register_only=True)
+
+    assert result == 0
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.test.json').exists()
+    assert not (tmp_path / 'file.txt').exists()
+
+    # Control: a full run materialises the copy.
+    result = run_link(config_file)
+    assert result == 0
+    assert (tmp_path / 'file.txt').exists()
+
+
+def test_one_off_links_module_under_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+    module_pkg: dict,
+):
+    """`link <alias> <module>` registers the module under the alias only."""
+    monkeypatch.chdir(tmp_path)
+    config_file = _two_cli_providers_config(tmp_path)
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(config_file, alias='ad-hoc', module='mylib_ws')
+
+    assert result == 0
+    # Config providers are not consulted for a one-off.
+    assert mock_link.call_count == 0
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.ad-hoc.json').exists()
+    assert (tmp_path / '.repolish' / 'mylib-ws').exists()
+
+
+def test_one_off_alias_collision_requires_no_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    module_pkg: dict,
+):
+    """A one-off on a configured alias errors unless --no-config ignores the config."""
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / 'repolish.yaml'
+    config_file.write_text("""
+providers:
+  base:
+    module: mylib_ws
+""")
+
+    result = run_link(config_file, alias='base', module='mylib_ws')
+
+    assert result == 1
+    assert not (tmp_path / '.repolish' / '_' / 'provider-info.base.json').exists()
+
+    result = run_link(config_file, alias='base', module='mylib_ws', no_config=True)
+
+    assert result == 0
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.base.json').exists()
+
+
+def test_one_off_no_config_without_yaml(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    module_pkg: dict,
+):
+    """A --no-config one-off works in a directory with no repolish.yaml."""
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / 'repolish.yaml'
+
+    result = run_link(config_path, alias='ad-hoc', module='mylib_ws', no_config=True)
+
+    assert result == 0
+    assert (tmp_path / '.repolish' / 'mylib-ws').exists()
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.ad-hoc.json').exists()
+
+
+def test_one_off_runs_standalone_even_in_monorepo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: pytest_mock.MockerFixture,
+    module_pkg: dict,
+):
+    """A one-off links in the config directory; workspace members are not visited."""
+    monkeypatch.chdir(tmp_path)
+    root_config = tmp_path / 'repolish.yaml'
+    root_config.write_text("""
+providers:
+  root_lib:
+    cli: root-lib-link
+workspace:
+  members:
+    - packages/*
+""")
+
+    pkg_a = tmp_path / 'packages' / 'pkg_a'
+    pkg_a.mkdir(parents=True)
+    (pkg_a / 'repolish.yaml').write_text("""
+providers:
+  pkg_a_lib:
+    cli: pkg-a-lib-link
+""")
+
+    mock_link = mocker.patch(
+        'repolish.linker.orchestrator.run_provider_link',
+        side_effect=_cwd_provider_info,
+    )
+
+    result = run_link(root_config, alias='ad-hoc', module='mylib_ws')
+
+    assert result == 0
+    assert mock_link.call_count == 0
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.ad-hoc.json').exists()
+
+
+def test_no_config_requires_alias_and_module_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """--no-config without the ALIAS MODULE pair has nothing to link."""
+    monkeypatch.chdir(tmp_path)
+
+    result = run_link(tmp_path / 'repolish.yaml', no_config=True)
+
+    assert result == 1
+
+
+def test_module_without_alias_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """MODULE without ALIAS is rejected (defensive: the CLI binds in order)."""
+    monkeypatch.chdir(tmp_path)
+
+    result = run_link(tmp_path / 'repolish.yaml', module='mylib_ws')
+
+    assert result == 1

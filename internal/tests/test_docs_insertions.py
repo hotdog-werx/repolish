@@ -14,18 +14,24 @@ import importlib.util
 import itertools
 import sys
 import textwrap
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import pytest
+from cyclopts import Parameter
 from local_provider.docs_insertions import (
     DOCS_INSERTION_FILES,
     DOCS_INSERTION_REGISTRY,
+    _cyclopts_parameter_names,
+    _value_placeholder,
+    cli_options,
     exit_codes,
     facet_hooks,
     hook_skip_semantics,
     summary_markers,
 )
+from pydantic import BaseModel, Field
 
+from repolish.cli.link import LinkParams
 from repolish.providers.models import HOOK_SKIP_SEMANTICS
 from repolish.providers.models.facet import ProviderFacet
 from repolish.summaries.rows import STATE_ENUMS
@@ -107,6 +113,43 @@ def test_exit_codes_rejects_unknown_command() -> None:
         exit_codes('preview')
 
 
+def test_cli_options_rows_match_params_model() -> None:
+    """The argument table is a complete rendering of the params model."""
+    body = cli_options('link')
+    for field in LinkParams.model_fields.values():
+        assert field.description is not None
+        assert field.description in body
+    assert '`--config PATH`, `-c PATH`' in body
+    assert '`ALIAS`' in body
+    assert '`MODULE`' in body
+
+
+def test_cli_options_rejects_unknown_command() -> None:
+    with pytest.raises(ValueError, match='expected one of: link'):
+        cli_options('preview')
+
+
+def test_value_placeholder_unwraps_optionals() -> None:
+    """An optional flag renders with the value placeholder of its inner type."""
+
+    class Model(BaseModel):
+        flag: Annotated[str | None, Parameter(name='--flag')] = Field(
+            default=None,
+        )
+
+    assert _value_placeholder(Model.model_fields['flag']) == ' VALUE'
+
+
+def test_cyclopts_parameter_names_raises_without_annotation() -> None:
+    """A field without a named cyclopts Parameter cannot render argument names."""
+
+    class Model(BaseModel):
+        plain: str = 'x'
+
+    with pytest.raises(ValueError, match='no named cyclopts Parameter'):
+        _cyclopts_parameter_names(Model.model_fields['plain'])
+
+
 def test_facet_hooks_rows_match_provider_facet() -> None:
     body = facet_hooks()
     for name, method in vars(ProviderFacet).items():
@@ -154,6 +197,9 @@ _BLOCKS: dict[str, list[str]] = {
     ],
     'docs/reference/apply.md': [
         '<!-- repolish:on:exit-codes exit-codes apply -->',
+    ],
+    'docs/reference/link.md': [
+        '<!-- repolish:on:options cli-options link -->',
     ],
     'docs/reference/lint.md': [
         '<!-- repolish:on:exit-codes exit-codes lint -->',
@@ -208,6 +254,7 @@ def test_docs_files_and_registry_stay_pinned() -> None:
     assert set(DOCS_INSERTION_REGISTRY) == {
         'summary-markers',
         'exit-codes',
+        'cli-options',
         'facet-hooks',
         'hook-skip-semantics',
     }
@@ -231,6 +278,10 @@ def test_docs_provider_fills_every_block_and_check_stays_clean(
         encoding='utf-8',
     )
     assert '| `2` |' in apply_doc
+    link_doc = (project / 'docs/reference/link.md').read_text(
+        encoding='utf-8',
+    )
+    assert '`--register-only`' in link_doc
     providers_doc = (project / 'docs/provider-development/providers.md').read_text(
         encoding='utf-8',
     )

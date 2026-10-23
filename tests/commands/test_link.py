@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from repolish.cli.main import app
-from repolish.cli.testing import CliRunner
+from repolish.cli.testing import CliRunner, Result
 from repolish.commands.link import _linked_path
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.linker.providers import write_provider_info_file
@@ -163,3 +165,139 @@ def test_link_marks_partially_paused_directory_copy(tmp_path: Path) -> None:
     assert '(partially paused)' in output
     assert (tmp_path / 'configs' / 'a.txt').exists()
     assert not (tmp_path / 'configs' / 'b.txt').exists()
+
+
+def _run_link_result(args: list[str], cwd: Path) -> Result:
+    """Run repolish link and return the full Result (exit code included)."""
+    runner = CliRunner()
+    old_cwd = Path.cwd()
+    try:
+        os.chdir(cwd)
+        return runner.invoke(app, ['link', *args])
+    finally:
+        os.chdir(old_cwd)
+
+
+def _stage_two_static_providers(tmp_path: Path) -> None:
+    """Create two static providers (test, other) plus repolish.yaml."""
+    for name in ('test', 'other'):
+        provider_dir = tmp_path / f'{name}-provider'
+        provider_dir.mkdir()
+        (provider_dir / 'repolish.py').write_text(
+            'from repolish import BaseContext, Provider, BaseInputs\n'
+            'class Ctx(BaseContext): pass\n'
+            'class P(Provider[Ctx, BaseInputs]):\n'
+            '    def create_context(self): return Ctx()\n',
+            encoding='utf-8',
+        )
+        (provider_dir / 'resources').mkdir()
+        (provider_dir / 'resources' / f'{name}.txt').write_text(name)
+
+    write_repolish_config(
+        tmp_path,
+        {
+            'providers': {
+                'test': {
+                    'provider_root': './test-provider',
+                    'resources_dir': './test-provider/resources',
+                },
+                'other': {
+                    'provider_root': './other-provider',
+                    'resources_dir': './other-provider/resources',
+                },
+            },
+        },
+    )
+
+    init_git_repo(tmp_path)
+
+
+def test_link_single_alias_registers_only_that_provider(tmp_path: Path) -> None:
+    """`repolish link test` registers only the aliased provider."""
+    _stage_two_static_providers(tmp_path)
+
+    output = _run_link(['test'], tmp_path)
+
+    assert 'from test' in output
+    info = tmp_path / '.repolish' / '_' / 'provider-info.test.json'
+    other_info = tmp_path / '.repolish' / '_' / 'provider-info.other.json'
+    assert info.exists()
+    assert not other_info.exists()
+
+
+def test_link_unknown_alias_lists_valid_aliases(tmp_path: Path) -> None:
+    """An unknown alias fails with the configured aliases listed."""
+    _stage_two_static_providers(tmp_path)
+
+    result = _run_link_result(['missing'], tmp_path)
+
+    assert result.exit_code == 1
+    assert 'unknown provider alias' in result.output
+    assert 'test' in result.output
+    assert 'other' in result.output
+
+
+def test_link_register_only_leaves_copies_unmaterialised(tmp_path: Path) -> None:
+    """`repolish link --register-only` registers but skips the copy phase."""
+    _stage_static_provider(tmp_path)
+    write_repolish_config(
+        tmp_path,
+        {
+            'providers': {
+                'test': {
+                    'provider_root': './provider',
+                    'resources_dir': './provider/resources',
+                    'copies': [{'source': 'test.txt', 'target': 'test.txt'}],
+                },
+            },
+        },
+    )
+
+    result = _run_link_result(['--register-only'], tmp_path)
+
+    assert result.exit_code == 0
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.test.json').exists()
+    assert not (tmp_path / 'test.txt').exists()
+
+
+@pytest.fixture
+def cli_module_pkg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """An importable mylib_ws package with the default resources layout."""
+    pkg_parent = tmp_path / 'pkgroot'
+    pkg_root = pkg_parent / 'mylib_ws'
+    pkg_root.mkdir(parents=True)
+    (pkg_root / '__init__.py').write_text('')
+    resources = pkg_root / 'resources'
+    templates = resources / 'templates'
+    templates.mkdir(parents=True)
+    (templates / 'repolish.py').write_text('')
+    monkeypatch.syspath_prepend(str(pkg_parent))
+    return pkg_root
+
+
+def test_link_one_off_binds_alias_and_module(
+    tmp_path: Path,
+    cli_module_pkg: Path,
+) -> None:
+    """`repolish link <alias> <module> --no-config` links without a config file."""
+    result = _run_link_result(
+        ['ad-hoc', 'mylib_ws', '--no-config'],
+        tmp_path,
+    )
+
+    assert result.exit_code == 0
+    assert (tmp_path / '.repolish' / 'mylib-ws').exists()
+    assert (tmp_path / '.repolish' / '_' / 'provider-info.ad-hoc.json').exists()
+
+
+def test_link_no_config_without_pair_is_rejected(tmp_path: Path) -> None:
+    """`repolish link --no-config` alone has nothing linkable."""
+    _stage_static_provider(tmp_path)
+
+    result = _run_link_result(['--no-config'], tmp_path)
+
+    assert result.exit_code == 1
+    assert '--no-config requires an ALIAS and MODULE pair' in result.output
