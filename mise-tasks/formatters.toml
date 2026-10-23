@@ -1,8 +1,15 @@
-# Formatters. format-python is the ruff pair the repo actually follows:
-# autofixes, then a format pass at the configured line length (119). The
-# codeguide pipeline this replaces (an 80-column wrap, add-trailing-comma,
-# a 120-column unwrap) was never used here — its output diverges from
-# plain `ruff format` and would rewrite the whole tree.
+# Formatters. format-python is a hybrid-width pass in three ruff steps:
+# 1. format at line-length 80: forces calls/collections longer than 80 to
+#    split, and the split form carries a magic trailing comma.
+# 2. COM812 autofix: backstop for the trailing commas (the format pass in
+#    step 1 is what adds them).
+# 3. format at the configured line length (119): rejoins everything that
+#    now fits, but the magic trailing commas keep the >80 constructs
+#    exploded.
+# Net effect: split decisions are made at 80, lines fill to 119, and the
+# final step is plain `ruff format`, so the output always passes the
+# format check. It replaces the old codeguide pipeline (80-column wrap,
+# add-trailing-comma, 120-column unwrap) with the same algorithm in ruff.
 [format-python]
 description = "format python code"
 usage = '''
