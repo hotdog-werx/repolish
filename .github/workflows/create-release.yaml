@@ -73,7 +73,12 @@ jobs:
           RELEEZ_GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_API_URL: ${{ github.api_url }}
-        run: mise exec -- releez changelog regenerate
+        # releez changelog regenerate does not run the post-changelog hooks
+        # (only `release start` does), so dprint the file here to match the
+        # formatting the release PR carried.
+        run: |
+          mise exec -- releez changelog regenerate
+          mise exec -- dprint fmt CHANGELOG.md
 
       - name: commit-changes
         uses: stefanzweifel/git-auto-commit-action@v7
