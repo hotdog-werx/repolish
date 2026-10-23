@@ -42,24 +42,39 @@ class ApplyCommonParams(BaseModel):
 
 @Parameter(name='*')
 class ApplyParams(ApplyCommonParams):
-    """Parameters for the apply command."""
+    """Parameters for the apply command.
 
-    strict: bool = Field(
+    Every field carries an explicit cyclopts ``Parameter`` name: the docs
+    insertion renderer (``internal/local_provider/docs_insertions.py``)
+    reads them to build the apply argument table, and it refuses fields
+    whose names would have to be derived.
+    """
+
+    strict: Annotated[
+        bool,
+        Parameter(name=['--strict']),
+    ] = Field(
         default=False,
         description='Exit with an error if any provider could not be registered (useful for CI)',
     )
-    root_only: bool = Field(
+    root_only: Annotated[
+        bool,
+        Parameter(name=['--root-only']),
+    ] = Field(
         default=False,
         description='Run only the root pass; skip member passes (mutually exclusive with --member)',
     )
-    member: str | None = Field(
+    member: Annotated[str | None, Parameter(name=['--member'])] = Field(
         default=None,
         description=(
             'Run only the specified member full pass (repo-relative path or package name). '
             'The root pass is skipped. Mutually exclusive with --root-only.'
         ),
     )
-    standalone: bool = Field(
+    standalone: Annotated[
+        bool,
+        Parameter(name=['--standalone']),
+    ] = Field(
         default=False,
         description=(
             'Bypass monorepo detection entirely and suppress the member note. '

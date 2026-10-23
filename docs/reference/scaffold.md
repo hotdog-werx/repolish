@@ -8,19 +8,21 @@ repolish scaffold [OPTIONS] DIRECTORY
 
 ## Arguments
 
-| Argument    | Description                                                                                                                                         |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DIRECTORY` | Destination directory. Created if it does not exist. Defaults to `internal/` with `--local`; required otherwise. Use `.` for the current directory. |
+The table below is generated from the scaffold parameter model in the CLI code,
+so it cannot drift.
 
-## Options
+<!-- repolish:on:options cli-options scaffold -->
 
-| Option                      | Required           | Default                     | Description                                                                                                                                                                                                                   |
-| --------------------------- | ------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--package NAME`, `-p NAME` | with `--local`: no | -                           | Python package name. Use simple names for flat packages (e.g. `devkit_workspace`) or dot-notation for namespace packages (e.g. `devkit.workspace`).                                                                           |
-| `--prefix PREFIX`           | no                 | last segment of `--package` | Class-name prefix for generated provider classes (e.g. `Devkit` produces `DevkitProvider`, `DevkitContext`). With `--local` the alias, camel-cased, is the default.                                                           |
-| `--monorepo`                | no                 | off                         | Generate the full monorepo layout with `RootModeHandler`, `MemberModeHandler`, and `StandaloneModeHandler` classes. By default a simpler single-file provider is generated.                                                   |
-| `--local`                   | no                 | off                         | Generate an in-repo local provider at `internal/` (see below) instead of an installable package. No `--package` needed; cannot be combined with `--monorepo`.                                                                 |
-| `--flat`                    | no                 | off                         | With `--local`, scaffold the flat tier instead of the default installable one: a single self-contained `templates/repolish.py` and a `cli.py` beside it, with no `pyproject.toml` and nothing to install. Requires `--local`. |
+| Argument                      | Default | Description                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DIRECTORY`                   | `None`  | Destination directory (created if it does not exist). Defaults to internal/ with --local; required otherwise.                                                                                                                                                                                    |
+| `--package VALUE`, `-p VALUE` | `None`  | Python package name. Use a simple name for flat packages (e.g. devkit_workspace) or dot-notation for namespace packages (e.g. devkit.workspace). Required unless --local is given.                                                                                                               |
+| `--prefix VALUE`              | `None`  | Class-name prefix override (defaults to the last segment of --package, or the alias camel-cased with --local).                                                                                                                                                                                   |
+| `--monorepo`                  | `False` | Generate the full monorepo provider layout with root, member, and standalone mode handlers. By default a simpler single-file provider is generated.                                                                                                                                              |
+| `--local`                     | `False` | Generate an in-repo local provider instead of an installable package: internal/templates/repolish.py plus a repolish/ template directory, aliased "local" and wired up in repolish.yaml with only provider_root — no package name, no publishing step.                                           |
+| `--flat`                      | `False` | Only meaningful with --local: scaffold the flat tier instead of the default installable one — a single self-contained templates/repolish.py and a cli.py beside it, with no pyproject.toml and nothing to install. Repolish loads repolish.py by file path, so it cannot import sibling modules. |
+
+<!-- repolish:off:options -->
 
 ## What it does
 

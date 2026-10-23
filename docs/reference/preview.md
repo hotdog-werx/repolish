@@ -13,16 +13,18 @@ repolish preview [OPTIONS] DEBUG_FILE
 
 ## Arguments
 
-| Argument     | Description                                                             |
-| ------------ | ----------------------------------------------------------------------- |
-| `DEBUG_FILE` | Path to a YAML file describing the template and optional target/config. |
+The table below is generated from the preview parameter model in the CLI code,
+so it cannot drift.
 
-## Options
+<!-- repolish:on:options cli-options preview -->
 
-| Option            | Default | Description                                                                             |
-| ----------------- | ------- | --------------------------------------------------------------------------------------- |
-| `--show-patterns` | off     | Print the patterns extracted from the template, for both directive phases.              |
-| `--show-steps`    | off     | Print each intermediate pipeline stage (pre-render output, Jinja render, after-render). |
+| Argument          | Default | Description                               |
+| ----------------- | ------- | ----------------------------------------- |
+| `DEBUG_FILE`      | `-`     | Path to the YAML debug configuration file |
+| `--show-patterns` | `False` | Show extracted patterns from template     |
+| `--show-steps`    | `False` | Show intermediate processing steps        |
+
+<!-- repolish:off:options -->
 
 ## Debug file format
 

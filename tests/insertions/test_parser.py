@@ -6,6 +6,7 @@ from textwrap import dedent
 import pytest
 
 from repolish.insertions import parse_text
+from repolish.insertions.parser import fenced_code_spans
 
 
 @dataclass
@@ -249,3 +250,68 @@ def test_parse_text_default_file_path_is_empty() -> None:
 
     assert len(parsed.blocks) == 1
     assert parsed.blocks[0].file_path == ''
+
+
+def test_fenced_code_spans_covers_open_and_close_lines() -> None:
+    """The span runs from the opening fence line to the closing fence line."""
+    text = dedent("""
+        intro
+        ```yaml
+        inside
+        ```
+        outro
+        """).lstrip('\n')
+
+    spans = fenced_code_spans(text)
+
+    assert spans == (
+        (
+            text.index('```yaml'),
+            text.index('```yaml') + len('```yaml\ninside\n```\n'),
+        ),
+    )
+
+
+def test_fenced_code_spans_runs_to_end_when_unterminated() -> None:
+    """An unterminated fence masks everything after it, examples at EOF included."""
+    text = 'intro\n```\nexample marker line\n'
+
+    spans = fenced_code_spans(text)
+
+    assert spans == ((6, len(text)),)
+
+
+def test_parse_text_ignores_markers_inside_markdown_fences() -> None:
+    """A marker example inside a fence does not parse for .md files.
+
+    Docs pages that teach marker syntax put the examples in fenced code
+    blocks; those lines must not become real insertion blocks.
+    """
+    text = dedent("""
+        <!-- repolish:on:docs render -->
+        real body
+        <!-- repolish:off:docs -->
+
+        ```yaml
+        template: |
+          # repolish:on:env show-env staging
+          # repolish:off:env
+        ```
+        """).lstrip('\n')
+
+    parsed = parse_text(text, file_path='docs/reference/preview.md')
+
+    assert [block.tag for block in parsed.blocks] == ['docs']
+    assert not parsed.diagnostics
+
+
+def test_parse_text_masks_markers_in_fences_for_md_only() -> None:
+    """The same content outside markdown still parses every block."""
+    text = dedent("""
+        # repolish:on:env show-env staging
+        # repolish:off:env
+        """).lstrip('\n')
+
+    parsed = parse_text(text, file_path='provider/templates/config.yaml')
+
+    assert [block.tag for block in parsed.blocks] == ['env']

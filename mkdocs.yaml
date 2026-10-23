@@ -26,6 +26,7 @@ nav:
       - Preprocessors: concepts/preprocessors.md
       - Context: concepts/context.md
       - File Modes: concepts/file-modes.md
+      - Summary Trees: reference/summary-trees.md
 
   - Markers:
       - Overview: markers/index.md
@@ -75,15 +76,14 @@ nav:
       - Local Providers: project-controls/local-providers.md
       - Preserve Your Edits: project-controls/anchors.md
 
-  - Reference:
+  - CLI:
       - reference/index.md
-      - AI Agent Reference: llms.md
       - apply: reference/apply.md
       - link: reference/link.md
       - lint: reference/lint.md
+      - list-insertions: reference/list-insertions.md
       - preview: reference/preview.md
       - scaffold: reference/scaffold.md
-      - Summary Trees: reference/summary-trees.md
 
 # Configuration
 theme:

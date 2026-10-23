@@ -19,10 +19,13 @@ from typing import TYPE_CHECKING, Annotated, Any
 import pytest
 from cyclopts import Parameter
 from local_provider.docs_insertions import (
+    _CLI_COMMAND_FUNCS,
+    _CLI_PARAMS,
     DOCS_INSERTION_FILES,
     DOCS_INSERTION_REGISTRY,
     _cyclopts_parameter_names,
     _value_placeholder,
+    cli_commands,
     cli_options,
     exit_codes,
     facet_hooks,
@@ -31,7 +34,6 @@ from local_provider.docs_insertions import (
 )
 from pydantic import BaseModel, Field
 
-from repolish.cli.link import LinkParams
 from repolish.providers.models import HOOK_SKIP_SEMANTICS
 from repolish.providers.models.facet import ProviderFacet
 from repolish.summaries.rows import STATE_ENUMS
@@ -113,20 +115,44 @@ def test_exit_codes_rejects_unknown_command() -> None:
         exit_codes('preview')
 
 
-def test_cli_options_rows_match_params_model() -> None:
+@pytest.mark.parametrize('command', sorted(_CLI_PARAMS))
+def test_cli_options_rows_match_params_model(command: str) -> None:
     """The argument table is a complete rendering of the params model."""
-    body = cli_options('link')
-    for field in LinkParams.model_fields.values():
+    body = cli_options(command)
+    for field in _CLI_PARAMS[command].model_fields.values():
         assert field.description is not None
         assert field.description in body
+
+
+def test_cli_options_link_cells() -> None:
+    """The link table pins its flag placeholder and positionals."""
+    body = cli_options('link')
     assert '`--config PATH`, `-c PATH`' in body
     assert '`ALIAS`' in body
     assert '`MODULE`' in body
 
 
+def test_cli_options_required_argument_shows_dash_default() -> None:
+    """A required argument has no default value to render."""
+    assert '| `PROVIDER_DIR` | `-` |' in cli_options('lint')
+
+
 def test_cli_options_rejects_unknown_command() -> None:
-    with pytest.raises(ValueError, match='expected one of: link'):
-        cli_options('preview')
+    with pytest.raises(ValueError, match='expected one of: apply'):
+        cli_options('health')
+
+
+def test_cli_commands_lists_every_registered_command() -> None:
+    """The command index renders one linked row per CLI entry function."""
+    body = cli_commands()
+    for name, func in _CLI_COMMAND_FUNCS.items():
+        assert f'[`{name}`]({name}.md)' in body
+        assert (func.__doc__ or '').strip().split('\n')[0] in body
+
+
+def test_cli_commands_registry_matches_params_registry() -> None:
+    """Every command with an argument table also lands in the command index."""
+    assert set(_CLI_COMMAND_FUNCS) == set(_CLI_PARAMS)
 
 
 def test_value_placeholder_unwraps_optionals() -> None:
@@ -195,14 +221,28 @@ _BLOCKS: dict[str, list[str]] = {
         '<!-- repolish:on:marker-rows summary-markers rows -->',
         '<!-- repolish:on:validator-lines summary-markers validator-lines -->',
     ],
+    'docs/reference/index.md': [
+        '<!-- repolish:on:commands cli-commands -->',
+    ],
     'docs/reference/apply.md': [
+        '<!-- repolish:on:options cli-options apply -->',
         '<!-- repolish:on:exit-codes exit-codes apply -->',
     ],
     'docs/reference/link.md': [
         '<!-- repolish:on:options cli-options link -->',
     ],
     'docs/reference/lint.md': [
+        '<!-- repolish:on:options cli-options lint -->',
         '<!-- repolish:on:exit-codes exit-codes lint -->',
+    ],
+    'docs/reference/list-insertions.md': [
+        '<!-- repolish:on:options cli-options list-insertions -->',
+    ],
+    'docs/reference/preview.md': [
+        '<!-- repolish:on:options cli-options preview -->',
+    ],
+    'docs/reference/scaffold.md': [
+        '<!-- repolish:on:options cli-options scaffold -->',
     ],
     'docs/provider-development/facets.md': [
         '<!-- repolish:on:facet-hooks facet-hooks -->',
@@ -255,6 +295,7 @@ def test_docs_files_and_registry_stay_pinned() -> None:
         'summary-markers',
         'exit-codes',
         'cli-options',
+        'cli-commands',
         'facet-hooks',
         'hook-skip-semantics',
     }
@@ -278,6 +319,11 @@ def test_docs_provider_fills_every_block_and_check_stays_clean(
         encoding='utf-8',
     )
     assert '| `2` |' in apply_doc
+    assert '`--fail-on-warnings`' in apply_doc
+    index_doc = (project / 'docs/reference/index.md').read_text(
+        encoding='utf-8',
+    )
+    assert '[`list-insertions`](list-insertions.md)' in index_doc
     link_doc = (project / 'docs/reference/link.md').read_text(
         encoding='utf-8',
     )

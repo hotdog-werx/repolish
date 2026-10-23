@@ -18,7 +18,12 @@ from cyclopts import Parameter as CycloptsParameter
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from repolish.cli.link import LinkParams
+from repolish.cli.apply import ApplyParams, apply
+from repolish.cli.link import LinkParams, link
+from repolish.cli.lint import LintParams, lint
+from repolish.cli.list_insertions import ListInsertionsParams, list_insertions
+from repolish.cli.preview import PreviewParams, preview
+from repolish.cli.scaffold import ScaffoldParams, scaffold
 from repolish.commands.apply.session import APPLY_EXIT_CODES
 from repolish.commands.lint import LINT_EXIT_CODES
 from repolish.providers.models import HOOK_SKIP_SEMANTICS
@@ -123,9 +128,29 @@ def hook_skip_semantics() -> str:
 
 
 _CLI_PARAMS: dict[str, type[BaseModel]] = {
+    'apply': ApplyParams,
     'link': LinkParams,
+    'lint': LintParams,
+    'preview': PreviewParams,
+    'scaffold': ScaffoldParams,
+    'list-insertions': ListInsertionsParams,
 }
 """Cyclopts parameter models by command name, for cli_options."""
+
+_CLI_COMMAND_FUNCS: dict[str, Callable[..., object]] = {
+    'apply': apply,
+    'link': link,
+    'lint': lint,
+    'preview': preview,
+    'scaffold': scaffold,
+    'list-insertions': list_insertions,
+}
+"""CLI entry functions by command name, for cli_commands.
+
+Keyed identically to _CLI_PARAMS (a test pins the two key sets together):
+every command that has an argument-table page also lands in the command
+index, so a newly registered command is missing from the docs until it is
+added to both."""
 
 _VALUE_PLACEHOLDERS: dict[type, str] = {
     str: 'VALUE',
@@ -166,7 +191,9 @@ def _argument_names(field: FieldInfo) -> str:
 
 
 def _default_cell(field: FieldInfo) -> str:
-    """The default as the docs show it: False, None, or the plain value."""
+    """The default as the docs show it: `-` when the argument is required."""
+    if field.is_required():
+        return '`-`'
     return f'`{field.default}`'
 
 
@@ -189,11 +216,33 @@ def cli_options(command: str) -> str:
     return _table(('Argument', 'Default', 'Description'), rows)
 
 
+def cli_commands() -> str:
+    """Command index for the CLI landing page, from the entry functions.
+
+    One row per registered command: the page link is `<command>.md` beside
+    the docs file this table lives in, and the description is the
+    function's docstring first line. A command registered on the app but
+    missing here renders nothing and fails the pin test instead.
+    """
+    rows = tuple(
+        (
+            f'[`{name}`]({name}.md)',
+            _cell((func.__doc__ or '').strip().split('\n')[0]),
+        )
+        for name, func in sorted(_CLI_COMMAND_FUNCS.items())
+    )
+    return _table(('Command', 'Description'), rows)
+
+
 DOCS_INSERTION_FILES: tuple[str, ...] = (
     'docs/reference/summary-trees.md',
+    'docs/reference/index.md',
     'docs/reference/apply.md',
     'docs/reference/link.md',
     'docs/reference/lint.md',
+    'docs/reference/list-insertions.md',
+    'docs/reference/preview.md',
+    'docs/reference/scaffold.md',
     'docs/provider-development/facets.md',
     'docs/provider-development/providers.md',
 )
@@ -204,6 +253,7 @@ DOCS_INSERTION_REGISTRY: dict[str, Callable[..., str]] = {
     'summary-markers': summary_markers,
     'exit-codes': exit_codes,
     'cli-options': cli_options,
+    'cli-commands': cli_commands,
     'facet-hooks': facet_hooks,
     'hook-skip-semantics': hook_skip_semantics,
 }

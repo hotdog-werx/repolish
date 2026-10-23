@@ -8,9 +8,16 @@ repolish lint PROVIDER_DIR
 
 ## Arguments
 
-| Argument       | Description                                                   |
-| -------------- | ------------------------------------------------------------- |
-| `PROVIDER_DIR` | Path to the provider root directory containing `repolish.py`. |
+The table below is generated from the lint parameter model in the CLI code, so
+it cannot drift.
+
+<!-- repolish:on:options cli-options lint -->
+
+| Argument       | Default | Description                                                |
+| -------------- | ------- | ---------------------------------------------------------- |
+| `PROVIDER_DIR` | `-`     | Path to the provider root directory containing repolish.py |
+
+<!-- repolish:off:options -->
 
 ## What it does
 
