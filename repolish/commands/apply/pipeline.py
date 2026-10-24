@@ -174,10 +174,17 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
                 provider_package_identity=options.provider_package_identity,
             ),
         )
-    resolved_symlinks = collect_provider_symlinks(
-        config.providers,
-        raw_providers,
-        mode=effective_global_context.workspace.mode,
+    # A provider-command run is surgical: the command's spec is the whole
+    # run. Provider symlinks are the link phase's output (`repolish link`
+    # or a full apply), never something a one-off command materializes.
+    resolved_symlinks = (
+        {}
+        if options.command_only
+        else collect_provider_symlinks(
+            config.providers,
+            raw_providers,
+            mode=effective_global_context.workspace.mode,
+        )
     )
     ordered_aliases = _ordered_aliases(config)
 

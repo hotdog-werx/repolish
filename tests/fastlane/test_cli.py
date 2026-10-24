@@ -387,6 +387,8 @@ _EMPTY_SPEC_COMMAND_PROVIDER = """\
         Provider,
         ProviderCommandContract,
         ProviderCommandContext,
+        ResourceCopy,
+        Symlink,
     )
 
     class Ctx(BaseContext):
@@ -407,6 +409,12 @@ _EMPTY_SPEC_COMMAND_PROVIDER = """\
 
         def create_file_mappings(self, context):
             return {'ordinary.txt': 'ordinary.txt.jinja'}
+
+        def create_default_symlinks(self):
+            return [Symlink(source='configs/editorconfig', target='.editorconfig')]
+
+        def create_default_copies(self):
+            return [ResourceCopy(source='configs/copied.txt', target='copied.txt')]
 
         @classmethod
         def create_provider_commands(cls):
@@ -1069,16 +1077,22 @@ class TestProviderCommands:
     ) -> None:
         """A command returning an empty FastLaneSpec renders nothing.
 
-        The provider's ordinary template is confirmed live by a plain
-        `repolish apply` first; after deleting its output, a command whose
-        executor returns an empty spec must not re-exercise it (a consumer
-        reported 1.17.2 recreating the file; this pins the contract).
+        The provider's ordinary output (a mapped template, a default
+        symlink, and a default copy) is confirmed live by a plain
+        `repolish apply` first; after deleting all of it, a command whose
+        executor returns an empty spec must not re-create any of it (a
+        consumer reported 1.17.2 recreating regular output; this pins
+        the full contract, symlinks included).
         """
         provider_cls = _make_provider_pkg(
             tmp_path,
             _EMPTY_SPEC_COMMAND_PROVIDER,
             templates=_EMPTY_SPEC_TEMPLATES,
         )
+        resources = tmp_path / 'pkg' / 'resources' / 'templates' / 'configs'
+        resources.mkdir()
+        (resources / 'editorconfig').write_text('root = true\n')
+        (resources / 'copied.txt').write_text('copied content\n')
         app = provider_cli(provider_cls, cli_name=_CLI_NAME)
         project = _stage_project(provider_cls, tmp_path)
         _init_git_origin(project)
@@ -1087,13 +1101,21 @@ class TestProviderCommands:
         apply_result = runner.invoke(repolish_app, ['apply'])
         assert apply_result.exit_code == 0, apply_result.output
         assert (project / 'ordinary.txt').exists()
+        assert (project / '.editorconfig').is_symlink()
+        assert (project / 'copied.txt').read_text(
+            encoding='utf-8',
+        ) == 'copied content\n'
 
         (project / 'ordinary.txt').unlink()
+        (project / '.editorconfig').unlink()
+        (project / 'copied.txt').unlink()
 
         result = runner.invoke(app, ['noop'])
 
         assert result.exit_code == 0, result.output
         assert not (project / 'ordinary.txt').exists()
+        assert not (project / '.editorconfig').exists()
+        assert not (project / 'copied.txt').exists()
 
     def test_command_accepts_positional_args(
         self,
