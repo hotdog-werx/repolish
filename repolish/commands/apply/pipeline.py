@@ -174,12 +174,14 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
                 provider_package_identity=options.provider_package_identity,
             ),
         )
-    # A provider-command run is surgical: the command's spec is the whole
-    # run. Provider symlinks are the link phase's output (`repolish link`
-    # or a full apply), never something a one-off command materializes.
+    # A scoped run is surgical: only the selected lane's (or command's)
+    # contributions execute. Provider symlinks are the link phase's output
+    # (`repolish link` or a full apply), never something a one-off run
+    # materializes; `all` (lane=None) mirrors a full provider pass and
+    # still collects them.
     resolved_symlinks = (
         {}
-        if options.command_only
+        if options.command_only or options.lane is not None
         else collect_provider_symlinks(
             config.providers,
             raw_providers,

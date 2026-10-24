@@ -356,10 +356,12 @@ def restrict_to_lane(
     (config-level ``delete_files`` is not honored either; lanes never delete
     outside their own ``FileMode.DELETE`` mappings). The provider's copy set
     is the same: a lane run copies exactly what the lane declares in
-    ``file_copies`` and never collects (or executes) the provider's defaults;
-    symlinks are still materialized as declared for lane runs
-    (provider-command runs never collect them; ``resolve_session`` skips
-    symlink collection for ``command_only`` sessions).
+    ``file_copies`` and never collects (or executes) the provider's defaults.
+    Symlinks never materialize in a named lane run either: like
+    provider-command runs, ``resolve_session`` skips symlink collection for
+    every scoped run, because symlinks are the link phase's output
+    (``repolish link`` or a full apply). Only ``all`` (``lane=None``),
+    which mirrors a full provider pass, collects them.
 
     Returns the selected lane's evaluated spec so the caller can derive the
     run's copy set from it.

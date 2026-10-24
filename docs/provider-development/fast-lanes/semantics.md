@@ -9,8 +9,12 @@ What a lane run does:
 - the `repolish` namespace is injected exactly as in a full run, both into the
   hook and into rendered templates, so `{{ repolish.repo.owner }}` and
   `{{ repolish.provider.alias }}` render the same values either way
-- copies and symlinks still materialize (they are context-free declarations and
-  cheap to honor)
+- a named lane run materializes only what the lane declares: copies come exactly
+  from the lane's `file_copies`, and symlinks never materialize in a scoped run
+  at all (they are the link phase's output: `repolish link` or a full
+  `repolish apply`). `all` mirrors a full provider pass and collects the
+  provider's defaults for both. Provider commands follow the same rule, see
+  [Commands](commands.md#what-a-command-run-touches).
 - lanes never delete: provider deletes and the config's `delete_files` key are
   skipped in lane runs
 

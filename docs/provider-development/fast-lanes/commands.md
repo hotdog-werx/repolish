@@ -189,3 +189,16 @@ command output remains consistent with other repolish flows.
 
 This keeps command UX predictable for users while still allowing provider
 authors to add helpful command-specific feedback.
+
+## What a command run touches
+
+A command run is surgical: the spec the executor returns is the whole run.
+
+- Only the spec's `file_mappings`, `file_insertions`, and `file_validators`
+  render. The provider's ordinary templates never run, not even the auto-staged
+  ones with no mapping entry.
+- The provider's default symlinks and copies never materialize. Project symlinks
+  are the link phase's output (`repolish link` or a full `repolish apply`), not
+  something a one-off command creates.
+- An executor returning an empty `FastLaneSpec()` renders nothing and touches
+  nothing, which makes a command safe to run in any project state.

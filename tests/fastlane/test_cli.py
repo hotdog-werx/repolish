@@ -377,7 +377,7 @@ _REPO_INFO_TEMPLATES = {
     '_repolish.repo.txt.jinja': ('executor: {{ repo_name }}\ntemplate: {{ repolish.repo.name }}\n'),
 }
 
-_EMPTY_SPEC_COMMAND_PROVIDER = """\
+_ISOLATION_PROVIDER = """\
     from pydantic import BaseModel
 
     from repolish import (
@@ -410,6 +410,13 @@ _EMPTY_SPEC_COMMAND_PROVIDER = """\
         def create_file_mappings(self, context):
             return {'ordinary.txt': 'ordinary.txt.jinja'}
 
+        def create_fast_lanes(self, _repolish):
+            return {
+                'hello': FastLaneSpec(
+                    file_mappings={'hello.txt': 'ordinary.txt.jinja'},
+                ),
+            }
+
         def create_default_symlinks(self):
             return [Symlink(source='configs/editorconfig', target='.editorconfig')]
 
@@ -426,7 +433,7 @@ _EMPTY_SPEC_COMMAND_PROVIDER = """\
             }
 """
 
-_EMPTY_SPEC_TEMPLATES = {'ordinary.txt.jinja': 'ordinary output\n'}
+_ISOLATION_TEMPLATES = {'ordinary.txt.jinja': 'ordinary output\n'}
 
 
 def _init_git_origin(
@@ -630,8 +637,8 @@ class TestSubcommands:
         """
         provider_cls = _make_provider_pkg(
             tmp_path,
-            _EMPTY_SPEC_COMMAND_PROVIDER,
-            templates=_EMPTY_SPEC_TEMPLATES,
+            _ISOLATION_PROVIDER,
+            templates=_ISOLATION_TEMPLATES,
         )
         resources = tmp_path / 'pkg' / 'resources' / 'templates' / 'configs'
         resources.mkdir()
@@ -650,6 +657,49 @@ class TestSubcommands:
         assert (project / 'copied.txt').read_text(
             encoding='utf-8',
         ) == 'copied content\n'
+
+    def test_named_lane_run_never_touches_provider_defaults(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A named lane run is scoped exactly like a provider-command run.
+
+        Provider symlinks and copies are the link phase's output, not lane
+        output: a scoped run must materialize neither, while `all` mirrors
+        a full provider pass and collects both.
+        """
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _ISOLATION_PROVIDER,
+            templates=_ISOLATION_TEMPLATES,
+        )
+        resources = tmp_path / 'pkg' / 'resources' / 'templates' / 'configs'
+        resources.mkdir()
+        (resources / 'editorconfig').write_text('root = true\n')
+        (resources / 'copied.txt').write_text('copied content\n')
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
+        project = _stage_project(provider_cls, tmp_path)
+        _init_git_origin(project)
+        monkeypatch.chdir(project)
+
+        # `all` is the provider's full pass: defaults included.
+        result = runner.invoke(app, ['all'])
+        assert result.exit_code == 0, result.output
+        for name in ('ordinary.txt', '.editorconfig', 'copied.txt'):
+            assert (project / name).exists(), name
+            (project / name).unlink()
+
+        # The named lane writes only its own file.
+        result = runner.invoke(app, ['hello'])
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'hello.txt').read_text(
+            encoding='utf-8',
+        ) == 'ordinary output\n'
+        assert not (project / 'ordinary.txt').exists()
+        assert not (project / '.editorconfig').is_symlink()
+        assert not (project / 'copied.txt').exists()
 
     def test_docs_lane_runs_only_insertions(
         self,
@@ -1121,8 +1171,8 @@ class TestProviderCommands:
         """
         provider_cls = _make_provider_pkg(
             tmp_path,
-            _EMPTY_SPEC_COMMAND_PROVIDER,
-            templates=_EMPTY_SPEC_TEMPLATES,
+            _ISOLATION_PROVIDER,
+            templates=_ISOLATION_TEMPLATES,
         )
         resources = tmp_path / 'pkg' / 'resources' / 'templates' / 'configs'
         resources.mkdir()
