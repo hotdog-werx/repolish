@@ -460,6 +460,11 @@ def test_apply_session_returns_1_when_post_process_fails(
         'post_process_run_failed',
         report=str(tmp_path / '.repolish' / '_' / 'post-process.txt'),
         note='see the post-process summary tree for per-command details',
+        suggestion=(
+            'if the repo is still bootstrapping (post-process copied in '
+            'before the providers generated everything it needs), run '
+            'with `--skip-post-process` until the repo is fully set up'
+        ),
     )
 
 
