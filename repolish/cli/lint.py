@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Annotated
 
 from cyclopts import Parameter
 from pydantic import BaseModel, Field
@@ -8,9 +9,15 @@ from repolish.cli.utils import run_cli_command
 
 @Parameter(name='*')
 class LintParams(BaseModel):
-    """Parameters for the lint command."""
+    """Parameters for the lint command.
 
-    provider_dir: Path = Field(
+    Every field carries an explicit cyclopts ``Parameter`` name: the docs
+    insertion renderer (``internal/local_provider/docs_insertions.py``)
+    reads them to build the lint argument table, and it refuses fields
+    whose names would have to be derived.
+    """
+
+    provider_dir: Annotated[Path, Parameter(name='PROVIDER_DIR')] = Field(
         description='Path to the provider root directory containing repolish.py',
     )
 

@@ -111,6 +111,11 @@ def render_with_jinja(ctx: RenderContext) -> None:
     # `providers` is available on `ctx` and only used
     # indirectly via helpers; no need to create a local variable here.
     skip_templates = ctx.skip_templates
+    # Lane runs (a lane or provider-command subcommand) render exactly what
+    # the lane claims: every other staged template is the provider's
+    # ordinary output, which must stay out of the render tree and so out
+    # of the project. Full runs keep the auto-staged convention.
+    lane_sources = resolve_mappings(ctx.providers).mapped_sources if ctx.providers.lane_only else None
     render_errors: list[tuple[str, str]] = []
 
     template_root = setup_input / 'repolish'
@@ -126,6 +131,13 @@ def render_with_jinja(ctx: RenderContext) -> None:
         # Skip templates that will be rendered separately with extra mapping-specific context
         if skip_templates and rel_str in skip_templates:
             logger.debug('skipping_template_for_later_render', template=rel_str)
+            continue
+
+        if lane_sources is not None and rel_str not in lane_sources:
+            logger.debug(
+                'skipping_unclaimed_template_in_lane_run',
+                template=rel_str,
+            )
             continue
 
         # pick the appropriate context for this file

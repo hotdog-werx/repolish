@@ -15,7 +15,13 @@ logger = get_logger(__name__)
 
 @Parameter(name='*')
 class ScaffoldParams(BaseModel):
-    """Parameters for the scaffold command."""
+    """Parameters for the scaffold command.
+
+    Every field carries an explicit cyclopts ``Parameter`` name: the docs
+    insertion renderer (``internal/local_provider/docs_insertions.py``)
+    reads them to build the scaffold argument table, and it refuses fields
+    whose names would have to be derived.
+    """
 
     directory: Annotated[
         Path | None,
@@ -38,14 +44,17 @@ class ScaffoldParams(BaseModel):
             'Required unless --local is given.'
         ),
     )
-    prefix: str | None = Field(
+    prefix: Annotated[str | None, Parameter(name=['--prefix'])] = Field(
         default=None,
         description=(
             'Class-name prefix override (defaults to the last segment of '
             '--package, or the alias camel-cased with --local).'
         ),
     )
-    monorepo: bool = Field(
+    monorepo: Annotated[
+        bool,
+        Parameter(name=['--monorepo']),
+    ] = Field(
         default=False,
         description=(
             'Generate the full monorepo provider layout with root, member, '
@@ -53,7 +62,10 @@ class ScaffoldParams(BaseModel):
             'provider is generated.'
         ),
     )
-    local: bool = Field(
+    local: Annotated[
+        bool,
+        Parameter(name=['--local']),
+    ] = Field(
         default=False,
         description=(
             'Generate an in-repo local provider instead of an installable '
@@ -63,7 +75,10 @@ class ScaffoldParams(BaseModel):
             'publishing step.'
         ),
     )
-    flat: bool = Field(
+    flat: Annotated[
+        bool,
+        Parameter(name=['--flat']),
+    ] = Field(
         default=False,
         description=(
             'Only meaningful with --local: scaffold the flat tier instead of '

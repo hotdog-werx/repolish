@@ -16,6 +16,10 @@ It also supports line-based comment styles such as:
     ...
     // repolish:off:tag
 
+For markdown files (``file_path`` ending in ``.md``), marker matches inside
+fenced code blocks are ignored: pages that teach marker syntax put examples in
+fences, and those examples must not parse as real blocks.
+
 It returns structured metadata for each block, including the tag name,
 function name, args, and the content between the markers. This is intentionally
 kept small and syntax-focused so the resolver and writer can be implemented as
@@ -24,6 +28,7 @@ separate steps.
 
 from __future__ import annotations
 
+import re
 import shlex
 from typing import TYPE_CHECKING
 
@@ -36,8 +41,55 @@ from repolish.insertions.models import (
 )
 
 if TYPE_CHECKING:
-    import re
     from collections.abc import Iterable
+
+_FENCE_RUN_RE = re.compile(r'^[ \t]{0,3}(?P<run>[`~]{3,})')
+
+
+def _fence_run(line: str) -> tuple[str, int] | None:
+    """The fence character and run length of a fence line, if it is one."""
+    match = _FENCE_RUN_RE.match(line)
+    if match is None:
+        return None
+    run = match['run']
+    return run[0], len(run)
+
+
+def fenced_code_spans(text: str) -> tuple[tuple[int, int], ...]:
+    """Character spans of fenced code blocks, fence lines included.
+
+    CommonMark-shaped: an opening line indented at most three spaces whose
+    first non-space characters are a run of backticks or tildes (an info
+    string may follow); the first later line whose run of the same fence
+    character is at least as long closes it. An unterminated fence runs to
+    the end of the text, so an example at end of file is masked too.
+    """
+    spans: list[tuple[int, int]] = []
+    fence_char = ''
+    fence_len = 0
+    start = 0
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        run = _fence_run(line)
+        if fence_char:
+            if run and run[0] == fence_char and run[1] >= fence_len:
+                spans.append((start, offset + len(line)))
+                fence_char = ''
+        elif run:
+            fence_char, fence_len = run
+            start = offset
+        offset += len(line)
+    if fence_char:
+        spans.append((start, len(text)))
+    return tuple(spans)
+
+
+def _in_spans(
+    spans: tuple[tuple[int, int], ...],
+    position: int,
+) -> bool:
+    """True when *position* falls inside one of the masked spans."""
+    return any(start <= position < end for start, end in spans)
 
 
 def _normalize_comment_styles(
@@ -80,11 +132,19 @@ def _split_function_args(raw: str | None) -> tuple[str, tuple[str, ...]]:
 def _iter_marker_matches(
     text: str,
     comment_styles: Iterable[CommentStyle],
+    *,
+    masked_spans: tuple[tuple[int, int], ...] = (),
 ) -> list[tuple[CommentStyle, re.Match[str]]]:
-    """Collect all marker matches across the requested comment styles."""
+    """Collect all marker matches across the requested comment styles.
+
+    Matches starting inside a masked span are skipped, so fenced examples
+    in markdown never parse as real blocks.
+    """
     matches: list[tuple[CommentStyle, re.Match[str]]] = []
     for style in comment_styles:
-        matches.extend((style, match) for match in style.regex.finditer(text))
+        matches.extend(
+            (style, match) for match in style.regex.finditer(text) if not _in_spans(masked_spans, match.start())
+        )
     matches.sort(key=lambda item: item[1].start())
     return matches
 
@@ -250,9 +310,13 @@ def parse_text(
         text: The file content to parse.
         comment_styles: The comment styles to recognize.
         file_path: The path of the file being parsed (stored in each InsertionBlock).
+            For markdown files (``.md`` suffix), marker matches inside fenced
+            code blocks are ignored: examples that teach marker syntax live
+            in fences and must not parse as real blocks.
     """
     styles = _normalize_comment_styles(comment_styles)
-    matches = _iter_marker_matches(text, styles)
+    masked_spans = fenced_code_spans(text) if file_path.endswith('.md') else ()
+    matches = _iter_marker_matches(text, styles, masked_spans=masked_spans)
     blocks: list[InsertionBlock] = []
     diagnostics: list[ParseDiagnostic] = []
     open_stack: dict[str, InsertionBlock] = {}

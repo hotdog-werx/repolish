@@ -667,6 +667,13 @@ class SessionBundle(BaseModel):
     absent from the run; the apply session writes per-failure JSON
     reports under ``.repolish/_/hook-failures/`` and links them from the
     summary tree. Any entry makes apply and check exit 1."""
+    lane_only: bool = False
+    """True once :func:`~repolish.fastlane.restrict_to_lane` has cut the
+    bundle down to one lane's contributions (a lane or provider-command
+    subcommand run). Staging still stages the provider's whole template
+    tree, but staged templates no lane mapping claims must not become
+    implicit regular records: they would re-create the provider's
+    ordinary output, which a lane run never touches."""
 
 
 def _records_from_template_sources(
@@ -828,15 +835,21 @@ def build_file_records(
         elif isinstance(_src, TemplateMapping) and _src.source_template:
             explicit_sources.add(_src.source_template)
     files: dict[str, FileRecord] = {}
-    files.update(
-        _records_from_template_sources(
-            providers.template_sources,
-            create_only_posix,
-            pid_to_alias,
-            explicit_sources,
-            providers.template_overlay_dirs or None,
-        ),
-    )
+    # Staged templates that no mapping claims are implicit regular records
+    # in a full run (the auto-staged convention: ordinary.txt.jinja renders
+    # to ordinary.txt without a mapping entry). In a lane run they are
+    # leakage: the bundle was cut down to the lane's contributions, so an
+    # unclaimed template must not resurrect the provider's ordinary output.
+    if not providers.lane_only:
+        files.update(
+            _records_from_template_sources(
+                providers.template_sources,
+                create_only_posix,
+                pid_to_alias,
+                explicit_sources,
+                providers.template_overlay_dirs or None,
+            ),
+        )
     files.update(
         _records_from_file_mappings(providers.file_mappings, pid_to_alias),
     )

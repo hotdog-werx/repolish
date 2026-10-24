@@ -408,6 +408,10 @@ def restrict_to_lane(
     bundle.insertion_sources = {}
     bundle.file_validators = {}
     bundle.validator_sources = {}
+    # Staging still stages the provider's whole template tree; this flag
+    # keeps build_file_records from turning unclaimed templates into
+    # implicit regular records, which would re-create ordinary output.
+    bundle.lane_only = True
     _apply_lane_contributions(
         bundle,
         spec,
