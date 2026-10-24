@@ -8,6 +8,19 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.18.1] <a name="1.18.1" href="#1.18.1">-</a> October 24, 2026
+
+### 🐛 Bug Fixes
+
+- Provider commands no longer materialize symlinks by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Lane runs honor a provider_root entry's resources_dir fallback by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+- Scoped lane runs never materialize provider symlinks by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.18.1]: https://github.com/hotdog-werx/repolish/compare/1.18.0...1.18.1
+
 ## [1.18.0] <a name="1.18.0" href="#1.18.0">-</a> October 24, 2026
 
 ### 🚀 Features
