@@ -8,6 +8,21 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.18.0] <a name="1.18.0" href="#1.18.0">-</a> October 24, 2026
+
+### 🚀 Features
+
+- Targeted provider linking + lane runs stop touching ordinary templates (#119)
+  by [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#119](https://github.com/hotdog-werx/repolish/pull/119)
+
+### 🐛 Bug Fixes
+
+- Post-process failure hints at --skip-post-process during bootstrap by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.18.0]: https://github.com/hotdog-werx/repolish/compare/1.17.2...1.18.0
+
 ## [1.17.2] <a name="1.17.2" href="#1.17.2">-</a> October 22, 2026
 
 ### 🐛 Bug Fixes
