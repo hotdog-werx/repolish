@@ -421,6 +421,13 @@ def _provider_command(spec: _ProviderCommandSpec) -> Callable:
     _run.__name__ = spec.command_name.replace('-', '_').replace(':', '_')
     _run.__annotations__['params'] = params_model
     _run.__doc__ = f'Run provider command {spec.command_name!r}.'
+    # Without a default, cyclopts treats ``params`` as a required argument,
+    # so a command whose every field has a default (an empty args model)
+    # could not be invoked bare. Mirror the lane path (LaneParams): attach a
+    # default instance when one can be built; a model with required command
+    # args stays default-less so cyclopts still reports the missing argument.
+    if all(not field.is_required() for field in params_model.model_fields.values()):
+        _run.__defaults__ = (params_model(),)
     return _run
 
 
