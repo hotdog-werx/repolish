@@ -616,6 +616,41 @@ class TestSubcommands:
             encoding='utf-8',
         )
 
+    def test_all_run_resolves_resources_like_apply(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A provider_root: entry's resources resolve identically everywhere.
+
+        The config's static rule (resources_dir falls back to the root
+        itself) must hold for the generated CLI's `all` run too; the
+        package-layout parent default would resolve symlink/copy sources
+        one directory too high and fail where a plain apply succeeds.
+        """
+        provider_cls = _make_provider_pkg(
+            tmp_path,
+            _EMPTY_SPEC_COMMAND_PROVIDER,
+            templates=_EMPTY_SPEC_TEMPLATES,
+        )
+        resources = tmp_path / 'pkg' / 'resources' / 'templates' / 'configs'
+        resources.mkdir()
+        (resources / 'editorconfig').write_text('root = true\n')
+        (resources / 'copied.txt').write_text('copied content\n')
+        app = provider_cli(provider_cls, cli_name=_CLI_NAME)
+        project = _stage_project(provider_cls, tmp_path)
+        _init_git_origin(project)
+        monkeypatch.chdir(project)
+
+        result = runner.invoke(app, ['all'])
+
+        assert result.exit_code == 0, result.output
+        assert (project / 'ordinary.txt').exists()
+        assert (project / '.editorconfig').is_symlink()
+        assert (project / 'copied.txt').read_text(
+            encoding='utf-8',
+        ) == 'copied content\n'
+
     def test_docs_lane_runs_only_insertions(
         self,
         lane_cli: LaneCli,
@@ -1296,7 +1331,10 @@ def copies_cli(tmp_path: Path):
         _COPIES_PROVIDER,
         templates=_COPIES_TEMPLATES,
     )
-    static = tmp_path / 'pkg' / 'resources' / 'static'
+    # Copy sources live inside the stated root: a provider_root: entry
+    # without resources_dir resolves them there (the config's static rule),
+    # identically for a plain apply and a lane run.
+    static = tmp_path / 'pkg' / 'resources' / 'templates' / 'static'
     static.mkdir(parents=True)
     (static / 'lane.bin').write_bytes(b'lane static\n')
     (static / 'defaults.json').write_text('{}\n', encoding='utf-8')

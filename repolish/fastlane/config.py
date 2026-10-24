@@ -166,7 +166,9 @@ def prepare_lane_config(  # noqa: PLR0913 - mirrors the run_lane flag set on pur
         resources_dir: Default resource directory for a stated local root
             (the root itself, mirroring the config's static resolution). When
             ``None`` (an installed package) the directory holding the
-            templates is used; an entry-declared ``resources_dir`` always
+            templates is used; a ``provider_root:`` config entry without its
+            own ``resources_dir`` falls back to the root (the config's
+            static rule), and an entry-declared ``resources_dir`` always
             wins either way.
         default_alias: Bookkeeping fallback identity for a stated local root
             (the root's directory name). When ``None`` (an installed package)
@@ -204,6 +206,14 @@ def prepare_lane_config(  # noqa: PLR0913 - mirrors the run_lane flag set on pur
     if entry is not None and entry.resources_dir:
         declared = Path(entry.resources_dir)
         resources_dir = declared if declared.is_absolute() else (config_dir / declared).resolve()
+    elif entry is not None and entry.provider_root is not None and entry.module is None:
+        # A provider_root: entry carries the config's static semantics:
+        # resources_dir falls back to the root itself (see
+        # ProviderConfig.resources_dir), so a lane or command run resolves
+        # symlink/copy sources exactly where a plain apply resolves them.
+        # The package-layout parent default stays for installed modules
+        # (module: entries) and providers absent from the config.
+        resources_dir = provider_root
 
     resolved = ResolvedProviderInfo(
         alias=final_alias,
