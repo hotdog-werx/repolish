@@ -37,7 +37,7 @@ jobs:
         run: mise run setup
 
       - name: build-docs
-        run: mise run build-docs
+        run: mise run docs:build
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact

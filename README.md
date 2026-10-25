@@ -64,16 +64,13 @@ Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
 | Task                       | Description                                                                               |
 | -------------------------- | ----------------------------------------------------------------------------------------- |
 | `build`                    | build the package (requires VERSION env var)                                              |
-| `build-docs`               | build the static documentation site                                                       |
 | `check-coverage`           | run repolish and internal coverage suites                                                 |
 | `check-dprint`             | check dprint-managed formatting                                                           |
 | `ci-checks`                | run all checks for CI                                                                     |
-| `clean-docs`               | clean docs build artifacts                                                                |
 | `cov-contexts`             | record per-test coverage contexts for the whole suite into .coverage                      |
 | `cov-redundant`            | report tests whose product-code coverage is duplicated elsewhere (run cov-contexts first) |
 | `cov-reporting`            | coverage of repolish.reporting from tests/reporting alone                                 |
 | `cov-summaries`            | coverage of repolish.summaries from tests/summaries alone                                 |
-| `dev-docs`                 | start the docs development server                                                         |
 | `format`                   | run all formatters                                                                        |
 | `format-dprint`            | format dprint-managed files                                                               |
 | `format-python`            | format python code                                                                        |
@@ -89,6 +86,14 @@ Dev tasks are declared in `mise-tasks/`; run any of them with `mise run <task>`.
 | ------------------------- | ----------------------------------------- |
 | `check-coverage:internal` | run internal tests with internal coverage |
 | `check-coverage:repolish` | run repolish tests with repolish coverage |
+
+**docs**
+
+| Task         | Description                         |
+| ------------ | ----------------------------------- |
+| `docs:build` | build the static documentation site |
+| `docs:clean` | clean docs build artifacts          |
+| `docs:dev`   | start the docs development server   |
 
 **python**
 

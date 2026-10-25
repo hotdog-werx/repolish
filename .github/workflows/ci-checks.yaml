@@ -44,4 +44,4 @@ jobs:
       - name: check-coverage
         run: mise run check-coverage
       - name: build-docs
-        run: mise run build-docs
+        run: mise run docs:build
