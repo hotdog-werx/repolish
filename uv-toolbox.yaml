@@ -9,10 +9,14 @@ environments:
       - releez==1.1.1
 
   - name: repolish
+    uv:
+      override-dependencies:
+        - repolish
     dependencies:
-      - ty==0.0.89
+      - ty>=0.0.89
       - pytest
       - pytest-cov
+      - pytest-mock
       - pytest-xdist
       - repolish
       - internal-tools
@@ -30,7 +34,7 @@ environments:
         editable: true
       hotdogwerx-devkit-workspace:
         git: https://github.com/hotdog-werx/devkit
-        branch: topic/workspace-provider
+        branch: master
         subdirectory: packages/devkit-workspace
         # path: /home/jmlopez/hotdog-werx/devkit/packages/devkit-workspace
         # editable: true

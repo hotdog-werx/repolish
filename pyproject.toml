@@ -25,6 +25,7 @@ dev = [
   "pytest-cov >= 4.0.0",
   "pytest-xdist >= 3.8.0",
   "filelock >= 3.32.3",
+  "ty >= 0.0.89",
 ]
 
 [tool.hatch]
