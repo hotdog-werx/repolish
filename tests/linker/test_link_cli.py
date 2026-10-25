@@ -1615,7 +1615,12 @@ providers:
     assert result == 1
     assert not (tmp_path / '.repolish' / '_' / 'provider-info.base.json').exists()
 
-    result = run_link(config_file, alias='base', module='mylib_ws', no_config=True)
+    result = run_link(
+        config_file,
+        alias='base',
+        module='mylib_ws',
+        no_config=True,
+    )
 
     assert result == 0
     assert (tmp_path / '.repolish' / '_' / 'provider-info.base.json').exists()
@@ -1630,7 +1635,12 @@ def test_one_off_no_config_without_yaml(
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / 'repolish.yaml'
 
-    result = run_link(config_path, alias='ad-hoc', module='mylib_ws', no_config=True)
+    result = run_link(
+        config_path,
+        alias='ad-hoc',
+        module='mylib_ws',
+        no_config=True,
+    )
 
     assert result == 0
     assert (tmp_path / '.repolish' / 'mylib-ws').exists()

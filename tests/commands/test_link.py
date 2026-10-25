@@ -237,7 +237,9 @@ def test_link_unknown_alias_lists_valid_aliases(tmp_path: Path) -> None:
     assert 'other' in result.output
 
 
-def test_link_register_only_leaves_copies_unmaterialised(tmp_path: Path) -> None:
+def test_link_register_only_leaves_copies_unmaterialised(
+    tmp_path: Path,
+) -> None:
     """`repolish link --register-only` registers but skips the copy phase."""
     _stage_static_provider(tmp_path)
     write_repolish_config(

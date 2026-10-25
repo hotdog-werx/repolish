@@ -1,12 +1,12 @@
 # Documentation tasks (zensical is a mise-managed pipx tool).
-[dev-docs]
+["docs:dev"]
 description = "start the docs development server"
-run = "zensical serve --dev-addr=127.0.0.1:8000"
+run = "{{ env.DK_UVTB_TOOLS_EXEC }} zensical serve --dev-addr=127.0.0.1:8000"
 
-[build-docs]
+["docs:build"]
 description = "build the static documentation site"
-run = "zensical build --clean"
+run = "{{ env.DK_UVTB_TOOLS_EXEC }} zensical build --clean"
 
-[clean-docs]
+["docs:clean"]
 description = "clean docs build artifacts"
 run = "rm -rf site/"

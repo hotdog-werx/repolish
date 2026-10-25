@@ -8,7 +8,10 @@ what repolish.yaml's provider_root points at and must not grow code itself.
 
 from collections.abc import Callable
 
-from local_provider.docs_insertions import DOCS_INSERTION_FILES, DOCS_INSERTION_REGISTRY
+from local_provider.docs_insertions import (
+    DOCS_INSERTION_FILES,
+    DOCS_INSERTION_REGISTRY,
+)
 from local_provider.mise_tasks import collect_mise_tasks
 from local_provider.uvtb import env_site_packages
 from repolish import (

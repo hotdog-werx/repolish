@@ -1177,11 +1177,14 @@ environments:
           { url = "https://files.pythonhosted.org/packages/96/33/af4aac6d08bb63a3de2549e3582467c9277083b033ce18d92ae776514009/zensical-0.0.71-cp311-abi3-win_arm64.whl", hash = "sha256:433c5a6fecae7b6b5014b7efbc52bb5e0776d715afca60e2832a12162e7d571a", size = 18253924, upload-time = "2026-10-16T14:19:34.521Z" },
       ]
   repolish:
-    fingerprint: sha256:786f3c3ed9aa3a736583b6fa0912095f8f5f789aff98d327babb472359e4aaa2
+    fingerprint: sha256:96fb374f26c48deafc17293b684e97e10ba097309badb02467561b853847fee0
     uv_lock: |
       version = 1
       revision = 3
       requires-python = ">=3.12"
+
+      [manifest]
+      overrides = [{ name = "repolish", editable = "../../../" }]
 
       [[package]]
       name = "annotated-types"
@@ -1345,7 +1348,7 @@ environments:
       [[package]]
       name = "hotdogwerx-devkit-workspace"
       version = "0.1.0"
-      source = { git = "https://github.com/hotdog-werx/devkit?subdirectory=packages%2Fdevkit-workspace&branch=topic%2Fworkspace-provider#e450c447e5532c26b209c97c78b2b992a12cb075" }
+      source = { git = "https://github.com/hotdog-werx/devkit?subdirectory=packages%2Fdevkit-workspace&branch=master#39812d91e36c0554fd30cfc5b542dc09e20a8ba8" }
       dependencies = [
           { name = "repolish" },
       ]
@@ -1713,6 +1716,18 @@ environments:
       ]
 
       [[package]]
+      name = "pytest-mock"
+      version = "3.17.0"
+      source = { registry = "https://pypi.org/simple" }
+      dependencies = [
+          { name = "pytest" },
+      ]
+      sdist = { url = "https://files.pythonhosted.org/packages/97/c2/28b9f5b955ff2bcd4727a6f768e2ca9b586cd7c37b95ea5f7b9b873ac7b3/pytest_mock-3.17.0.tar.gz", hash = "sha256:e36576e0985e01027e999891e7a966c67822d40c89ef1b4c8b6e22737e3590b4", size = 43064, upload-time = "2026-10-17T16:21:42.435Z" }
+      wheels = [
+          { url = "https://files.pythonhosted.org/packages/e8/ea/47fbdc8f37410956fd445720e927589b1e2a47772c5f28109f0ce2fa26d9/pytest_mock-3.17.0-py3-none-any.whl", hash = "sha256:1b82aa4b37137248bd687055e109723debeb07b489de1565297dc9589c5f2d6b", size = 11248, upload-time = "2026-10-17T16:21:41.265Z" },
+      ]
+
+      [[package]]
       name = "pytest-xdist"
       version = "3.8.0"
       source = { registry = "https://pypi.org/simple" }
@@ -1889,6 +1904,7 @@ environments:
           { name = "internal-tools" },
           { name = "pytest" },
           { name = "pytest-cov" },
+          { name = "pytest-mock" },
           { name = "pytest-xdist" },
           { name = "repolish" },
           { name = "ty" },
@@ -1896,11 +1912,12 @@ environments:
 
       [package.metadata]
       requires-dist = [
-          { name = "hotdogwerx-devkit-workspace", git = "https://github.com/hotdog-werx/devkit?subdirectory=packages%2Fdevkit-workspace&branch=topic%2Fworkspace-provider" },
+          { name = "hotdogwerx-devkit-workspace", git = "https://github.com/hotdog-werx/devkit?subdirectory=packages%2Fdevkit-workspace&branch=master" },
           { name = "internal-tools", editable = "../../../internal" },
           { name = "pytest" },
           { name = "pytest-cov" },
+          { name = "pytest-mock" },
           { name = "pytest-xdist" },
           { name = "repolish", editable = "../../../" },
-          { name = "ty", specifier = "==0.0.89" },
+          { name = "ty", specifier = ">=0.0.89" },
       ]
