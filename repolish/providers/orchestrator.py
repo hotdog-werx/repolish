@@ -80,7 +80,7 @@ def _prepare_pipeline_state(
         _set_provider_package_identity(
             module_cache,
             instances,
-            options.provider_package_identity,
+            options.provider_module_names,
         )
 
     with _phase(options, 'provider_pipeline.contexts'):
@@ -251,7 +251,7 @@ def create_providers(  # noqa: PLR0913 - skip for now
     context_only: bool = False,
     fast_lanes_only: bool = False,
     phase_timer: PhaseTimer | None = None,
-    provider_package_identity: tuple[str, str] | None = None,
+    provider_module_names: dict[str, str] | None = None,
 ) -> SessionBundle:
     """Load all template providers and merge their contributions.
 
@@ -308,7 +308,7 @@ def create_providers(  # noqa: PLR0913 - skip for now
             context_only=context_only,
             fast_lanes_only=fast_lanes_only,
             phase_timer=phase_timer,
-            provider_package_identity=provider_package_identity,
+            provider_module_names=provider_module_names,
             extra_provider_entries=extra_provider_entries,
             extra_inputs=extra_inputs,
         ),

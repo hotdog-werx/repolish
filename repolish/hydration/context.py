@@ -23,7 +23,6 @@ class FinalProviderOptions:
     context_only: bool = False
     fast_lanes_only: bool = False
     phase_timer: PhaseTimer | None = None
-    provider_package_identity: tuple[str, str] | None = None
 
 
 def _collect_provider_overrides(
@@ -189,6 +188,14 @@ def build_final_providers(
     # determine directories from provider info (alias_to_pid holds the
     # normalized loader IDs constructed from target_dir)
     dirs: list[str | tuple[str, str]] = list(alias_to_pid.items())
+    # Module declarations keyed by the same loader ids as *dirs*, so the
+    # pipeline resolves module providers' identity from the declared module
+    # (live import) rather than sniffing the linked file's ``__package__``.
+    module_names = {
+        alias_to_pid[alias]: info.module_name
+        for alias, info in config.providers.items()
+        if info.module_name and alias in alias_to_pid
+    }
     result = create_providers(
         dirs,
         contributions=contributions,
@@ -198,7 +205,7 @@ def build_final_providers(
         context_only=options.context_only,
         fast_lanes_only=options.fast_lanes_only,
         phase_timer=options.phase_timer,
-        provider_package_identity=options.provider_package_identity,
+        provider_module_names=module_names,
     )
 
     # create_providers always returns a SessionBundle (the dry-run variant

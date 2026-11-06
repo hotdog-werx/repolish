@@ -501,3 +501,13 @@ class ResolvedProviderInfo(BaseModel):
             'Contains context_merge, context_dotted, anchors, and file_mappings.'
         ),
     )
+    module_name: str = Field(
+        default='',
+        description=(
+            'Dotted module name from the ``module:`` declaration, empty for '
+            'static providers. The live-importable identity of the provider '
+            'package, independent of where the resources link points: the '
+            'loader resolves package identity from this name so a linked or '
+            'copied provider still renders correct generated-file headers.'
+        ),
+    )

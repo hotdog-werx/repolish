@@ -5,6 +5,11 @@ a `HookFailure`, skips that hook, and keeps going. These tests pin the
 model end to end: the failures ride the `SessionBundle`, the debug
 reports land in `.repolish/_/hook-failures/`, and both apply and check
 exit 1 while the healthy work still happens.
+
+One exception: a failed create_context leaves a context with no provider
+identity, and when that provider owns files the render pass refuses to
+build its namespace (headers would carry no provider name) instead of
+writing them.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from repolish.exceptions import ContextUnsoundError
 from repolish.providers import create_providers
 from repolish.providers.models import (
     HOOK_SKIP_SEMANTICS,
@@ -379,12 +385,36 @@ _CREATE_CONTEXT_BROKEN_PROVIDER = """\
 def test_broken_create_context_exits_one_without_crashing(
     tmp_path: Path,
 ) -> None:
+    """A failed create_context leaves a bare context: record, skip, exit 1.
+
+    The provider owns no files here, so nothing renders from the bare
+    context and the failure is ordinary hook noise.
+    """
     mod, _ = _write_provider(tmp_path, _CREATE_CONTEXT_BROKEN_PROVIDER, {})
     result = _apply(mod.P, tmp_path, alias='ctx-broken')
     assert result.exit_code == 1
     (failure,) = result.session.providers.hook_failures
     assert failure.hook == 'create_context'
     assert failure.error == 'context boom'
+
+
+def test_broken_create_context_stops_the_run_when_files_render(
+    tmp_path: Path,
+) -> None:
+    """A failed create_context stops the run when the provider owns files.
+
+    The bare context stored in the hook's place carries no provider
+    identity, so building its template namespace would stamp headers with
+    no provider name on every file the run writes: the render pass refuses
+    it before anything is staged, and the hook failure is still recorded.
+    """
+    mod, _ = _write_provider(
+        tmp_path,
+        _CREATE_CONTEXT_BROKEN_PROVIDER,
+        {'OUT.md.jinja': '{{ repolish.generated_header }}\n'},
+    )
+    with pytest.raises(ContextUnsoundError, match='carries no identity'):
+        _apply(mod.P, tmp_path, alias='ctx-broken')
 
 
 _CLEAN_PROVIDER = """\

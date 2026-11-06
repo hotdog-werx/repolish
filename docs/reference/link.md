@@ -105,7 +105,11 @@ those CLIs are removed in v2.
 - After installing or upgrading a provider package.
 - After a clean checkout where `.repolish/_/` does not exist yet.
 - Whenever a provider's resources have moved on disk.
+- When `repolish apply` refuses to start with an unsound-context error: `link`
+  re-registers the provider at the module's current location.
 
 You do not need to run `repolish link` before every `repolish apply`. The
-`apply` command will re-register automatically when a cached path is missing or
-stale.
+`apply` command re-registers automatically when a cached path is missing. A
+registration that still exists but no longer matches where the environment
+imports the module is an unsound context: `apply` stops with an error instead of
+writing from the stale registration.

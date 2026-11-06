@@ -39,7 +39,8 @@ from repolish.config.models.provider import (
     ProviderOverrides,
     ProviderSymlink,
 )
-from repolish.linker.health import ProviderReadinessResult
+from repolish.exceptions import ContextUnsoundError
+from repolish.linker.health import ProviderReadinessResult, SoundnessIssue
 from repolish.postprocess.models import (
     CommandOutcome,
     PostProcessEntry,
@@ -54,10 +55,12 @@ from repolish.providers.models import (
     FileMode,
     GlobalContext,
     HookFailure,
+    ProviderInfo,
     TemplateMapping,
     ValidationResult,
     ValidationStatus,
 )
+from repolish.providers.models.context import RepolishContext
 from repolish.providers.models.workspace import WorkspaceContext
 
 
@@ -238,6 +241,51 @@ def test_apply_warns_when_providers_not_ready(
 
     rv = run_repolish(ApplyOptions(config_path=cfg_path, check_only=False))
     assert rv == 0
+
+
+def test_resolve_session_raises_context_unsound_before_pipeline(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Soundness issues abort the session before the provider pipeline runs.
+
+    A stale registration is exactly the state that renders generated
+    headers with a degraded provider name, so the run must stop at the
+    readiness gate instead of building providers from stale locations.
+    """
+    cfg_path = tmp_path / 'repolish.yaml'
+    cfg_path.write_text('')
+
+    mocker.patch(
+        'repolish.commands.apply.pipeline.ensure_providers_ready',
+        return_value=ProviderReadinessResult(
+            ready=[],
+            failed=[],
+            soundness_issues=[
+                SoundnessIssue(
+                    alias='lib',
+                    module='mylib_ws',
+                    kind='stale_location',
+                    detail='the registered provider moved',
+                    recovery='`repolish link`',
+                ),
+            ],
+        ),
+    )
+    mock_pipeline = mocker.patch(
+        'repolish.commands.apply.pipeline.build_final_providers',
+        return_value=SessionBundle(provider_contexts={}),
+    )
+
+    with pytest.raises(
+        ContextUnsoundError,
+        match='repolish context is unsound; stopped before touching any files',
+    ):
+        resolve_session(ApplyOptions(config_path=cfg_path, check_only=False))
+
+    # The raise fires inside the config/readiness phase: the provider
+    # pipeline (and everything after it) never runs.
+    mock_pipeline.assert_not_called()
 
 
 def test_apply_command_runs_with_valid_provider(
@@ -873,7 +921,17 @@ def test_template_sources_translated_from_alias_to_pid(
         },
     )
 
-    providers = SessionBundle(provider_contexts={pid: BaseContext()})
+    providers = SessionBundle(
+        provider_contexts={
+            pid: BaseContext().model_copy(
+                update={
+                    'repolish': RepolishContext(
+                        provider=ProviderInfo(alias='template_a'),
+                    ),
+                },
+            ),
+        },
+    )
 
     mocker.patch(
         'repolish.commands.apply.pipeline.load_config',

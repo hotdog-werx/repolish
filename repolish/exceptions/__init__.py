@@ -7,6 +7,7 @@ from repolish.exceptions.config import (
 )
 from repolish.exceptions.core import RepolishError
 from repolish.exceptions.linker import (
+    ContextUnsoundError,
     LinkerError,
     ModuleLinkError,
     ProviderNotReadyError,
@@ -17,6 +18,7 @@ from repolish.exceptions.linker import (
 __all__ = [
     'ConfigError',
     'ConfigValidationError',
+    'ContextUnsoundError',
     'DirectoryValidationError',
     'LinkerError',
     'ModuleLinkError',

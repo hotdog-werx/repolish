@@ -237,6 +237,40 @@ def test_link_unknown_alias_lists_valid_aliases(tmp_path: Path) -> None:
     assert 'other' in result.output
 
 
+def test_link_exits_one_when_a_provider_stays_unsound(tmp_path: Path) -> None:
+    """A module provider that registers via its provider_root fallback is unsound.
+
+    ``module:`` declares the environment provides the package; when it is not
+    importable, link registers the declared fallback so the run has
+    something to load, but the registration still disagrees with the live
+    environment. Link reports the provider as unsound and exits 1 instead
+    of blessing the degraded state.
+    """
+    provider_dir = tmp_path / 'provider'
+    provider_dir.mkdir()
+    write_repolish_config(
+        tmp_path,
+        {
+            'providers': {
+                'test': {
+                    'module': 'missing_mod_abc',
+                    'provider_root': './provider',
+                },
+            },
+        },
+    )
+    init_git_repo(tmp_path)
+
+    result = _run_link_result([], tmp_path)
+
+    assert result.exit_code == 1
+    # the unsound report names the module and carries the reinstall
+    # recovery; the summary warning for the same state is display-gated
+    # and not shown at the default verbosity.
+    assert 'missing_mod_abc' in result.output
+    assert 'not importable from this environment' in result.output
+
+
 def test_link_register_only_leaves_copies_unmaterialised(
     tmp_path: Path,
 ) -> None:

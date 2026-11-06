@@ -8,9 +8,13 @@ from repolish.config.models.provider import (
     ProviderConfig,
     ProviderCopy,
 )
+from repolish.exceptions import ContextUnsoundError
 from repolish.fastlane import merge_fast_lanes, restrict_to_lane
 from repolish.hydration import FinalProviderOptions, build_final_providers
-from repolish.linker.health import ensure_providers_ready
+from repolish.linker.health import (
+    ensure_providers_ready,
+    soundness_report,
+)
 from repolish.linker.orchestrator import (
     collect_provider_copies,
     collect_provider_symlinks,
@@ -47,6 +51,11 @@ def _load_session_config(
     Returns both the resolved config and the raw provider entries (what the
     symlink/copy collectors need). Readiness failures only warn: the
     providers in question are absent from the run, never fatal on their own.
+
+    Soundness failures are fatal before anything else happens: a provider
+    registered at the wrong location silently degrades generated headers,
+    so the run refuses to start (recovery steps in the error) instead of
+    writing files with a broken context.
     """
     with timer.phase('config_load'):
         raw_config = load_config_file(options.config_path)
@@ -72,6 +81,8 @@ def _load_session_config(
             strict=options.strict,
             location_context=None,
         )
+    if readiness.soundness_issues:
+        raise ContextUnsoundError(soundness_report(readiness.soundness_issues))
     if readiness.failed:
         logger.warning(
             'providers_not_ready',
@@ -142,6 +153,13 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
     pipeline (context creation -> input exchange -> finalization), and captures
     the result as a :class:`~repolish.commands.apply.options.ResolvedSession`.
 
+    The registration audit (:func:`~repolish.linker.health.audit_context_soundness`,
+    raised inside the config phase) stops an unsound context with
+    :class:`~repolish.exceptions.ContextUnsoundError` and recovery steps. The
+    provider name itself is guarded downstream, where templates read it: the
+    render pass refuses to build a namespace from a context whose identity
+    never resolved, before anything is copied to the project.
+
     No files are written. The caller can use the returned object to drive the
     apply/check steps, or to pass cross-session data to a root session.
     """
@@ -171,7 +189,6 @@ def resolve_session(options: ApplyOptions) -> ResolvedSession:
                 context_only=options.command_only,
                 fast_lanes_only=options.fast_lanes_only,
                 phase_timer=timer,
-                provider_package_identity=options.provider_package_identity,
             ),
         )
     # A scoped run is surgical: only the selected lane's (or command's)

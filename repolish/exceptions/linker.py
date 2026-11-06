@@ -29,3 +29,17 @@ class ProviderNotReadyError(LinkerError):
     """Raised in strict mode when one or more providers could not be registered."""
 
     log_category = 'provider_not_ready'
+
+
+class ContextUnsoundError(LinkerError):
+    """Raised when the repolish context fails its pre-run soundness audit.
+
+    A module-declared provider whose module is not importable from the
+    live environment, or whose registration points somewhere other than
+    where the environment imports its module. Either silently degrades
+    generated-file headers (the provider name falls back to the alias),
+    so every run verifies them before touching files and fails with
+    recovery steps instead.
+    """
+
+    log_category = 'context_unsound'

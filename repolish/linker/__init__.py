@@ -15,7 +15,10 @@ from repolish.cli_registry import (
 )
 from repolish.linker.health import (
     ProviderReadinessResult,
+    SoundnessIssue,
+    audit_context_soundness,
     ensure_providers_ready,
+    soundness_report,
 )
 from repolish.linker.module_link import (
     probe_module_info,
@@ -44,7 +47,9 @@ from repolish.providers.models import ResourceCopy, Symlink
 __all__ = [
     'ProviderReadinessResult',
     'ResourceCopy',
+    'SoundnessIssue',
     'Symlink',
+    'audit_context_soundness',
     'collect_provider_copies',
     'collect_provider_symlinks',
     'create_additional_link',
@@ -61,5 +66,6 @@ __all__ = [
     'run_provider_link',
     'save_provider_alias',
     'save_provider_info',
+    'soundness_report',
     'write_provider_info_file',
 ]

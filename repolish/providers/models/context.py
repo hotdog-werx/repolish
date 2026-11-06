@@ -158,14 +158,26 @@ def get_global_context() -> GlobalContext:
     )
 
 
+def provider_ready(info: ProviderInfo) -> bool:
+    """True when *info* carries enough identity to stamp a generated header.
+
+    The provider name resolves from the package name, the project name, or
+    the alias; a context is ready when at least one of them is set.
+    """
+    return bool(info.package_name or info.project_name or info.alias)
+
+
 class ProviderInfo(BaseModel):
     """Runtime metadata injected into every provider context by the loader.
 
     Available in templates as ``{{ repolish.provider.alias }}``,
+    ``{{ repolish.provider.name }}``,
     ``{{ repolish.provider.version }}`` and
     ``{{ repolish.provider.major_version }}``.  All fields default to
     empty/None so providers that don't need the information aren't forced to
-    handle it.
+    handle it; a context whose identity never resolved cannot reach a
+    template (the render pass refuses it), so ``name`` is only empty on
+    contexts that are not about to be rendered.
     """
 
     alias: str = ''
@@ -196,6 +208,23 @@ class ProviderInfo(BaseModel):
         except (ValueError, IndexError):
             return None
 
+    @computed_field
+    @property
+    def name(self) -> str:
+        """The provider identity every generated header stamps.
+
+        The same resolution order as ``generated_header``: the module name
+        (``package_name``) comes first so the header names what actually
+        generated the file, falling back to the distribution name
+        (``project_name``) and the alias. Empty when the context's identity
+        never resolved; a header without a provider name corrupts every
+        file that carries it, so the render pass refuses to build a
+        template namespace from such a context before any file is written
+        (see :func:`repolish.hydration.rendering._require_provider_identity`).
+        Code that needs the check uses :func:`provider_ready`.
+        """
+        return self.package_name or self.project_name or self.alias
+
 
 class RepolishContext(GlobalContext):
     """The ``repolish`` namespace injected into every provider context.
@@ -222,9 +251,11 @@ class RepolishContext(GlobalContext):
         (``provider.package_name``) comes first so the header names what
         actually generated the file — the same module reads the same
         regardless of which distribution installed it — falling back to the
-        distribution name (``provider.project_name``), the alias, and finally
-        ``repolish``.  Providers should stamp their managed files with it
-        instead of hand-rolling their own message; a provider that needs a
+        distribution name (``provider.project_name``) and the alias, and
+        finally ``repolish`` for contexts outside a render (a template never
+        sees a context whose identity resolved none of them: the render pass
+        refuses it first).  Providers should stamp their managed files with
+        it instead of hand-rolling their own message; a provider that needs a
         truly custom header can still define its own ``generated_header``
         computed field on its context, which shadows this one for its
         templates.
@@ -233,7 +264,7 @@ class RepolishContext(GlobalContext):
         this returns bare text so the same line works for any file type.
         """
         info = self.provider
-        name = info.package_name or info.project_name or info.alias or 'repolish'
+        name = info.name or 'repolish'
         raw_member = info.session.member_name
         member = '' if raw_member in ('', '_root') else raw_member
         slug = f'{name}(in {member})' if member else name
