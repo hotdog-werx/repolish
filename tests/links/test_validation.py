@@ -6,16 +6,16 @@ from pytest_mock import MockerFixture
 
 from repolish.exceptions import SymlinkError
 from repolish.links.validation import (
-    SymlinkCheckResult,
+    LinkCheckResult,
     check_copy_validity,
-    validate_existing_symlink,
+    validate_existing_link,
     validate_source_directory,
 )
 
 
 def test_symlink_check_result_creation():
-    """Test creating a SymlinkCheckResult."""
-    result = SymlinkCheckResult(needs_update=True, is_correct=False)
+    """Test creating a LinkCheckResult."""
+    result = LinkCheckResult(needs_update=True, is_correct=False)
     assert result.needs_update is True
     assert result.is_correct is False
 
@@ -50,7 +50,7 @@ def test_validate_source_directory_file_instead(tmp_path: Path):
 
 
 @dataclass
-class SymlinkValidationCase:
+class LinkValidationCase:
     name: str
     force: bool
     setup_type: str  # 'correct', 'wrong_target', 'broken'
@@ -61,28 +61,28 @@ class SymlinkValidationCase:
 @pytest.mark.parametrize(
     'case',
     [
-        SymlinkValidationCase(
+        LinkValidationCase(
             name='no_force_correct_symlink',
             force=False,
             setup_type='correct',
             expected_needs_update=False,
             expected_is_correct=True,
         ),
-        SymlinkValidationCase(
+        LinkValidationCase(
             name='with_force_correct_symlink',
             force=True,
             setup_type='correct',
             expected_needs_update=True,
             expected_is_correct=True,
         ),
-        SymlinkValidationCase(
+        LinkValidationCase(
             name='wrong_target',
             force=False,
             setup_type='wrong_target',
             expected_needs_update=True,
             expected_is_correct=False,
         ),
-        SymlinkValidationCase(
+        LinkValidationCase(
             name='broken_symlink',
             force=False,
             setup_type='broken',
@@ -92,8 +92,8 @@ class SymlinkValidationCase:
     ],
     ids=lambda case: case.name,
 )
-def test_validate_existing_symlink(tmp_path: Path, case: SymlinkValidationCase):
-    """Test validate_existing_symlink under different conditions."""
+def test_validate_existing_link(tmp_path: Path, case: LinkValidationCase):
+    """Test validate_existing_link under different conditions."""
     source_dir = tmp_path / 'source'
     target_dir = tmp_path / 'target'
 
@@ -110,7 +110,7 @@ def test_validate_existing_symlink(tmp_path: Path, case: SymlinkValidationCase):
         target_dir.symlink_to(source_dir)
         source_dir.rmdir()  # Break the symlink
 
-    result = validate_existing_symlink(target_dir, source_dir, force=case.force)
+    result = validate_existing_link(target_dir, source_dir, force=case.force)
     assert result.needs_update is case.expected_needs_update
     assert result.is_correct is case.expected_is_correct
 

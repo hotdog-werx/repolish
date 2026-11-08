@@ -10,7 +10,11 @@ from repolish.linker.orchestrator import (
     create_provider_copies,
     create_provider_symlinks,
 )
-from repolish.links import normalize_windows_path
+from repolish.links import (
+    is_link,
+    normalize_windows_path,
+    read_link_target,
+)
 
 logger = get_logger(__name__)
 
@@ -22,8 +26,9 @@ def check_symlinks(
     """Validate all expected symlinks and return a list of issue strings.
 
     Each issue string identifies the provider alias and describes the problem
-    (missing symlink, wrong target, or path exists but is not a symlink).
-    Returns an empty list when every symlink is present and correct.
+    (missing link, wrong target, or path exists but is not a link). A
+    materialised link may be a real symlink or a Windows junction; both
+    count. Returns an empty list when every symlink is present and correct.
     """
     issues: list[str] = []
     for alias, symlinks in resolved_symlinks.items():
@@ -45,14 +50,14 @@ def _check_one_symlink(
 ) -> str | None:
     """Return an issue string if the symlink is wrong/missing, else None."""
     target_path = Path(symlink.target)
-    if target_path.is_symlink():
-        actual = normalize_windows_path(target_path.readlink().resolve())
+    if is_link(target_path):
+        actual = normalize_windows_path(read_link_target(target_path).resolve())
         source_path = normalize_windows_path(source_path)
         if actual != source_path:
             return f'{alias}: symlink {symlink.target!s} → {actual!s} (expected → {source_path!s})'
         return None
     if target_path.exists():
-        return f'{alias}: {symlink.target!s} exists but is not a symlink'
+        return f'{alias}: {symlink.target!s} exists but is not a link'
     return f'{alias}: missing symlink {symlink.target!s} → {symlink.source!s}'
 
 

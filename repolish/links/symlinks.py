@@ -3,9 +3,17 @@ from pathlib import Path
 
 from hotlog import get_logger
 
+from repolish.links.link_ops import (
+    LinkKind,
+    create_junction,
+    is_junction,
+    is_link,
+    remove_link,
+    supports_junctions,
+)
 from repolish.links.validation import (
     check_copy_validity,
-    validate_existing_symlink,
+    validate_existing_link,
     validate_source_directory,
 )
 from repolish.links.windows_utils import supports_symlinks
@@ -14,12 +22,12 @@ logger = get_logger(__name__)
 
 
 def _remove_target(target: Path) -> None:
-    """Remove a target file or directory (symlink or copy)."""
+    """Remove a target file or directory (link, junction, or copy)."""
     logger.debug('removing_target', target=str(target))
 
-    if target.is_symlink():
-        logger.debug('removing_symlink')
-        target.unlink()
+    if is_link(target):
+        logger.debug('removing_link')
+        remove_link(target)
     elif target.is_dir():
         logger.debug('removing_directory')
         shutil.rmtree(target)
@@ -33,8 +41,8 @@ def _resolve_existing_target(
     source_dir: Path,
     *,
     force: bool,
-) -> bool | None:
-    """Determine what action to take for an existing target directory or symlink.
+) -> LinkKind | None:
+    """Determine what action to take for an existing target directory or link.
 
     Args:
         target_dir: The existing target path
@@ -42,18 +50,19 @@ def _resolve_existing_target(
         force: Whether to force recreation
 
     Returns:
-        True if already a correct symlink (no action needed)
-        False if a copy that should be respected (skip operation)
-        None if target was removed and caller should proceed with creation
+        The kind of the target that is already in place and respected
+        (``'symlink'``, ``'junction'``, or ``'copy'``), or ``None`` when
+        the target was removed and the caller should proceed with creation
     """
-    if target_dir.is_symlink():
-        result = validate_existing_symlink(
+    if is_link(target_dir):
+        result = validate_existing_link(
             target_dir,
             source_dir,
             force=force,
         )
         if not result.needs_update:
-            return True  # Already correct symlink
+            # Already the correct link; report which kind is in place
+            return 'junction' if is_junction(target_dir) else 'symlink'
 
         logger.info(
             'removing_existing_target',
@@ -63,10 +72,10 @@ def _resolve_existing_target(
         _remove_target(target_dir)
         return None  # Proceed with creation
 
-    # Target is a directory or file (not a symlink)
+    # Target is a directory or file (not a link)
     result = check_copy_validity(force=force)
     if result.is_correct:
-        return False  # Skip and return False because it's a copy
+        return 'copy'  # Skip and report the existing copy
 
     logger.info(
         'removing_existing_target',
@@ -77,20 +86,25 @@ def _resolve_existing_target(
     return None  # Proceed with creation
 
 
-def _create_link_or_copy_generic(source_path: Path, target_path: Path) -> bool:
-    """Create a symlink or copy from source to target (files or directories).
+def _create_link_or_copy_generic(source_path: Path, target_path: Path) -> LinkKind:
+    """Create a symlink, junction, or copy from source to target.
+
+    The chain mirrors what the platform allows: a real symlink when the
+    process may create one, a junction when Windows blocks symlinks but
+    the filesystem takes reparse points, and a copy as the last resort.
+    Files skip the junction tier: junctions point at directories only.
 
     Args:
         source_path: Source file or directory to link/copy from
         target_path: Target location for the link/copy
 
     Returns:
-        True if symlink was created, False if copy was used
+        The kind of link created, or ``'copy'`` when nothing better was possible
     """
     # Create parent directory
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create symlink or copy
+    # Real symlinks first: they work everywhere and cross volumes
     if supports_symlinks():
         logger.debug('creating_symlink')
         target_path.symlink_to(
@@ -103,9 +117,29 @@ def _create_link_or_copy_generic(source_path: Path, target_path: Path) -> bool:
             target=str(target_path),
             _display_level=1,
         )
-        return True
+        return 'symlink'
 
-    logger.debug('symlinks_not_supported_copying')
+    # Junctions need no privilege and are local-volume only, which is the
+    # contract repolish links want anyway
+    if supports_junctions() and source_path.is_dir():
+        try:
+            create_junction(source_path, target_path)
+        except OSError as exc:
+            logger.warning(
+                'junction_creation_failed_falling_back_to_copy',
+                target=str(target_path),
+                error=str(exc),
+            )
+        else:
+            logger.info(
+                'link_created_successfully',
+                link_type='junction',
+                target=str(target_path),
+                _display_level=1,
+            )
+            return 'junction'
+
+    logger.debug('links_not_supported_copying')
     if source_path.is_dir():
         shutil.copytree(source_path, target_path)
     else:
@@ -116,7 +150,7 @@ def _create_link_or_copy_generic(source_path: Path, target_path: Path) -> bool:
         target=str(target_path),
         _display_level=1,
     )
-    return False
+    return 'copy'
 
 
 def link_resources(
@@ -124,7 +158,7 @@ def link_resources(
     target_dir: Path,
     *,
     force: bool = False,
-) -> bool:
+) -> LinkKind:
     """Link or copy library resources to target directory.
 
     Args:
@@ -133,13 +167,14 @@ def link_resources(
         force: If True, always recreate the link/copy even if it exists
 
     Returns:
-        True if symlink was created, False if copy was used
+        The kind of link created (``'symlink'``, ``'junction'``) or ``'copy'``
+        when nothing better was possible
 
     Raises:
         FileNotFoundError: If source_dir does not exist
         ValueError: If paths are invalid
     """
-    # Resolve source but keep target as-is to preserve symlink detection
+    # Resolve source but keep target as-is to preserve link detection
     source_dir = source_dir.resolve()
     target_dir = Path(target_dir)
 
@@ -154,7 +189,7 @@ def link_resources(
     validate_source_directory(source_dir)
 
     # Handle existing target if present
-    if target_dir.exists() or target_dir.is_symlink():
+    if target_dir.exists() or is_link(target_dir):
         result = _resolve_existing_target(target_dir, source_dir, force=force)
         if result is not None:
             return result
@@ -170,7 +205,7 @@ def create_additional_link(
     target: str,
     *,
     force: bool = False,
-) -> bool:
+) -> LinkKind:
     """Create an additional symlink from repo to provider resources.
 
     Args:
@@ -181,7 +216,8 @@ def create_additional_link(
         force: If True, remove existing target before creating link
 
     Returns:
-        True if symlink was created, False if copy was used
+        The kind of link created (``'symlink'``, ``'junction'``) or ``'copy'``
+        when nothing better was possible
     """
     source_path = resources_dir / source
     target_path = Path(target)
@@ -200,17 +236,17 @@ def create_additional_link(
         msg = f'Source does not exist: {source_path}'
         raise FileNotFoundError(msg)
 
-    # Handle existing target. A *broken* symlink reports as absent to
+    # Handle existing target. A *broken* link reports as absent to
     # Path.exists() (it follows the link), so it must be checked explicitly —
     # and since a dangling link holds no user data, it is always replaced
     # instead of erroring, mirroring link_resources.
-    if target_path.is_symlink() and not target_path.exists():
+    if is_link(target_path) and not target_path.exists():
         logger.info(
-            'removing_broken_symlink',
+            'removing_broken_link',
             target=str(target_path),
             _display_level=1,
         )
-        target_path.unlink()
+        remove_link(target_path)
     elif target_path.exists():
         if force:
             logger.info(

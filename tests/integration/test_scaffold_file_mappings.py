@@ -129,7 +129,7 @@ def test_check_exits_zero_when_mapped_destination_already_seeded(
     symlink.unlink()
     symlink.write_text('not a symlink\n', encoding='utf-8')
     result = run_repolish(['apply', '--check'], exit_code=2)
-    assert 'exists but is not a symlink' in result.output
+    assert 'exists but is not a link' in result.output
 
     # Corrupt the symlink so it points somewhere wrong; check must detect it.
     run_repolish(['apply'])

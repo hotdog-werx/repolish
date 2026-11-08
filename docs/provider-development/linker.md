@@ -114,7 +114,10 @@ The `resource_linker` decorator automatically creates a CLI with these features:
 Automatically handles platform differences:
 
 - **Unix/macOS**: Creates symlinks (always points to current library version)
-- **Windows**: Falls back to copying if symlinks aren't supported
+- **Windows**: Creates a real symlink when the process may create one (developer
+  mode or an elevated console), falls back to a junction directory (no privilege
+  needed, local volumes only, which is the contract these links want anyway),
+  and copies as the last resort
 - **Auto-detection**: Tests symlink support at runtime
 
 ## For Project Users
@@ -217,9 +220,9 @@ How a provider update lands depends on what changed:
   `repolish link --force` re-registers every provider from scratch, still
   without deleting anything.
 
-On Windows, where `.repolish/<library-name>` is a copy rather than a symlink,
-both an in-place upgrade and a move are picked up by the next `repolish link`,
-which refreshes the copy.
+On Windows, where `.repolish/<library-name>` may be a junction directory or a
+copy rather than a symlink, both an in-place upgrade and a move are picked up by
+the next `repolish link`, which recreates the target.
 
 ```bash
 uv add mylib@2.0
@@ -518,7 +521,8 @@ After installing the package:
 mylib-link
 ```
 
-This creates a symlink (or copy on Windows) at `.repolish/mylib/`.
+This creates a symlink (or, where symlinks are blocked, a junction or a copy) at
+`.repolish/mylib/`.
 ````
 
 ### For Project Users

@@ -210,6 +210,39 @@ def test_apply_deletes_directory_in_delete_files(tmp_path: Path) -> None:
     assert not dir_to_delete.exists()
 
 
+def test_apply_deletion_removes_link_without_following(tmp_path: Path) -> None:
+    """A link in delete_files is removed as a link, never followed.
+
+    The delete set can overlap the link phase's output; recursing through
+    the link would delete the target's contents, which is the provider
+    package, not project state.
+    """
+    setup_output = tmp_path / 'setup-output'
+    (setup_output / 'repolish').mkdir(parents=True)
+
+    base_dir = tmp_path / 'project'
+    base_dir.mkdir()
+
+    target_dir = tmp_path / 'provider-package'
+    target_dir.mkdir()
+    (target_dir / 'lib.py').write_text('provider code')
+    link = base_dir / 'linked-package'
+    link.symlink_to(target_dir, target_is_directory=True)
+
+    providers = SessionBundle(
+        delete_files=[Path('linked-package')],
+        file_mappings={},
+        create_only_files=[],
+    )
+
+    apply_generated_output(setup_output, providers, base_dir)
+
+    assert not link.is_symlink()
+    assert not link.exists()
+    # The provider package the link pointed at must be untouched
+    assert (target_dir / 'lib.py').read_text() == 'provider code'
+
+
 def test_apply_skips_paused_regular_file(tmp_path: Path) -> None:
     """A file listed in paused_files is not overwritten by apply."""
     setup_output = tmp_path / 'setup-output'

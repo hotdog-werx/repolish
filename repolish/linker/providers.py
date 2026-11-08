@@ -14,6 +14,7 @@ from hotlog import get_logger
 
 from repolish.config.models.metadata import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
+from repolish.links import is_link, read_link_target
 from repolish.links.windows_utils import normalize_windows_path
 from repolish.utils import ensure_dot_repolish, ensure_meta_dir, open_utf8
 
@@ -129,17 +130,18 @@ def locations_match(
 def link_target_current(info: ProviderFileInfo) -> bool:
     """Return whether the recorded resources link already points at the package.
 
-    The provider CLI links ``site_package_dir`` → ``resources_dir``; when that
-    symlink is intact the linked content follows the package automatically, so
-    re-running the link command would be pure overhead.
+    The provider CLI links ``site_package_dir`` → ``resources_dir`` (a real
+    symlink, or a junction on Windows); when that link is intact the linked
+    content follows the package automatically, so re-running the link command
+    would be pure overhead.
     """
     if not info.site_package_dir:
         return False
     target = Path(info.resources_dir)
-    if not target.is_symlink():
+    if not is_link(target):
         return False
     return normalize_windows_path(
-        target.readlink().resolve(),
+        read_link_target(target).resolve(),
     ) == normalize_windows_path(
         Path(info.site_package_dir).resolve(),
     )

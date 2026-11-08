@@ -126,12 +126,11 @@ def _link_and_notify(
 ) -> None:
     """Run link_resources and call the success callback, or raise SystemExit on failure."""
     try:
-        is_symlink = link_resources(
+        link_type = link_resources(
             source_dir=pkg_dir,
             target_dir=resources_dir,
             force=force,
         )
-        link_type = 'symlink' if is_symlink else 'copy'
         logger.info(
             'resources_linked',
             library_name=library_name,
