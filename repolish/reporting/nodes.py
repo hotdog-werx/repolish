@@ -14,7 +14,7 @@ from pathlib import Path
 
 from rich.text import Text
 
-from repolish.console import supports_hyperlinks
+from repolish.console import hyperlink_style
 
 
 @dataclass
@@ -37,9 +37,9 @@ def details_link(text: Text, path: Path) -> None:
     No-op (not even the trailing text) when the console does not support
     hyperlinks, matching the validator and insertion report links.
     """
-    if not supports_hyperlinks:
+    style = hyperlink_style(path)
+    if not style:
         return
-    style = f'link file://{path.absolute()}'
     text.append(' [details]', style=style)
 
 

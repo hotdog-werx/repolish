@@ -13,6 +13,7 @@ from repolish.links.link_ops import (
     remove_link,
     supports_junctions,
 )
+from repolish.links.windows_utils import normalize_windows_path
 
 _MOUNT_POINT_TAG = 0xA0000003
 """``IO_REPARSE_TAG_MOUNT_POINT``: the reparse tag a junction carries."""
@@ -92,13 +93,18 @@ def test_is_link_spots_symlinks_and_junctions(
 
 
 def test_read_link_target_reads_symlinks_without_following(tmp_path: Path) -> None:
-    """A symlink reports the path it stores, not the resolved target."""
+    """A symlink reports the path it stores, not the resolved target.
+
+    Windows stores the absolute target with its extended-length prefix,
+    so both sides go through ``normalize_windows_path`` before comparing;
+    the product compares the same way.
+    """
     real_dir = tmp_path / 'dir'
     real_dir.mkdir()
     link = tmp_path / 'link'
     link.symlink_to(real_dir, target_is_directory=True)
 
-    assert read_link_target(link) == real_dir
+    assert normalize_windows_path(read_link_target(link)) == normalize_windows_path(real_dir)
 
 
 def test_read_link_target_resolves_junctions(tmp_path: Path) -> None:
@@ -166,10 +172,20 @@ def test_supports_junctions_follows_the_platform() -> None:
     assert supports_junctions() is (sys.platform == 'win32')
 
 
-def test_create_junction_refuses_non_windows(tmp_path: Path) -> None:
-    """Outside Windows the request cannot be served; OSError says copy instead."""
-    if supports_junctions():
-        pytest.skip('POSIX-only contract test')
+def test_create_junction_refuses_when_junctions_are_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A platform that cannot serve junctions gets OSError: the copy signal.
+
+    The gate is patched rather than skipped so the refusal runs on every
+    platform, Windows included; the real platform matrix is covered by
+    ``test_supports_junctions_follows_the_platform``.
+    """
+    monkeypatch.setattr(
+        'repolish.links.link_ops.supports_junctions',
+        lambda: False,
+    )
     with pytest.raises(OSError, match='junctions exist on Windows only'):
         create_junction(tmp_path, tmp_path / 'junction')
 

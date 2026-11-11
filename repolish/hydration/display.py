@@ -1,6 +1,8 @@
 from rich.console import Console
 from rich.syntax import Syntax
 
+from repolish.console import build_console
+
 
 def rich_print_diffs(
     diffs: list[tuple[str, str]],
@@ -14,7 +16,8 @@ def rich_print_diffs(
             ``force_terminal=True`` console so colours appear in CI.
     """
     if console is None:
-        console = Console(force_terminal=True)  # Enable colors in CI
+        # Enable colors in CI
+        console = build_console(force_terminal=True)
     for rel, msg in diffs:
         console.rule(f'[bold]{rel}')
         if msg in ('MISSING', 'PRESENT_BUT_SHOULD_BE_DELETED'):

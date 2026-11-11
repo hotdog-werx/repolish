@@ -1,3 +1,4 @@
+import filecmp
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from repolish.links import (
     is_link,
     normalize_windows_path,
     read_link_target,
+    supports_symlinks,
 )
 
 logger = get_logger(__name__)
@@ -26,9 +28,13 @@ def check_symlinks(
     """Validate all expected symlinks and return a list of issue strings.
 
     Each issue string identifies the provider alias and describes the problem
-    (missing link, wrong target, or path exists but is not a link). A
-    materialised link may be a real symlink or a Windows junction; both
-    count. Returns an empty list when every symlink is present and correct.
+    (missing link, wrong target, stale copy, or path exists but is not a
+    link). A materialised link may be a real symlink or a Windows junction;
+    both count. On a machine that cannot create symlinks, files have no
+    junction tier either, so the link chain ends on a copy: a faithful copy
+    passes there, since apply can never produce a link to satisfy the check
+    with. Returns an empty list when every symlink is present and correct
+    for the machine the check runs on.
     """
     issues: list[str] = []
     for alias, symlinks in resolved_symlinks.items():
@@ -56,9 +62,52 @@ def _check_one_symlink(
         if actual != source_path:
             return f'{alias}: symlink {symlink.target!s} → {actual!s} (expected → {source_path!s})'
         return None
-    if target_path.exists():
-        return f'{alias}: {symlink.target!s} exists but is not a link'
-    return f'{alias}: missing symlink {symlink.target!s} → {symlink.source!s}'
+    if not target_path.exists():
+        return f'{alias}: missing symlink {symlink.target!s} → {symlink.source!s}'
+    if not supports_symlinks():
+        # Without symlink privilege a file has no junction tier to fall back
+        # on, and a directory's junction creation can fail too: the chain
+        # ends on a copy, and apply can never produce a link here. A
+        # faithful copy is the expected state and passes; a drifted one is
+        # reported as stale, which apply genuinely fixes by re-copying.
+        if _copy_matches_source(source_path, target_path):
+            return None
+        return f'{alias}: stale copy {symlink.target!s} (expected content → {source_path!s})'
+    return f'{alias}: {symlink.target!s} exists but is not a link'
+
+
+def _copy_matches_source(source_path: Path, target_path: Path) -> bool:
+    """True when *target_path* is a faithful copy of *source_path*.
+
+    File targets are compared byte for byte, directory targets across
+    their whole tree. Only machines that cannot create symlinks consult
+    this, because the copy tier is where the link chain ends there (see
+    :func:`_check_one_symlink`). A missing source never matches: that
+    state belongs to a broken registration, not a healthy copy.
+    """
+    if source_path.is_dir():
+        return _copy_tree_matches(source_path, target_path)
+    if not source_path.is_file():
+        return False
+    return target_path.is_file() and filecmp.cmp(source_path, target_path, shallow=False)
+
+
+def _copy_tree_matches(source_path: Path, target_path: Path) -> bool:
+    """True when two directory trees hold the same paths with the same bytes."""
+    if not target_path.is_dir():
+        return False
+    source_entries = {path.relative_to(source_path) for path in source_path.rglob('*')}
+    target_entries = {path.relative_to(target_path) for path in target_path.rglob('*')}
+    if source_entries != target_entries:
+        return False
+    for relative in source_entries:
+        source_entry = source_path / relative
+        copied = target_path / relative
+        if source_entry.is_dir() != copied.is_dir():
+            return False
+        if source_entry.is_file() and not filecmp.cmp(source_entry, copied, shallow=False):
+            return False
+    return True
 
 
 def apply_symlinks(

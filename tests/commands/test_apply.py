@@ -1,3 +1,4 @@
+import shutil
 import sys
 import textwrap
 from pathlib import Path
@@ -30,7 +31,9 @@ from repolish.commands.apply.session import (
     run_session as run_repolish,
 )
 from repolish.commands.apply.symlinks import (
+    _check_one_symlink,
     apply_copies,
+    check_symlinks,
     held_back_copy_targets,
 )
 from repolish.config.models import RepolishConfig, ResolvedProviderInfo
@@ -41,6 +44,7 @@ from repolish.config.models.provider import (
 )
 from repolish.exceptions import ContextUnsoundError
 from repolish.linker.health import ProviderReadinessResult, SoundnessIssue
+from repolish.links import create_additional_link
 from repolish.postprocess.models import (
     CommandOutcome,
     PostProcessEntry,
@@ -772,6 +776,294 @@ def test_finish_check_returns_2_when_diffs_found(
     rc, result = finish_check(ctx)
     assert rc == 2
     assert 'some_diff' in result
+
+
+def _no_link_machine(mocker: MockerFixture, *, junctions: bool = False) -> None:
+    """Pin the link tiers off so the chain lands on copy, on any platform.
+
+    The junction tier can be re-enabled (``junctions=True``) to reproduce the
+    Windows shape where directory junctions work but symlinks need a
+    privilege the machine lacks.
+    """
+    mocker.patch(
+        'repolish.commands.apply.symlinks.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch('repolish.links.symlinks.supports_symlinks', return_value=False)
+    mocker.patch(
+        'repolish.links.symlinks.supports_junctions',
+        return_value=junctions,
+    )
+
+
+def test_check_symlinks_accepts_the_file_copy_tier_when_symlinks_are_unavailable(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Apply lands on a copy for files on a machine that cannot link; check agrees.
+
+    This is the Windows-without-privilege shape: a declared file symlink has
+    no junction tier to fall back on, so apply materialises a copy. The check
+    must accept that copy, or it would tell the user to run an apply that can
+    never satisfy it.
+    """
+    resources = tmp_path / 'resources'
+    (resources / 'configs').mkdir(parents=True)
+    (resources / 'configs' / '.editorconfig').write_text('root = true\n')
+    symlink = ProviderSymlink(
+        source=Path('configs/.editorconfig'),
+        target=Path('.editorconfig'),
+    )
+    providers = {
+        'provider': ResolvedProviderInfo(
+            alias='provider',
+            provider_root=resources,
+            resources_dir=resources,
+        ),
+    }
+    monkeypatch.chdir(tmp_path)
+    _no_link_machine(mocker)
+
+    kind = create_additional_link(
+        resources,
+        'provider',
+        str(symlink.source),
+        str(symlink.target),
+    )
+    assert kind == 'copy'
+
+    assert check_symlinks({'provider': [symlink]}, providers) == []
+
+
+def test_check_symlinks_accepts_the_directory_copy_tier_when_junctions_fail(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory whose junction creation fails lands on a copy; check agrees.
+
+    Junction-capable Windows can still refuse a junction (a volume without
+    reparse points), so the chain has to reach the copy tier for directories
+    too, and the check must accept what apply produced there.
+    """
+    resources = tmp_path / 'resources'
+    (resources / 'configs' / 'nested').mkdir(parents=True)
+    (resources / 'configs' / 'nested' / 'file.txt').write_text('data\n')
+    symlink = ProviderSymlink(
+        source=Path('configs'),
+        target=Path('linked-configs'),
+    )
+    providers = {
+        'provider': ResolvedProviderInfo(
+            alias='provider',
+            provider_root=resources,
+            resources_dir=resources,
+        ),
+    }
+    monkeypatch.chdir(tmp_path)
+    _no_link_machine(mocker, junctions=True)
+    mocker.patch('repolish.links.symlinks.create_junction', side_effect=OSError)
+
+    kind = create_additional_link(
+        resources,
+        'provider',
+        str(symlink.source),
+        str(symlink.target),
+    )
+    assert kind == 'copy'
+
+    assert check_symlinks({'provider': [symlink]}, providers) == []
+
+
+def test_check_one_symlink_reports_missing_targets(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A target that never materialised is reported as missing."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'source.txt'
+    source.write_text('data\n')
+    _no_link_machine(mocker)
+
+    issue = _check_one_symlink(
+        'provider',
+        ProviderSymlink(source=Path('source.txt'), target=Path('link.txt')),
+        source,
+    )
+    assert issue is not None
+    assert 'missing symlink' in issue
+
+
+def test_check_one_symlink_accepts_a_faithful_file_copy(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without symlink support, a byte-identical copy is the expected state."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'source.txt'
+    source.write_text('data\n')
+    (tmp_path / 'link.txt').write_text('data\n')
+    _no_link_machine(mocker)
+
+    assert (
+        _check_one_symlink(
+            'provider',
+            ProviderSymlink(source=Path('source.txt'), target=Path('link.txt')),
+            source,
+        )
+        is None
+    )
+
+
+def test_check_one_symlink_flags_a_drifted_file_copy(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy whose content drifted is stale: apply re-copies and fixes it."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'source.txt'
+    source.write_text('data\n')
+    (tmp_path / 'link.txt').write_text('edited\n')
+    _no_link_machine(mocker)
+
+    issue = _check_one_symlink(
+        'provider',
+        ProviderSymlink(source=Path('source.txt'), target=Path('link.txt')),
+        source,
+    )
+    assert issue is not None
+    assert 'stale copy' in issue
+    assert '(expected content →' in issue
+
+
+def test_check_one_symlink_accepts_a_faithful_directory_copy(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copied tree that matches the source in paths and bytes passes."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'configs'
+    (source / 'nested').mkdir(parents=True)
+    (source / 'nested' / 'file.txt').write_text('data\n')
+    (tmp_path / 'linked-configs').mkdir()
+    (tmp_path / 'linked-configs' / 'nested').mkdir()
+    (tmp_path / 'linked-configs' / 'nested' / 'file.txt').write_text('data\n')
+    _no_link_machine(mocker)
+
+    assert (
+        _check_one_symlink(
+            'provider',
+            ProviderSymlink(source=Path('configs'), target=Path('linked-configs')),
+            source,
+        )
+        is None
+    )
+
+
+def test_check_one_symlink_flags_directory_copy_drift(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tree drift in a copied directory, in paths or in bytes, reports stale."""
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'configs'
+    (source / 'nested').mkdir(parents=True)
+    (source / 'nested' / 'file.txt').write_text('data\n')
+    _no_link_machine(mocker)
+    symlink = ProviderSymlink(
+        source=Path('configs'),
+        target=Path('linked-configs'),
+    )
+
+    # Extra path in the target: the trees differ.
+    target = tmp_path / 'linked-configs'
+    target.mkdir()
+    (target / 'extra.txt').write_text('x\n')
+    issue = _check_one_symlink('provider', symlink, source)
+    assert issue is not None
+    assert 'stale copy' in issue
+    shutil.rmtree(target)
+
+    # Same paths, drifted bytes: still stale.
+    target.mkdir()
+    (target / 'nested').mkdir()
+    (target / 'nested' / 'file.txt').write_text('edited\n')
+    issue = _check_one_symlink('provider', symlink, source)
+    assert issue is not None
+    assert 'stale copy' in issue
+    shutil.rmtree(target)
+
+    # A file where a directory belongs: the kinds differ, so it is stale.
+    target.write_text('not a tree\n')
+    issue = _check_one_symlink('provider', symlink, source)
+    assert issue is not None
+    assert 'stale copy' in issue
+
+    # Same paths in both trees, but one entry flips kind: an empty source
+    # directory that the target holds as a file. The previous shape left
+    # target as a plain file, so it goes first.
+    (source / 'empty').mkdir()
+    target.unlink()
+    target.mkdir()
+    (target / 'nested').mkdir()
+    (target / 'nested' / 'file.txt').write_text('data\n')
+    (target / 'empty').write_text('')
+    issue = _check_one_symlink('provider', symlink, source)
+    assert issue is not None
+    assert 'stale copy' in issue
+
+
+def test_check_one_symlink_treats_a_missing_source_as_drift(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy without its source is a broken registration, never a match."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'link.txt').write_text('data\n')
+    _no_link_machine(mocker)
+
+    issue = _check_one_symlink(
+        'provider',
+        ProviderSymlink(source=Path('source.txt'), target=Path('link.txt')),
+        tmp_path / 'missing' / 'source.txt',
+    )
+    assert issue is not None
+    assert 'stale copy' in issue
+
+
+def test_check_one_symlink_demands_a_link_when_symlinks_are_supported(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A plain copy where a real symlink can live stays an anomaly.
+
+    On a machine with symlink privilege the copy tier is a state apply never
+    produces, so the check keeps flagging it until the link is restored.
+    """
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'source.txt'
+    source.write_text('data\n')
+    (tmp_path / 'link.txt').write_text('data\n')
+    mocker.patch(
+        'repolish.commands.apply.symlinks.supports_symlinks',
+        return_value=True,
+    )
+
+    issue = _check_one_symlink(
+        'provider',
+        ProviderSymlink(source=Path('source.txt'), target=Path('link.txt')),
+        source,
+    )
+    assert issue is not None
+    assert 'exists but is not a link' in issue
 
 
 def _base_mocks(

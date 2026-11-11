@@ -16,7 +16,7 @@ it cannot drift.
 | Argument                        | Default         | Description                                                                                                                                  |
 | ------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--config PATH`, `-c PATH`      | `repolish.yaml` | Path to the repolish YAML configuration file                                                                                                 |
-| `--check`                       | `False`         | Load config and create context (dry-run check)                                                                                               |
+| `--check`                       | `False`         | Report drift and symlink issues without writing anything                                                                                     |
 | `--fail-on-warnings`            | `False`         | Treat validator warnings as fatal errors (useful for CI)                                                                                     |
 | `--skip-post-process`           | `False`         | Skip all post_process commands defined in repolish.yaml                                                                                      |
 | `--strict`                      | `False`         | Exit with an error if any provider could not be registered (useful for CI)                                                                   |
@@ -48,12 +48,23 @@ it cannot drift.
 
 ## Check mode
 
-`--check` stops after the context pass. No files are written. Use it to validate
-that all providers load and produce a context without running a full apply:
+`--check` runs the whole pipeline but writes nothing to the project. Rendered
+output is compared against the project tree and every declared symlink is
+verified. The run exits 2 when files would change (drift) or a symlink is
+missing, points somewhere other than its resource, or sits in a state apply
+would replace:
 
 ```bash
 repolish apply --check
 ```
+
+The symlink check accepts whatever the machine's link chain can reach. A real
+symlink or a Windows junction pointing at the resource counts everywhere. On a
+machine that cannot create symlinks, files have no junction tier to fall back
+on, so apply materialises a copy: a copy whose content matches the resource
+passes, and one that drifted is reported as stale, which the next apply fixes by
+re-copying. On machines that can create symlinks, a plain copy where a link
+belongs is reported, since apply never produces one there.
 
 ## Context soundness
 

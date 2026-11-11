@@ -10,7 +10,8 @@ import sys
 from dataclasses import dataclass, field
 
 import cyclopts
-from rich.console import Console
+
+from repolish.console import build_console
 
 
 @dataclass
@@ -64,7 +65,7 @@ class CliRunner:
             args = []
 
         buf = io.StringIO()
-        console = Console(file=buf, force_terminal=False, soft_wrap=True)
+        console = build_console(file=buf, force_terminal=False, soft_wrap=True)
         orig_stdout = sys.stdout
         orig_console = app.console
         orig_error_console = app.error_console

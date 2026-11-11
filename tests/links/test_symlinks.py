@@ -48,14 +48,21 @@ def create_test_dir(
     return test_dir
 
 
-def mock_no_symlinks(mocker: pytest_mock.MockerFixture):
-    """Mock supports_symlinks to return False for both linker modules."""
+def mock_copy_tier(mocker: pytest_mock.MockerFixture):
+    """Pin every link tier off so the chain lands on copy.
+
+    The junction tests re-enable their tier on top of this.
+    """
     mocker.patch(
         'repolish.links.symlinks.supports_symlinks',
         return_value=False,
     )
     mocker.patch(
         'repolish.links.validation.supports_symlinks',
+        return_value=False,
+    )
+    mocker.patch(
+        'repolish.links.symlinks.supports_junctions',
         return_value=False,
     )
 
@@ -129,7 +136,7 @@ def test_link_resources_copies_when_symlinks_not_supported(
     tmp_path: Path,
 ):
     """Test link_resources falls back to copying when symlinks aren't supported."""
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
 
     source = tmp_path / 'source'
     source.mkdir()
@@ -139,7 +146,7 @@ def test_link_resources_copies_when_symlinks_not_supported(
 
     result = link_resources(source, target)
 
-    assert result == 'copy'  # Junctions are a Windows tier; POSIX copies
+    assert result == 'copy'  # both link tiers are pinned off
     assert_copy_with_file(target, 'file.txt', 'content')
 
 
@@ -286,7 +293,7 @@ def test_create_additional_link_copies_when_no_symlinks(
 ):
     """Test create_additional_link copies when symlinks aren't supported."""
     monkeypatch.chdir(tmp_path)
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
 
     # Setup provider resources
     provider_resources = tmp_path / '.repolish' / 'mylib'
@@ -324,7 +331,7 @@ def test_create_additional_link_directory_copies_when_no_symlinks(
     monkeypatch.chdir(tmp_path)
 
     # Mock supports_symlinks to return False
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
 
     kind = create_additional_link(
         resources_dir=provider_resources,
@@ -478,7 +485,7 @@ def test_link_resources_updates_outdated_copy_without_symlinks(
     directory is up-to-date, so we always recreate it to ensure it's current.
     """
     # Mock to simulate system without symlink support
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
 
     # Step 1: Create initial source and copy it
     source_a = create_test_dir(
@@ -591,7 +598,7 @@ def test_link_resources_creates_junction_when_symlinks_blocked(
     contract repolish links want; the copy tier remains for filesystems
     without reparse points.
     """
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
     mocker.patch('repolish.links.symlinks.supports_junctions', return_value=True)
     mock_create = mocker.patch('repolish.links.symlinks.create_junction')
 
@@ -611,7 +618,7 @@ def test_link_resources_copies_when_junction_creation_fails(
     tmp_path: Path,
 ):
     """A filesystem without reparse points falls through to the copy tier."""
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
     mocker.patch('repolish.links.symlinks.supports_junctions', return_value=True)
     mocker.patch(
         'repolish.links.symlinks.create_junction',
@@ -634,7 +641,7 @@ def test_junction_tier_skips_files(
     tmp_path: Path,
 ):
     """Junctions point at directories only, so file targets copy instead."""
-    mock_no_symlinks(mocker)
+    mock_copy_tier(mocker)
     mocker.patch('repolish.links.symlinks.supports_junctions', return_value=True)
     mock_create = mocker.patch('repolish.links.symlinks.create_junction')
 

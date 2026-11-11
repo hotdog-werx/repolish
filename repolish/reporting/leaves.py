@@ -8,11 +8,10 @@ objects, no state decisions — the rows come from `repolish.summaries`.
 """
 
 from collections.abc import Sequence
-from pathlib import Path
 
 from rich.text import Text
 
-from repolish.console import supports_hyperlinks
+from repolish.console import hyperlink_style
 from repolish.postprocess.report import format_duration
 from repolish.reporting.markers import marker_for
 from repolish.reporting.nodes import SummaryNode, details_link, stat_suffix
@@ -47,18 +46,6 @@ MODE_STYLES: dict[str, str] = {
     'delete': 'red',
     'keep': 'cyan',
 }
-
-
-def _link_style(link: Path | None, prefix: str = '') -> str:
-    """Return the hyperlink style for *link*, prefixed by *prefix*.
-
-    Hyperlink support off (or no link): just the prefix (possibly empty), so
-    unlinked rows keep their plain or bold styling.
-    """
-    if link is not None and supports_hyperlinks:
-        style = f'link file://{link.absolute()}'
-        return f'{prefix} {style}' if prefix else style
-    return prefix
 
 
 def _validator_text(line: ValidatorLine) -> str:
@@ -99,7 +86,7 @@ def render_file_row(row: FileRow) -> SummaryNode:
     node = Text()
     marker = marker_for(row.state)
     node.append(marker.glyph, style=marker.style)
-    node.append(row.path, style=_link_style(row.link))
+    node.append(row.path, style=hyperlink_style(row.link))
     if row.mode_note:
         style = MODE_STYLES.get(row.mode_note, '')
         node.append(f'  {row.mode_note}', style=f'dim {style}'.strip())
@@ -206,7 +193,7 @@ def render_hook_failure_row(row: HookFailureRow) -> SummaryNode:
 def render_provider_branch(branch: ProviderBranch) -> SummaryNode:
     """Draw one provider branch: bold alias, version, stats, child rows."""
     label = Text()
-    label.append(branch.alias, style=_link_style(branch.link, prefix='bold'))
+    label.append(branch.alias, style=hyperlink_style(branch.link, prefix='bold'))
     if branch.version is not None:
         label.append(f'@{branch.version}', style='dim')
     if branch.stats is not None:
