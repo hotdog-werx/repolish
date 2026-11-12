@@ -1,7 +1,8 @@
-"""Shared Rich console for repolish CLI output."""
+"""Shared console and output helpers for the repolish CLI."""
 
 from __future__ import annotations
 
+import codecs
 import os
 import sys
 from typing import TYPE_CHECKING, Any
@@ -57,3 +58,31 @@ def hyperlink_style(path: Path | None, prefix: str = '') -> str:
         return prefix
     style = f'link {path.absolute().as_uri()}'
     return f'{prefix} {style}' if prefix else style
+
+
+def ensure_utf8_output() -> None:
+    """Reconfigure non-UTF-8 standard streams to UTF-8 in place.
+
+    A piped stdout on Windows encodes with the ANSI code page (cp1252
+    and friends), which cannot hold the summary tree's glyphs, so the
+    first render dies with rich's ``PYTHONIOENCODING`` advice after the
+    work is already done. Python 3.15 makes UTF-8 the default (PEP 686);
+    until every runtime has that, each CLI entry point calls this so no
+    user needs the env var. Streams already speaking UTF-8 or declaring
+    no encoding (test capture, plain ``io.StringIO``), and streams
+    without a reconfigure to call, are left alone; a reconfigure that
+    raises never kills the entry. ``errors="replace"`` only ever turns
+    lone surrogates from undecodable filesystem paths into ``?``: UTF-8
+    encodes every glyph.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, 'encoding', None)
+        if not encoding or codecs.lookup(encoding).name == 'utf-8':
+            continue
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding='utf-8', errors='replace')
+        except (ValueError, OSError):
+            continue

@@ -117,9 +117,11 @@ def run_lane(  # noqa: PLR0913 - mirrors the apply CLI flag set on purpose
     from repolish.commands.apply.options import ApplyOptions  # noqa: PLC0415
     from repolish.commands.apply.pipeline import resolve_session  # noqa: PLC0415
     from repolish.commands.apply.session import apply_session  # noqa: PLC0415
+    from repolish.console import ensure_utf8_output  # noqa: PLC0415
     from repolish.fastlane.config import prepare_lane_config  # noqa: PLC0415
     from repolish.reporting import print_run_header  # noqa: PLC0415
 
+    ensure_utf8_output()
     configure_logging(verbosity=resolve_verbosity(verbose=verbose))
     started = perf_counter()
     config_path = config.resolve()

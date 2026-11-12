@@ -12,6 +12,7 @@ from repolish.cli.list_insertions import list_insertions
 from repolish.cli.preview import preview
 from repolish.cli.scaffold import scaffold
 from repolish.cli.utils import setup_logging
+from repolish.console import ensure_utf8_output
 from repolish.version import __version__
 
 app = cyclopts.App(
@@ -34,6 +35,7 @@ def _meta(
     ] = 0,
 ) -> None:
     """Repolish - Maintain consistency across repositories."""
+    ensure_utf8_output()
     setup_logging(verbose)
     app(tokens)
 

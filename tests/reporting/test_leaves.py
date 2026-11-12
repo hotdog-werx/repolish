@@ -169,7 +169,7 @@ def test_file_row_validator_report_gets_details_link(
     )
     node = render_file_row(row)
     assert node.label.plain.endswith(' [details]')
-    assert any(str(report) in str(span.style) for span in node.label.spans)
+    assert any(f'link {report.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_file_row_insertion_line_renders_counts_and_link(
@@ -191,7 +191,7 @@ def test_file_row_insertion_line_renders_counts_and_link(
     )
     node = render_file_row(row)
     assert '\n  insertions: ✓ ok (2 ok, 1 failed, 1 disabled)' in node.label.plain
-    assert any(str(report) in str(span.style) for span in node.label.spans)
+    assert any(f'link {report.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_file_row_link_hyperlinks_the_path(
@@ -253,7 +253,7 @@ def test_hook_failure_row_gets_details_link(
         ),
     )
     assert node.label.plain.endswith(' [details]')
-    assert any(str(report) in str(span.style) for span in node.label.spans)
+    assert any(f'link {report.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_symlink_row_renders_arrow_target_source() -> None:
