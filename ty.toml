@@ -8,6 +8,10 @@ extra-paths = [".uv-toolbox/4e4fe2371203/lib/python3.12/site-packages"]
 # refreshes [environment] above. This project's default tail ships below;
 # repos without it (when the lane migrates to a workspace provider) keep
 # whatever they add below the marker.
+# Check as every platform: Linux CI must see the Windows-only stdlib
+# surface (`_winapi.CreateJunction`); otherwise platform-gated code
+# needs a `ty: ignore` that is dead weight on Windows machines.
+python-platform = "all"
 [src]
 # provider-examples are standalone packages with their own cross-dependencies
 # (e.g. devkit.workspace) that are not installed in this venv.

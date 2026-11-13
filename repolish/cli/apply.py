@@ -22,7 +22,7 @@ class ApplyCommonParams(BaseModel):
     )
     check: Annotated[bool, Parameter(name=['--check'])] = Field(
         default=False,
-        description='Load config and create context (dry-run check)',
+        description='Report drift and symlink issues without writing anything',
     )
     fail_on_warnings: Annotated[
         bool,

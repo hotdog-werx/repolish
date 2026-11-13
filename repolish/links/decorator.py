@@ -17,7 +17,7 @@ from hotlog import (
 )
 
 from repolish.config.models.metadata import ProviderFileInfo
-from repolish.console import console
+from repolish.console import console, ensure_utf8_output
 from repolish.exceptions import ResourceLinkerError
 from repolish.links.symlinks import link_resources
 from repolish.pkginfo import resolve_package_identity
@@ -126,12 +126,11 @@ def _link_and_notify(
 ) -> None:
     """Run link_resources and call the success callback, or raise SystemExit on failure."""
     try:
-        is_symlink = link_resources(
+        link_type = link_resources(
             source_dir=pkg_dir,
             target_dir=resources_dir,
             force=force,
         )
-        link_type = 'symlink' if is_symlink else 'copy'
         logger.info(
             'resources_linked',
             library_name=library_name,
@@ -252,6 +251,7 @@ def resource_linker(
                 Parameter(name=['-v', '--verbose'], count=True),
             ] = 0,
         ) -> None:
+            ensure_utf8_output()
             configure_logging(verbosity=resolve_verbosity(verbose=verbose))
             if info:
                 info_obj = _build_provider_info(

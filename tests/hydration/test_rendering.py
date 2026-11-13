@@ -7,7 +7,9 @@ from pydantic import BaseModel
 
 from repolish.builder import stage_templates
 from repolish.config import RepolishConfig
+from repolish.exceptions import ContextUnsoundError
 from repolish.hydration.rendering import (
+    _ctx_for_pid,
     render_template,
 )
 from repolish.hydration.staging import prepare_staging, preprocess_templates
@@ -18,6 +20,13 @@ from repolish.providers import (
     TemplateMapping,
 )
 from repolish.providers.models import ProviderInfo, RepolishContext
+
+
+def _identified(ctx: BaseContext, alias: str = 'p') -> BaseContext:
+    """A fixture context carrying the identity the pipeline always injects."""
+    return ctx.model_copy(
+        update={'repolish': RepolishContext(provider=ProviderInfo(alias=alias))},
+    )
 
 
 def _make_template_dir(tmp_path: Path, name: str = 'example') -> Path:
@@ -54,7 +63,7 @@ def test_render_template_renders_with_jinja(tmp_path: Path):
         value: str = 'hello'
 
     providers = SessionBundle(
-        provider_contexts={'p': ValueCtx()},
+        provider_contexts={'p': _identified(ValueCtx())},
         template_sources={'foo': 'p'},
     )
     preprocess_templates(setup_input, providers, base_dir)
@@ -82,7 +91,7 @@ def test_render_resolves_context_with_windows_style_pid(
         x: int = 9
 
     providers = SessionBundle(
-        provider_contexts={'P/subdir': CtxX()},
+        provider_contexts={'P/subdir': _identified(CtxX())},
         # Simulate the backslash pid that Windows staging produces
         template_sources={'greet.txt': 'P\\subdir'},
     )
@@ -119,7 +128,7 @@ def test_render_mapping_resolves_context_with_windows_style_pid(
         x: int = 9
 
     providers = SessionBundle(
-        provider_contexts={'P/subdir': CtxX()},
+        provider_contexts={'P/subdir': _identified(CtxX())},
         file_mappings={
             'greet.txt': TemplateMapping(
                 'greet',
@@ -157,7 +166,7 @@ def test_render_with_jinja_exposes_context_as_top_level_variables(
         package_name: str = 'acme'
 
     providers = SessionBundle(
-        provider_contexts={'p': PackageCtx()},
+        provider_contexts={'p': _identified(PackageCtx())},
         template_sources={'{{package_name}}/README.md': 'p'},
     )
     preprocess_templates(setup_input, providers, base_dir)
@@ -798,3 +807,52 @@ def test_render_template_skips_filemode_suppress(tmp_path: Path) -> None:
 
     assert not (setup_output / 'repolish' / 'wip.txt').exists()
     assert (setup_output / 'repolish' / 'stable.txt').read_text() == 'fine'
+
+
+def test_render_refuses_context_without_identity(tmp_path: Path):
+    """An identity-less context stops the run before any file is rendered.
+
+    The provider name is read when the template namespace is built, so a
+    context that never resolved an identity cannot reach a template: headers
+    with no provider name never reach a file, not even inside the staging
+    tree.
+    """
+    tpl = tmp_path / 'tpl-guard'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    (tpl / 'repolish' / 'foo.jinja').write_text('v={{ value }}', encoding='utf-8')
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    class ValueCtx(BaseContext):
+        value: str = 'hello'
+
+    providers = SessionBundle(
+        provider_contexts={'p': ValueCtx()},
+        template_sources={'foo': 'p'},
+    )
+    preprocess_templates(setup_input, providers, base_dir)
+
+    with pytest.raises(ContextUnsoundError, match='carries no identity'):
+        render_template(setup_input, providers, setup_output)
+
+    assert not (setup_output / 'repolish' / 'foo').exists()
+
+
+def test_ctx_for_pid_exposes_the_computed_name() -> None:
+    """The render namespace carries the computed provider name for templates.
+
+    `{{ repolish.provider.name }}` resolves the identity chain, so custom
+    headers read the same name the built-in one stamps.
+    """
+
+    class ValueCtx(BaseContext):
+        value: str = 'hello'
+
+    bundle = SessionBundle(
+        provider_contexts={'p': _identified(ValueCtx())},
+    )
+    namespace = _ctx_for_pid('p', bundle)
+
+    assert namespace['repolish']['provider']['name'] == 'p'

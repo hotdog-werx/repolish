@@ -13,6 +13,7 @@ from repolish.hydration.misc import (
     get_source_str_from_mapping,
     resolve_mapping_source_file,
 )
+from repolish.links import is_link, remove_link
 from repolish.misc import is_conditional_file
 from repolish.providers import SessionBundle, TemplateMapping
 
@@ -356,13 +357,20 @@ def _apply_deletions(
     """Delete provider-declared files from the project root, skipping paused ones.
 
     Returns a dict mapping POSIX path to ``'deleted'`` for each file removed.
+
+    A linked path is removed as a link, never followed: the delete set can
+    overlap the link phase's output, and rmtree through a junction would eat
+    the provider package it points at.
     """
     status: dict[str, str] = {}
     for rel in delete_files:
         if is_paused(rel.as_posix(), paused_files):
             continue
         target = base_dir / rel
-        if target.exists():
+        if is_link(target):
+            remove_link(target)
+            status[rel.as_posix()] = 'deleted'
+        elif target.exists():
             if target.is_dir():
                 shutil.rmtree(target)
             else:

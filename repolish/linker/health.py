@@ -14,6 +14,7 @@ and costs a single subprocess per provider instead of two.
 """
 
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -23,6 +24,7 @@ from hotlog import get_logger
 from repolish.cli_registry import probe_provider_info
 from repolish.config import ProviderConfig
 from repolish.config.models.metadata import ProviderFileInfo
+from repolish.config.models.provider import ModuleProviderConfig
 from repolish.config.providers import load_provider_info
 from repolish.exceptions import ModuleLinkError, ProviderNotReadyError
 from repolish.linker.module_link import probe_module_info
@@ -36,6 +38,23 @@ from repolish.linker.providers import (
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
+class SoundnessIssue:
+    """One failed soundness check for a module-declared provider.
+
+    *detail* states what was observed, *recovery* the next command a user
+    should run. Both are plain text so a raised report reads as steps,
+    not stack traces.
+    """
+
+    alias: str
+    module: str
+    kind: str
+    """``module_unimportable`` or ``stale_location``."""
+    detail: str
+    recovery: str
+
+
 @dataclass
 class ProviderReadinessResult:
     """Outcome of an :func:`ensure_providers_ready` call."""
@@ -43,6 +62,13 @@ class ProviderReadinessResult:
     ready: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     cached: list[str] = field(default_factory=list)
+    soundness_issues: list[SoundnessIssue] = field(default_factory=list)
+    """Failed module-provider soundness checks (see :func:`audit_context_soundness`).
+
+    Readiness alone only says the provider registered; these say the
+    registration agrees with the live environment. File-writing runs must
+    refuse to proceed when any are present: the alternative is silently
+    rendering degraded generated headers."""
 
     @property
     def all_ready(self) -> bool:
@@ -402,6 +428,13 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
 
     Raises:
         ProviderNotReadyError: When *strict* is True and any provider failed.
+
+    Soundness issues are not raised here: they are collected on the
+    returned :class:`ProviderReadinessResult` (``soundness_issues``) and
+    logged as error events, so ``repolish link`` can report them alongside
+    its summary tree. File-writing runs refuse to proceed with issues
+    present (:func:`repolish.commands.apply.pipeline.resolve_session`
+    raises :class:`~repolish.exceptions.ContextUnsoundError`).
     """
     result = ProviderReadinessResult()
 
@@ -430,8 +463,138 @@ def ensure_providers_ready(  # noqa: PLR0913 - need to pass all args through
             )
             result.failed.append(alias)
 
+    result.soundness_issues = audit_context_soundness(
+        aliases,
+        providers,
+        config_dir,
+    )
+    _log_soundness_issues(result.soundness_issues)
+
     if strict and result.failed:
         msg = f'providers not ready: {", ".join(result.failed)}'
         raise ProviderNotReadyError(msg)
 
     return result
+
+
+def audit_context_soundness(
+    aliases: list[str],
+    providers: dict[str, ProviderConfig],
+    config_dir: Path,
+) -> list[SoundnessIssue]:
+    """Audit every module-declared provider against the live environment.
+
+    For each ``module:`` provider: the module must be importable, and the
+    registered locations must match where the module currently lives. A
+    provider that fails either renders generated headers degraded to its
+    alias (identity falls back when the linked code is not what this
+    environment imports), so callers stop the run instead.
+
+    Providers whose registration the readiness loop already failed (no
+    cached info) are skipped for the location check: their failure is
+    reported through the normal readiness path. An unimportable module is
+    always reported, though: ``module:`` declares that this environment
+    provides the package, so a missing one is unsound no matter what
+    registered. The one exception is a ``cli:`` co-declaration, where a
+    module-probe failure is the documented fallback trigger, not a
+    soundness violation.
+    """
+    issues: list[SoundnessIssue] = []
+    for alias in aliases:
+        provider_config = providers.get(alias)
+        if provider_config is None or provider_config.module is None:
+            continue
+        if provider_config.cli:
+            # module+cli: the CLI fallback governs registration; leave its
+            # semantics alone (cli: is v2 removal scope).
+            continue
+        issues.extend(
+            _audit_module_provider(alias, provider_config.module, config_dir),
+        )
+    return issues
+
+
+def _audit_module_provider(
+    alias: str,
+    module: ModuleProviderConfig,
+    config_dir: Path,
+) -> list[SoundnessIssue]:
+    """Run the soundness checks for one module provider."""
+    try:
+        fresh = probe_module_info(module, config_dir)
+    except ModuleLinkError as exc:
+        return [
+            SoundnessIssue(
+                alias=alias,
+                module=module.name,
+                kind='module_unimportable',
+                detail=(
+                    f'{module.name!r} is not importable from this '
+                    f'environment ({sys.prefix}); the provider package is '
+                    f'missing or broken: {exc}'
+                ),
+                recovery=(
+                    'reinstall the provider package (re-run the '
+                    'environment setup, e.g. `mise run setup` or '
+                    '`uv sync`), then `repolish link`'
+                ),
+            ),
+        ]
+
+    cached = load_provider_info(alias, config_dir)
+    if cached is None or locations_match(fresh, cached):
+        # No cached registration: the readiness loop already reported the
+        # failure. A registration matching where the environment imports the
+        # module is sound.
+        return []
+    return [
+        SoundnessIssue(
+            alias=alias,
+            module=module.name,
+            kind='stale_location',
+            detail=(
+                'the registered provider does not match where this '
+                f'environment imports {module.name!r} (registered: '
+                f'{cached.site_package_dir or cached.provider_root}, '
+                f'active: {fresh.site_package_dir})'
+            ),
+            recovery='`repolish link`',
+        ),
+    ]
+
+
+def _log_soundness_issues(issues: list[SoundnessIssue]) -> None:
+    """Record every soundness issue as an error event with its recovery."""
+    for issue in issues:
+        logger.error(
+            'context_unsound',
+            provider=issue.alias,
+            module=issue.module,
+            reason=issue.kind,
+            detail=issue.detail,
+            recovery=issue.recovery,
+        )
+
+
+def soundness_report(issues: list[SoundnessIssue]) -> str:
+    """Format issues into the user-facing recovery report."""
+    lines = [
+        'repolish context is unsound; stopped before touching any files.',
+        '',
+    ]
+    for issue in issues:
+        lines.append(
+            f'- provider {issue.alias!r} (module {issue.module!r}): {issue.detail}.',
+        )
+        lines.append(f'  recovery: {issue.recovery}')
+    lines.extend(
+        [
+            '',
+            (
+                'If `repolish link` cannot repair a provider, remove the '
+                '.repolish directory and re-run the environment setup: every '
+                'registration is rebuilt from scratch on the next run.'
+            ),
+        ],
+    )
+    return '\n'.join(lines)

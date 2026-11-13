@@ -145,10 +145,10 @@ is incomplete:
 
 ### Behaviour when a hook fails
 
-A provider or facet hook that raises never aborts the run. repolish catches the
-exception, records it, and skips that hook. The table below is generated from
-the pipeline's skip-semantics registry, so it always covers every guarded hook
-and matches what the code actually falls back to:
+A provider or facet hook that raises does not abort the run. repolish catches
+the exception, records it, and skips that hook. The table below is generated
+from the pipeline's skip-semantics registry, so it always covers every guarded
+hook and matches what the code actually falls back to:
 
 <!-- repolish:on:skip-semantics hook-skip-semantics -->
 
@@ -178,6 +178,14 @@ A return value that breaks the hook's contract (for example `create_anchors`
 returning a non-dict) is recorded the same way. Load-time authoring mistakes
 (duplicate facet names, destination collisions between hooks) still raise
 immediately.
+
+A failed `create_context` is the one case where the run can stop mid-pass. The
+fallback context it leaves behind carries no provider identity, and when that
+provider owns files the render pass refuses to build their template namespace
+(see `apply.md`, context soundness): headers with no provider name never reach a
+file. The hook is still recorded and shown in the summary tree. A provider with
+no files to render never reaches that moment, so its failure stays ordinary skip
+noise and the run exits 1.
 
 ### Aliases missing from the providers map
 

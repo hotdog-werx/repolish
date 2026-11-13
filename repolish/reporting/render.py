@@ -10,7 +10,7 @@ from pathlib import Path
 from rich.text import Text
 from rich.tree import Tree
 
-from repolish.console import console, supports_hyperlinks
+from repolish.console import console, hyperlink_style
 from repolish.phases import PhaseTimer, write_phase_timings
 from repolish.postprocess.report import format_duration
 from repolish.reporting.nodes import SummaryNode, details_link
@@ -22,8 +22,7 @@ def _add_nodes(tree: Tree, nodes: Sequence[SummaryNode]) -> None:
         label = node.label
         # Always stylize, but use empty style when there is no link to open
         # (avoids uncovered branch).
-        link = f'link file://{node.link.absolute()}' if node.link is not None and supports_hyperlinks else ''
-        label.stylize(link)
+        label.stylize(hyperlink_style(node.link))
         branch = tree.add(label)
         _add_nodes(branch, node.children)
 

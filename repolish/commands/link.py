@@ -317,6 +317,17 @@ def _link_loaded_config(  # noqa: PLR0913 - phase flags ride along with the conf
             _display_level=1,
         )
         return 1, _empty_link_result()
+    if result.soundness_issues:
+        # The link phases refresh what they can above; issues that survive
+        # registration (a module that is not importable, unreadable package
+        # metadata) need an environment fix. The per-issue error events carry
+        # the recovery steps.
+        logger.warning(
+            'providers_unsound_after_link',
+            aliases=[issue.alias for issue in result.soundness_issues],
+            _display_level=1,
+        )
+        return 1, _empty_link_result()
     _print_link_success(result, config_path.resolve().parent, location_context)
     if register_only:
         return 0, _empty_link_result()

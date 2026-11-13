@@ -159,7 +159,7 @@ def test_file_row_validator_report_gets_details_link(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.nodes.supports_hyperlinks', new=True)
+    mocker.patch('repolish.console.supports_hyperlinks', new=True)
     report = tmp_path / 'report.json'
     row = FileRow(
         path='x.md',
@@ -169,14 +169,14 @@ def test_file_row_validator_report_gets_details_link(
     )
     node = render_file_row(row)
     assert node.label.plain.endswith(' [details]')
-    assert any(str(report) in str(span.style) for span in node.label.spans)
+    assert any(f'link {report.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_file_row_insertion_line_renders_counts_and_link(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.nodes.supports_hyperlinks', new=True)
+    mocker.patch('repolish.console.supports_hyperlinks', new=True)
     report = tmp_path / 'insertion-report.json'
     row = FileRow(
         path='x.md',
@@ -191,26 +191,26 @@ def test_file_row_insertion_line_renders_counts_and_link(
     )
     node = render_file_row(row)
     assert '\n  insertions: ✓ ok (2 ok, 1 failed, 1 disabled)' in node.label.plain
-    assert any(str(report) in str(span.style) for span in node.label.spans)
+    assert any(f'link {report.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_file_row_link_hyperlinks_the_path(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.leaves.supports_hyperlinks', new=True)
+    mocker.patch('repolish.console.supports_hyperlinks', new=True)
     ctx = tmp_path / 'file-context.json'
     node = render_file_row(
         FileRow(path='a.md', state=FileState.WRITTEN, link=ctx),
     )
-    assert any(f'link file://{ctx}' in str(span.style) for span in node.label.spans)
+    assert any(f'link {ctx.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_file_row_link_without_hyperlink_support(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.leaves.supports_hyperlinks', new=False)
+    mocker.patch('repolish.console.supports_hyperlinks', new=False)
     node = render_file_row(
         FileRow(path='a.md', state=FileState.WRITTEN, link=tmp_path / 'x.json'),
     )
@@ -243,7 +243,7 @@ def test_hook_failure_row_gets_details_link(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.nodes.supports_hyperlinks', new=True)
+    mocker.patch('repolish.console.supports_hyperlinks', new=True)
     report = tmp_path / 'hook-failure.p.create_spec.json'
     node = render_hook_failure_row(
         HookFailureRow(
@@ -253,7 +253,7 @@ def test_hook_failure_row_gets_details_link(
         ),
     )
     assert node.label.plain.endswith(' [details]')
-    assert any(str(report) in str(span.style) for span in node.label.spans)
+    assert any(f'link {report.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_symlink_row_renders_arrow_target_source() -> None:
@@ -399,11 +399,11 @@ def test_provider_branch_link_hyperlinks_alias(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.leaves.supports_hyperlinks', new=True)
+    mocker.patch('repolish.console.supports_hyperlinks', new=True)
     ctx = tmp_path / 'provider-context.json'
     node = render_provider_branch(ProviderBranch(alias='p', link=ctx))
     assert node.label.plain.startswith('p')
-    assert any(f'link file://{ctx}' in str(span.style) for span in node.label.spans)
+    assert any(f'link {ctx.absolute().as_uri()}' in str(span.style) for span in node.label.spans)
 
 
 def test_session_group_renders_title_branches_and_promoted() -> None:
@@ -473,7 +473,7 @@ def test_post_process_group_renders_counts_link_and_subgroups(
     mocker: MockerFixture,
     tmp_path: Path,
 ) -> None:
-    mocker.patch('repolish.reporting.nodes.supports_hyperlinks', new=True)
+    mocker.patch('repolish.console.supports_hyperlinks', new=True)
     report = tmp_path / 'report.txt'
     group = PostProcessGroup(
         label='pkg',

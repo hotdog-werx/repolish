@@ -221,6 +221,7 @@ def prepare_lane_config(  # noqa: PLR0913 - mirrors the run_lane flag set on pur
         resources_dir=resources_dir,
         symlinks=entry.symlinks if entry is not None and entry.symlinks is not None else [],
         overrides=entry.overrides if entry is not None else None,
+        module_name=entry.module.name if entry is not None and entry.module is not None else '',
     )
     config = RepolishConfig(
         config_dir=config_dir,

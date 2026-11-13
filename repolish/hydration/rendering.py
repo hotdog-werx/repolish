@@ -13,9 +13,11 @@ from jinja2 import (
 
 from repolish.config.paused import is_paused
 from repolish.directives import FilePair
+from repolish.exceptions import ContextUnsoundError
 from repolish.hydration.mapping_resolution import resolve_mappings
 from repolish.misc import ctx_to_dict
 from repolish.providers import FileMode, SessionBundle, TemplateMapping
+from repolish.providers.models import ProviderInfo, provider_ready
 
 logger = get_logger(__name__)
 
@@ -197,6 +199,36 @@ def _render_file(
     return None
 
 
+def _require_provider_identity(ctx: object, owner: str) -> None:
+    """Refuse to render from a provider context whose identity never resolved.
+
+    This is the moment the provider name would be read: a template
+    namespace built from an identity-less context stamps headers with no
+    provider name on every file the run writes, so the run stops here.
+    A valid session always resolves at least the alias (the pipeline
+    injects it right after ``create_context``), so an empty chain means a
+    bug in repolish or a broken provider context, not an environment
+    problem to heal. Rendering happens inside the staging tree, before
+    anything is copied to the project, so the project is untouched.
+
+    Contexts that expose no ``repolish`` namespace at all (dict contexts)
+    pass through: they never promised a provider identity.
+    """
+    info = getattr(getattr(ctx, 'repolish', None), 'provider', None)
+    if not isinstance(info, ProviderInfo) or provider_ready(info):
+        return
+    msg = (
+        f'provider context for {owner!r} carries no identity '
+        f'(package_name={info.package_name!r}, project_name={info.project_name!r}, '
+        f'alias={info.alias!r}): building its template namespace would stamp '
+        'headers with no provider name on every file this run writes; a valid '
+        'session always resolves at least the alias, so this is a bug in '
+        'repolish or a broken provider context, and the run stopped before '
+        'touching any files'
+    )
+    raise ContextUnsoundError(msg)
+
+
 def _ctx_for_pid(pid: str | None, providers: SessionBundle) -> dict:
     """Return the context dict for the given provider id.
 
@@ -213,6 +245,7 @@ def _ctx_for_pid(pid: str | None, providers: SessionBundle) -> dict:
         norm_pid = Path(pid.replace('\\', '/')).as_posix()
         found = providers.provider_contexts.get(norm_pid)
         if found is not None:
+            _require_provider_identity(found, norm_pid)
             return ctx_to_dict(found)
     return {}
 
@@ -241,6 +274,7 @@ def _facet_ctx_for_dest(
     facet_ctx = provider_ctx.facets.get(facet_name)
     if facet_ctx is None:
         return None
+    _require_provider_identity(facet_ctx, f'{pid}/{facet_name}')
     return ctx_to_dict(facet_ctx)
 
 

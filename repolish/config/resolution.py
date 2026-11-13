@@ -130,6 +130,7 @@ def _resolved_from_info(
         resources_dir=resources_dir,
         symlinks=symlinks,
         overrides=provider_config.overrides,
+        module_name=provider_config.module.name if provider_config.module else '',
     )
 
 
@@ -155,6 +156,7 @@ def _resolved_from_static(
         resources_dir=resources_dir,
         symlinks=symlinks,
         overrides=provider_config.overrides,
+        module_name=provider_config.module.name if provider_config.module else '',
     )
 
 

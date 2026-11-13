@@ -11,8 +11,15 @@ from repolish.config import ProviderConfig
 from repolish.config.models import ProviderFileInfo
 from repolish.config.providers import get_provider_info_path
 from repolish.exceptions import ProviderNotReadyError
-from repolish.linker import ensure_providers_ready, process_provider
-from repolish.linker.health import ProviderReadinessResult
+from repolish.linker import (
+    SoundnessIssue,
+    ensure_providers_ready,
+    process_provider,
+    soundness_report,
+)
+from repolish.linker.health import (
+    ProviderReadinessResult,
+)
 
 
 def test_all_ready():
@@ -34,6 +41,8 @@ def test_static_provider_registers_and_is_ready(
 
     assert result.ready == ['lib']
     assert result.failed == []
+    # Static providers have no module to probe; the audit ignores them.
+    assert result.soundness_issues == []
     info_file = get_provider_info_path('lib', tmp_path)
     assert info_file.exists()
     saved = json.loads(info_file.read_text())
@@ -665,13 +674,21 @@ def test_module_provider_moved_relinks(
     assert result.cached == []
     saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
     assert saved['site_package_dir'] == str(module_pkg['resources'])
+    # Re-registration healed the move: the audit is clean afterwards.
+    assert result.soundness_issues == []
 
 
-def test_module_link_failure_falls_back_to_static(
+def test_module_link_failure_with_fallback_is_unsound(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """A module that cannot be imported falls back to provider_root."""
+    """An unimportable module is unsound even when provider_root can register.
+
+    The static fallback lets these runs register, loading provider code
+    from a stale location while the declared module stays missing: exactly
+    the state that degrades generated headers to the alias. The audit
+    reports it so file-writing runs can refuse to start.
+    """
     monkeypatch.chdir(tmp_path)
     provider_root = tmp_path / 'my_provider'
     provider_root.mkdir()
@@ -684,20 +701,31 @@ def test_module_link_failure_falls_back_to_static(
     result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
 
     assert result.ready == ['lib']
-    saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
-    assert saved['provider_root'] == str(provider_root)
+    assert [issue.kind for issue in result.soundness_issues] == [
+        'module_unimportable',
+    ]
+    assert result.soundness_issues[0].module == 'missing_mod_abc'
 
 
 def test_module_link_failure_without_fallback_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """A failed module link with no cli or provider_root records the alias as failed."""
+    """A failed module link with no cli or provider_root fails readiness and soundness.
+
+    ``module:`` declares the environment provides the package; a missing one
+    is the broken-venv case the audit exists for, reported alongside the
+    normal readiness failure so both the link report and file-writing runs
+    carry the reinstall recovery.
+    """
     monkeypatch.chdir(tmp_path)
     providers = {'lib': ProviderConfig(module='missing_mod_abc')}
     result = ensure_providers_ready(['lib'], providers, tmp_path, force=True)
 
     assert result.failed == ['lib']
+    assert [issue.kind for issue in result.soundness_issues] == [
+        'module_unimportable',
+    ]
 
 
 def test_module_failure_falls_back_to_cli(
@@ -724,6 +752,9 @@ def test_module_failure_falls_back_to_cli(
     assert result.ready == ['lib']
     saved = json.loads(get_provider_info_path('lib', tmp_path).read_text())
     assert saved['site_package_dir'] == '/cli/source'
+    # The audit skips module+cli providers: a probe failure there is the
+    # documented fallback trigger, not a soundness violation.
+    assert result.soundness_issues == []
 
 
 def test_module_probe_failure_falls_back_to_registration(
@@ -748,3 +779,72 @@ def test_module_probe_failure_falls_back_to_registration(
     )
 
     assert result.failed == ['lib']
+
+
+def test_stale_registration_is_unsound_in_apply_mode(
+    module_pkg: dict,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A cache pointing at an old-but-alive location is unsound under apply.
+
+    Apply trusts a cache whose recorded paths exist, so a provider whose
+    package moved (an env-hash change leaves the old directory alive)
+    loads stale code and degrades generated headers to the alias. The
+    audit probes the module fresh and reports the mismatch.
+    """
+    monkeypatch.chdir(tmp_path)
+    old_site = (tmp_path / 'old_site').resolve()
+    old_site.mkdir()
+    resources = tmp_path / '.repolish' / 'mylib-ws'
+    resources.parent.mkdir(parents=True, exist_ok=True)
+    resources.symlink_to(old_site)
+    _write_cli_info('lib', tmp_path, resources, old_site)
+
+    providers = {'lib': ProviderConfig(module='mylib_ws')}
+    result = ensure_providers_ready(['lib'], providers, tmp_path)
+
+    # The recorded paths exist, so apply-mode registration trusts the cache...
+    assert result.cached == ['lib']
+    # ...but the audit refuses to bless it.
+    issues = result.soundness_issues
+    assert [issue.kind for issue in issues] == ['stale_location']
+    assert issues[0].alias == 'lib'
+    assert issues[0].module == 'mylib_ws'
+    assert issues[0].recovery == '`repolish link`'
+
+
+def test_current_module_registration_is_sound(
+    module_pkg: dict,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A registration matching the live import location audits clean."""
+    monkeypatch.chdir(tmp_path)
+    providers = {'lib': ProviderConfig(module='mylib_ws')}
+    ensure_providers_ready(['lib'], providers, tmp_path, force=True)
+
+    result = ensure_providers_ready(['lib'], providers, tmp_path)
+
+    assert result.cached == ['lib']
+    assert result.soundness_issues == []
+
+
+def test_soundness_report_lists_issues_and_reset_fallback():
+    """The report carries the stop line, per-issue recovery, and the reset note."""
+    issues = [
+        SoundnessIssue(
+            alias='lib',
+            module='mylib_ws',
+            kind='stale_location',
+            detail='the registered provider moved',
+            recovery='`repolish link`',
+        ),
+    ]
+
+    report = soundness_report(issues)
+
+    assert report.splitlines()[0] == ('repolish context is unsound; stopped before touching any files.')
+    assert "- provider 'lib' (module 'mylib_ws'): the registered provider moved." in report
+    assert '  recovery: `repolish link`' in report
+    assert 'remove the .repolish directory' in report

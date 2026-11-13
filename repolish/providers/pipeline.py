@@ -258,14 +258,27 @@ def _set_provider_basic_metadata(
 def _set_provider_package_identity(
     module_cache: list[tuple[str, dict]],
     instances: list[_ProviderBase | None],
-    provider_package_identity: tuple[str, str] | None = None,
+    provider_module_names: dict[str, str] | None = None,
 ) -> None:
-    """Set package and project names derived from each provider module."""
+    """Set package and project names derived from each provider module.
+
+    Identity resolves in two tiers, first match wins:
+
+    1. *provider_module_names* - the ``module:`` declaration from the project
+       config, resolved against the live environment. The declared module is
+       the authoritative identity for a module provider: the loaded file may
+       sit behind a resources link or a copy (Windows), which import machinery
+       cannot see, so its ``__package__`` would come up empty and generated
+       headers would degrade to the alias.
+    2. The loaded module's ``__package__``, for providers with no declaration
+       (static ``provider_root`` entries whose tree happens to be importable).
+    """
     for _idx, (_pid, _mod) in enumerate(module_cache):
         _inst = instances[_idx]
         if _inst is not None:
-            _pkg, _proj = provider_package_identity or resolve_package_identity(
-                _mod.get('__package__'),
+            declared = (provider_module_names or {}).get(_pid)
+            _pkg, _proj = resolve_package_identity(
+                declared or _mod.get('__package__'),
             )
             _inst.package_name = _pkg
             _inst.project_name = _proj

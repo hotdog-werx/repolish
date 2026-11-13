@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
+from repolish.exceptions import ContextUnsoundError
 from repolish.hydration.rendering import _facet_ctx_for_dest
 from repolish.providers.contributions import (
     _handle_provider_facets,
@@ -61,6 +62,13 @@ from repolish.testing import apply_provider
 if TYPE_CHECKING:
     from pathlib import Path
     from types import ModuleType
+
+
+def _identified(ctx: BaseContext, alias: str = 'p') -> BaseContext:
+    """A fixture context carrying the identity the pipeline always injects."""
+    return ctx.model_copy(
+        update={'repolish': RepolishContext(provider=ProviderInfo(alias=alias))},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -991,8 +999,8 @@ def test_facet_vs_facet_collision_raises() -> None:
 
 
 def test_facet_ctx_for_dest_owns_only_mapped_files() -> None:
-    own = OwnCtx()
-    own.facets['alpha'] = AlphaCtx(text='owned')
+    own = _identified(OwnCtx())
+    own.facets['alpha'] = _identified(AlphaCtx(text='owned'))
     bundle = SessionBundle(
         provider_contexts={'p': own},
         facet_owners={'alpha.txt': ('p', 'alpha')},
@@ -1002,6 +1010,24 @@ def test_facet_ctx_for_dest_owns_only_mapped_files() -> None:
     assert facet_dump['text'] == 'owned'
     assert facet_dump['facets'] == {}
     assert _facet_ctx_for_dest('unowned.txt', bundle) is None
+
+
+def test_facet_ctx_for_dest_refuses_identity_less_facet() -> None:
+    """A facet context with no identity cannot reach its template either.
+
+    Facet contexts get the provider's identity injected right after their
+    ``create_context``, so an empty one means the injection never happened:
+    rendering would stamp a header with no provider name.
+    """
+    own = _identified(OwnCtx())
+    own.facets['alpha'] = AlphaCtx(text='owned')
+    bundle = SessionBundle(
+        provider_contexts={'p': own},
+        facet_owners={'alpha.txt': ('p', 'alpha')},
+    )
+
+    with pytest.raises(ContextUnsoundError, match='carries no identity'):
+        _facet_ctx_for_dest('alpha.txt', bundle)
 
 
 def test_facet_ctx_for_dest_tolerates_missing_owners() -> None:
