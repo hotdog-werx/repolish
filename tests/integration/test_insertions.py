@@ -2205,6 +2205,59 @@ def create_file_mappings(self, context):
     run_repolish(['apply', '--check', '-vv'], exit_code=0)
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
+def test_mapped_insertion_file_preserves_executable_bit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An executable template mapped to an insertion destination stays executable.
+
+    The mapping renderer materializes the destination only at its
+    `_repolish.`-prefixed path, so the insertion tier creates the
+    unprefixed staged file fresh: it used to land in the process default
+    mode, and the apply copy propagated the default into the project.
+    """
+    _make_insertion_provider(
+        tmp_path / 'p',
+        """\
+        def insert_spaces():
+            return '     has_spaces'
+        return {'mapped.sh': {'insert-spaces': insert_spaces}}""",
+        extra_imports='from repolish.providers.models import TemplateMapping',
+        extra_methods="""\
+def create_file_mappings(self, context):
+    return {
+        'mapped.sh': TemplateMapping(source_template='mapped.sh.jinja'),
+    }
+""",
+    )
+
+    template = tmp_path / 'p' / 'repolish' / 'mapped.sh.jinja'
+    _write(
+        template,
+        """\
+        #!/bin/bash
+
+        # repolish:on:spaces insert-spaces
+        # repolish:off:spaces
+        """,
+    )
+    template.chmod(0o755)
+
+    _write_repolish_yaml(tmp_path, {'p': './p'})
+
+    monkeypatch.chdir(tmp_path)
+    init_git_repo(tmp_path)
+    run_repolish(['apply'], exit_code=0)
+
+    out = tmp_path / 'mapped.sh'
+    assert 'has_spaces' in out.read_text(encoding='utf-8')
+    assert out.stat().st_mode & 0o111, 'mapped insertion file must keep the executable bit'
+
+
 def test_provider_insertion_receives_file_path_in_block_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

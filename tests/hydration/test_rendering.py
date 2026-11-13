@@ -713,6 +713,40 @@ def test_render_template_preserves_executable_bit(tmp_path: Path) -> None:
     assert out.stat().st_mode & 0o111, 'executable bit must be preserved after rendering'
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not support Unix executable bits',
+)
+def test_mapped_template_render_preserves_executable_bit(tmp_path: Path) -> None:
+    """A mapping-driven render inherits the source template's executable bit.
+
+    The auto-staged renderer already preserved it; the mapping-driven
+    renderer wrote without a chmod, so an executable template landed
+    unexecutable in the render tree and the apply copy propagated the
+    default mode into the project.
+    """
+    tpl = tmp_path / 'tpl-mapped'
+    (tpl / 'repolish').mkdir(parents=True, exist_ok=True)
+    script = tpl / 'repolish' / 'deploy.sh'
+    script.write_text('#!/bin/bash\necho hello\n', encoding='utf-8')
+    script.chmod(0o755)
+
+    config = RepolishConfig(config_dir=tmp_path)
+    base_dir, setup_input, setup_output = prepare_staging(config)
+    stage_templates(setup_input, [tpl])
+
+    providers = SessionBundle(
+        file_mappings={'deploy.sh': TemplateMapping('deploy.sh', None)},
+    )
+
+    preprocess_templates(setup_input, providers, base_dir)
+    render_template(setup_input, providers, setup_output)
+
+    out = setup_output / 'repolish' / '_repolish.deploy.sh'
+    assert out.exists()
+    assert out.stat().st_mode & 0o111, 'mapped render must preserve the executable bit'
+
+
 def test_file_mapping_with_binary_source_copies_file_unchanged(
     tmp_path: Path,
 ) -> None:

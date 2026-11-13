@@ -13,7 +13,7 @@ from hotlog import get_logger
 from repolish.commands.apply.options import InsertionFileResult
 from repolish.config.paused import is_paused
 from repolish.filemodes import ModeRules
-from repolish.hydration.misc import get_source_str_from_mapping
+from repolish.hydration.misc import get_source_str_from_mapping, write_mode_from
 from repolish.insertions import (
     DisabledDiagnosticEntry,
     DisabledInsertionEntry,
@@ -243,8 +243,16 @@ def _stage_file_insertions(
     ctx: _ProviderInsertionContext,
     staged_root: Path,
     source_text: str,
+    *,
+    mode_source: Path,
 ) -> tuple[InsertionFileResult, dict[str, dict[str, InsertionFileResult]]]:
-    """Render *ctx*'s file insertions and write the result into the render tree."""
+    """Render *ctx*'s file insertions and write the result into the render tree.
+
+    A staged file that exists keeps its own mode (the render tree already
+    carries the right bits); a fresh one, which happens when the renderer
+    materialized the destination only at its ``_repolish.``-prefixed path,
+    inherits *mode_source*'s (the render the text came from) permission bits.
+    """
     rendered, zone_blocks = render_insertions_text(
         source_text,
         ctx.registry,
@@ -257,7 +265,7 @@ def _stage_file_insertions(
     if staged_file.exists():
         write_mode_preserved(staged_file, rendered.text)
     else:
-        staged_file.write_text(rendered.text, encoding='utf-8', newline='')
+        write_mode_from(staged_file, rendered.text, mode_source=mode_source)
     ctx.zone_blocks = zone_blocks
 
     parsed = parse_text(source_text, file_path=ctx.rel_path)
@@ -393,13 +401,19 @@ def _staged_source_text(
     base_dir: Path,
     staged_root: Path,
     rel_path: str,
-) -> str | None:
-    """Return the base text for staging *rel_path*'s insertions.
+) -> tuple[str | None, Path]:
+    """Return the base text for staging *rel_path*'s insertions and its mode source.
 
     Mapped destinations start from their freshly rendered staged source;
     auto-staged files start from their staged copy. A developer-owned file is
     copied into the render tree first so insertions and post-process commands
-    operate on the staged copy, never the project file.
+    operate on the staged copy, never the project file. The second element is
+    the file the text came from: when the staged file exists already (its own
+    mode is right) the caller never reads the mode source, and when the
+    renderer left the destination only at its ``_repolish.``-prefixed path the
+    fresh staged file inherits that source's permission bits. When no text
+    was found, the destination itself is returned as a placeholder the caller
+    skips along with the text.
     """
     staged_file = staged_root / rel_path
 
@@ -407,19 +421,19 @@ def _staged_source_text(
     if mapped_source is not None:
         mapped_text = read_text_or_none(mapped_source)
         if mapped_text is not None:
-            return mapped_text
+            return mapped_text, mapped_source
 
     staged_text = read_text_or_none(staged_file)
     if staged_text is not None:
-        return staged_text
+        return staged_text, staged_file
 
     project_file = base_dir / rel_path
     project_text = read_text_or_none(project_file)
     if project_text is None:
-        return None
+        return None, staged_file
     staged_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(project_file, staged_file)
-    return project_text
+    return project_text, project_file
 
 
 def stage_registered_insertions(
@@ -469,7 +483,7 @@ def stage_registered_insertions(
                 _display_level=1,
             )
             continue
-        source_text = _staged_source_text(
+        source_text, mode_source = _staged_source_text(
             providers,
             base_dir,
             staged_root,
@@ -492,6 +506,7 @@ def stage_registered_insertions(
             ctx,
             staged_root,
             source_text,
+            mode_source=mode_source,
         )
         results[rel_path] = aggregated
         _merge_provider_results(

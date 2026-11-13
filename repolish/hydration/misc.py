@@ -72,3 +72,25 @@ def resolve_mapping_source_file(
         if candidate.exists():
             return candidate
     return None
+
+
+def write_mode_from(dest: Path, content: str, *, mode_source: Path) -> None:
+    r"""Write *content* to *dest* (UTF-8) in *mode_source*'s permission bits.
+
+    The write is byte-exact (`newline=''`): `\n` never translates to
+    `os.linesep` (CRLF on Windows), so repolish output is identical on
+    every platform. The full mode is inherited from the original file
+    the content came from: without the chmod a staged file is created
+    with the process default, an executable template (`setup.sh`,
+    provider tools) lands unexecutable, and the apply tier's copy then
+    propagates the default mode into the project. The mode is captured
+    before anything is written, so a vanished original fails without
+    touching *dest*.
+
+    Sibling of :func:`repolish.marker_kit.write_mode_preserved`, which
+    restores a file's own mode for in-place marker writes; this one is
+    for fresh files whose mode lives on the original they render from.
+    """
+    mode = mode_source.stat().st_mode
+    dest.write_text(content, encoding='utf-8', newline='')
+    dest.chmod(mode)

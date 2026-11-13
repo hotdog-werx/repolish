@@ -11,6 +11,7 @@ from repolish.directives import (
     process_file,
     write_if_changed,
 )
+from repolish.hydration.misc import write_mode_from
 from repolish.providers import SessionBundle, TemplateMapping
 from repolish.utils import ensure_dot_repolish, path_slug
 
@@ -132,8 +133,7 @@ def _apply_preprocessing(args: _MappingPreprocessContext) -> None:
         source_name = Path(args.source_template).name
         preproc_name = f'_preproc_{dest_safe}_{source_name}'
         preproc_path = args.ctx.setup_input / 'repolish' / preproc_name
-        preproc_path.write_text(result.content, encoding='utf-8', newline='')
-        preproc_path.chmod(args.tpl_path.stat().st_mode)
+        write_mode_from(preproc_path, result.content, mode_source=args.tpl_path)
         args.mappings_dict[args.dest_path] = TemplateMapping(
             source_template=args.source_val.source_template,
             extra_context=args.source_val.extra_context,

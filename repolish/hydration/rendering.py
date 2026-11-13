@@ -15,6 +15,7 @@ from repolish.config.paused import is_paused
 from repolish.directives import FilePair
 from repolish.exceptions import ContextUnsoundError
 from repolish.hydration.mapping_resolution import resolve_mappings
+from repolish.hydration.misc import write_mode_from
 from repolish.misc import ctx_to_dict
 from repolish.providers import FileMode, SessionBundle, TemplateMapping
 from repolish.providers.models import ProviderInfo, provider_ready
@@ -194,8 +195,7 @@ def _render_file(
         rendered_txt = _jinja_render(env, txt, ctx_to_use, filename=src)
     except (UndefinedError, TemplateSyntaxError) as exc:
         return str(exc)
-    dest.write_text(rendered_txt, encoding='utf-8', newline='')
-    dest.chmod(src.stat().st_mode)
+    write_mode_from(dest, rendered_txt, mode_source=src)
     return None
 
 
@@ -511,7 +511,10 @@ def _render_single_mapping(
             mapping,
             providers,
         )
-        target.write_text(rendered, encoding='utf-8', newline='')
+        # The staged file inherits the source template's permission bits,
+        # so an executable template lands executable (the binary branch
+        # already does this through copy2).
+        write_mode_from(target, rendered, mode_source=template_file)
 
     # Update mapping for downstream processing
     mappings[dest_path] = TemplateMapping(
