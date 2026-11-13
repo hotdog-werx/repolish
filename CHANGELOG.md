@@ -8,6 +8,22 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.19.0] <a name="1.19.0" href="#1.19.0">-</a> November 13, 2026
+
+### 🚀 Features
+
+- Sound provider contexts and junction link tier on Windows (#123) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#123](https://github.com/hotdog-werx/repolish/pull/123)
+
+### ⚙️ Miscellaneous Tasks
+
+- Use uv-toolbox dependency overrides for repolish env resolution (#122) by
+  [@jmlopez-rod](https://github.com/jmlopez-rod) in
+  [#122](https://github.com/hotdog-werx/repolish/pull/122)
+
+[1.19.0]: https://github.com/hotdog-werx/repolish/compare/1.18.1...1.19.0
+
 ## [1.18.1] <a name="1.18.1" href="#1.18.1">-</a> October 24, 2026
 
 ### 🐛 Bug Fixes
