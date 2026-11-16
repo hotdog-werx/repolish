@@ -8,6 +8,15 @@ This changelog is automatically generated using
 
 View [unreleased changes][unreleased] since the last release.
 
+## [1.19.1] <a name="1.19.1" href="#1.19.1">-</a> November 16, 2026
+
+### 🐛 Bug Fixes
+
+- Preserve execution mode on staged text renders by
+  [@jmlopez-rod](https://github.com/jmlopez-rod)
+
+[1.19.1]: https://github.com/hotdog-werx/repolish/compare/1.19.0...1.19.1
+
 ## [1.19.0] <a name="1.19.0" href="#1.19.0">-</a> November 13, 2026
 
 ### 🚀 Features
